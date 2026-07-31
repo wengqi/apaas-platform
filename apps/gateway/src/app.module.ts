@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ApplicationModule } from './application/application.module.js';
 import { ObjectModule } from './object/object.module.js';
 import { RecordModule } from './record/record.module.js';
+import { PageModule } from './page/page.module.js';
 import { HealthController } from './health.controller.js';
 
 @Module({
@@ -13,6 +14,7 @@ import { HealthController } from './health.controller.js';
     ApplicationModule,
     ObjectModule,
     RecordModule,
+    PageModule,
   ],
   controllers: [HealthController],
 })

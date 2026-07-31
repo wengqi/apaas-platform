@@ -59,6 +59,16 @@ export default function StudioLayout() {
     return seg;
   }, [location.pathname]);
 
+  /**
+   * 是否全屏模式(页面搭建器需要三栏撑满,不套白色卡片层)。
+   * 匹配 /app/:appId/pages/:pageId 路径。
+   */
+  const isFullBleed = useMemo(() => {
+    const segments = location.pathname.split('/');
+    // /app/:appId/pages/:pageId → segments[3] === 'pages' 且 segments[4] 存在
+    return segments[3] === 'pages' && !!segments[4];
+  }, [location.pathname]);
+
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'logout',
@@ -186,18 +196,29 @@ export default function StudioLayout() {
             </Space>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 0, padding: 24, background: '#f5f7fa', minHeight: 'calc(100vh - 56px)' }}>
-          <div
-            style={{
-              padding: 28,
-              minHeight: 360,
-              background: colorBgContainer,
-              borderRadius: 12,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-            }}
-          >
+        <Content
+          style={{
+            margin: 0,
+            padding: isFullBleed ? 0 : 24,
+            background: '#f5f7fa',
+            minHeight: 'calc(100vh - 56px)',
+          }}
+        >
+          {isFullBleed ? (
             <Outlet />
-          </div>
+          ) : (
+            <div
+              style={{
+                padding: 28,
+                minHeight: 360,
+                background: colorBgContainer,
+                borderRadius: 12,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              }}
+            >
+              <Outlet />
+            </div>
+          )}
         </Content>
       </Layout>
     </Layout>

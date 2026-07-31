@@ -227,3 +227,27 @@ export interface PageMeta {
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
+
+/** 创建页面请求。 */
+export interface CreatePageRequest {
+  /** 页面 API 名称（应用内唯一，用作运行时路由 slug） */
+  apiName: string;
+  /** 显示名称 */
+  name: string;
+  /** 页面类型 */
+  type: PageType;
+  /** 关联对象（列表/详情/表单页必填，自定义页可空） */
+  objectId?: string;
+  /** 页面 Schema（未提供时存空对象，后续通过 update 填充） */
+  schema?: PageSchema;
+}
+
+/** 更新页面请求。 */
+export interface UpdatePageRequest {
+  /** 显示名称 */
+  name?: string;
+  /** 页面 Schema（保存搭建器产出） */
+  schema?: PageSchema;
+  /** 发布状态 */
+  isPublished?: boolean;
+}

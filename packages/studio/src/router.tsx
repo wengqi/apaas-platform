@@ -6,6 +6,7 @@ import AppDashboard from './pages/AppDashboard.js';
 import ObjectDesigner, { ObjectEmptyState } from './pages/ObjectDesigner.js';
 import ObjectDetail from './components/object/ObjectDetail.js';
 import PageBuilder from './pages/PageBuilder.js';
+import PageList from './components/page-builder/PageList.js';
 import ProcessEditor from './pages/ProcessEditor.js';
 import Permissions from './pages/Permissions.js';
 import { useAuthStore } from './stores/auth.js';
@@ -33,7 +34,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  *   - /app/:appId/objects           对象设计器 (Phase 1)
  *     - /app/:appId/objects/        右栏空状态
  *     - /app/:appId/objects/:objectId  对象详情(字段/视图)
- *   - /app/:appId/pages             页面搭建器 (Phase 2)
+ *   - /app/:appId/pages             页面列表 (Phase 2)
+ *     - /app/:appId/pages/          页面列表
+ *     - /app/:appId/pages/:pageId   页面搭建器
  *   - /app/:appId/processes         流程编辑器 (Phase 3)
  *   - /app/:appId/permissions       权限管理占位 (Phase 4)
  */
@@ -67,7 +70,8 @@ export function AppRoutes() {
           <Route index element={<ObjectEmptyState />} />
           <Route path=":objectId" element={<ObjectDetail />} />
         </Route>
-        <Route path="pages" element={<PageBuilder />} />
+        <Route path="pages" element={<PageList />} />
+        <Route path="pages/:pageId" element={<PageBuilder />} />
         <Route path="processes" element={<ProcessEditor />} />
         <Route path="permissions" element={<Permissions />} />
       </Route>

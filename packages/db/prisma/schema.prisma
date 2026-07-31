@@ -333,6 +333,7 @@ model ProcessInstance {
 
   processDef ProcessDef @relation(fields: [processDefId], references: [id], onDelete: Cascade)
   nodeExecutions NodeExecution[]
+  tasks       ProcessTask[]
 
   @@index([tenantId])
   @@index([processDefId])
@@ -375,4 +376,63 @@ enum NodeExecStatus {
   COMPLETED
   FAILED
   SKIPPED
+  WAITING
+}
+
+// ============================================================================
+// 五、流程引擎 — 人工任务 / 通知模版（Phase 3 执行内核）
+// ============================================================================
+
+/// 人工任务（UserTask 运行时实例）。
+/// NodeExecution 记录节点执行，人工任务独立承载受理人/决策/表单/转办。
+model ProcessTask {
+  id              String     @id @default(cuid())
+  tenantId        String     @map("tenant_id")
+  instanceId      String     @map("instance_id")
+  nodeExecutionId String     @map("node_execution_id")
+  nodeId          String     @map("node_id")
+  taskName        String     @map("task_name")
+  assignee        String? // 受理人ID
+  candidateGroups String[] // 候选组(角色ID)
+  status          TaskStatus @default(PENDING)
+  decision        String? // approved/rejected/delegated
+  comment         String? // 审批意见
+  formdata        Json? // 表单数据
+  delegatedTo     String?    @map("delegated_to")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  completedAt     DateTime?  @map("completed_at")
+
+  instance ProcessInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([instanceId])
+  @@index([assignee])
+  @@map("process_tasks")
+}
+
+enum TaskStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DELEGATED
+  CANCELLED
+}
+
+/// 通知模版（独立于流程，可在多个流程/通知节点复用）。
+model NotificationTemplate {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  appId         String   @map("app_id")
+  name          String
+  channel       String // in_app / email / webhook
+  titleTemplate String   @map("title_template")
+  bodyTemplate  String   @map("body_template")
+  variables     Json     @default("[]") // 变量定义数组
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, appId, name])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("notification_templates")
 }

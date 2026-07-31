@@ -1,0 +1,195 @@
+/**
+ * 流程编辑器状态管理 (Zustand)。
+ *
+ * 对齐 DESIGN-process.md §10.7。
+ * 持有当前流程定义、WorkflowSchema / BPMN XML、编辑模式、选中节点、
+ * 撤销/重做栈。自动保存由编辑器组件在 schema/bpmnXml 变化时防抖触发。
+ */
+
+import { create } from 'zustand';
+import type {
+  ProcessDef,
+  WorkflowSchema,
+} from '@apaas/shared';
+import type { EditorMode } from '../constants/process.js';
+
+/** 深拷贝(支持嵌套对象/数组,JSON-safe 场景足够)。 */
+function deepClone<T>(value: T): T {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value);
+    } catch {
+      /* fall through */
+    }
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+interface ProcessEditorState {
+  /** 当前流程定义 */
+  processDef: ProcessDef | null;
+  /** 当前 WorkflowSchema(简化模式编辑中,SSOT) */
+  schema: WorkflowSchema | null;
+  /** 当前 BPMN XML(标准模式) */
+  bpmnXml: string | null;
+  /** 当前模式 */
+  editorMode: EditorMode;
+  /** 只读降级标志(标准→简化含高级元素时) */
+  readonly: boolean;
+  /** 选中节点 ID */
+  selectedNodeId: string | null;
+  /** 撤销栈 */
+  past: WorkflowSchema[];
+  /** 重做栈 */
+  future: WorkflowSchema[];
+  /** 脏标记(有未保存变更) */
+  dirty: boolean;
+
+  // —— actions ——
+  /** 加载流程定义,初始化 schema/bpmnXml/mode */
+  loadProcess: (def: ProcessDef) => void;
+  /** 重置(离开编辑器时) */
+  reset: () => void;
+  /** 设置当前 schema(并 push 撤销栈) */
+  setSchema: (schema: WorkflowSchema, opts?: { skipHistory?: boolean }) => void;
+  /** 设置 BPMN XML */
+  setBpmnXml: (xml: string) => void;
+  /** 切换编辑模式 */
+  switchMode: (mode: EditorMode) => void;
+  /** 设置只读降级 */
+  setReadonly: (readonly: boolean) => void;
+  /** 选中节点 */
+  setSelectedNode: (nodeId: string | null) => void;
+  /** 更新单个节点 data */
+  updateNodeData: (nodeId: string, data: Record<string, unknown>) => void;
+  /** 删除节点 */
+  deleteNode: (nodeId: string) => void;
+  /** 撤销 */
+  undo: () => void;
+  /** 重做 */
+  redo: () => void;
+  /** 标记已保存 */
+  markSaved: () => void;
+}
+
+const initialState = {
+  processDef: null,
+  schema: null,
+  bpmnXml: null,
+  editorMode: 'simplified' as EditorMode,
+  readonly: false,
+  selectedNodeId: null,
+  past: [] as WorkflowSchema[],
+  future: [] as WorkflowSchema[],
+  dirty: false,
+};
+
+export const useProcessEditorStore = create<ProcessEditorState>((set, get) => ({
+  ...initialState,
+
+  loadProcess: (def) =>
+    set({
+      processDef: def,
+      schema: def.workflowSchema ?? { nodes: [], edges: [] },
+      bpmnXml: def.bpmnXml ?? null,
+      editorMode: def.editorMode === 'standard' ? 'standard' : 'simplified',
+      readonly: false,
+      selectedNodeId: null,
+      past: [],
+      future: [],
+      dirty: false,
+    }),
+
+  reset: () => set({ ...initialState }),
+
+  setSchema: (schema, opts) =>
+    set((state) => {
+      const skipHistory = opts?.skipHistory ?? false;
+      if (!state.schema) {
+        return { schema, dirty: true };
+      }
+      return {
+        schema,
+        past: skipHistory ? state.past : [...state.past, deepClone(state.schema)].slice(-50),
+        future: [],
+        dirty: true,
+      };
+    }),
+
+  setBpmnXml: (xml) => set({ bpmnXml: xml, dirty: true }),
+
+  switchMode: (mode) =>
+    set((state) => ({
+      editorMode: mode,
+      // 切到标准模式时清除只读降级;切到简化模式保留既有 readonly
+      readonly: mode === 'standard' ? false : state.readonly,
+      selectedNodeId: null,
+    })),
+
+  setReadonly: (readonly) => set({ readonly }),
+
+  setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId }),
+
+  updateNodeData: (nodeId, data) =>
+    set((state) => {
+      if (!state.schema) return {};
+      const schema = deepClone(state.schema);
+      const node = schema.nodes.find((n) => n.id === nodeId);
+      if (node) {
+        node.data = { ...node.data, ...data };
+      }
+      return {
+        schema,
+        past: [...state.past, deepClone(state.schema as WorkflowSchema)].slice(-50),
+        future: [],
+        dirty: true,
+      };
+    }),
+
+  deleteNode: (nodeId) =>
+    set((state) => {
+      if (!state.schema) return {};
+      const schema = deepClone(state.schema);
+      schema.nodes = schema.nodes.filter((n) => n.id !== nodeId);
+      schema.edges = schema.edges.filter(
+        (e) => e.sourceNodeID !== nodeId && e.targetNodeID !== nodeId,
+      );
+      return {
+        schema,
+        past: [...state.past, deepClone(state.schema as WorkflowSchema)].slice(-50),
+        future: [],
+        selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+        dirty: true,
+      };
+    }),
+
+  undo: () =>
+    set((state) => {
+      if (!state.past.length) return {};
+      const previous = state.past[state.past.length - 1] as WorkflowSchema;
+      const newPast = state.past.slice(0, -1);
+      return {
+        schema: previous,
+        past: newPast,
+        future: state.schema
+          ? [deepClone(state.schema), ...state.future].slice(0, 50)
+          : state.future,
+        dirty: true,
+      };
+    }),
+
+  redo: () =>
+    set((state) => {
+      if (!state.future.length || !state.schema) return {};
+      const next = state.future[0] as WorkflowSchema;
+      const newFuture = state.future.slice(1);
+      return {
+        schema: next,
+        past: [...state.past, deepClone(state.schema)].slice(-50),
+        future: newFuture,
+        dirty: true,
+      };
+    }),
+
+  markSaved: () => set({ dirty: false }),
+}));

@@ -5,6 +5,7 @@ import { ApplicationModule } from './application/application.module.js';
 import { ObjectModule } from './object/object.module.js';
 import { RecordModule } from './record/record.module.js';
 import { PageModule } from './page/page.module.js';
+import { ProcessModule } from './process/process.module.js';
 import { HealthController } from './health.controller.js';
 
 @Module({
@@ -15,6 +16,7 @@ import { HealthController } from './health.controller.js';
     ObjectModule,
     RecordModule,
     PageModule,
+    ProcessModule,
   ],
   controllers: [HealthController],
 })

@@ -1,0 +1,314 @@
+/**
+ * 流程控制器 — 流程定义/实例/人工任务/通知模版路由。
+ *
+ * 路由（全局前缀 /api）：
+ *   流程定义：
+ *     GET    /apps/:appId/processes              — 列出流程
+ *     POST   /apps/:appId/processes              — 创建流程
+ *     GET    /processes/:processId               — 获取流程
+ *     PUT    /processes/:processId               — 更新流程（含 workflowSchema）
+ *     DELETE /processes/:processId               — 删除流程
+ *     POST   /processes/:processId/publish       — 发布流程
+ *
+ *   流程实例：
+ *     POST   /processes/:processId/start         — 启动流程实例
+ *     GET    /processes/:processId/instances     — 列出实例
+ *     GET    /instances/:instanceId              — 获取实例详情
+ *     POST   /instances/:instanceId/cancel       — 取消实例
+ *
+ *   人工任务：
+ *     GET    /tasks                              — 列出我的待办
+ *     GET    /tasks/:taskId                      — 获取任务详情
+ *     POST   /tasks/:taskId/complete             — 完成任务（审批）
+ *     POST   /tasks/:taskId/delegate             — 转办
+ *
+ *   通知模版：
+ *     GET    /apps/:appId/notification-templates — 列出模版
+ *     POST   /apps/:appId/notification-templates — 创建模版
+ *     PUT    /notification-templates/:templateId — 更新模版
+ *     DELETE /notification-templates/:templateId — 删除模版
+ *
+ * 所有路由受 JWT 保护，从 token 提取 tenantId / sub。
+ */
+
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import { ProcessService } from './process.service.js';
+import type {
+  CreateProcessDefRequest,
+  UpdateProcessDefRequest,
+  StartInstanceRequest,
+  CreateTemplateRequest,
+  UpdateTemplateRequest,
+} from './process.service.js';
+
+@Controller()
+@UseGuards(JwtAuthGuard)
+export class ProcessController {
+  constructor(private readonly processService: ProcessService) {}
+
+  // ===========================================================================
+  // 流程定义 CRUD
+  // ===========================================================================
+
+  @Get('apps/:appId/processes')
+  async listProcesses(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+  ) {
+    const data = await this.processService.listProcesses(req.user.tenantId, appId);
+    return { ok: true as const, data };
+  }
+
+  @Post('apps/:appId/processes')
+  async createProcess(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Body() body: CreateProcessDefRequest,
+  ) {
+    const data = await this.processService.createProcess(
+      req.user.tenantId,
+      appId,
+      body,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Get('processes/:processId')
+  async getProcess(
+    @Req() req: AuthenticatedRequest,
+    @Param('processId') processId: string,
+  ) {
+    const data = await this.processService.getProcess(req.user.tenantId, processId);
+    return { ok: true as const, data };
+  }
+
+  @Put('processes/:processId')
+  async updateProcess(
+    @Req() req: AuthenticatedRequest,
+    @Param('processId') processId: string,
+    @Body() body: UpdateProcessDefRequest,
+  ) {
+    const data = await this.processService.updateProcess(
+      req.user.tenantId,
+      processId,
+      body,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Delete('processes/:processId')
+  async deleteProcess(
+    @Req() req: AuthenticatedRequest,
+    @Param('processId') processId: string,
+  ) {
+    const data = await this.processService.deleteProcess(
+      req.user.tenantId,
+      processId,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Post('processes/:processId/publish')
+  async publishProcess(
+    @Req() req: AuthenticatedRequest,
+    @Param('processId') processId: string,
+  ) {
+    const data = await this.processService.publishProcess(
+      req.user.tenantId,
+      processId,
+    );
+    return { ok: true as const, data };
+  }
+
+  // ===========================================================================
+  // 流程实例
+  // ===========================================================================
+
+  @Post('processes/:processId/start')
+  async startInstance(
+    @Req() req: AuthenticatedRequest,
+    @Param('processId') processId: string,
+    @Body() body: StartInstanceRequest,
+  ) {
+    const data = await this.processService.startInstance(
+      req.user.tenantId,
+      processId,
+      body,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Get('processes/:processId/instances')
+  async listInstances(
+    @Req() req: AuthenticatedRequest,
+    @Param('processId') processId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const data = await this.processService.listInstancesByProcess(
+      req.user.tenantId,
+      processId,
+      page ? parseInt(page, 10) : undefined,
+      pageSize ? parseInt(pageSize, 10) : undefined,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Get('instances/:instanceId')
+  async getInstance(
+    @Req() req: AuthenticatedRequest,
+    @Param('instanceId') instanceId: string,
+  ) {
+    const data = await this.processService.getInstance(
+      req.user.tenantId,
+      instanceId,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Post('instances/:instanceId/cancel')
+  async cancelInstance(
+    @Req() req: AuthenticatedRequest,
+    @Param('instanceId') instanceId: string,
+  ) {
+    const data = await this.processService.cancelInstance(
+      req.user.tenantId,
+      instanceId,
+    );
+    return { ok: true as const, data };
+  }
+
+  // ===========================================================================
+  // 人工任务
+  // ===========================================================================
+
+  @Get('tasks')
+  async listTasks(
+    @Req() req: AuthenticatedRequest,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const data = await this.processService.listTasks(
+      req.user.tenantId,
+      req.user.sub,
+      status,
+      page ? parseInt(page, 10) : undefined,
+      pageSize ? parseInt(pageSize, 10) : undefined,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Get('tasks/:taskId')
+  async getTask(
+    @Req() req: AuthenticatedRequest,
+    @Param('taskId') taskId: string,
+  ) {
+    const data = await this.processService.getTask(req.user.tenantId, taskId);
+    return { ok: true as const, data };
+  }
+
+  @Post('tasks/:taskId/complete')
+  async completeTask(
+    @Req() req: AuthenticatedRequest,
+    @Param('taskId') taskId: string,
+    @Body() body: { decision: string; comment?: string; formData?: Record<string, unknown> },
+  ) {
+    const data = await this.processService.completeTask(
+      req.user.tenantId,
+      taskId,
+      req.user.sub,
+      body.decision,
+      body.comment,
+      body.formData,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Post('tasks/:taskId/delegate')
+  async delegateTask(
+    @Req() req: AuthenticatedRequest,
+    @Param('taskId') taskId: string,
+    @Body() body: { delegatedTo: string },
+  ) {
+    const data = await this.processService.delegateTask(
+      req.user.tenantId,
+      taskId,
+      req.user.sub,
+      body.delegatedTo,
+    );
+    return { ok: true as const, data };
+  }
+
+  // ===========================================================================
+  // 通知模版 CRUD
+  // ===========================================================================
+
+  @Get('apps/:appId/notification-templates')
+  async listTemplates(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+  ) {
+    const data = await this.processService.listTemplates(
+      req.user.tenantId,
+      appId,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Post('apps/:appId/notification-templates')
+  async createTemplate(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Body() body: CreateTemplateRequest,
+  ) {
+    const data = await this.processService.createTemplate(
+      req.user.tenantId,
+      appId,
+      body,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Put('notification-templates/:templateId')
+  async updateTemplate(
+    @Req() req: AuthenticatedRequest,
+    @Param('templateId') templateId: string,
+    @Body() body: UpdateTemplateRequest,
+  ) {
+    const data = await this.processService.updateTemplate(
+      req.user.tenantId,
+      templateId,
+      body,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Delete('notification-templates/:templateId')
+  async deleteTemplate(
+    @Req() req: AuthenticatedRequest,
+    @Param('templateId') templateId: string,
+  ) {
+    const data = await this.processService.deleteTemplate(
+      req.user.tenantId,
+      templateId,
+    );
+    return { ok: true as const, data };
+  }
+}
+
+interface AuthenticatedRequest extends Request {
+  user: { sub: string; tenantId: string; email: string };
+}

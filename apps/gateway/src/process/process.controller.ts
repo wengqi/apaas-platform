@@ -44,6 +44,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { ProcessService } from './process.service.js';
 import type {
   CreateProcessDefRequest,
@@ -203,7 +204,7 @@ export class ProcessController {
   ) {
     const data = await this.processService.listTasks(
       req.user.tenantId,
-      req.user.sub,
+      req.user.id,
       status,
       page ? parseInt(page, 10) : undefined,
       pageSize ? parseInt(pageSize, 10) : undefined,
@@ -229,7 +230,7 @@ export class ProcessController {
     const data = await this.processService.completeTask(
       req.user.tenantId,
       taskId,
-      req.user.sub,
+      req.user.id,
       body.decision,
       body.comment,
       body.formData,
@@ -246,7 +247,7 @@ export class ProcessController {
     const data = await this.processService.delegateTask(
       req.user.tenantId,
       taskId,
-      req.user.sub,
+      req.user.id,
       body.delegatedTo,
     );
     return { ok: true as const, data };
@@ -309,6 +310,3 @@ export class ProcessController {
   }
 }
 
-interface AuthenticatedRequest extends Request {
-  user: { sub: string; tenantId: string; email: string };
-}

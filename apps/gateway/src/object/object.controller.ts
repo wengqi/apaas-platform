@@ -10,6 +10,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { ObjectService } from './object.service.js';
 import type {
   CreateObjectInput,
@@ -71,7 +72,7 @@ export class ObjectController {
     const object = await this.objectService.create(
       req.user.tenantId,
       appId,
-      req.user.sub,
+      req.user.id,
       body,
     );
     return { ok: true as const, data: object };
@@ -192,6 +193,3 @@ export class ObjectController {
   }
 }
 
-interface AuthenticatedRequest extends Request {
-  user: { sub: string; tenantId: string; email: string };
-}

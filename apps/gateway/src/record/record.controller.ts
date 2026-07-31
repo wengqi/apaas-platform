@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { RecordService } from './record.service.js';
 import type { RecordQueryParams } from './record.service.js';
 
@@ -72,7 +73,7 @@ export class RecordController {
     const record = await this.recordService.create(
       req.user.tenantId,
       objectId,
-      req.user.sub,
+      req.user.id,
       body ?? {},
     );
     return { ok: true as const, data: record };
@@ -87,7 +88,7 @@ export class RecordController {
     const record = await this.recordService.update(
       req.user.tenantId,
       recordId,
-      req.user.sub,
+      req.user.id,
       body ?? {},
     );
     return { ok: true as const, data: record };
@@ -103,6 +104,3 @@ export class RecordController {
   }
 }
 
-interface AuthenticatedRequest extends Request {
-  user: { sub: string; tenantId: string; email: string };
-}

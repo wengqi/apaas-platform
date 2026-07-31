@@ -10,6 +10,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { PageService } from './page.service.js';
 import type { CreatePageRequest, UpdatePageRequest } from '@apaas/shared';
 
@@ -96,6 +97,3 @@ export class PageController {
   }
 }
 
-interface AuthenticatedRequest extends Request {
-  user: { sub: string; tenantId: string; email: string };
-}

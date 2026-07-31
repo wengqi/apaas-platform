@@ -37,6 +37,9 @@ model Tenant {
   pages       PageMeta[]
   processes   ProcessDef[]
   records     Record[]
+  permissionRules PermissionRule[]
+  orgRoleGrants  OrgRoleGrant[]
+  auditLogs   AuditLog[]
 
   @@map("tenants")
 }
@@ -125,8 +128,8 @@ model Role {
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   application Application? @relation(fields: [appId], references: [id], onDelete: Cascade)
   userRoles   UserRole[]
-  // 权限规则（Phase 4 细化）
-  // permissionRules PermissionRule[]
+  permissionRules PermissionRule[]
+  orgRoleGrants  OrgRoleGrant[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -152,6 +155,7 @@ model OrgNode {
   parentId  String?  @map("parent_id")
   name      String
   code      String
+  nodeType  String   @default("DEPARTMENT") @map("node_type") // DEPARTMENT | TEAM | POSITION
   sort      Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -160,6 +164,7 @@ model OrgNode {
   parent      OrgNode?   @relation("OrgTree", fields: [parentId], references: [id], onDelete: SetNull)
   children    OrgNode[]  @relation("OrgTree")
   memberships OrgMember[]
+  orgRoleGrants OrgRoleGrant[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -177,6 +182,90 @@ model OrgMember {
 
   @@id([userId, orgId])
   @@map("org_members")
+}
+
+// ----------------------------------------------------------------------------
+// 一·四、权限规则 (PermissionRule) — 五级权限核心配置实体
+// ----------------------------------------------------------------------------
+
+/// 权限规则 — 声明某角色对某资源有何动作权限，是否附带行级条件。
+/// RBAC + ABAC 混合模型：角色判定有无权限(RBAC)，条件表达式过滤可见数据(ABAC)。
+model PermissionRule {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  appId         String?  @map("app_id")        // 空=租户级规则；非空=应用级规则
+  roleId        String   @map("role_id")
+  // 权限维度（五级）
+  type          String   @map("type")          // PAGE | RECORD | PROCESS | DATA_MODEL | CONNECTOR
+  // 权限动作
+  action        String   @map("action")        // VIEW | CREATE | EDIT | DELETE | EXECUTE | APPROVE | MANAGE
+  // 作用目标
+  targetId      String   @map("target_id")     // 页面ID / 对象ID / 流程定义ID / 连接器ID
+  targetNodeId  String?  @map("target_node_id") // 流程节点ID（仅 PROCESS:APPROVE 用）
+  // 行级条件（仅 RECORD 类型用，JSON 条件表达式）
+  condition     Json?    @map("condition")     // 条件表达式 JSON，null=无条件
+  // 字段级范围（仅 DATA_MODEL 类型用）
+  fieldScope    Json?    @map("field_scope")    // string[] 白名单字段，null=全部字段
+  // 权限效果
+  effect        String   @default("ALLOW") @map("effect") // ALLOW | DENY
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role          Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([roleId])
+  @@index([tenantId, type, targetId])
+  @@index([appId, type, targetId])
+  @@map("permission_rules")
+}
+
+// ----------------------------------------------------------------------------
+// 一·五、组织角色授权 (OrgRoleGrant) — 将角色授权给组织节点
+// ----------------------------------------------------------------------------
+
+/// 组织角色授权 — 将角色授权给组织节点，节点下所有成员自动获得该角色。
+model OrgRoleGrant {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  orgId     String   @map("org_id")
+  roleId    String   @map("role_id")
+  appId     String?  @map("app_id")            // 应用级角色需指定应用
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orgNode   OrgNode  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, roleId, appId])
+  @@index([tenantId])
+  @@index([orgId])
+  @@map("org_role_grants")
+}
+
+// ----------------------------------------------------------------------------
+// 一·六、审计日志 (AuditLog) — 权限操作审计
+// ----------------------------------------------------------------------------
+
+/// 审计日志 — 记录权限变更、敏感操作等审计事件。
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  action    String                              // CREATE_ROLE | UPDATE_PERMISSION | DELETE_USER | ...
+  resource  String?                              // 操作资源类型
+  resourceId String?  @map("resource_id")       // 资源 ID
+  detail    Json?                               // 操作详情 JSON
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([tenantId, action])
+  @@map("audit_logs")
 }
 
 // ============================================================================

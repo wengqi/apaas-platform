@@ -12,6 +12,7 @@ import {
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { ApplicationService } from './application.service.js';
 import type { CreateAppRequest, UpdateAppRequest } from '@apaas/shared';
+import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 
 /**
  * 应用控制器 — Application CRUD。
@@ -36,7 +37,7 @@ export class ApplicationController {
 
   @Post()
   async create(@Req() req: AuthenticatedRequest, @Body() body: CreateAppRequest) {
-    const app = await this.appService.create(req.user.tenantId, req.user.sub, body);
+    const app = await this.appService.create(req.user.tenantId, req.user.id, body);
     return { ok: true as const, data: app };
   }
 
@@ -55,8 +56,4 @@ export class ApplicationController {
     await this.appService.delete(req.user.tenantId, appId);
     return { ok: true as const, data: { deleted: true } };
   }
-}
-
-interface AuthenticatedRequest extends Request {
-  user: { sub: string; tenantId: string; email: string };
 }

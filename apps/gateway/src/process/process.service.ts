@@ -294,10 +294,23 @@ export class ProcessService {
     pageSize = 20,
   ) {
     const where: Prisma.ProcessTaskWhereInput = { tenantId };
-    // 我的待办：assignee = userId 或候选组匹配（简化：仅按 assignee）
+    // 我的待办：assignee = userId 或候选组匹配（candidateGroups 存角色ID，需用用户角色匹配）
+    const [userRoles, orgMembers] = await Promise.all([
+      prisma.userRole.findMany({ where: { userId }, select: { roleId: true } }),
+      prisma.orgMember.findMany({ where: { userId }, select: { orgId: true } }),
+    ]);
+    let roleIds = userRoles.map((r) => r.roleId);
+    if (orgMembers.length > 0) {
+      const orgGrants = await prisma.orgRoleGrant.findMany({
+        where: { orgId: { in: orgMembers.map((m) => m.orgId) } },
+        select: { roleId: true },
+      });
+      roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
+    }
+
     where.OR = [
       { assignee: userId },
-      { candidateGroups: { has: userId } },
+      ...(roleIds.length > 0 ? [{ candidateGroups: { hasSome: roleIds } }] : []),
     ];
     if (status) where.status = status as TaskStatus;
 
@@ -353,9 +366,22 @@ export class ProcessService {
     });
     if (!task) throw new NotFoundException('任务不存在');
 
-    // 权限校验：任务须属于当前用户（受理人或候选组）
+    // 权限校验：任务须属于当前用户（受理人或候选组——candidateGroups 存角色ID）
     const isAssignee = task.assignee === userId;
-    const isCandidate = task.candidateGroups.includes(userId);
+    // 查询用户角色（直接 + 组织授权）
+    const [userRoles, orgMembers] = await Promise.all([
+      prisma.userRole.findMany({ where: { userId }, select: { roleId: true } }),
+      prisma.orgMember.findMany({ where: { userId }, select: { orgId: true } }),
+    ]);
+    let roleIds = userRoles.map((r) => r.roleId);
+    if (orgMembers.length > 0) {
+      const orgGrants = await prisma.orgRoleGrant.findMany({
+        where: { orgId: { in: orgMembers.map((m) => m.orgId) } },
+        select: { roleId: true },
+      });
+      roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
+    }
+    const isCandidate = roleIds.some((rid) => task.candidateGroups.includes(rid));
     if (!isAssignee && !isCandidate) {
       throw new BadRequestException({
         code: 'FORBIDDEN',

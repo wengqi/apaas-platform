@@ -78,13 +78,17 @@ export interface ObjectInfo {
   id: string;
   appId: string;
   apiName: string;
+  /** 显示名称（后端 ObjectMeta.name 字段） */
+  name: string;
+  /** 兼容旧引用，等同于 name */
   label: string;
   labelPlural?: string;
   icon?: string;
   nameFieldId?: string;
   description?: string;
   isSystem: boolean;
-  recordLevelSecurity: boolean;
+  /** 字段定义（list 接口也返回） */
+  fields?: Field[];
   /** 字段数(列表展示) */
   fieldCount?: number;
   /** 记录数(列表展示) */

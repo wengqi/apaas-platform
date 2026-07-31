@@ -47,7 +47,7 @@ function businessFields(fields: Field[]): Field[] {
 
 /** 取对象显示名(优先 labelPlural,回退 label)。 */
 function displayLabel(meta: ObjectWithFields): string {
-  return meta.labelPlural || meta.label;
+  return meta.labelPlural || meta.label || meta.name || meta.apiName;
 }
 
 // ---------------------------------------------------------------------------

@@ -153,8 +153,8 @@ export interface PageMeta {
   tenantId?: string;
   appId: string;
   name: string;
-  /** 页面路径(用于运行时路由) */
-  slug: string;
+  /** 页面 API 名称（应用内唯一，后端映射为 slug） */
+  apiName: string;
   type: PageType;
   /** 关联对象(列表/详情/表单页) */
   objectId?: string;
@@ -172,7 +172,7 @@ export interface PageMeta {
 
 export interface CreatePageRequest {
   name: string;
-  slug: string;
+  apiName: string;
   type: PageType;
   objectId?: string;
   schema?: PageSchema;
@@ -180,7 +180,7 @@ export interface CreatePageRequest {
 
 export interface UpdatePageRequest {
   name?: string;
-  slug?: string;
+  apiName?: string;
   type?: PageType;
   objectId?: string;
   schema?: PageSchema;

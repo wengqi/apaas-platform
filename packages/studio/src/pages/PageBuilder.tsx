@@ -64,7 +64,7 @@ export default function PageBuilder() {
         id: pageId,
         appId: appId ?? '',
         name: '未命名页面',
-        slug: 'untitled',
+        apiName: 'untitled',
         type: 'custom',
         schema: createDefaultSchema('custom'),
         published: false,

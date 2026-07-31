@@ -43,7 +43,7 @@ export default function BuilderToolbar() {
       }
       return pagesApi.update(state.currentPage.id, {
         name: state.currentPage.name,
-        slug: state.currentPage.slug,
+        apiName: state.currentPage.apiName,
         type: state.currentPage.type,
         objectId: state.currentPage.objectId,
         schema: state.schema,
@@ -74,7 +74,7 @@ export default function BuilderToolbar() {
       const pageIdVal = state.currentPage.id;
       await pagesApi.update(pageIdVal, {
         name: state.currentPage.name,
-        slug: state.currentPage.slug,
+        apiName: state.currentPage.apiName,
         type: state.currentPage.type,
         objectId: state.currentPage.objectId,
         schema: state.schema,

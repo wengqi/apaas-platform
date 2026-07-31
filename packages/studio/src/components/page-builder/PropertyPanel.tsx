@@ -100,10 +100,10 @@ export default function PropertyPanel() {
           {currentPage ? (
             <PagePropertyForm
               name={currentPage.name}
-              slug={currentPage.slug}
+              slug={currentPage.apiName}
               type={currentPage.type}
               onNameChange={(v) => updatePageMeta({ name: v })}
-              onSlugChange={(v) => updatePageMeta({ slug: v })}
+              onSlugChange={(v) => updatePageMeta({ apiName: v })}
               onTypeChange={(v) => updatePageMeta({ type: v })}
             />
           ) : (

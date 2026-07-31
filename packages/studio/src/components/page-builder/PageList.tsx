@@ -90,7 +90,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     const kw = keyword.trim().toLowerCase();
     if (!kw) return pages;
     return pages.filter(
-      (p) => p.name.toLowerCase().includes(kw) || p.slug.toLowerCase().includes(kw),
+      (p) => p.name.toLowerCase().includes(kw) || p.apiName.toLowerCase().includes(kw),
     );
   }, [pages, keyword]);
 
@@ -105,7 +105,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
       }
       return pagesApi.create(appId as string, {
         name: data.name,
-        slug: data.slug,
+        apiName: data.slug,
         type: data.type,
         objectId: data.objectId,
         schema,
@@ -307,7 +307,7 @@ function PageListItem({
               whiteSpace: 'nowrap',
             }}
           >
-            {page.slug}
+            {page.apiName}
           </div>
         </div>
 
@@ -365,7 +365,7 @@ function CreatePageModal({
   });
 
   const objectOptions = (objects ?? []).map((obj) => ({
-    label: obj.label,
+    label: obj.name,
     value: obj.id,
   }));
 

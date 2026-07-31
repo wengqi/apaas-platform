@@ -142,8 +142,8 @@ interface PageBuilderState {
   loadSchema: (schema: PageSchema) => void;
   /** 获取当前 Schema(命令式,用于保存) */
   getSchema: () => PageSchema | null;
-  /** 更新页面元数据(名称/slug/类型等) */
-  updatePageMeta: (updates: Partial<Pick<PageMeta, 'name' | 'slug' | 'type' | 'objectId' | 'published'>>) => void;
+  /** 更新页面元数据(名称/apiName/类型等) */
+  updatePageMeta: (updates: Partial<Pick<PageMeta, 'name' | 'apiName' | 'type' | 'objectId' | 'published'>>) => void;
 
   // —— 组件树动作 ——
   /** 添加组件到指定父节点的 children */

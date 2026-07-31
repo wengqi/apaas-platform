@@ -1,0 +1,378 @@
+// ============================================================================
+// aPaaS 低代码平台 — Prisma Schema (Phase 0 基础层)
+//
+// 设计原则（与 ARCHITECTURE.md 对齐）：
+//  1. 元数据驱动：objects/fields/views/pages/processes 存元数据 JSON
+//  2. JSONB 宽表：所有业务记录统一存 records 表，object_id + data JSONB + GIN
+//  3. 多租户：tenant_id 行级隔离（生产期叠加 PostgreSQL RLS）
+//  4. 流程引擎：process_definitions 存 WorkflowSchema JSON（SSOT），bpmn_xml 仅供互操作
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// 一、系统基础：租户 / 用户 / 角色 / 组织
+// ============================================================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // 租户短标识，用于 URL 路由
+  status    TenantStatus @default(ACTIVE)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  roles       Role[]
+  orgNodes    OrgNode[]
+  applications Application[]
+  objects     ObjectMeta[]
+  pages       PageMeta[]
+  processes   ProcessDef[]
+  records     Record[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+// ============================================================================
+// 一·二、应用 (Application) — 顶层业务容器
+// ============================================================================
+
+model Application {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  apiName     String   @map("api_name") // 开发者标识，如 "asset_management"
+  name        String   // 显示名
+  description String?
+  icon        String?
+  color       String?  // 主题色
+  status      AppStatus @default(DRAFT)
+  version     Int      @default(0) // 发布版本号，每次发布递增
+  // 已发布的应用快照 JSON（含对象/页面/流程定义的完整副本）
+  publishedSnapshot Json? @map("published_snapshot")
+  publishedAt DateTime? @map("published_at")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  objects     ObjectMeta[]
+  pages       PageMeta[]
+  processes   ProcessDef[]
+  records     Record[]
+  roles       Role[]
+
+  @@unique([tenantId, apiName])
+  @@index([tenantId])
+  @@map("applications")
+}
+
+enum AppStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  email         String
+  name          String
+  avatar        String?
+  passwordHash  String   @map("password_hash") // bcrypt
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles     UserRole[]
+  orgMemberships OrgMember[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  appId       String?  @map("app_id") // 为空=租户级角色，非空=应用级角色
+  name        String
+  code        String   // 角色编码，如 ADMIN / BUILDER / END_USER
+  description String?
+  isBuiltIn   Boolean  @default(false) @map("is_built_in")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [appId], references: [id], onDelete: Cascade)
+  userRoles   UserRole[]
+  // 权限规则（Phase 4 细化）
+  // permissionRules PermissionRule[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("roles")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model OrgNode {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  parentId  String?  @map("parent_id")
+  name      String
+  code      String
+  sort      Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent      OrgNode?   @relation("OrgTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    OrgNode[]  @relation("OrgTree")
+  memberships OrgMember[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([parentId])
+  @@map("org_nodes")
+}
+
+model OrgMember {
+  userId  String @map("user_id")
+  orgId   String @map("org_id")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  user User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  OrgNode @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@id([userId, orgId])
+  @@map("org_members")
+}
+
+// ============================================================================
+// 二、对象/数据建模（元数据 + JSONB 宽表存储）
+// ============================================================================
+
+model ObjectMeta {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  appId       String   @map("app_id")
+  apiName     String   @map("api_name") // 开发者标识，如 "asset"
+  name        String   // 显示名
+  description String?
+  icon        String?
+  // 字段定义数组 JSON：[{ id, apiName, name, type, config, ... }]
+  fields      Json     @default("[]")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  views       View[]
+  records     Record[]
+
+  @@unique([appId, apiName])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("object_metas")
+}
+
+model View {
+  id        String   @id @default(cuid())
+  objectId  String   @map("object_id")
+  name      String
+  type      String   // LIST | DETAIL | FORM
+  // 视图配置 JSON：筛选/排序/分组/字段显隐/表单布局
+  config    Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  object ObjectMeta @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@index([objectId])
+  @@map("views")
+}
+
+/// JSONB 宽表：所有对象的业务记录统一存此表。
+/// data 列存完整记录字段值，按 object_id 区分归属。
+model Record {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  appId     String   @map("app_id")
+  objectId  String   @map("object_id")
+  // 业务数据 JSONB：{ "field_api_name": value, ... }
+  data      Json     @default("{}")
+  // 创建/更新审计（记录级，data 内不重复存）
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  object   ObjectMeta @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([appId])
+  @@index([objectId])
+  @@index([tenantId, objectId])
+  @@index([appId, objectId])
+  // GIN 索引加速 JSONB 查询（通过迁移 SQL 补充，Prisma 不直接支持 GIN on Json）
+  @@map("records")
+}
+
+// ============================================================================
+// 三、页面搭建器（元数据 Schema 存储）
+// ============================================================================
+
+model PageMeta {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  appId     String   @map("app_id")
+  // 页面可关联对象（列表/详情/表单页），自定义页可为空
+  objectId  String?  @map("object_id")
+  apiName   String   @map("api_name")
+  name      String
+  type      String   // LIST | DETAIL | FORM | DASHBOARD | CUSTOM
+  // 页面 Schema JSON：组件树 + 视图模型 + 绑定关系
+  schema    Json     @default("{}")
+  isPublished Boolean @default(false) @map("is_published")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, apiName])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("page_metas")
+}
+
+// ============================================================================
+// 四、流程引擎（自研：WorkflowSchema 为 SSOT）
+// ============================================================================
+
+model ProcessDef {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  appId     String   @map("app_id")
+  apiName   String   @map("api_name")
+  name      String
+  // ★ 核心：WorkflowSchema JSON（节点图 + 边），自研引擎直接消费
+  workflowSchema Json @map("workflow_schema")
+  // BPMN 2.0 XML，仅供标准模式互操作（导入/导出/查看），非执行格式
+  bpmnXml   String?  @map("bpmn_xml")
+  version   Int      @default(1)
+  status    ProcessDefStatus @default(DRAFT)
+  triggerType String? @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | SCHEDULED | MANUAL | API
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  instances   ProcessInstance[]
+
+  @@unique([appId, apiName, version])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("process_definitions")
+}
+
+enum ProcessDefStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model ProcessInstance {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  processDefId String  @map("process_def_id")
+  // 触发上下文 JSON：触发记录 ID / 触发用户 / 输入参数
+  triggerContext Json  @default("{}") @map("trigger_context")
+  // 流程变量快照 JSON：执行中的完整变量作用域
+  variables   Json     @default("{}")
+  status      ProcessInstanceStatus @default(RUNNING)
+  // 当前活跃节点 ID 列表（token 位置）
+  activeNodeIds String[] @default([]) @map("active_node_ids")
+  startedAt   DateTime @default(now()) @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  error       String?
+
+  processDef ProcessDef @relation(fields: [processDefId], references: [id], onDelete: Cascade)
+  nodeExecutions NodeExecution[]
+
+  @@index([tenantId])
+  @@index([processDefId])
+  @@index([status])
+  @@map("process_instances")
+}
+
+enum ProcessInstanceStatus {
+  RUNNING
+  WAITING_USER_TASK
+  COMPLETED
+  FAILED
+  TERMINATED
+}
+
+model NodeExecution {
+  id          String   @id @default(cuid())
+  instanceId  String   @map("instance_id")
+  nodeId      String   @map("node_id") // WorkflowSchema 中的节点 ID
+  nodeType    String   @map("node_type")
+  status      NodeExecStatus @default(PENDING)
+  // 节点输入/输出 JSON
+  input       Json?
+  output      Json?
+  startedAt   DateTime? @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  error       String?
+  retries     Int      @default(0)
+
+  instance ProcessInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId])
+  @@index([nodeId])
+  @@map("node_executions")
+}
+
+enum NodeExecStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "JWT_SECRET",
+    "JWT_EXPIRES_IN",
+    "GATEWAY_PORT",
+    "META_SVC_PORT",
+    "RUNTIME_SVC_PORT",
+    "PROCESS_SVC_PORT",
+    "VITE_STUDIO_PORT",
+    "VITE_RUNTIME_PORT",
+    "VITE_API_BASE_URL"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**", ".next/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"]
+    },
+    "generate": {
+      "dependsOn": ["^generate"],
+      "outputs": ["node_modules/.prisma/**", "prisma/generated/**"]
+    }
+  }
+}

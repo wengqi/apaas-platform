@@ -1,0 +1,53 @@
+# ============================================================================
+# aPaaS 低代码平台 — 本地基础设施
+# 仅 PostgreSQL + Redis（自研流程引擎基于 BullMQ，无需额外引擎服务）
+#
+# 用法（根目录）：
+#   pnpm infra:up      # 启动
+#   pnpm infra:down    # 停止
+#   pnpm infra:logs    # 查看日志
+# ============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: apaas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apaas
+      POSTGRES_PASSWORD: apaas
+      POSTGRES_DB: apaas
+      # 开发期便于调试；生产用 .env 注入
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - apaas_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apaas -d apaas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: apaas-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - apaas_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  apaas_pg_data:
+    name: apaas_pg_data
+  apaas_redis_data:
+    name: apaas_redis_data

@@ -1,0 +1,66 @@
+import { Card, Row, Col, Typography, Spin, Empty } from 'antd';
+import { AppstoreOutlined } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { appsApi, type AppSummary } from '../api/apps';
+
+const { Title, Paragraph, Text } = Typography;
+
+export default function Home() {
+  const navigate = useNavigate();
+  const { data: apps, isLoading } = useQuery({
+    queryKey: ['apps'],
+    queryFn: appsApi.list,
+  });
+
+  return (
+    <Card>
+      <Title level={4}>
+        <AppstoreOutlined /> 我的应用
+      </Title>
+      <Paragraph type="secondary">选择一个应用开始使用</Paragraph>
+
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <Spin size="large" />
+        </div>
+      ) : !apps || apps.length === 0 ? (
+        <Empty description="暂无可用应用" />
+      ) : (
+        <Row gutter={[16, 16]}>
+          {apps.map((app: AppSummary) => (
+            <Col key={app.id} xs={24} sm={12} md={8} lg={6}>
+              <Card
+                hoverable
+                onClick={() => navigate(`/app/${app.id}`)}
+                style={{ height: '100%' }}
+              >
+                <Card.Meta
+                  avatar={
+                    <span style={{ fontSize: 32 }}>
+                      {app.icon || '📦'}
+                    </span>
+                  }
+                  title={app.name}
+                  description={
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {app.description || app.apiName}
+                      </Text>
+                      <div style={{ marginTop: 8 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {app.stats.objects} 对象 · {app.stats.pages} 页面 ·{' '}
+                          {app.stats.processes} 流程
+                        </Text>
+                      </div>
+                    </div>
+                  }
+                />
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      )}
+    </Card>
+  );
+}

@@ -19,10 +19,10 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { WorkflowSchema } from '@apaas/shared';
 import {
   processesApi,
   type ProcessDef,
+  type WorkflowSchema,
 } from '../api/processes.js';
 import { objectsApi } from '../api/objects.js';
 import { useProcessEditorStore } from '../stores/processEditor.js';
@@ -56,7 +56,7 @@ export default function ProcessEditor() {
     enabled: !!appId,
   });
 
-  const objectOptions = (objects ?? []).map((o) => ({ label: o.label, value: o.id }));
+  const objectOptions = (objects ?? []).map((o) => ({ label: o.name || o.label, value: o.id }));
 
   /** 流程加载成功 → 写入 store(仅当 processId 变化时)。 */
   useEffect(() => {
@@ -66,6 +66,9 @@ export default function ProcessEditor() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processDef]);
+
+  /** 是否只读(已发布或 store 标记只读)。 */
+  const isReadonly = store.readonly || processDef?.status === 'published';
 
   /** 保存草稿。 */
   const saveMutation = useMutation({
@@ -89,9 +92,10 @@ export default function ProcessEditor() {
     onError: () => message.error('发布失败'),
   });
 
-  /** Schema 变化(防抖保存)。 */
+  /** Schema 变化(防抖保存,只读模式不保存)。 */
   const handleSchemaChange = (schema: WorkflowSchema) => {
     store.setSchema(schema, { skipHistory: true });
+    if (isReadonly) return; // 只读模式不触发保存
     // 防抖保存
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -103,6 +107,7 @@ export default function ProcessEditor() {
   /** BPMN 变化。 */
   const handleBpmnChange = (bpmnXml: string) => {
     store.setBpmnXml(bpmnXml);
+    if (isReadonly) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveMutation.mutate({ bpmnXml });
@@ -142,7 +147,6 @@ export default function ProcessEditor() {
   }
 
   const statusMeta = getProcessStatusMeta(processDef.status);
-  const isReadonly = store.readonly || processDef.status === 'published';
 
   return (
     <div

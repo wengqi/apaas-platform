@@ -68,8 +68,8 @@ export interface ProcessDef extends SharedProcessDef {
 
 export interface CreateProcessRequest {
   name: string;
-  processKey: string;
-  editorMode: EditorMode;
+  apiName: string;
+  editorMode?: EditorMode;
   triggerType?: TriggerType;
   /** 初始 WorkflowSchema(简化模式);不传后端生成空 start→end */
   workflowSchema?: WorkflowSchema;

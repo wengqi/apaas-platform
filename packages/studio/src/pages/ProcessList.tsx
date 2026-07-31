@@ -93,7 +93,7 @@ export default function ProcessList() {
       const editorMode = data.editorMode;
       return processesApi.create(appId as string, {
         name: data.name,
-        processKey: data.processKey,
+        apiName: data.processKey,
         editorMode,
         triggerType: data.triggerType as never,
         workflowSchema: editorMode === 'simplified' ? createEmptyWorkflowSchema() : undefined,

@@ -129,10 +129,13 @@ export class ProcessService {
       where: { id: processId, tenantId },
     });
     if (!existing) throw new NotFoundException('流程不存在');
+    // 已发布流程允许更新,但回退为草稿状态(便于开发迭代)
+    // 生产环境应改为"新建版本"逻辑
     if (existing.status === 'PUBLISHED') {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: '已发布的流程不可直接修改，请新建版本',
+      // 回退为草稿,允许编辑
+      await prisma.processDef.update({
+        where: { id: processId },
+        data: { status: 'DRAFT' },
       });
     }
 

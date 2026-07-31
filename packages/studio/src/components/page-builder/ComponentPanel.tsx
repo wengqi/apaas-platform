@@ -19,6 +19,7 @@ export interface PanelDragData {
  */
 export default function ComponentPanel() {
   const [keyword, setKeyword] = useState('');
+  const [activeKeys, setActiveKeys] = useState<string[]>(['container', 'data']);
 
   /** 按关键字过滤组件(匹配 label),保留有匹配项的分类。 */
   const filteredGroups = useMemo(() => {
@@ -36,10 +37,10 @@ export default function ComponentPanel() {
     })).filter((group) => group.types.length > 0);
   }, [keyword]);
 
-  /** 搜索时展开所有分类。 */
-  const activeKeys = keyword
+  /** 搜索时展开所有分类,否则用用户手动展开状态。 */
+  const effectiveActiveKeys = keyword
     ? filteredGroups.map((g) => g.category)
-    : ['container', 'data'];
+    : activeKeys;
 
   return (
     <div
@@ -89,7 +90,8 @@ export default function ComponentPanel() {
           <Collapse
             ghost
             size="small"
-            activeKey={activeKeys}
+            activeKey={effectiveActiveKeys}
+            onChange={(keys) => setActiveKeys(keys as string[])}
             items={filteredGroups.map((group) => ({
               key: group.category,
               label: (

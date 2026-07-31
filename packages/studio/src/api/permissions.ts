@@ -113,7 +113,8 @@ export interface UserInfo {
   createdAt: string;
   updatedAt: string;
   roles?: Role[];
-  orgs?: OrgNode[];
+  userRoles?: { roleId: string; role: Role }[];
+  orgMemberships?: { org: { id: string; name: string; code: string } }[];
 }
 
 export interface CreateUserRequest {

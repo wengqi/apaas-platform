@@ -166,7 +166,13 @@ export default function BuilderToolbar() {
         <Segmented
           size="small"
           value={mode}
-          onChange={(v) => setMode(v as 'edit' | 'preview')}
+          onChange={(v) => {
+            // 切换模式:
+            // - 切到 preview:Canvas 以 mode 为 key 重新挂载 RuntimeStoreProvider,
+            //   自动初始化 vm 并触发 autoQuery 数据加载。
+            // - 切回 edit:Provider 卸载,运行时状态随之清理。
+            setMode(v as 'edit' | 'preview');
+          }}
           options={[
             { label: '编辑', value: 'edit', icon: <EditOutlined /> },
             { label: '预览', value: 'preview', icon: <EyeOutlined /> },

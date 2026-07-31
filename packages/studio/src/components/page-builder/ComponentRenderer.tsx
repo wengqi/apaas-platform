@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Card,
@@ -25,14 +25,19 @@ import {
 import type { DescriptionsProps, TableProps } from 'antd';
 import { CopyOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { useDroppable } from '@dnd-kit/core';
+import dayjs from 'dayjs';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { getComponentMeta } from '../../constants/pageComponents.js';
 import type {
+  ActionConfig,
   ComponentNode,
   ComponentType,
   PropValue,
   ViewModel,
 } from '../../api/pages.js';
+import type { Dayjs } from 'dayjs';
+import { resolvePropValue } from './expression-engine.js';
+import { useRuntimeCtx, type RuntimeContext } from './RuntimeStore.js';
 
 const { Text, Title } = Typography;
 
@@ -56,6 +61,10 @@ export interface RenderContext {
   selectedNodeId: string | null;
   onSelect: (id: string) => void;
   onAction: (nodeId: string, eventName: string) => void;
+  /** 运行时上下文(预览模式数据/事件;编辑模式为 no-op)。 */
+  runtime: RuntimeContext;
+  /** 运行时 vm 值(预览模式;编辑模式为空对象)。 */
+  vm: Record<string, unknown>;
 }
 
 /** 子节点渲染回调。 */
@@ -67,6 +76,45 @@ type RendererFn = (
   ctx: RenderContext,
   renderChild: RenderChild,
 ) => React.ReactNode;
+
+// ---------------------------------------------------------------------------
+// 节点查找 / 事件动作提取 / 隐藏判定
+// ---------------------------------------------------------------------------
+
+/** 在组件树中按 ID 查找节点(递归)。 */
+function findNodeById(root: ComponentNode, id: string): ComponentNode | undefined {
+  if (root.id === id) return root;
+  if (root.children) {
+    for (const child of root.children) {
+      const found = findNodeById(child, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/** 从事件属性值提取动作链(ActionConfig[] / ActionConfig / { __action })。 */
+function extractActions(prop: PropValue | undefined): ActionConfig[] {
+  if (!prop) return [];
+  if (Array.isArray(prop)) {
+    return prop.flatMap((p) => extractActions(p));
+  }
+  if (prop && typeof prop === 'object' && '__action' in prop) {
+    return [(prop as { __action: ActionConfig }).__action];
+  }
+  if (prop && typeof prop === 'object' && 'type' in prop) {
+    return [prop as unknown as ActionConfig];
+  }
+  return [];
+}
+
+/** 预览模式判定节点是否隐藏(hidden 可为布尔或 { __bind })。 */
+function shouldHide(node: ComponentNode, vm: Record<string, unknown>): boolean {
+  const h = node.hidden;
+  if (h === undefined || h === false) return false;
+  if (h === true) return true;
+  return !!resolvePropValue(h, { vm });
+}
 
 // ---------------------------------------------------------------------------
 // 顶层:根据模式分流(编辑 / 预览)
@@ -87,16 +135,32 @@ export default function ComponentRenderer({ node, isRoot }: ComponentRendererPro
   const schema = usePageBuilderStore((s) => s.schema);
   const selectedNodeId = usePageBuilderStore((s) => s.selectedNodeId);
   const selectNode = usePageBuilderStore((s) => s.selectNode);
+  const runtime = useRuntimeCtx();
 
   const ctx: RenderContext = {
     mode,
     viewModel: schema?.viewModel ?? { variables: {} },
     selectedNodeId,
     onSelect: (id: string) => selectNode(id),
-    onAction: () => {
-      /* 搭建态不执行事件动作 */
+    onAction: (nodeId: string, eventName: string) => {
+      if (mode !== 'preview') return;
+      const schemaState = usePageBuilderStore.getState().schema;
+      if (!schemaState) return;
+      const target = findNodeById(schemaState.root, nodeId);
+      if (!target) return;
+      const actions = extractActions(target.props[eventName]);
+      if (actions.length > 0) {
+        void runtime.executeActions(actions);
+      }
     },
+    runtime,
+    vm: mode === 'preview' ? runtime.vm : {},
   };
+
+  // 预览模式:隐藏表达式求值为真则不渲染
+  if (mode === 'preview' && shouldHide(node, runtime.vm)) {
+    return null;
+  }
 
   if (mode === 'preview') {
     return <PreviewNode node={node} isRoot={isRoot} ctx={ctx} />;
@@ -290,25 +354,58 @@ function DroppableArea({
 // 属性读取辅助
 // ---------------------------------------------------------------------------
 
-/** 安全获取字符串属性值。 */
-function getPropAsString(node: ComponentNode, key: string): string {
-  const value = node.props[key];
-  if (typeof value === 'string') return value;
+/** 读取属性原始值(编辑模式)或解析后值(预览模式解析绑定/表达式)。 */
+function getProp(node: ComponentNode, key: string, ctx?: RenderContext): unknown {
+  const raw = node.props[key] ?? null;
+  if (ctx && ctx.mode === 'preview') {
+    return resolvePropValue(raw, { vm: ctx.vm });
+  }
+  return raw;
+}
+
+/** 安全获取字符串属性值(预览模式解析绑定/表达式)。 */
+function getPropAsString(node: ComponentNode, key: string, ctx?: RenderContext): string {
+  const v = getProp(node, key, ctx);
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
   return '';
 }
 
-/** 安全获取数字属性值。 */
-function getPropAsNumber(node: ComponentNode, key: string): number {
-  const value = node.props[key];
-  if (typeof value === 'number') return value;
-  return 0;
+/** 安全获取数字属性值(预览模式解析绑定/表达式)。 */
+function getPropAsNumber(node: ComponentNode, key: string, ctx?: RenderContext): number {
+  const v = getProp(node, key, ctx);
+  return typeof v === 'number' ? v : 0;
 }
 
-/** 安全获取布尔属性值。 */
-function getPropAsBool(node: ComponentNode, key: string): boolean {
-  const value = node.props[key];
-  if (typeof value === 'boolean') return value;
-  return false;
+/** 安全获取布尔属性值(预览模式解析绑定/表达式)。 */
+function getPropAsBool(node: ComponentNode, key: string, ctx?: RenderContext): boolean {
+  const v = getProp(node, key, ctx);
+  return typeof v === 'boolean' ? v : false;
+}
+
+/** 从 value 属性推断写回路径(优先 __bind,回退 vm.record.<apiName>)。 */
+function getFieldBindPath(node: ComponentNode): string | null {
+  const raw = node.props.value;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && '__bind' in raw) {
+    return (raw as { __bind: string }).__bind;
+  }
+  const apiName = node.props.apiName;
+  return typeof apiName === 'string' ? `vm.record.${apiName}` : null;
+}
+
+/** 表单字段双向绑定:读取 value + 构造 onChange 写回 vm。 */
+function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
+  isPreview: boolean;
+  value: unknown;
+  setValue: (v: unknown) => void;
+} {
+  const isPreview = ctx.mode === 'preview';
+  const value = isPreview ? getProp(node, 'value', ctx) : undefined;
+  const bindPath = isPreview ? getFieldBindPath(node) : null;
+  const setValue = (v: unknown) => {
+    if (bindPath) ctx.runtime.setVariable(bindPath, v);
+  };
+  return { isPreview, value, setValue };
 }
 
 /** 将 PropValue 对象提取为 Record。 */
@@ -337,15 +434,32 @@ function extractTableColumns(node: ComponentNode): TableProps<TableRow>['columns
   });
 }
 
-/** 从 fields prop 提取详情卡片字段配置。 */
-function extractDetailFields(node: ComponentNode): DescriptionsProps['items'] {
+/** 从 fields prop 提取详情卡片字段配置(预览模式从 record 取值)。 */
+function extractDetailFields(
+  node: ComponentNode,
+  record: Record<string, unknown>,
+  ctx: RenderContext,
+): DescriptionsProps['items'] {
   const raw = node.props.fields;
   if (!Array.isArray(raw)) return [];
   return raw.map((field, i) => {
     const obj = asPropObject(field);
     const label = obj && typeof obj.label === 'string' ? obj.label : `字段${i + 1}`;
     const key = obj && typeof obj.fieldId === 'string' ? obj.fieldId : String(i);
-    return { key, label, children: '—' as React.ReactNode };
+    let child: React.ReactNode = '—';
+    if (ctx.mode === 'preview') {
+      const apiName =
+        obj && typeof obj.apiName === 'string'
+          ? obj.apiName
+          : obj && typeof obj.fieldId === 'string'
+            ? obj.fieldId
+            : '';
+      if (apiName) {
+        const val = record[apiName];
+        child = val == null ? '—' : String(val);
+      }
+    }
+    return { key, label, children: child };
   });
 }
 
@@ -390,14 +504,16 @@ function renderContainerChildren(
 
 function FormFieldItem({
   node,
+  ctx,
   children,
 }: {
   node: ComponentNode;
+  ctx: RenderContext;
   children: React.ReactNode;
 }) {
-  const label = getPropAsString(node, 'label') || node.name || '';
-  const required = getPropAsBool(node, 'required');
-  const disabled = getPropAsBool(node, 'disabled') || getPropAsBool(node, 'readonly');
+  const label = getPropAsString(node, 'label', ctx) || node.name || '';
+  const required = getPropAsBool(node, 'required', ctx);
+  const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
   return (
     <Form.Item
       label={label || undefined}
@@ -458,6 +574,10 @@ const RENDERERS: Record<ComponentType, RendererFn> = {
 // ---------------------------------------------------------------------------
 
 function renderPage(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  // 预览模式触发 onLoad 事件动作(页面加载完成)
+  useEffect(() => {
+    if (ctx.mode === 'preview') ctx.onAction(node.id, 'onLoad');
+  }, [ctx, node.id]);
   return (
     <div style={{ minHeight: 60, padding: 8 }}>
       {renderContainerChildren(node, ctx, renderChild)}
@@ -466,7 +586,7 @@ function renderPage(node: ComponentNode, ctx: RenderContext, renderChild: Render
 }
 
 function renderSection(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
-  const title = getPropAsString(node, 'title');
+  const title = getPropAsString(node, 'title', ctx);
   return (
     <Card
       size="small"
@@ -483,7 +603,7 @@ function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: Render
   const children = node.children ?? [];
   const items = children.map((child, i) => ({
     key: child.id,
-    label: getPropAsString(child, 'title') || child.name || `标签 ${i + 1}`,
+    label: getPropAsString(child, 'title', ctx) || child.name || `标签 ${i + 1}`,
     children: renderChild(child),
   }));
   const tabs = <Tabs items={items} size="small" />;
@@ -498,10 +618,10 @@ function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: Render
 }
 
 function renderGrid(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
-  const gutter = getPropAsNumber(node, 'gutter') || 8;
+  const gutter = getPropAsNumber(node, 'gutter', ctx) || 8;
   const children = node.children ?? [];
   const cols = children.map((child) => {
-    const span = getPropAsNumber(child, 'span') || 12;
+    const span = getPropAsNumber(child, 'span', ctx) || 12;
     return (
       <Col key={child.id} span={span}>
         {renderChild(child)}
@@ -527,27 +647,48 @@ function renderGridColumn(node: ComponentNode, ctx: RenderContext, renderChild: 
 // 数据类渲染器
 // ---------------------------------------------------------------------------
 
-function renderDataTable(node: ComponentNode): React.ReactNode {
+function renderDataTable(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const columns = extractTableColumns(node);
-  const pagination = getPropAsBool(node, 'pagination');
-  const pageSize = getPropAsNumber(node, 'pageSize') || 20;
+  const pagination = getPropAsBool(node, 'pagination', ctx);
+  const pageSize = getPropAsNumber(node, 'pageSize', ctx) || 20;
+
+  let dataSource: TableRow[] = [];
+  if (ctx.mode === 'preview') {
+    const data = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
+    if (Array.isArray(data)) {
+      dataSource = data as TableRow[];
+    } else if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).records)) {
+      dataSource = (data as Record<string, unknown>).records as TableRow[];
+    }
+  }
+
   return (
     <Table<TableRow>
       size="small"
       columns={columns}
-      dataSource={[]}
-      rowKey="__rowKey"
+      dataSource={dataSource}
+      rowKey="id"
       pagination={
         pagination ? { pageSize, showSizeChanger: false } : false
       }
-      locale={{ emptyText: '暂无数据(编辑模式不加载)' }}
+      locale={{ emptyText: ctx.mode === 'edit' ? '暂无数据(编辑模式不加载)' : '暂无数据' }}
+      onRow={(record) => ({
+        onClick: () => {
+          if (ctx.mode === 'preview') ctx.onAction(node.id, 'onRowClick');
+          return record;
+        },
+      })}
     />
   );
 }
 
-function renderDetailCard(node: ComponentNode): React.ReactNode {
-  const items = extractDetailFields(node);
-  const columns = getPropAsNumber(node, 'columns') || 2;
+function renderDetailCard(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const record =
+    ctx.mode === 'preview'
+      ? (resolvePropValue(node.props.record ?? null, { vm: ctx.vm }) as Record<string, unknown> | undefined)
+      : undefined;
+  const items = extractDetailFields(node, record ?? {}, ctx);
+  const columns = getPropAsNumber(node, 'columns', ctx) || 2;
   return (
     <Descriptions
       size="small"
@@ -559,12 +700,26 @@ function renderDetailCard(node: ComponentNode): React.ReactNode {
 }
 
 function renderList(node: ComponentNode, ctx: RenderContext): React.ReactNode {
-  const placeholderData = ctx.mode === 'edit' ? [1, 2, 3] : [];
+  let data: unknown[] = [];
+  if (ctx.mode === 'edit') {
+    data = [1, 2, 3];
+  } else {
+    const v = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
+    if (Array.isArray(v)) data = v;
+    else if (v && typeof v === 'object' && Array.isArray((v as Record<string, unknown>).records))
+      data = (v as Record<string, unknown>).records as unknown[];
+  }
   return (
     <List
       size="small"
-      dataSource={placeholderData}
-      renderItem={(item) => <List.Item>列表项 {item}</List.Item>}
+      dataSource={data as TableRow[]}
+      renderItem={(item) => {
+        if (ctx.mode === 'preview' && item && typeof item === 'object') {
+          const r = item as Record<string, unknown>;
+          return <List.Item>{String(r.name ?? r.id ?? JSON.stringify(r))}</List.Item>;
+        }
+        return <List.Item>列表项 {String(item)}</List.Item>;
+      }}
       locale={{ emptyText: '暂无数据' }}
     />
   );
@@ -583,40 +738,51 @@ function renderForm(node: ComponentNode, ctx: RenderContext, renderChild: Render
   );
 }
 
-function renderTextInput(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请输入';
-  const maxLength = getPropAsNumber(node, 'maxLength') || undefined;
+function renderTextInput(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请输入';
+  const maxLength = getPropAsNumber(node, 'maxLength', ctx) || undefined;
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
-      <Input placeholder={placeholder} maxLength={maxLength || undefined} size="small" />
-    </FormFieldItem>
-  );
-}
-
-function renderTextArea(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请输入';
-  const rows = getPropAsNumber(node, 'rows') || 4;
-  const showCount = getPropAsBool(node, 'showCount');
-  return (
-    <FormFieldItem node={node}>
-      <Input.TextArea
+    <FormFieldItem node={node} ctx={ctx}>
+      <Input
         placeholder={placeholder}
-        rows={rows}
-        showCount={showCount}
+        maxLength={maxLength || undefined}
         size="small"
+        value={isPreview ? (value as string) || '' : undefined}
+        onChange={(e) => setValue(e.target.value)}
       />
     </FormFieldItem>
   );
 }
 
-function renderNumberInput(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请输入数字';
-  const precision = getPropAsNumber(node, 'precision') || undefined;
-  const min = getPropAsNumber(node, 'min') || undefined;
-  const max = getPropAsNumber(node, 'max') || undefined;
-  const step = getPropAsNumber(node, 'step') || undefined;
+function renderTextArea(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请输入';
+  const rows = getPropAsNumber(node, 'rows', ctx) || 4;
+  const showCount = getPropAsBool(node, 'showCount', ctx);
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
+      <Input.TextArea
+        placeholder={placeholder}
+        rows={rows}
+        showCount={showCount}
+        size="small"
+        value={isPreview ? (value as string) || '' : undefined}
+        onChange={(e) => setValue(e.target.value)}
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderNumberInput(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请输入数字';
+  const precision = getPropAsNumber(node, 'precision', ctx) || undefined;
+  const min = getPropAsNumber(node, 'min', ctx) || undefined;
+  const max = getPropAsNumber(node, 'max', ctx) || undefined;
+  const step = getPropAsNumber(node, 'step', ctx) || undefined;
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
+  return (
+    <FormFieldItem node={node} ctx={ctx}>
       <InputNumber
         placeholder={placeholder}
         precision={precision || undefined}
@@ -625,34 +791,40 @@ function renderNumberInput(node: ComponentNode): React.ReactNode {
         step={step || undefined}
         size="small"
         style={{ width: '100%' }}
+        value={isPreview ? (value as number) : undefined}
+        onChange={(v) => setValue(v)}
       />
     </FormFieldItem>
   );
 }
 
-function renderSelect(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请选择';
+function renderSelect(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请选择';
   const options = extractSelectOptions(node);
-  const allowClear = getPropAsBool(node, 'allowClear');
+  const allowClear = getPropAsBool(node, 'allowClear', ctx);
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <Select
         placeholder={placeholder}
         options={options}
         allowClear={allowClear}
         size="small"
         style={{ width: '100%' }}
+        value={isPreview ? (value as string) : undefined}
+        onChange={(v) => setValue(v)}
       />
     </FormFieldItem>
   );
 }
 
-function renderMultiSelect(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请选择';
+function renderMultiSelect(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请选择';
   const options = extractSelectOptions(node);
-  const allowClear = getPropAsBool(node, 'allowClear');
+  const allowClear = getPropAsBool(node, 'allowClear', ctx);
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <Select
         mode="multiple"
         placeholder={placeholder}
@@ -660,83 +832,114 @@ function renderMultiSelect(node: ComponentNode): React.ReactNode {
         allowClear={allowClear}
         size="small"
         style={{ width: '100%' }}
+        value={isPreview ? (value as string[]) : undefined}
+        onChange={(v) => setValue(v)}
       />
     </FormFieldItem>
   );
 }
 
-function renderDatePicker(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请选择日期';
-  const showTime = getPropAsBool(node, 'showTime');
-  const format = getPropAsString(node, 'format') || undefined;
+function renderDatePicker(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请选择日期';
+  const showTime = getPropAsBool(node, 'showTime', ctx);
+  const format = getPropAsString(node, 'format', ctx) || undefined;
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
+  const dayjsVal =
+    isPreview && value ? dayjs(value as string | number | Date) : undefined;
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <DatePicker
         placeholder={placeholder}
         showTime={showTime || undefined}
         format={format}
         size="small"
         style={{ width: '100%' }}
+        value={dayjsVal as Dayjs | undefined}
+        onChange={(_d, str) => setValue(str as string)}
       />
     </FormFieldItem>
   );
 }
 
-function renderRadio(node: ComponentNode): React.ReactNode {
+function renderRadio(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const options = extractSelectOptions(node);
   const radioOptions = options.map((o) => ({ label: o.label, value: o.value }));
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
-      <Radio.Group options={radioOptions} size="small" />
+    <FormFieldItem node={node} ctx={ctx}>
+      <Radio.Group
+        options={radioOptions}
+        size="small"
+        value={isPreview ? (value as string) : undefined}
+        onChange={(e) => setValue(e.target.value)}
+      />
     </FormFieldItem>
   );
 }
 
-function renderCheckbox(node: ComponentNode): React.ReactNode {
-  const label = getPropAsString(node, 'label') || node.name || '复选框';
+function renderCheckbox(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const label = getPropAsString(node, 'label', ctx) || node.name || '复选框';
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
-      <Checkbox>{label}</Checkbox>
+    <FormFieldItem node={node} ctx={ctx}>
+      <Checkbox
+        checked={isPreview ? !!value : undefined}
+        onChange={(e) => setValue(e.target.checked)}
+      >
+        {label}
+      </Checkbox>
     </FormFieldItem>
   );
 }
 
-function renderSwitch(node: ComponentNode): React.ReactNode {
-  const label = getPropAsString(node, 'label');
+function renderSwitch(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const label = getPropAsString(node, 'label', ctx);
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
-      <Switch />
+    <FormFieldItem node={node} ctx={ctx}>
+      <Switch
+        checked={isPreview ? !!value : undefined}
+        onChange={(checked) => setValue(checked)}
+      />
       {label ? <Text style={{ marginLeft: 8, fontSize: 13 }}>{label}</Text> : null}
     </FormFieldItem>
   );
 }
 
-function renderLookupPicker(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请选择关联记录';
-  const multiple = getPropAsBool(node, 'multiple');
+function renderLookupPicker(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请选择关联记录';
+  const multiple = getPropAsBool(node, 'multiple', ctx);
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <Select
         mode={multiple ? 'multiple' : undefined}
         placeholder={placeholder}
         showSearch
         size="small"
         style={{ width: '100%' }}
-        notFoundContent="编辑模式不加载远程数据"
+        value={isPreview ? (value as string | string[]) : undefined}
+        onChange={(v) => setValue(v)}
+        notFoundContent={ctx.mode === 'edit' ? '编辑模式不加载远程数据' : '无匹配数据'}
       />
     </FormFieldItem>
   );
 }
 
-function renderSubFormTable(node: ComponentNode): React.ReactNode {
+function renderSubFormTable(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const columns = extractTableColumns(node);
+  let dataSource: TableRow[] = [];
+  if (ctx.mode === 'preview') {
+    const data = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
+    if (Array.isArray(data)) dataSource = data as TableRow[];
+  }
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <Table<TableRow>
         size="small"
         columns={columns}
-        dataSource={[]}
-        rowKey="__rowKey"
+        dataSource={dataSource}
+        rowKey="id"
         pagination={false}
         locale={{ emptyText: '暂无子表记录' }}
       />
@@ -744,10 +947,10 @@ function renderSubFormTable(node: ComponentNode): React.ReactNode {
   );
 }
 
-function renderAttachmentUpload(node: ComponentNode): React.ReactNode {
-  const maxCount = getPropAsNumber(node, 'maxCount') || undefined;
+function renderAttachmentUpload(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const maxCount = getPropAsNumber(node, 'maxCount', ctx) || undefined;
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <Upload maxCount={maxCount || undefined} listType="text">
         <Button icon={<UploadOutlined />} size="small">
           上传附件
@@ -757,18 +960,21 @@ function renderAttachmentUpload(node: ComponentNode): React.ReactNode {
   );
 }
 
-function renderUserPicker(node: ComponentNode): React.ReactNode {
-  const placeholder = getPropAsString(node, 'placeholder') || '请选择人员';
-  const multiple = getPropAsBool(node, 'multiple');
+function renderUserPicker(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder', ctx) || '请选择人员';
+  const multiple = getPropAsBool(node, 'multiple', ctx);
+  const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
-    <FormFieldItem node={node}>
+    <FormFieldItem node={node} ctx={ctx}>
       <Select
         mode={multiple ? 'multiple' : undefined}
         placeholder={placeholder}
         showSearch
         size="small"
         style={{ width: '100%' }}
-        notFoundContent="编辑模式不加载人员数据"
+        value={isPreview ? (value as string | string[]) : undefined}
+        onChange={(v) => setValue(v)}
+        notFoundContent={ctx.mode === 'edit' ? '编辑模式不加载人员数据' : '无匹配人员'}
       />
     </FormFieldItem>
   );
@@ -778,31 +984,33 @@ function renderUserPicker(node: ComponentNode): React.ReactNode {
 // 展示类渲染器
 // ---------------------------------------------------------------------------
 
-function renderButton(node: ComponentNode): React.ReactNode {
-  const text = getPropAsString(node, 'text') || getPropAsString(node, 'label') || '按钮';
-  const type = getPropAsString(node, 'type') || 'default';
-  const danger = getPropAsBool(node, 'danger');
+function renderButton(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const text =
+    getPropAsString(node, 'text', ctx) || getPropAsString(node, 'label', ctx) || '按钮';
+  const type = getPropAsString(node, 'type', ctx) || 'default';
+  const danger = getPropAsBool(node, 'danger', ctx);
   return (
     <Button
       type={type as 'primary' | 'default' | 'dashed' | 'link' | 'text'}
       danger={danger || undefined}
       size="small"
+      onClick={() => ctx.onAction(node.id, 'onClick')}
     >
       {text}
     </Button>
   );
 }
 
-function renderStatistic(node: ComponentNode): React.ReactNode {
-  const title = getPropAsString(node, 'title') || '统计';
-  const value = getPropAsNumber(node, 'value');
-  const prefix = getPropAsString(node, 'prefix') || undefined;
-  const suffix = getPropAsString(node, 'suffix') || undefined;
+function renderStatistic(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const title = getPropAsString(node, 'title', ctx) || '统计';
+  const value = getPropAsNumber(node, 'value', ctx);
+  const prefix = getPropAsString(node, 'prefix', ctx) || undefined;
+  const suffix = getPropAsString(node, 'suffix', ctx) || undefined;
   return <Statistic title={title} value={value} prefix={prefix} suffix={suffix} />;
 }
 
-function renderChart(node: ComponentNode): React.ReactNode {
-  const title = getPropAsString(node, 'title') || '图表';
+function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const title = getPropAsString(node, 'title', ctx) || '图表';
   const meta = getComponentMeta(node.type);
   const Icon = meta.icon;
   return (
@@ -828,8 +1036,8 @@ function renderChart(node: ComponentNode): React.ReactNode {
   );
 }
 
-function renderRichTextDisplay(node: ComponentNode): React.ReactNode {
-  const content = getPropAsString(node, 'content');
+function renderRichTextDisplay(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const content = getPropAsString(node, 'content', ctx);
   if (content) {
     return <div style={{ padding: 8 }} dangerouslySetInnerHTML={{ __html: content }} />;
   }
@@ -852,9 +1060,9 @@ function renderRichTextDisplay(node: ComponentNode): React.ReactNode {
   );
 }
 
-function renderDivider(node: ComponentNode): React.ReactNode {
-  const label = getPropAsString(node, 'label') || getPropAsString(node, 'text');
-  const orientation = getPropAsString(node, 'orientation') || 'left';
+function renderDivider(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const label = getPropAsString(node, 'label', ctx) || getPropAsString(node, 'text', ctx);
+  const orientation = getPropAsString(node, 'orientation', ctx) || 'left';
   return (
     <Divider orientation={orientation as 'left' | 'center' | 'right'} style={{ margin: '8px 0' }}>
       {label || undefined}
@@ -862,9 +1070,9 @@ function renderDivider(node: ComponentNode): React.ReactNode {
   );
 }
 
-function renderText(node: ComponentNode): React.ReactNode {
-  const content = getPropAsString(node, 'content') || '文本内容';
-  const level = getPropAsNumber(node, 'level');
+function renderText(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const content = getPropAsString(node, 'content', ctx) || '文本内容';
+  const level = getPropAsNumber(node, 'level', ctx);
   if (level >= 1 && level <= 5) {
     return <Title level={level as 1 | 2 | 3 | 4 | 5}>{content}</Title>;
   }

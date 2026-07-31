@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import ComponentRenderer from './ComponentRenderer.js';
+import { RuntimeStoreProvider } from './RuntimeStore.js';
 
 const { Text } = Typography;
 
@@ -17,6 +18,8 @@ const { Text } = Typography;
  */
 export default function Canvas() {
   const schema = usePageBuilderStore((s) => s.schema);
+  const mode = usePageBuilderStore((s) => s.mode);
+  const currentPage = usePageBuilderStore((s) => s.currentPage);
   const selectNode = usePageBuilderStore((s) => s.selectNode);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(false);
@@ -24,6 +27,12 @@ export default function Canvas() {
   const handleBackgroundClick = () => {
     selectNode(null);
   };
+
+  // 预览模式用 RuntimeStoreProvider 包裹;以 mode 为 key,
+  // 切换到预览时重新挂载 Provider(初始化 vm + 触发 autoQuery),
+  // 切回编辑时卸载(清理运行时状态)。
+  const viewModel = schema?.viewModel ?? { variables: {} };
+  const objectId = currentPage?.objectId;
 
   return (
     <div
@@ -112,7 +121,17 @@ export default function Canvas() {
           }}
         >
           {schema ? (
-            <ComponentRenderer node={schema.root} isRoot />
+            mode === 'preview' ? (
+              <RuntimeStoreProvider
+                key="preview"
+                viewModel={viewModel}
+                objectId={objectId}
+              >
+                <ComponentRenderer node={schema.root} isRoot />
+              </RuntimeStoreProvider>
+            ) : (
+              <ComponentRenderer node={schema.root} isRoot />
+            )
           ) : (
             <Space
               direction="vertical"

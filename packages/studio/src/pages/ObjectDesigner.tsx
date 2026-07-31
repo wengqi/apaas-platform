@@ -1,68 +1,80 @@
-import { Card, Typography, Tag, Space } from 'antd';
+import { Empty, Typography } from 'antd';
 import { DatabaseOutlined } from '@ant-design/icons';
-
-const { Title, Paragraph } = Typography;
+import { Outlet, useParams } from 'react-router-dom';
+import ObjectListPanel from '../components/object/ObjectListPanel.js';
 
 /**
- * 对象设计器占位页 — Phase 1 填充。
- * 将用于定义业务对象、字段、关系与视图。
+ * 对象设计器(列表页容器)。
+ * 左栏:对象列表(ObjectListPanel);右栏:对象详情(ObjectDetail)或空状态,通过嵌套路由 Outlet 渲染。
+ * 选中对象后 URL 同步为 /app/:appId/objects/:objectId。
  */
 export default function ObjectDesigner() {
+  const { appId } = useParams<{ appId: string }>();
+
+  if (!appId) {
+    return null;
+  }
+
   return (
     <div
       style={{
-        minHeight: '60vh',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '48px 24px',
+        gap: 16,
+        height: 'calc(100vh - 160px)',
+        minHeight: 480,
       }}
     >
-      <Card
+      <ObjectListPanel appId={appId} />
+      <div
         style={{
-          maxWidth: 480,
-          width: '100%',
-          borderRadius: 16,
+          flex: 1,
+          minWidth: 0,
+          background: '#fff',
           border: '1px solid #eef0f4',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
+          borderRadius: 12,
+          padding: 24,
+          overflow: 'auto',
         }}
-        styles={{ body: { padding: '56px 40px' } }}
       >
-        <Space direction="vertical" size={24} align="center" style={{ width: '100%' }}>
-          {/* 图标块 */}
-          <div
-            style={{
-              width: 112,
-              height: 112,
-              borderRadius: 28,
-              background: '#e6f4ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <DatabaseOutlined style={{ fontSize: 64, color: '#1677ff' }} />
-          </div>
+        <Outlet />
+      </div>
+    </div>
+  );
+}
 
-          <Title level={3} style={{ margin: 0 }}>
-            对象设计器
-          </Title>
-
-          <Paragraph
-            type="secondary"
-            style={{ marginBottom: 0, lineHeight: 1.8, textAlign: 'center' }}
-          >
-            定义业务对象、字段类型、关联关系与视图。支持文本、数字、日期、关联、公式等字段类型。
-          </Paragraph>
-
-          <Tag
-            color="blue"
-            style={{ fontSize: 13, padding: '4px 14px', borderRadius: 6, margin: 0 }}
-          >
-            Phase 1 待实现
-          </Tag>
-        </Space>
-      </Card>
+/** 右栏空状态(未选中对象)。 */
+export function ObjectEmptyState() {
+  return (
+    <div
+      style={{
+        height: '100%',
+        minHeight: 400,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+      }}
+    >
+      <div
+        style={{
+          width: 112,
+          height: 112,
+          borderRadius: 28,
+          background: '#e6f4ff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <DatabaseOutlined style={{ fontSize: 64, color: '#1677ff' }} />
+      </div>
+      <Typography.Title level={4} style={{ margin: 0 }}>
+        选择一个对象开始
+      </Typography.Title>
+      <Typography.Text type="secondary">
+        从左侧选择对象,或新建对象来定义业务实体
+      </Typography.Text>
     </div>
   );
 }

@@ -3,7 +3,8 @@ import StudioLayout from './layouts/StudioLayout.js';
 import Login from './pages/Login.js';
 import AppList from './pages/AppList.js';
 import AppDashboard from './pages/AppDashboard.js';
-import ObjectDesigner from './pages/ObjectDesigner.js';
+import ObjectDesigner, { ObjectEmptyState } from './pages/ObjectDesigner.js';
+import ObjectDetail from './components/object/ObjectDetail.js';
 import PageBuilder from './pages/PageBuilder.js';
 import ProcessEditor from './pages/ProcessEditor.js';
 import Permissions from './pages/Permissions.js';
@@ -30,6 +31,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * - /app/:appId                     重定向到 /app/:appId/dashboard
  *   - /app/:appId/dashboard         应用工作台(受保护，StudioLayout 内)
  *   - /app/:appId/objects           对象设计器 (Phase 1)
+ *     - /app/:appId/objects/        右栏空状态
+ *     - /app/:appId/objects/:objectId  对象详情(字段/视图)
  *   - /app/:appId/pages             页面搭建器 (Phase 2)
  *   - /app/:appId/processes         流程编辑器 (Phase 3)
  *   - /app/:appId/permissions       权限管理占位 (Phase 4)
@@ -60,7 +63,10 @@ export function AppRoutes() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AppDashboard />} />
-        <Route path="objects" element={<ObjectDesigner />} />
+        <Route path="objects" element={<ObjectDesigner />}>
+          <Route index element={<ObjectEmptyState />} />
+          <Route path=":objectId" element={<ObjectDetail />} />
+        </Route>
         <Route path="pages" element={<PageBuilder />} />
         <Route path="processes" element={<ProcessEditor />} />
         <Route path="permissions" element={<Permissions />} />

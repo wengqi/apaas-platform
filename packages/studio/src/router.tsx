@@ -7,7 +7,9 @@ import ObjectDesigner, { ObjectEmptyState } from './pages/ObjectDesigner.js';
 import ObjectDetail from './components/object/ObjectDetail.js';
 import PageBuilder from './pages/PageBuilder.js';
 import PageList from './components/page-builder/PageList.js';
+import ProcessList from './pages/ProcessList.js';
 import ProcessEditor from './pages/ProcessEditor.js';
+import ProcessMonitor from './components/process/ProcessMonitor.js';
 import Permissions from './pages/Permissions.js';
 import { useAuthStore } from './stores/auth.js';
 
@@ -37,7 +39,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  *   - /app/:appId/pages             页面列表 (Phase 2)
  *     - /app/:appId/pages/          页面列表
  *     - /app/:appId/pages/:pageId   页面搭建器
- *   - /app/:appId/processes         流程编辑器 (Phase 3)
+ *   - /app/:appId/processes         流程列表 (Phase 3)
+ *     - /app/:appId/processes/monitor       流程监控(实例列表 + 详情)
+ *     - /app/:appId/processes/:processId    流程编辑器(简化/标准模式,全屏)
  *   - /app/:appId/permissions       权限管理占位 (Phase 4)
  */
 export function AppRoutes() {
@@ -72,7 +76,9 @@ export function AppRoutes() {
         </Route>
         <Route path="pages" element={<PageList />} />
         <Route path="pages/:pageId" element={<PageBuilder />} />
-        <Route path="processes" element={<ProcessEditor />} />
+        <Route path="processes" element={<ProcessList />} />
+        <Route path="processes/monitor" element={<ProcessMonitor />} />
+        <Route path="processes/:processId" element={<ProcessEditor />} />
         <Route path="permissions" element={<Permissions />} />
       </Route>
 

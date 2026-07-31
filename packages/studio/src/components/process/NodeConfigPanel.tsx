@@ -214,7 +214,7 @@ function renderConfigForm(
       return (
         <TriggerConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
           objectOptions={options.objectOptions}
         />
@@ -223,7 +223,7 @@ function renderConfigForm(
       return (
         <ObjectOperationConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
           objectOptions={options.objectOptions}
         />
@@ -232,7 +232,7 @@ function renderConfigForm(
       return (
         <ConditionConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
         />
       );
@@ -240,7 +240,7 @@ function renderConfigForm(
       return (
         <UserTaskConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
           formOptions={options.formOptions}
         />
@@ -249,7 +249,7 @@ function renderConfigForm(
       return (
         <NotificationConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
           templateOptions={options.templateOptions}
         />
@@ -258,7 +258,7 @@ function renderConfigForm(
       return (
         <HttpRequestConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
         />
       );
@@ -266,7 +266,7 @@ function renderConfigForm(
       return (
         <AssignConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
         />
       );
@@ -274,7 +274,7 @@ function renderConfigForm(
       return (
         <DelayConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
         />
       );
@@ -282,7 +282,7 @@ function renderConfigForm(
       return (
         <EndConfigForm
           data={data as never}
-          onChange={onChange}
+          onChange={onChange as never}
           disabled={readonly}
         />
       );

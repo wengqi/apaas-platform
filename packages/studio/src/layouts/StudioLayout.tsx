@@ -60,13 +60,19 @@ export default function StudioLayout() {
   }, [location.pathname]);
 
   /**
-   * 是否全屏模式(页面搭建器需要三栏撑满,不套白色卡片层)。
-   * 匹配 /app/:appId/pages/:pageId 路径。
+   * 是否全屏模式(页面搭建器 / 流程编辑器 / 流程监控需要三栏撑满,不套白色卡片层)。
+   * 匹配:
+   *   /app/:appId/pages/:pageId          → 页面搭建器
+   *   /app/:appId/processes/:processId   → 流程编辑器(简化/标准)
+   *   /app/:appId/processes/monitor      → 流程监控
    */
   const isFullBleed = useMemo(() => {
     const segments = location.pathname.split('/');
-    // /app/:appId/pages/:pageId → segments[3] === 'pages' 且 segments[4] 存在
-    return segments[3] === 'pages' && !!segments[4];
+    // segments[0]='' segments[1]='app' segments[2]=appId segments[3]=模块 segments[4]=子路径
+    return (
+      (segments[3] === 'pages' && !!segments[4]) ||
+      (segments[3] === 'processes' && !!segments[4])
+    );
   }, [location.pathname]);
 
   const userMenuItems: MenuProps['items'] = [

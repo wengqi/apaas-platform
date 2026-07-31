@@ -82,7 +82,7 @@ export interface ProcessNodeMeta {
 
 /**
  * 节点类型元数据表 —— 驱动节点面板、节点配置头。
- * type 与 features/process/simplified/src/nodes/*/index.ts 的注册表 type 对齐。
+ * type 与 features/process/simplified/src/nodes 下各 index.ts 的注册表 type 对齐。
  */
 export const NODE_META: Record<string, ProcessNodeMeta> = {
   // —— 触发与起止 ——

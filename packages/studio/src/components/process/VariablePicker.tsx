@@ -106,11 +106,15 @@ export function VariablePicker({
   );
 }
 
-function toTreeData(
-  options: VariableOption[],
-): { value: string; title: string; children?: unknown[] }[] {
+interface TreeNodeData {
+  value: string;
+  title: string;
+  children?: TreeNodeData[];
+}
+
+function toTreeData(options: VariableOption[]): TreeNodeData[] {
   return options.map((opt) => {
-    const node: { value: string; title: string; children?: unknown[] } = {
+    const node: TreeNodeData = {
       value: opt.value,
       title: opt.label,
     };

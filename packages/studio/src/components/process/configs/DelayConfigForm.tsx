@@ -2,7 +2,7 @@
  * 延时节点配置表单 —— 对齐 DESIGN-process.md §6.8。
  */
 
-import { Divider, Form, InputNumber, Select } from 'antd';
+import { Divider, Form, Input, InputNumber, Select } from 'antd';
 
 export interface DelayConfigData {
   duration?: number;

@@ -11,7 +11,7 @@
 import client from './client.js';
 import type { ApiResponse } from './client.js';
 import type {
-  ProcessDef,
+  ProcessDef as SharedProcessDef,
   WorkflowSchema,
   ProcessInstance,
   NodeExecutionStatus,
@@ -30,7 +30,6 @@ import type {
 // ---------------------------------------------------------------------------
 
 export type {
-  ProcessDef,
   WorkflowSchema,
   WorkflowNode,
   WorkflowEdge,
@@ -49,6 +48,19 @@ export type {
 } from '@apaas/shared';
 
 export type { EditorMode, ProcessStatus, TriggerType, NotificationChannel };
+
+/**
+ * 流程定义(UI 扩展)。
+ *
+ * 在 shared 的 ProcessDef 基础上补充 UI 层使用的字段(appId / triggerType),
+ * 这些字段后端实际返回(shared ProcessDef 未显式声明,但 API 响应包含)。
+ */
+export interface ProcessDef extends SharedProcessDef {
+  /** 所属应用 ID(UI 层使用) */
+  appId?: string;
+  /** 触发器类型(UI 层使用,对齐 TriggerType) */
+  triggerType?: TriggerType;
+}
 
 // ---------------------------------------------------------------------------
 // 请求体

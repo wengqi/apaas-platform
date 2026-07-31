@@ -11,7 +11,6 @@ export interface NotificationConfigData {
   recipients?: string[];
   title?: string;
   content?: string;
-  title?: string;
 }
 
 export interface NotificationConfigFormProps {

@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 import { Input, InputNumber, Segmented, Space, Switch } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
 import type { IFlowValue } from '@apaas/shared';
-import { VariablePicker } from './VariablePicker.js';
+import { VariablePicker, type VariableOption } from './VariablePicker.js';
 
 const { TextArea } = Input;
 
@@ -32,7 +32,7 @@ export interface FlowValueEditorProps {
   /** 禁用 */
   disabled?: boolean;
   /** 可用的变量路径候选(传给 VariablePicker) */
-  variableOptions?: { value: string; label: string; children?: unknown[] }[];
+  variableOptions?: VariableOption[];
   /** 允许的态(默认全部) */
   allowedKinds?: FlowValueKind[];
 }

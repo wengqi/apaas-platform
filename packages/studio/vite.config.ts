@@ -9,6 +9,8 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+    // 确保 @flowgram.ai/* 只加载一份实例(pnpm 隔离模式下可能出现多副本)
+    dedupe: ['react', 'react-dom'],
   },
   server: {
     port: Number(process.env.VITE_STUDIO_PORT) || 5173,

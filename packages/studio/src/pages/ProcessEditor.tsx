@@ -7,7 +7,7 @@
  * 全屏三栏,撑满 calc(100vh - 56px)(StudioLayout Header)。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, Component, type ReactNode } from 'react';
 import { Button, Popconfirm, Skeleton, Space, Tag, Typography, message } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -171,21 +171,23 @@ export default function ProcessEditor() {
         publishing={publishMutation.isPending}
       />
       {/* 编辑器主体 */}
-      {store.editorMode === 'simplified' ? (
-        <SimplifiedEditor
-          initialSchema={store.schema ?? processDef.workflowSchema}
-          readonly={isReadonly}
-          onSchemaChange={handleSchemaChange}
-          objectOptions={objectOptions}
-        />
-      ) : (
-        <StandardEditor
-          initialBpmnXml={store.bpmnXml ?? processDef.bpmnXml}
-          initialSchema={store.schema ?? undefined}
-          onBpmnChange={handleBpmnChange}
-          onSchemaChange={handleSchemaChange}
-        />
-      )}
+      <EditorErrorBoundary>
+        {store.editorMode === 'simplified' ? (
+          <SimplifiedEditor
+            initialSchema={store.schema ?? processDef.workflowSchema}
+            readonly={isReadonly}
+            onSchemaChange={handleSchemaChange}
+            objectOptions={objectOptions}
+          />
+        ) : (
+          <StandardEditor
+            initialBpmnXml={store.bpmnXml ?? processDef.bpmnXml}
+            initialSchema={store.schema ?? undefined}
+            onBpmnChange={handleBpmnChange}
+            onSchemaChange={handleSchemaChange}
+          />
+        )}
+      </EditorErrorBoundary>
     </div>
   );
 }
@@ -313,4 +315,54 @@ function ProcessEditorToolbar({
       </Space>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Error Boundary — 捕获 SimplifiedEditor/StandardEditor 渲染崩溃
+// ---------------------------------------------------------------------------
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class EditorErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  override componentDidCatch(error: Error, info: unknown) {
+    console.error('[ProcessEditor] 渲染崩溃:', error, info);
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback ?? (
+          <div style={{ padding: 48, textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <Typography.Title level={5} type="danger">
+              编辑器渲染失败
+            </Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ maxWidth: 400 }}>
+              {this.state.error?.message ?? '未知错误'}
+            </Typography.Paragraph>
+            <Button type="primary" size="small" onClick={() => this.setState({ hasError: false, error: undefined })}>
+              重试
+            </Button>
+          </div>
+        )
+      );
+    }
+    return this.props.children;
+  }
 }

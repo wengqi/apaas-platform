@@ -113,6 +113,7 @@ export class ObjectService {
       description: obj.description,
       icon: obj.icon,
       isSystem: obj.isSystem,
+      fields: this.parseFields(obj.fields),
       fieldCount: this.parseFields(obj.fields).length,
       createdAt: obj.createdAt.toISOString(),
       updatedAt: obj.updatedAt.toISOString(),

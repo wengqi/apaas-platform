@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import {
   Button,
   Empty,
@@ -12,8 +12,29 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  SearchOutlined,
+  HolderOutlined,
+} from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { objectsApi, type Field, type ObjectWithFields } from '../../api/objects.js';
 import { getFieldTypeMeta, type FieldType } from '../../constants/fieldTypes.js';
 import FieldTypePicker, { FieldTypeTag } from './FieldTypePicker.js';
@@ -28,8 +49,11 @@ interface FieldTableProps {
 
 /**
  * 字段列表表格。
- * 展示字段名 / API 名 / 类型 / 必填开关 / 操作。
+ * 展示字段名 / API 名 / 类型 / 必填开关 / 操作,支持拖拽排序。
  * 添加字段 → 字段类型选择器 → 字段配置抽屉;编辑 → 直接打开抽屉;删除 → 二次确认。
+ *
+ * 排序:系统字段置顶(不可拖拽),自定义字段可拖拽调整顺序。
+ * 拖拽完成后乐观更新缓存,并逐个调用 updateField 持久化 order。
  */
 export default function FieldTable({ object, appId }: FieldTableProps) {
   const queryClient = useQueryClient();
@@ -40,13 +64,25 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
   const [drawerFieldType, setDrawerFieldType] = useState<FieldType | undefined>(undefined);
   const [drawerField, setDrawerField] = useState<Field | undefined>(undefined);
 
-  /** 系统字段置顶,其余保持原序;再按关键字过滤。 */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  /**
+   * 系统字段置顶,其余按 order(无值则按原始数组索引)排序;再按关键字过滤。
+   * order 不存在时回退到数组下标,保持后端返回的原序。
+   */
   const fields = useMemo(() => {
-    const sorted = [...object.fields].sort((a, b) => {
-      if (a.isSystem && !b.isSystem) return -1;
-      if (!a.isSystem && b.isSystem) return 1;
-      return 0;
+    const withOrder = object.fields.map((f, idx) => ({
+      field: f,
+      order: f.order ?? idx,
+    }));
+    withOrder.sort((a, b) => {
+      if (a.field.isSystem && !b.field.isSystem) return -1;
+      if (!a.field.isSystem && b.field.isSystem) return 1;
+      return a.order - b.order;
     });
+    const sorted = withOrder.map((w) => w.field);
     const kw = keyword.trim().toLowerCase();
     if (!kw) return sorted;
     return sorted.filter(
@@ -73,7 +109,6 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
     },
     onError: (err) => {
       showError(err);
-      // 失败回滚:刷新以恢复真实状态
       queryClient.invalidateQueries({ queryKey: ['object', object.id] });
     },
   });
@@ -107,7 +142,79 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
     updateFieldMutation.mutate({ fieldId: field.id, data: { required: checked } });
   };
 
+  /**
+   * 拖拽结束:在自定义字段范围内重排,乐观更新缓存并持久化 order。
+   * 系统字段不可拖拽,跨系统/自定义边界拖拽忽略。
+   */
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const activeField = object.fields.find((f) => f.id === activeId);
+    const overField = object.fields.find((f) => f.id === overId);
+    if (!activeField || !overField) return;
+    // 系统字段边界保护
+    if (activeField.isSystem || overField.isSystem) return;
+
+    // 基于当前排好的展示列表做 arrayMove
+    const ids = fields.map((f) => f.id);
+    const oldIndex = ids.indexOf(activeId);
+    const newIndex = ids.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reorderedIds = arrayMove(ids, oldIndex, newIndex);
+
+    // 为自定义字段分配新的 order(系统字段保持原 order)
+    const newOrderMap = new Map<string, number>();
+    let customOrder = 0;
+    for (const id of reorderedIds) {
+      const f = object.fields.find((fi) => fi.id === id);
+      if (f?.isSystem) {
+        newOrderMap.set(id, f.order ?? 0);
+      } else {
+        newOrderMap.set(id, customOrder);
+        customOrder += 1;
+      }
+    }
+
+    // 乐观更新缓存
+    const queryKey = ['object', object.id];
+    queryClient.setQueryData<ObjectWithFields>(queryKey, (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        fields: old.fields.map((f) => ({
+          ...f,
+          order: newOrderMap.get(f.id) ?? f.order,
+        })),
+      };
+    });
+
+    // 逐个持久化变更的 order(仅自定义字段)
+    const changed = object.fields.filter(
+      (f) => !f.isSystem && newOrderMap.get(f.id) !== f.order,
+    );
+    try {
+      for (const f of changed) {
+        const newOrder = newOrderMap.get(f.id);
+        await objectsApi.updateField(object.id, f.id, { order: newOrder });
+      }
+    } catch (err) {
+      showError(err);
+      // 失败回滚:刷新以恢复真实状态
+      queryClient.invalidateQueries({ queryKey });
+    }
+  };
+
   const columns: ColumnsType<Field> = [
+    {
+      key: 'drag',
+      title: '',
+      width: 40,
+      align: 'center',
+      render: () => <DragHandle />,
+    },
     {
       title: '字段名',
       dataIndex: 'label',
@@ -205,6 +312,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
       >
         <Text type="secondary" style={{ fontSize: 13 }}>
           共 {object.fields.length} 个字段{systemCount > 0 ? `(含 ${systemCount} 个系统字段)` : ''}
+          <span style={{ marginLeft: 8, color: 'rgba(0,0,0,0.35)' }}>拖拽 ⠿ 调整顺序</span>
         </Text>
         <Space>
           <Input
@@ -222,7 +330,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
         </Space>
       </div>
 
-      {/* 字段表格 */}
+      {/* 字段表格(可拖拽排序) */}
       {fields.length === 0 ? (
         <Empty description={keyword ? '未找到匹配字段' : '还没有字段'} style={{ padding: '60px 0' }}>
           {!keyword && (
@@ -232,18 +340,27 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
           )}
         </Empty>
       ) : (
-        <Table<Field>
-          rowKey="id"
-          size="middle"
-          columns={columns}
-          dataSource={fields}
-          pagination={false}
-          bordered={false}
-          rowClassName={(record) => (record.isSystem ? 'apaas-system-field-row' : '')}
-          onRow={(record) => ({
-            onDoubleClick: () => handleEdit(record),
-          })}
-        />
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+            <Table<Field>
+              rowKey="id"
+              size="middle"
+              columns={columns}
+              dataSource={fields}
+              pagination={false}
+              bordered={false}
+              components={{ body: { row: SortableRow } }}
+              rowClassName={(record) => (record.isSystem ? 'apaas-system-field-row' : '')}
+              onRow={(record) => ({
+                onDoubleClick: () => handleEdit(record),
+              })}
+            />
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* 字段类型选择器 */}
@@ -264,6 +381,53 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
         onClose={() => setDrawerOpen(false)}
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 拖拽排序:行组件 + 拖拽手柄
+// ---------------------------------------------------------------------------
+
+/** 行间共享 useSortable 的 listeners/attributes(供手柄使用)。 */
+interface RowDragContextValue {
+  listeners?: ReturnType<typeof useSortable>['listeners'];
+  attributes?: ReturnType<typeof useSortable>['attributes'];
+  isDragging?: boolean;
+}
+const RowDragContext = createContext<RowDragContextValue>({});
+
+/** AntD Table 自定义行:绑定 useSortable,通过 Context 暴露手柄事件。 */
+function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string }) {
+  const id = props['data-row-key'] as string | undefined;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: id ?? '',
+  });
+  const style: React.CSSProperties = {
+    ...props.style,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    cursor: 'move',
+    ...(isDragging ? { position: 'relative', zIndex: 10, background: '#e6f4ff' } : {}),
+  };
+  return (
+    <RowDragContext.Provider value={{ listeners, attributes, isDragging }}>
+      <tr {...props} ref={setNodeRef} style={style} />
+    </RowDragContext.Provider>
+  );
+}
+
+/** 拖拽手柄(第一列)。从 Context 取 listeners 绑定到图标按钮。 */
+function DragHandle() {
+  const { listeners, attributes } = useContext(RowDragContext);
+  return (
+    <Button
+      type="text"
+      size="small"
+      {...attributes}
+      {...listeners}
+      icon={<HolderOutlined style={{ cursor: 'grab', color: 'rgba(0,0,0,0.35)' }} />}
+      style={{ touchAction: 'none' }}
+    />
   );
 }
 

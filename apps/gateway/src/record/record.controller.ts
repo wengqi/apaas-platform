@@ -67,13 +67,13 @@ export class RecordController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
-    @Body() body: { data: Record<string, unknown> },
+    @Body() body: Record<string, unknown>,
   ) {
     const record = await this.recordService.create(
       req.user.tenantId,
       objectId,
       req.user.sub,
-      body.data ?? {},
+      body ?? {},
     );
     return { ok: true as const, data: record };
   }
@@ -82,13 +82,13 @@ export class RecordController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,
-    @Body() body: { data: Record<string, unknown> },
+    @Body() body: Record<string, unknown>,
   ) {
     const record = await this.recordService.update(
       req.user.tenantId,
       recordId,
       req.user.sub,
-      body.data ?? {},
+      body ?? {},
     );
     return { ok: true as const, data: record };
   }

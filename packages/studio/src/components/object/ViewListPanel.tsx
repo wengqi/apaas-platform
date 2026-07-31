@@ -6,16 +6,32 @@ import {
   Input,
   List,
   Modal,
+  Popconfirm,
   Select,
   Skeleton,
   Space,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  SettingOutlined,
+  DeleteOutlined,
+  FilterOutlined,
+  SortAscendingOutlined,
+} from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { objectsApi, type CreateViewRequest, type ViewInfo, type ViewType } from '../../api/objects.js';
+import {
+  objectsApi,
+  type CreateViewRequest,
+  type Field,
+  type ViewConfig,
+  type ViewInfo,
+  type ViewType,
+} from '../../api/objects.js';
+import ViewConfigurator from './ViewConfigurator.js';
 
 const { Text } = Typography;
 
@@ -31,6 +47,8 @@ const VIEW_TYPE_LABEL: Record<ViewType, string> = {
 
 interface ViewListPanelProps {
   objectId: string;
+  /** 对象字段列表(视图配置器需要) */
+  fields: Field[];
 }
 
 /** 创建视图表单值。 */
@@ -41,12 +59,13 @@ interface CreateViewFormValues {
 }
 
 /**
- * 视图列表(简单列表 + 新建视图)。
- * Phase 1 仅展示视图条目与新建,配置器留待后续。
+ * 视图列表 + 新建视图 + 视图配置。
+ * 每个视图项展示类型标签与筛选/排序摘要,支持配置(打开 ViewConfigurator)与删除。
  */
-export default function ViewListPanel({ objectId }: ViewListPanelProps) {
+export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [configView, setConfigView] = useState<ViewInfo | undefined>(undefined);
   const [form] = Form.useForm<CreateViewFormValues>();
 
   /** 加载视图列表。 */
@@ -63,6 +82,16 @@ export default function ViewListPanel({ objectId }: ViewListPanelProps) {
       queryClient.invalidateQueries({ queryKey: ['object', objectId, 'views'] });
       setCreateOpen(false);
       form.resetFields();
+    },
+    onError: (err) => showError(err),
+  });
+
+  /** 删除视图。 */
+  const deleteMutation = useMutation({
+    mutationFn: (viewId: string) => objectsApi.deleteView(viewId),
+    onSuccess: () => {
+      message.success('视图已删除');
+      queryClient.invalidateQueries({ queryKey: ['object', objectId, 'views'] });
     },
     onError: (err) => showError(err),
   });
@@ -113,21 +142,51 @@ export default function ViewListPanel({ objectId }: ViewListPanelProps) {
           dataSource={views}
           renderItem={(view) => (
             <List.Item>
-              <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                <Space size={10}>
-                  <Text strong>{view.name}</Text>
-                  <Tag color="blue" style={{ margin: 0 }}>
-                    {VIEW_TYPE_LABEL[view.type] ?? view.type}
-                  </Tag>
-                  {view.isDefault && (
-                    <Tag color="green" style={{ margin: 0 }}>
-                      默认
+              <Space
+                direction="vertical"
+                size={4}
+                style={{ width: '100%' }}
+              >
+                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Space size={10}>
+                    <Text strong>{view.name}</Text>
+                    <Tag color="blue" style={{ margin: 0 }}>
+                      {VIEW_TYPE_LABEL[view.type] ?? view.type}
                     </Tag>
-                  )}
+                    {view.isDefault && (
+                      <Tag color="green" style={{ margin: 0 }}>
+                        默认
+                      </Tag>
+                    )}
+                  </Space>
+                  <Space size={4}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {formatTime(view.updatedAt)}
+                    </Text>
+                    <Tooltip title="配置">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<SettingOutlined />}
+                        onClick={() => setConfigView(view)}
+                      />
+                    </Tooltip>
+                    <Popconfirm
+                      title="删除视图"
+                      description={`确定删除视图「${view.name}」吗?`}
+                      okText="删除"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => deleteMutation.mutate(view.id)}
+                    >
+                      <Tooltip title="删除">
+                        <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                      </Tooltip>
+                    </Popconfirm>
+                  </Space>
                 </Space>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  更新于 {formatTime(view.updatedAt)}
-                </Text>
+                {/* 配置摘要 */}
+                <ViewConfigSummary config={view.config as ViewConfig | undefined} />
               </Space>
             </List.Item>
           )}
@@ -176,8 +235,83 @@ export default function ViewListPanel({ objectId }: ViewListPanelProps) {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 视图配置器 */}
+      <ViewConfigurator
+        open={!!configView}
+        view={configView}
+        fields={fields}
+        onClose={() => setConfigView(undefined)}
+      />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// 视图配置摘要
+// ---------------------------------------------------------------------------
+
+/** 展示视图的筛选/排序/字段配置摘要(行内小标签)。 */
+function ViewConfigSummary({
+  config,
+}: {
+  config: ViewConfig | undefined;
+}) {
+  if (!config) {
+    return (
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        未配置
+      </Text>
+    );
+  }
+
+  const parts: React.ReactNode[] = [];
+
+  // 筛选摘要
+  const filterCount = config.filters?.conditions?.length ?? 0;
+  if (filterCount > 0) {
+    const logic = config.filters?.logic === 'OR' ? '或' : '且';
+    parts.push(
+      <Tag key="filter" icon={<FilterOutlined />} color="blue" style={{ margin: 0, fontSize: 11 }}>
+        {filterCount} 个筛选({logic})
+      </Tag>,
+    );
+  }
+
+  // 排序摘要
+  const sortCount = config.sorts?.length ?? 0;
+  if (sortCount > 0) {
+    parts.push(
+      <Tag
+        key="sort"
+        icon={<SortAscendingOutlined />}
+        color="geekblue"
+        style={{ margin: 0, fontSize: 11 }}
+      >
+        {sortCount} 个排序
+      </Tag>,
+    );
+  }
+
+  // 字段显隐摘要
+  const fieldCount = config.fields?.length ?? 0;
+  if (fieldCount > 0) {
+    parts.push(
+      <Tag key="fields" color="purple" style={{ margin: 0, fontSize: 11 }}>
+        显示 {fieldCount} 字段
+      </Tag>,
+    );
+  }
+
+  if (parts.length === 0) {
+    return (
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        未配置
+      </Text>
+    );
+  }
+
+  return <Space size={6}>{parts}</Space>;
 }
 
 /** 简易时间格式化(显示「刚刚 / N 分钟前 / N 小时前 / 日期」)。 */

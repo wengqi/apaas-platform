@@ -63,6 +63,8 @@ export interface Field {
   description?: string;
   /** 系统字段(如 id/created_at,不可删除) */
   isSystem: boolean;
+  /** 显示顺序(拖拽排序用;无值时按数组顺序) */
+  order?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -102,6 +104,56 @@ export interface ObjectWithFields extends ObjectInfo {
 
 export type ViewType = 'list' | 'detail' | 'form' | 'kanban' | 'calendar' | 'gallery';
 
+/** 筛选操作符(对齐 shared FilterOperator 枚举)。 */
+export type FilterOperator =
+  | 'eq'
+  | 'ne'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'is_empty'
+  | 'is_not_empty'
+  | 'in'
+  | 'not_in';
+
+/** 单个筛选条件(视图配置内用 fieldId)。 */
+export interface ViewFilterCondition {
+  fieldId: string;
+  operator: FilterOperator;
+  value?: unknown;
+}
+
+/** 筛选逻辑组合(AND / OR)。 */
+export interface ViewFilterGroup {
+  logic: 'AND' | 'OR';
+  conditions: ViewFilterCondition[];
+}
+
+/** 视图排序配置(field 为字段 apiName)。 */
+export interface ViewSortConfig {
+  field: string;
+  order: 'asc' | 'desc';
+}
+
+/** 视图字段显隐配置。 */
+export interface ViewFieldConfig {
+  fieldId: string;
+  /** 显示顺序 */
+  order: number;
+}
+
+/** 视图配置(存于 View.config JSON 字段)。 */
+export interface ViewConfig {
+  filters?: ViewFilterGroup;
+  sorts?: ViewSortConfig[];
+  fields?: ViewFieldConfig[];
+}
+
 /** 视图信息(列表/详情)。 */
 export interface ViewInfo {
   id: string;
@@ -109,6 +161,9 @@ export interface ViewInfo {
   name: string;
   type: ViewType;
   isDefault: boolean;
+  /** 视图配置 JSON(filters/sorts/fields);后端实际返回此字段 */
+  config?: ViewConfig;
+  /** 兼容旧字段(后端未单独返回,实际数据在 config 内) */
   fields?: unknown[];
   sorts?: unknown[];
   filters?: unknown;
@@ -156,12 +211,62 @@ export interface UpdateFieldRequest {
   searchable?: boolean;
   description?: string;
   defaultValue?: unknown;
+  /** 显示顺序(拖拽排序) */
+  order?: number;
 }
 
 export interface CreateViewRequest {
   name: string;
   type: ViewType;
   isDefault?: boolean;
+  config?: ViewConfig;
+}
+
+export interface UpdateViewRequest {
+  name?: string;
+  type?: ViewType;
+  config?: ViewConfig;
+}
+
+// ---------------------------------------------------------------------------
+// 记录(运行时数据)
+// ---------------------------------------------------------------------------
+
+/** 一条记录(业务字段值存于 data,key = field.apiName)。 */
+export interface RecordItem {
+  id: string;
+  objectId: string;
+  /** 业务字段值 */
+  data: Record<string, unknown>;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 分页查询结果。 */
+export interface PaginatedRecords {
+  items: RecordItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** 查询记录参数(filter 为 JSON 字符串,field 用 apiName)。 */
+export interface QueryRecordsParams {
+  page?: number;
+  pageSize?: number;
+  /** "fieldApiName:asc" 或 "fieldApiName:desc" */
+  sort?: string;
+  /** JSON 字符串:[{"field":"apiName","operator":"eq","value":"x"}] */
+  filter?: string;
+}
+
+/** 运行时筛选条件(field 为字段 apiName,对齐后端 record.service)。 */
+export interface RecordFilterCondition {
+  field: string;
+  operator: FilterOperator;
+  value?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -228,4 +333,50 @@ export const objectsApi = {
     client
       .post<ApiResponse<ViewInfo>>(`/api/objects/${objectId}/views`, data)
       .then((res) => res.data.data as ViewInfo),
+
+  /** 更新视图 */
+  updateView: (viewId: string, data: UpdateViewRequest) =>
+    client
+      .put<ApiResponse<ViewInfo>>(`/api/views/${viewId}`, data)
+      .then((res) => res.data.data as ViewInfo),
+
+  /** 删除视图 */
+  deleteView: (viewId: string) =>
+    client
+      .delete<ApiResponse<{ deleted: boolean }>>(`/api/views/${viewId}`)
+      .then((res) => res.data.data as { deleted: boolean }),
+
+  /** 记录相关 API */
+  records: {
+    /** 分页查询记录(支持筛选/排序) */
+    list: (objectId: string, params: QueryRecordsParams) =>
+      client
+        .get<ApiResponse<PaginatedRecords>>(`/api/objects/${objectId}/records`, {
+          params: {
+            page: params.page,
+            pageSize: params.pageSize,
+            sort: params.sort,
+            filter: params.filter,
+          },
+        })
+        .then((res) => res.data.data as PaginatedRecords),
+
+    /** 创建记录 */
+    create: (objectId: string, data: Record<string, unknown>) =>
+      client
+        .post<ApiResponse<RecordItem>>(`/api/objects/${objectId}/records`, { data })
+        .then((res) => res.data.data as RecordItem),
+
+    /** 更新记录(部分更新) */
+    update: (recordId: string, data: Record<string, unknown>) =>
+      client
+        .put<ApiResponse<RecordItem>>(`/api/records/${recordId}`, { data })
+        .then((res) => res.data.data as RecordItem),
+
+    /** 删除记录 */
+    delete: (recordId: string) =>
+      client
+        .delete<ApiResponse<{ deleted: boolean }>>(`/api/records/${recordId}`)
+        .then((res) => res.data.data as { deleted: boolean }),
+  },
 };

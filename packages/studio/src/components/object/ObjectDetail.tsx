@@ -12,6 +12,7 @@ import { useParams } from 'react-router-dom';
 import { objectsApi, type UpdateObjectRequest } from '../../api/objects.js';
 import FieldTable from './FieldTable.js';
 import ViewListPanel from './ViewListPanel.js';
+import RecordList from './RecordList.js';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -140,7 +141,12 @@ export default function ObjectDetail() {
           {
             key: 'views',
             label: '视图',
-            children: <ViewListPanel objectId={object.id} />,
+            children: <ViewListPanel objectId={object.id} fields={object.fields} />,
+          },
+          {
+            key: 'records',
+            label: '数据',
+            children: <RecordList key={object.id} object={object} />,
           },
         ]}
       />

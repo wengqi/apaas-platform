@@ -19,6 +19,7 @@ import BuilderToolbar from '../components/page-builder/BuilderToolbar.js';
 import ComponentPanel, { type PanelDragData } from '../components/page-builder/ComponentPanel.js';
 import Canvas from '../components/page-builder/Canvas.js';
 import PropertyPanel from '../components/page-builder/PropertyPanel.js';
+import ViewModelPanel from '../components/page-builder/ViewModelPanel.js';
 import { type DropzoneData } from '../components/page-builder/ComponentRenderer.js';
 
 const { Text } = Typography;
@@ -149,6 +150,7 @@ export default function PageBuilder() {
           {activeDrag && <DragGhost componentType={activeDrag.componentType} />}
         </DragOverlay>
       </DndContext>
+      <ViewModelPanel />
     </div>
   );
 }

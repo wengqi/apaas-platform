@@ -6,6 +6,8 @@ import type {
   PageMeta,
   PageSchema,
   PageType,
+  VariableDef,
+  ViewModel,
 } from '../api/pages.js';
 import { COMPONENT_META } from '../constants/pageComponents.js';
 
@@ -126,6 +128,8 @@ interface PageBuilderState {
   selectedNodeId: string | null;
   /** 编辑 / 预览模式 */
   mode: 'edit' | 'preview';
+  /** 视图模型面板是否展开 */
+  vmPanelOpen: boolean;
   /** 撤销栈 */
   past: PageSchema[];
   /** 重做栈 */
@@ -155,11 +159,23 @@ interface PageBuilderState {
   /** 更新节点顶层字段(name/hidden) */
   updateNode: (id: string, updates: Partial<Pick<ComponentNode, 'name' | 'hidden'>>) => void;
 
+  // —— 视图模型动作 ——
+  /** 添加视图模型变量(key 冲突时忽略) */
+  addVariable: (key: string, def: VariableDef) => void;
+  /** 删除视图模型变量 */
+  removeVariable: (key: string) => void;
+  /** 更新视图模型变量(可重命名 key) */
+  updateVariable: (oldKey: string, newKey: string, def: VariableDef) => void;
+  /** 通用视图模型更新(接受 mutator 直接修改副本) */
+  updateViewModel: (updater: (vm: ViewModel) => void) => void;
+
   // —— 选择 / 模式 ——
   /** 选中组件(传 null 取消选中) */
   selectNode: (id: string | null) => void;
   /** 切换编辑/预览模式 */
   setMode: (mode: 'edit' | 'preview') => void;
+  /** 切换视图模型面板展开 */
+  setVmPanelOpen: (open: boolean) => void;
 
   // —— 历史 ——
   /** 撤销 */
@@ -177,6 +193,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   schema: null,
   selectedNodeId: null,
   mode: 'edit',
+  vmPanelOpen: false,
   past: [],
   future: [],
 
@@ -380,11 +397,61 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     set({ schema, past, future: [] });
   },
 
+  // —— 视图模型动作 ——
+
+  addVariable: (key, def) => {
+    const state = get();
+    if (!state.schema) return;
+    if (key in state.schema.viewModel.variables) return;
+
+    const past = [...state.past, cloneSchema(state.schema)];
+    const schema = cloneSchema(state.schema);
+    schema.viewModel.variables[key] = def;
+    set({ schema, past, future: [] });
+  },
+
+  removeVariable: (key) => {
+    const state = get();
+    if (!state.schema) return;
+    if (!(key in state.schema.viewModel.variables)) return;
+
+    const past = [...state.past, cloneSchema(state.schema)];
+    const schema = cloneSchema(state.schema);
+    delete schema.viewModel.variables[key];
+    set({ schema, past, future: [] });
+  },
+
+  updateVariable: (oldKey, newKey, def) => {
+    const state = get();
+    if (!state.schema) return;
+    if (!(oldKey in state.schema.viewModel.variables)) return;
+
+    const past = [...state.past, cloneSchema(state.schema)];
+    const schema = cloneSchema(state.schema);
+    const variables = schema.viewModel.variables;
+    // 重命名:删除旧 key,写入新 key
+    delete variables[oldKey];
+    variables[newKey] = def;
+    set({ schema, past, future: [] });
+  },
+
+  updateViewModel: (updater) => {
+    const state = get();
+    if (!state.schema) return;
+
+    const past = [...state.past, cloneSchema(state.schema)];
+    const schema = cloneSchema(state.schema);
+    updater(schema.viewModel);
+    set({ schema, past, future: [] });
+  },
+
   // —— 选择 / 模式 ——
 
   selectNode: (id) => set({ selectedNodeId: id }),
 
   setMode: (mode) => set({ mode }),
+
+  setVmPanelOpen: (open) => set({ vmPanelOpen: open }),
 
   // —— 历史 ——
 

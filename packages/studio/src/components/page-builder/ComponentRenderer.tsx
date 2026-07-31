@@ -1,18 +1,72 @@
 import { useState } from 'react';
-import { Button, Divider, Popconfirm, Statistic, Typography } from 'antd';
-import { CopyOutlined, DeleteOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Checkbox,
+  Col,
+  DatePicker,
+  Descriptions,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  List,
+  Popconfirm,
+  Radio,
+  Row,
+  Select,
+  Statistic,
+  Switch,
+  Table,
+  Tabs,
+  Typography,
+  Upload,
+} from 'antd';
+import type { DescriptionsProps, TableProps } from 'antd';
+import { CopyOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { useDroppable } from '@dnd-kit/core';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { getComponentMeta } from '../../constants/pageComponents.js';
-import type { ComponentNode, ComponentType } from '../../api/pages.js';
+import type {
+  ComponentNode,
+  ComponentType,
+  PropValue,
+  ViewModel,
+} from '../../api/pages.js';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
+
+/** 表格行记录类型。 */
+type TableRow = Record<string, unknown>;
 
 /** 拖拽数据:画布放置区。 */
 export interface DropzoneData {
   source: 'dropzone';
   parentId: string;
 }
+
+// ---------------------------------------------------------------------------
+// 渲染上下文
+// ---------------------------------------------------------------------------
+
+/** 组件渲染上下文,传递模式 / 视图模型 / 选择 / 事件回调。 */
+export interface RenderContext {
+  mode: 'edit' | 'preview';
+  viewModel: ViewModel;
+  selectedNodeId: string | null;
+  onSelect: (id: string) => void;
+  onAction: (nodeId: string, eventName: string) => void;
+}
+
+/** 子节点渲染回调。 */
+type RenderChild = (child: ComponentNode) => React.ReactNode;
+
+/** 组件渲染函数签名。 */
+type RendererFn = (
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+) => React.ReactNode;
 
 // ---------------------------------------------------------------------------
 // 顶层:根据模式分流(编辑 / 预览)
@@ -30,28 +84,45 @@ interface ComponentRendererProps {
  */
 export default function ComponentRenderer({ node, isRoot }: ComponentRendererProps) {
   const mode = usePageBuilderStore((s) => s.mode);
+  const schema = usePageBuilderStore((s) => s.schema);
+  const selectedNodeId = usePageBuilderStore((s) => s.selectedNodeId);
+  const selectNode = usePageBuilderStore((s) => s.selectNode);
+
+  const ctx: RenderContext = {
+    mode,
+    viewModel: schema?.viewModel ?? { variables: {} },
+    selectedNodeId,
+    onSelect: (id: string) => selectNode(id),
+    onAction: () => {
+      /* 搭建态不执行事件动作 */
+    },
+  };
 
   if (mode === 'preview') {
-    return <PreviewNode node={node} isRoot={isRoot} />;
+    return <PreviewNode node={node} isRoot={isRoot} ctx={ctx} />;
   }
-  return <EditNode node={node} isRoot={isRoot} />;
+  return <EditNode node={node} isRoot={isRoot} ctx={ctx} />;
 }
 
 // ---------------------------------------------------------------------------
 // 编辑模式渲染
 // ---------------------------------------------------------------------------
 
+interface NodeProps {
+  node: ComponentNode;
+  isRoot?: boolean;
+  ctx: RenderContext;
+}
+
 /** 编辑模式:节点包裹层(选中 + 悬停 + 内容)。 */
-function EditNode({ node, isRoot }: ComponentRendererProps) {
-  const selectedNodeId = usePageBuilderStore((s) => s.selectedNodeId);
+function EditNode({ node, isRoot, ctx }: NodeProps) {
   const selectNode = usePageBuilderStore((s) => s.selectNode);
   const removeComponent = usePageBuilderStore((s) => s.removeComponent);
   const duplicateNode = usePageBuilderStore((s) => s.duplicateNode);
   const [hovered, setHovered] = useState(false);
 
   const meta = getComponentMeta(node.type);
-  const isSelected = selectedNodeId === node.id;
-  const isContainer = meta.isContainer;
+  const isSelected = ctx.selectedNodeId === node.id;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -67,6 +138,12 @@ function EditNode({ node, isRoot }: ComponentRendererProps) {
   } else if (hovered) {
     borderColor = '#91caff';
   }
+
+  const renderChild: RenderChild = (child) => (
+    <ComponentRenderer key={child.id} node={child} />
+  );
+
+  const content = RENDERERS[node.type](node, ctx, renderChild);
 
   return (
     <div
@@ -136,12 +213,7 @@ function EditNode({ node, isRoot }: ComponentRendererProps) {
         </div>
       )}
 
-      {/* 组件内容 */}
-      {isContainer ? (
-        <ContainerContent node={node} isRoot={isRoot} />
-      ) : (
-        <ComponentPreview node={node} />
-      )}
+      {content}
     </div>
   );
 }
@@ -151,73 +223,33 @@ function EditNode({ node, isRoot }: ComponentRendererProps) {
 // ---------------------------------------------------------------------------
 
 /** 预览模式:纯渲染。 */
-function PreviewNode({ node, isRoot }: ComponentRendererProps) {
-  const meta = getComponentMeta(node.type);
-  const isContainer = meta.isContainer;
-
-  if (isContainer) {
-    const children = node.children ?? [];
-    return (
-      <div style={{ padding: isRoot ? 0 : 8 }}>
-        {!isRoot && (
-          <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
-            {node.name || meta.label}
-          </div>
-        )}
-        {children.length === 0 ? (
-          <div style={{ minHeight: 40, background: '#fafbfc', borderRadius: 6 }} />
-        ) : (
-          children.map((child) => (
-            <PreviewNode key={child.id} node={child} />
-          ))
-        )}
-      </div>
-    );
-  }
-
-  return <ComponentPreview node={node} />;
-}
-
-// ---------------------------------------------------------------------------
-// 容器内容(含放置区)
-// ---------------------------------------------------------------------------
-
-/** 容器内容:标签 + 子节点放置区(useDroppable)。 */
-function ContainerContent({ node, isRoot }: { node: ComponentNode; isRoot?: boolean }) {
-  const meta = getComponentMeta(node.type);
-
-  return (
-    <div style={{ padding: isRoot ? 0 : 8 }}>
-      {/* 容器标签(非根) */}
-      {!isRoot && (
-        <div
-          style={{
-            fontSize: 12,
-            color: 'rgba(0,0,0,0.45)',
-            marginBottom: 4,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          {node.name || meta.label}
-        </div>
-      )}
-      <DroppableChildren node={node} />
-    </div>
+function PreviewNode({ node, ctx }: NodeProps) {
+  const renderChild: RenderChild = (child) => (
+    <ComponentRenderer key={child.id} node={child} />
   );
+  return RENDERERS[node.type](node, ctx, renderChild);
 }
 
-/** 可放置的子节点区域:空状态提示 or 递归渲染子节点。 */
-function DroppableChildren({ node }: { node: ComponentNode }) {
+// ---------------------------------------------------------------------------
+// 可放置区域(编辑模式容器子节点区)
+// ---------------------------------------------------------------------------
+
+/** 容器子节点放置区:空状态提示 or 递归渲染子节点。 */
+function DroppableArea({
+  parentId,
+  isEmpty,
+  children,
+}: {
+  parentId: string;
+  isEmpty: boolean;
+  children: React.ReactNode;
+}) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `dropzone-${node.id}`,
-    data: { source: 'dropzone', parentId: node.id } as DropzoneData,
+    id: `dropzone-${parentId}`,
+    data: { source: 'dropzone', parentId } as DropzoneData,
   });
 
-  const children = node.children ?? [];
-
-  if (children.length === 0) {
+  if (isEmpty) {
     return (
       <div
         ref={setNodeRef}
@@ -249,15 +281,13 @@ function DroppableChildren({ node }: { node: ComponentNode }) {
         minHeight: 40,
       }}
     >
-      {children.map((child) => (
-        <ComponentRenderer key={child.id} node={child} />
-      ))}
+      {children}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// 组件预览(非容器组件的实际渲染)
+// 属性读取辅助
 // ---------------------------------------------------------------------------
 
 /** 安全获取字符串属性值。 */
@@ -274,75 +304,571 @@ function getPropAsNumber(node: ComponentNode, key: string): number {
   return 0;
 }
 
-/**
- * 非容器组件的搭建态预览。
- * MVP 使用占位渲染,后续接入真实组件库。
- */
-function ComponentPreview({ node }: { node: ComponentNode }) {
+/** 安全获取布尔属性值。 */
+function getPropAsBool(node: ComponentNode, key: string): boolean {
+  const value = node.props[key];
+  if (typeof value === 'boolean') return value;
+  return false;
+}
+
+/** 将 PropValue 对象提取为 Record。 */
+function asPropObject(value: PropValue | undefined): Record<string, PropValue> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value) && !('__bind' in value) && !('__expr' in value) && !('__action' in value)) {
+    return value as Record<string, PropValue>;
+  }
+  return null;
+}
+
+/** 从 columns prop 提取 AntD 表格列配置。 */
+function extractTableColumns(node: ComponentNode): TableProps<TableRow>['columns'] {
+  const raw = node.props.columns;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((col, i) => {
+    const obj = asPropObject(col);
+    const label = obj && typeof obj.label === 'string' ? obj.label : `列${i + 1}`;
+    const apiName =
+      obj && typeof obj.apiName === 'string'
+        ? obj.apiName
+        : obj && typeof obj.fieldId === 'string'
+          ? obj.fieldId
+          : `col_${i}`;
+    const width = obj && typeof obj.width === 'number' ? obj.width : undefined;
+    return { title: label, dataIndex: apiName, width, key: apiName };
+  });
+}
+
+/** 从 fields prop 提取详情卡片字段配置。 */
+function extractDetailFields(node: ComponentNode): DescriptionsProps['items'] {
+  const raw = node.props.fields;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((field, i) => {
+    const obj = asPropObject(field);
+    const label = obj && typeof obj.label === 'string' ? obj.label : `字段${i + 1}`;
+    const key = obj && typeof obj.fieldId === 'string' ? obj.fieldId : String(i);
+    return { key, label, children: '—' as React.ReactNode };
+  });
+}
+
+/** 从 options prop 提取下拉选项。 */
+function extractSelectOptions(node: ComponentNode): { label: string; value: string }[] {
+  const raw = node.props.options;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((opt) => {
+    const obj = asPropObject(opt);
+    if (!obj) return { label: '', value: '' };
+    const label = typeof obj.label === 'string' ? obj.label : '';
+    const value =
+      typeof obj.value === 'string'
+        ? obj.value
+        : typeof obj.id === 'string'
+          ? obj.id
+          : '';
+    return { label, value };
+  });
+}
+
+/** 渲染容器子节点(编辑模式包裹放置区)。 */
+function renderContainerChildren(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
+  const children = node.children ?? [];
+  if (ctx.mode === 'edit') {
+    return (
+      <DroppableArea parentId={node.id} isEmpty={children.length === 0}>
+        {children.map(renderChild)}
+      </DroppableArea>
+    );
+  }
+  return <>{children.map(renderChild)}</>;
+}
+
+// ---------------------------------------------------------------------------
+// 表单字段包裹(Form.Item + 标签 + 必填)
+// ---------------------------------------------------------------------------
+
+function FormFieldItem({
+  node,
+  children,
+}: {
+  node: ComponentNode;
+  children: React.ReactNode;
+}) {
+  const label = getPropAsString(node, 'label') || node.name || '';
+  const required = getPropAsBool(node, 'required');
+  const disabled = getPropAsBool(node, 'disabled') || getPropAsBool(node, 'readonly');
+  return (
+    <Form.Item
+      label={label || undefined}
+      required={required}
+      style={{ marginBottom: 16 }}
+    >
+      <div style={{ pointerEvents: disabled ? 'none' : 'auto', opacity: disabled ? 0.6 : 1 }}>
+        {children}
+      </div>
+    </Form.Item>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 组件渲染器注册表
+// ---------------------------------------------------------------------------
+
+const RENDERERS: Record<ComponentType, RendererFn> = {
+  // —— 容器类 ——
+  page: renderPage,
+  section: renderSection,
+  tabs: renderTabs,
+  grid: renderGrid,
+  grid_column: renderGridColumn,
+
+  // —— 数据类 ——
+  data_table: renderDataTable,
+  detail_card: renderDetailCard,
+  list: renderList,
+
+  // —— 表单类 ——
+  form: renderForm,
+  text_input: renderTextInput,
+  textarea: renderTextArea,
+  number_input: renderNumberInput,
+  select: renderSelect,
+  multi_select: renderMultiSelect,
+  date_picker: renderDatePicker,
+  radio: renderRadio,
+  checkbox: renderCheckbox,
+  switch: renderSwitch,
+  lookup_picker: renderLookupPicker,
+  sub_form_table: renderSubFormTable,
+  attachment_upload: renderAttachmentUpload,
+  user_picker: renderUserPicker,
+
+  // —— 展示类 ——
+  button: renderButton,
+  statistic: renderStatistic,
+  chart: renderChart,
+  rich_text_display: renderRichTextDisplay,
+  divider: renderDivider,
+  text: renderText,
+};
+
+// ---------------------------------------------------------------------------
+// 容器类渲染器
+// ---------------------------------------------------------------------------
+
+function renderPage(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  return (
+    <div style={{ minHeight: 60, padding: 8 }}>
+      {renderContainerChildren(node, ctx, renderChild)}
+    </div>
+  );
+}
+
+function renderSection(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  const title = getPropAsString(node, 'title');
+  return (
+    <Card
+      size="small"
+      title={title || undefined}
+      styles={{ body: { padding: 12 } }}
+      style={{ marginBottom: 0 }}
+    >
+      {renderContainerChildren(node, ctx, renderChild)}
+    </Card>
+  );
+}
+
+function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  const children = node.children ?? [];
+  const items = children.map((child, i) => ({
+    key: child.id,
+    label: getPropAsString(child, 'title') || child.name || `标签 ${i + 1}`,
+    children: renderChild(child),
+  }));
+  const tabs = <Tabs items={items} size="small" />;
+  if (ctx.mode === 'edit' && children.length === 0) {
+    return (
+      <DroppableArea parentId={node.id} isEmpty>
+        {tabs}
+      </DroppableArea>
+    );
+  }
+  return tabs;
+}
+
+function renderGrid(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  const gutter = getPropAsNumber(node, 'gutter') || 8;
+  const children = node.children ?? [];
+  const cols = children.map((child) => {
+    const span = getPropAsNumber(child, 'span') || 12;
+    return (
+      <Col key={child.id} span={span}>
+        {renderChild(child)}
+      </Col>
+    );
+  });
+  const row = <Row gutter={gutter}>{cols}</Row>;
+  if (ctx.mode === 'edit') {
+    return (
+      <DroppableArea parentId={node.id} isEmpty={children.length === 0}>
+        {row}
+      </DroppableArea>
+    );
+  }
+  return row;
+}
+
+function renderGridColumn(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  return renderContainerChildren(node, ctx, renderChild);
+}
+
+// ---------------------------------------------------------------------------
+// 数据类渲染器
+// ---------------------------------------------------------------------------
+
+function renderDataTable(node: ComponentNode): React.ReactNode {
+  const columns = extractTableColumns(node);
+  const pagination = getPropAsBool(node, 'pagination');
+  const pageSize = getPropAsNumber(node, 'pageSize') || 20;
+  return (
+    <Table<TableRow>
+      size="small"
+      columns={columns}
+      dataSource={[]}
+      rowKey="__rowKey"
+      pagination={
+        pagination ? { pageSize, showSizeChanger: false } : false
+      }
+      locale={{ emptyText: '暂无数据(编辑模式不加载)' }}
+    />
+  );
+}
+
+function renderDetailCard(node: ComponentNode): React.ReactNode {
+  const items = extractDetailFields(node);
+  const columns = getPropAsNumber(node, 'columns') || 2;
+  return (
+    <Descriptions
+      size="small"
+      column={columns}
+      bordered
+      items={items}
+    />
+  );
+}
+
+function renderList(node: ComponentNode, ctx: RenderContext): React.ReactNode {
+  const placeholderData = ctx.mode === 'edit' ? [1, 2, 3] : [];
+  return (
+    <List
+      size="small"
+      dataSource={placeholderData}
+      renderItem={(item) => <List.Item>列表项 {item}</List.Item>}
+      locale={{ emptyText: '暂无数据' }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 表单类渲染器
+// ---------------------------------------------------------------------------
+
+function renderForm(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+  const layout = getPropAsString(node, 'layout') || 'vertical';
+  return (
+    <Form layout={layout as 'vertical' | 'horizontal'} component={false}>
+      {renderContainerChildren(node, ctx, renderChild)}
+    </Form>
+  );
+}
+
+function renderTextInput(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请输入';
+  const maxLength = getPropAsNumber(node, 'maxLength') || undefined;
+  return (
+    <FormFieldItem node={node}>
+      <Input placeholder={placeholder} maxLength={maxLength || undefined} size="small" />
+    </FormFieldItem>
+  );
+}
+
+function renderTextArea(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请输入';
+  const rows = getPropAsNumber(node, 'rows') || 4;
+  const showCount = getPropAsBool(node, 'showCount');
+  return (
+    <FormFieldItem node={node}>
+      <Input.TextArea
+        placeholder={placeholder}
+        rows={rows}
+        showCount={showCount}
+        size="small"
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderNumberInput(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请输入数字';
+  const precision = getPropAsNumber(node, 'precision') || undefined;
+  const min = getPropAsNumber(node, 'min') || undefined;
+  const max = getPropAsNumber(node, 'max') || undefined;
+  const step = getPropAsNumber(node, 'step') || undefined;
+  return (
+    <FormFieldItem node={node}>
+      <InputNumber
+        placeholder={placeholder}
+        precision={precision || undefined}
+        min={min || undefined}
+        max={max || undefined}
+        step={step || undefined}
+        size="small"
+        style={{ width: '100%' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderSelect(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请选择';
+  const options = extractSelectOptions(node);
+  const allowClear = getPropAsBool(node, 'allowClear');
+  return (
+    <FormFieldItem node={node}>
+      <Select
+        placeholder={placeholder}
+        options={options}
+        allowClear={allowClear}
+        size="small"
+        style={{ width: '100%' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderMultiSelect(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请选择';
+  const options = extractSelectOptions(node);
+  const allowClear = getPropAsBool(node, 'allowClear');
+  return (
+    <FormFieldItem node={node}>
+      <Select
+        mode="multiple"
+        placeholder={placeholder}
+        options={options}
+        allowClear={allowClear}
+        size="small"
+        style={{ width: '100%' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderDatePicker(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请选择日期';
+  const showTime = getPropAsBool(node, 'showTime');
+  const format = getPropAsString(node, 'format') || undefined;
+  return (
+    <FormFieldItem node={node}>
+      <DatePicker
+        placeholder={placeholder}
+        showTime={showTime || undefined}
+        format={format}
+        size="small"
+        style={{ width: '100%' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderRadio(node: ComponentNode): React.ReactNode {
+  const options = extractSelectOptions(node);
+  const radioOptions = options.map((o) => ({ label: o.label, value: o.value }));
+  return (
+    <FormFieldItem node={node}>
+      <Radio.Group options={radioOptions} size="small" />
+    </FormFieldItem>
+  );
+}
+
+function renderCheckbox(node: ComponentNode): React.ReactNode {
+  const label = getPropAsString(node, 'label') || node.name || '复选框';
+  return (
+    <FormFieldItem node={node}>
+      <Checkbox>{label}</Checkbox>
+    </FormFieldItem>
+  );
+}
+
+function renderSwitch(node: ComponentNode): React.ReactNode {
+  const label = getPropAsString(node, 'label');
+  return (
+    <FormFieldItem node={node}>
+      <Switch />
+      {label ? <Text style={{ marginLeft: 8, fontSize: 13 }}>{label}</Text> : null}
+    </FormFieldItem>
+  );
+}
+
+function renderLookupPicker(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请选择关联记录';
+  const multiple = getPropAsBool(node, 'multiple');
+  return (
+    <FormFieldItem node={node}>
+      <Select
+        mode={multiple ? 'multiple' : undefined}
+        placeholder={placeholder}
+        showSearch
+        size="small"
+        style={{ width: '100%' }}
+        notFoundContent="编辑模式不加载远程数据"
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderSubFormTable(node: ComponentNode): React.ReactNode {
+  const columns = extractTableColumns(node);
+  return (
+    <FormFieldItem node={node}>
+      <Table<TableRow>
+        size="small"
+        columns={columns}
+        dataSource={[]}
+        rowKey="__rowKey"
+        pagination={false}
+        locale={{ emptyText: '暂无子表记录' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+function renderAttachmentUpload(node: ComponentNode): React.ReactNode {
+  const maxCount = getPropAsNumber(node, 'maxCount') || undefined;
+  return (
+    <FormFieldItem node={node}>
+      <Upload maxCount={maxCount || undefined} listType="text">
+        <Button icon={<UploadOutlined />} size="small">
+          上传附件
+        </Button>
+      </Upload>
+    </FormFieldItem>
+  );
+}
+
+function renderUserPicker(node: ComponentNode): React.ReactNode {
+  const placeholder = getPropAsString(node, 'placeholder') || '请选择人员';
+  const multiple = getPropAsBool(node, 'multiple');
+  return (
+    <FormFieldItem node={node}>
+      <Select
+        mode={multiple ? 'multiple' : undefined}
+        placeholder={placeholder}
+        showSearch
+        size="small"
+        style={{ width: '100%' }}
+        notFoundContent="编辑模式不加载人员数据"
+      />
+    </FormFieldItem>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 展示类渲染器
+// ---------------------------------------------------------------------------
+
+function renderButton(node: ComponentNode): React.ReactNode {
+  const text = getPropAsString(node, 'text') || getPropAsString(node, 'label') || '按钮';
+  const type = getPropAsString(node, 'type') || 'default';
+  const danger = getPropAsBool(node, 'danger');
+  return (
+    <Button
+      type={type as 'primary' | 'default' | 'dashed' | 'link' | 'text'}
+      danger={danger || undefined}
+      size="small"
+    >
+      {text}
+    </Button>
+  );
+}
+
+function renderStatistic(node: ComponentNode): React.ReactNode {
+  const title = getPropAsString(node, 'title') || '统计';
+  const value = getPropAsNumber(node, 'value');
+  const prefix = getPropAsString(node, 'prefix') || undefined;
+  const suffix = getPropAsString(node, 'suffix') || undefined;
+  return <Statistic title={title} value={value} prefix={prefix} suffix={suffix} />;
+}
+
+function renderChart(node: ComponentNode): React.ReactNode {
+  const title = getPropAsString(node, 'title') || '图表';
   const meta = getComponentMeta(node.type);
   const Icon = meta.icon;
+  return (
+    <div
+      style={{
+        padding: 24,
+        background: '#fafbfc',
+        border: '1px dashed #eef0f4',
+        borderRadius: 6,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 120,
+        gap: 8,
+      }}
+    >
+      <Icon style={{ fontSize: 32, color: '#bfbfbf' }} />
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        {title}(图表引擎后续迭代)
+      </Text>
+    </div>
+  );
+}
 
-  // 按组件类型渲染简化预览
-  switch (node.type) {
-    case 'button': {
-      const text = getPropAsString(node, 'text') || '按钮';
-      return (
-        <div style={{ padding: 8 }}>
-          <Button type="primary">{text}</Button>
-        </div>
-      );
-    }
-    case 'text': {
-      const content = getPropAsString(node, 'content') || '文本内容';
-      return (
-        <div style={{ padding: 8 }}>
-          <Text>{content}</Text>
-        </div>
-      );
-    }
-    case 'statistic': {
-      const title = getPropAsString(node, 'title') || '统计';
-      const value = getPropAsNumber(node, 'value');
-      return (
-        <div style={{ padding: 8 }}>
-          <Statistic title={title} value={value} />
-        </div>
-      );
-    }
-    case 'divider':
-      return <div style={{ padding: '8px 4px' }}><Divider style={{ margin: 0 }} /></div>;
-    default:
-      // 通用占位:图标 + 组件名 + 类型
-      return (
-        <div
-          style={{
-            padding: 12,
-            background: '#fafbfc',
-            border: '1px dashed #eef0f4',
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            minHeight: 40,
-          }}
-        >
-          <Icon style={{ fontSize: 18, color: '#1677ff', flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <Text strong style={{ fontSize: 13 }}>
-              {node.name || meta.label}
-            </Text>
-            <div>
-              <Text
-                type="secondary"
-                style={{ fontSize: 11, fontFamily: 'monospace' }}
-              >
-                {node.type}
-              </Text>
-            </div>
-          </div>
-        </div>
-      );
+function renderRichTextDisplay(node: ComponentNode): React.ReactNode {
+  const content = getPropAsString(node, 'content');
+  if (content) {
+    return <div style={{ padding: 8 }} dangerouslySetInnerHTML={{ __html: content }} />;
   }
+  return (
+    <div
+      style={{
+        padding: 16,
+        background: '#fafbfc',
+        border: '1px dashed #eef0f4',
+        borderRadius: 6,
+        minHeight: 60,
+        display: 'flex',
+        alignItems: 'center',
+      }}
+    >
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        富文本内容
+      </Text>
+    </div>
+  );
+}
+
+function renderDivider(node: ComponentNode): React.ReactNode {
+  const label = getPropAsString(node, 'label') || getPropAsString(node, 'text');
+  const orientation = getPropAsString(node, 'orientation') || 'left';
+  return (
+    <Divider orientation={orientation as 'left' | 'center' | 'right'} style={{ margin: '8px 0' }}>
+      {label || undefined}
+    </Divider>
+  );
+}
+
+function renderText(node: ComponentNode): React.ReactNode {
+  const content = getPropAsString(node, 'content') || '文本内容';
+  const level = getPropAsNumber(node, 'level');
+  if (level >= 1 && level <= 5) {
+    return <Title level={level as 1 | 2 | 3 | 4 | 5}>{content}</Title>;
+  }
+  return <Text>{content}</Text>;
 }
 
 // ---------------------------------------------------------------------------

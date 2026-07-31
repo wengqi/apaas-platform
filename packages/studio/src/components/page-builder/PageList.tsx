@@ -29,6 +29,7 @@ import { pagesApi, type PageMeta, type PageType } from '../../api/pages.js';
 import { objectsApi } from '../../api/objects.js';
 import { createDefaultSchema } from '../../stores/pageBuilder.js';
 import { PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
+import { generatePageTemplate, pageTypeRequiresObject } from './templates.js';
 
 const { Text, Title } = Typography;
 
@@ -93,10 +94,15 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     );
   }, [pages, keyword]);
 
-  /** 创建页面。 */
+  /** 创建页面(根据类型 + 对象自动生成模板)。 */
   const createMutation = useMutation({
-    mutationFn: (data: CreatePageFormValues) => {
-      const schema = createDefaultSchema(data.type);
+    mutationFn: async (data: CreatePageFormValues) => {
+      // 列表/详情/表单页:拉取对象字段,生成模板;其他:空白 Schema
+      let schema = createDefaultSchema(data.type);
+      if (data.objectId && pageTypeRequiresObject(data.type)) {
+        const objectMeta = await objectsApi.get(data.objectId);
+        schema = generatePageTemplate(data.type, objectMeta);
+      }
       return pagesApi.create(appId as string, {
         name: data.name,
         slug: data.slug,
@@ -363,6 +369,10 @@ function CreatePageModal({
     value: obj.id,
   }));
 
+  /** 监听页面类型变化,决定关联对象是否必填。 */
+  const pageType = Form.useWatch('type', form);
+  const requiresObject = pageTypeRequiresObject(pageType ?? 'custom');
+
   return (
     <Modal
       title="新建页面"
@@ -372,7 +382,7 @@ function CreatePageModal({
       confirmLoading={confirmLoading}
       okText="创建"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form<CreatePageFormValues>
         form={form}
@@ -407,17 +417,33 @@ function CreatePageModal({
         <Form.Item
           label="关联对象"
           name="objectId"
-          tooltip="列表/详情/表单页需要关联一个对象"
+          tooltip={
+            requiresObject
+              ? '列表/详情/表单页需要关联一个对象,将自动生成模板'
+              : '自定义页可不关联对象'
+          }
+          rules={
+            requiresObject
+              ? [{ required: true, message: '该页面类型需要关联对象' }]
+              : []
+          }
         >
           <Select
             showSearch
             allowClear
-            placeholder="选择对象(可选)"
+            placeholder={
+              requiresObject ? '选择对象(必选)' : '选择对象(可选)'
+            }
             optionFilterProp="label"
             options={objectOptions}
             notFoundContent={objects ? '暂无对象' : '加载中...'}
           />
         </Form.Item>
+        {requiresObject && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            将基于所选对象的字段自动生成页面模板,可在搭建器中进一步编辑。
+          </Text>
+        )}
       </Form>
     </Modal>
   );

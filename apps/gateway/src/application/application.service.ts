@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { prisma } from '@apaas/db';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { prisma, Prisma } from '@apaas/db';
 import {
   asAppId,
   asTenantId,
@@ -9,14 +13,29 @@ import {
   type AppStatus,
   type CreateAppRequest,
   type UpdateAppRequest,
+  type PublishAppRequest,
+  type AppVersion,
+  type AppVersionSummary,
+  type CheckResult,
+  type ChangeSet,
+  type AppCheckRecord,
 } from '@apaas/shared';
+import { SnapshotService } from './snapshot.service.js';
+import { CheckService } from './check.service.js';
+import { ChangeLogService } from './changelog.service.js';
 
 /**
- * 应用服务 — Application CRUD。
+ * 应用服务 — Application CRUD + 发布/回滚/版本管理。
  * 对标飞书 aPaaS：应用是顶层业务容器，包含对象/页面/流程/权限。
  */
 @Injectable()
 export class ApplicationService {
+  constructor(
+    private readonly snapshotService: SnapshotService,
+    private readonly checkService: CheckService,
+    private readonly changeLogService: ChangeLogService,
+  ) {}
+
   /**
    * 列出租户下所有应用（含资源统计）。
    */
@@ -77,13 +96,19 @@ export class ApplicationService {
   }
 
   /**
-   * 创建应用。
+   * 创建应用 — apiName 自动生成（若未传入）。
    */
-  async create(tenantId: string, createdBy: string, req: CreateAppRequest): Promise<Application> {
+  async create(
+    tenantId: string,
+    createdBy: string,
+    req: CreateAppRequest,
+  ): Promise<Application> {
+    const apiName = req.apiName || this.generateApiName();
+
     const app = await prisma.application.create({
       data: {
         tenantId,
-        apiName: req.apiName,
+        apiName,
         name: req.name,
         description: req.description,
         icon: req.icon,
@@ -93,13 +118,31 @@ export class ApplicationService {
         createdBy,
       },
     });
+
+    // 记录变更日志
+    await this.changeLogService.log({
+      tenantId,
+      appId: app.id,
+      module: 'PAGE',
+      entityType: 'Application',
+      entityId: app.id,
+      entityName: req.name,
+      changeType: 'CREATE',
+      changedBy: createdBy,
+      changeDescription: '新建应用',
+    });
+
     return this.get(tenantId, app.id);
   }
 
   /**
    * 更新应用。
    */
-  async update(tenantId: string, appId: string, req: UpdateAppRequest): Promise<Application> {
+  async update(
+    tenantId: string,
+    appId: string,
+    req: UpdateAppRequest,
+  ): Promise<Application> {
     await prisma.application.updateMany({
       where: { id: appId, tenantId },
       data: {
@@ -120,5 +163,322 @@ export class ApplicationService {
       where: { id: appId, tenantId },
     });
     if (result.count === 0) throw new NotFoundException('应用不存在');
+  }
+
+  // ===========================================================================
+  // 发布相关
+  // ===========================================================================
+
+  /**
+   * 执行预检。
+   */
+  async check(
+    tenantId: string,
+    appId: string,
+    checkedBy: string,
+  ): Promise<CheckResult> {
+    return this.checkService.check(tenantId, appId, checkedBy);
+  }
+
+  /**
+   * 获取预检记录列表。
+   */
+  async listChecks(
+    tenantId: string,
+    appId: string,
+  ): Promise<AppCheckRecord[]> {
+    const checks = await prisma.appCheck.findMany({
+      where: { tenantId, appId },
+      orderBy: { checkedAt: 'desc' },
+      take: 20,
+    });
+    return checks.map((c) => ({
+      id: c.id,
+      appId: asAppId(c.appId),
+      result: c.result as 'PASS' | 'FAIL',
+      issues: (c.issues as CheckResult['issues']) ?? null,
+      checkedBy: asUserId(c.checkedBy),
+      checkedAt: c.checkedAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 获取未发布的变更清单。
+   */
+  async getChanges(tenantId: string, appId: string): Promise<ChangeSet> {
+    return this.changeLogService.getChangeSet(tenantId, appId);
+  }
+
+  /**
+   * 发布应用 — 核心方法。
+   * 1. 预检 → 2. 收集快照 → 3. 生成变更清单 → 4. 事务写入版本+更新应用状态 → 5. 同步子资源
+   */
+  async publish(
+    tenantId: string,
+    appId: string,
+    publishedBy: string,
+    req: PublishAppRequest,
+  ): Promise<AppVersion> {
+    // 1. 验证版本号格式
+    if (!/^\d+\.\d+\.\d+$/.test(req.version)) {
+      throw new BadRequestException('版本号格式不正确，应为 x.y.z 格式');
+    }
+
+    // 2. 检查版本号是否已存在
+    const existing = await prisma.appVersion.findFirst({
+      where: { appId, versionNumber: req.version },
+    });
+    if (existing) {
+      throw new BadRequestException(`版本号 ${req.version} 已存在`);
+    }
+
+    // 3. 执行预检
+    const checkResult = await this.checkService.check(
+      tenantId,
+      appId,
+      publishedBy,
+    );
+    if (checkResult.status === 'FAIL') {
+      throw new BadRequestException({
+        message: '预检未通过，请修复以下问题后再发布',
+        issues: checkResult.issues.filter((i) => i.level === 'ERROR'),
+      });
+    }
+
+    // 4. 收集快照（复用 check 阶段已收集的快照，避免重复收集）
+    const snapshot = await this.snapshotService.collectSnapshot(
+      tenantId,
+      appId,
+      req.version,
+      publishedBy,
+    );
+
+    // 5. 生成变更清单
+    const changeSet = await this.changeLogService.getChangeSet(
+      tenantId,
+      appId,
+    );
+
+    // 6. 事务写入：创建版本记录 + 更新应用状态 + 同步子资源发布状态
+    const version = await prisma.$transaction(async (tx) => {
+      // 创建版本记录（不可变快照）
+      const newVersion = await tx.appVersion.create({
+        data: {
+          tenantId,
+          appId,
+          versionNumber: req.version,
+          description: req.description,
+          snapshot: snapshot as unknown as Prisma.InputJsonValue,
+          changeSet: changeSet as unknown as Prisma.InputJsonValue,
+          status: 'PUBLISHED',
+          publishedBy,
+        },
+      });
+
+      // 更新应用状态
+      await tx.application.update({
+        where: { id: appId },
+        data: {
+          status: 'PUBLISHED',
+          version: { increment: 1 },
+          publishedSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+          publishedAt: new Date(),
+        },
+      });
+
+      // 同步子资源发布状态
+      await tx.pageMeta.updateMany({
+        where: { tenantId, appId },
+        data: { isPublished: true },
+      });
+      await tx.processDef.updateMany({
+        where: { tenantId, appId },
+        data: { status: 'PUBLISHED' },
+      });
+
+      return newVersion;
+    });
+
+    return this.toAppVersion(version);
+  }
+
+  /**
+   * 回滚到指定版本。
+   * 将目标版本的快照写回 Application.publishedSnapshot，创建新的 PUBLISHED 版本记录。
+   * 将被取代的当前版本标记为 ROLLED_BACK。
+   */
+  async rollback(
+    tenantId: string,
+    appId: string,
+    versionId: string,
+    rolledBackBy: string,
+  ): Promise<AppVersion> {
+    // 1. 查找目标版本
+    const targetVersion = await prisma.appVersion.findFirst({
+      where: { id: versionId, tenantId, appId },
+    });
+    if (!targetVersion) throw new NotFoundException('版本不存在');
+
+    // 2. 查找当前活跃的 PUBLISHED 版本（将被取代）
+    const currentVersion = await prisma.appVersion.findFirst({
+      where: { tenantId, appId, status: 'PUBLISHED' },
+      orderBy: { publishedAt: 'desc' },
+    });
+
+    // 3. 生成碰撞安全的版本号
+    const newVersionNumber = await this.generateRollbackVersionNumber(
+      appId,
+      targetVersion.versionNumber,
+    );
+
+    // 4. 事务执行回滚
+    const version = await prisma.$transaction(async (tx) => {
+      // 将被取代的当前版本标记为 ROLLED_BACK
+      if (currentVersion && currentVersion.id !== targetVersion.id) {
+        await tx.appVersion.update({
+          where: { id: currentVersion.id },
+          data: { status: 'ROLLED_BACK' },
+        });
+      }
+
+      // 将目标版本快照写回 Application
+      await tx.application.update({
+        where: { id: appId },
+        data: {
+          publishedSnapshot: targetVersion.snapshot as unknown as Prisma.InputJsonValue,
+          publishedAt: new Date(),
+        },
+      });
+
+      // 创建新的回滚版本记录
+      const newVersion = await tx.appVersion.create({
+        data: {
+          tenantId,
+          appId,
+          versionNumber: newVersionNumber,
+          description: `回滚到版本 ${targetVersion.versionNumber}`,
+          snapshot: targetVersion.snapshot as unknown as Prisma.InputJsonValue,
+          changeSet: Prisma.JsonNull,
+          status: 'PUBLISHED',
+          publishedBy: rolledBackBy,
+        },
+      });
+
+      return newVersion;
+    });
+
+    return this.toAppVersion(version);
+  }
+
+  /**
+   * 获取版本列表（不含快照，避免大字段传输）。
+   */
+  async listVersions(
+    tenantId: string,
+    appId: string,
+  ): Promise<AppVersionSummary[]> {
+    const versions = await prisma.appVersion.findMany({
+      where: { tenantId, appId },
+      orderBy: { publishedAt: 'desc' },
+      select: {
+        id: true,
+        appId: true,
+        versionNumber: true,
+        description: true,
+        status: true,
+        publishedBy: true,
+        publishedAt: true,
+      },
+    });
+
+    return versions.map((v) => ({
+      id: v.id,
+      appId: asAppId(v.appId),
+      versionNumber: v.versionNumber,
+      description: v.description,
+      status: v.status as 'PUBLISHED' | 'ROLLED_BACK',
+      publishedBy: asUserId(v.publishedBy),
+      publishedAt: v.publishedAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 获取版本详情（含完整快照）。
+   */
+  async getVersion(
+    tenantId: string,
+    appId: string,
+    versionId: string,
+  ): Promise<AppVersion> {
+    const version = await prisma.appVersion.findFirst({
+      where: { id: versionId, tenantId, appId },
+    });
+    if (!version) throw new NotFoundException('版本不存在');
+    return this.toAppVersion(version);
+  }
+
+  // ===========================================================================
+  // 私有辅助方法
+  // ===========================================================================
+
+  /**
+   * 生成命名空间 — package_ + 6位随机十六进制。
+   */
+  private generateApiName(): string {
+    const hex = Math.random().toString(16).substring(2, 8);
+    return `package_${hex}`;
+  }
+
+  /**
+   * 生成回滚版本号（碰撞安全）。
+   * 策略：在原版本号基础上递增 patch，若碰撞则继续递增直到不碰撞。
+   */
+  private async generateRollbackVersionNumber(
+    appId: string,
+    baseVersion: string,
+  ): Promise<string> {
+    const [major, minor, patch] = baseVersion.split('.').map(Number);
+    const basePatch = patch ?? 0;
+    let candidate = `${major}.${minor}.${basePatch + 1}`;
+
+    // 查询已存在的版本号，最多尝试 100 次
+    for (let i = 0; i < 100; i++) {
+      const existing = await prisma.appVersion.findFirst({
+        where: { appId, versionNumber: candidate },
+        select: { id: true },
+      });
+      if (!existing) return candidate;
+      candidate = `${major}.${minor}.${basePatch + 1 + i + 1}`;
+    }
+
+    // 兜底：使用时间戳
+    return `${major}.${minor}.${Date.now()}`;
+  }
+
+  /**
+   * Prisma AppVersion 记录 → AppVersion DTO。
+   */
+  private toAppVersion(v: {
+    id: string;
+    appId: string;
+    versionNumber: string;
+    description: string;
+    snapshot: unknown;
+    changeSet: unknown;
+    status: string;
+    publishedBy: string;
+    publishedAt: Date;
+  }): AppVersion {
+    return {
+      id: v.id,
+      appId: asAppId(v.appId),
+      versionNumber: v.versionNumber,
+      description: v.description,
+      snapshot: v.snapshot as AppVersion['snapshot'],
+      changeSet: v.changeSet as ChangeSet | null,
+      status: v.status as 'PUBLISHED' | 'ROLLED_BACK',
+      publishedBy: asUserId(v.publishedBy),
+      publishedAt: v.publishedAt.toISOString(),
+    };
   }
 }

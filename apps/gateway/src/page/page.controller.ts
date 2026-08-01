@@ -69,10 +69,15 @@ export class PageController {
   @Get('apps/:appId/pages/slug/:slug')
   async getBySlug(
     @Req() req: AuthenticatedRequest,
-    @Param('appId') _appId: string,
+    @Param('appId') appId: string,
     @Param('slug') slug: string,
   ) {
-    const page = await this.pageService.getBySlug(req.user.tenantId, slug);
+    // 运行态环境隔离：从已发布快照读取页面，而非开发态 PageMeta
+    const page = await this.pageService.getPublishedBySlug(
+      req.user.tenantId,
+      appId,
+      slug,
+    );
     return { ok: true as const, data: page };
   }
 

@@ -6,6 +6,7 @@ import {
   asObjectId,
   asPageId,
   asTenantId,
+  type AppSnapshot,
   type CreatePageRequest,
   type PageMeta,
   type PageSchema,
@@ -46,7 +47,8 @@ export class PageService {
   }
 
   /**
-   * 按 slug 获取页面（运行时渲染器用）。
+   * 按 slug 获取页面（旧方法，直接读开发态 PageMeta）。
+   * 保留用于向后兼容；运行态应使用 getPublishedBySlug。
    * slug 对应 Prisma 中的 apiName，在应用内唯一。
    */
   async getBySlug(tenantId: string, slug: string): Promise<PageMeta> {
@@ -56,6 +58,54 @@ export class PageService {
     });
     if (!page) throw new NotFoundException('页面不存在');
     return this.toPageMeta(page);
+  }
+
+  /**
+   * 按 slug 获取已发布页面（运行态渲染器用）。
+   *
+   * 环境隔离核心方法：从 Application.publishedSnapshot 中读取页面 schema，
+   * 而非开发态 PageMeta.schema。确保运行态用户只看到已发布版本。
+   *
+   * Studio 预览模式不受影响 — Studio 通过 GET /pages/:pageId 读取开发态数据。
+   */
+  async getPublishedBySlug(
+    tenantId: string,
+    appId: string,
+    slug: string,
+  ): Promise<PageMeta> {
+    // 1. 查询 Application，获取 publishedSnapshot
+    const app = await prisma.application.findFirst({
+      where: { id: appId, tenantId },
+      select: { publishedSnapshot: true },
+    });
+    if (!app) throw new NotFoundException('应用不存在');
+    if (!app.publishedSnapshot) {
+      throw new NotFoundException('应用尚未发布');
+    }
+
+    // 2. 从快照中查找匹配 apiName 的页面
+    const snapshot = app.publishedSnapshot as unknown as AppSnapshot;
+    const pageData = snapshot.pages.find((p: { apiName: string }) => p.apiName === slug);
+    if (!pageData) {
+      throw new NotFoundException('页面不存在或未发布');
+    }
+
+    // 3. 返回快照中的页面数据
+    return {
+      id: asPageId(pageData.id),
+      tenantId: asTenantId(tenantId),
+      appId: asAppId(appId),
+      name: pageData.name,
+      slug: pageData.apiName,
+      type: pageData.type as PageType,
+      objectId: pageData.objectId
+        ? asObjectId(pageData.objectId)
+        : undefined,
+      schema: pageData.schema as unknown as PageSchema,
+      published: true,
+      createdAt: snapshot.meta.publishedAt,
+      updatedAt: snapshot.meta.publishedAt,
+    };
   }
 
   /**

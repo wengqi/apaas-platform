@@ -15,7 +15,6 @@ import {
   Form,
   Input,
   Modal,
-  Popconfirm,
   Radio,
   Row,
   Select,
@@ -347,19 +346,24 @@ function ProcessCard({
               ],
               onClick: ({ key }) => {
                 if (key === 'delete') {
-                  // 由 Popconfirm 处理
+                  Modal.confirm({
+                    title: '删除流程',
+                    content: `确定删除流程「${process.name}」吗？删除后流程定义与历史实例将不可恢复。`,
+                    okText: '删除',
+                    cancelText: '取消',
+                    okButtonProps: { danger: true },
+                    onOk: onDelete,
+                  });
                 }
               },
             }}
           >
-            <Popconfirm
-              title="删除流程"
-              description="删除后流程定义与历史实例将不可恢复"
-              okButtonProps={{ danger: true }}
-              onConfirm={onDelete}
-            >
-              <Button type="text" size="small" icon={<MoreOutlined />} loading={deleting} />
-            </Popconfirm>
+            <Button
+              type="text"
+              size="small"
+              icon={<MoreOutlined />}
+              loading={deleting}
+            />
           </Dropdown>
         </div>
       </Space>

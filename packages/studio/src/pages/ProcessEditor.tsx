@@ -95,12 +95,20 @@ export default function ProcessEditor() {
 
   /** Schema 变化(防抖保存,只读模式不保存)。 */
   const handleSchemaChange = (schema: WorkflowSchema) => {
-    store.setSchema(schema, { skipHistory: true });
+    // FlowGram 导出可能丢失 edges，如果新 schema edges 为空但当前有 edges，保留原 edges
+    let finalSchema = schema;
+    if ((!schema.edges || schema.edges.length === 0)) {
+      const currentSchema = store.schema ?? processDef?.workflowSchema;
+      if (currentSchema?.edges && currentSchema.edges.length > 0) {
+        finalSchema = { ...schema, edges: currentSchema.edges };
+      }
+    }
+    store.setSchema(finalSchema, { skipHistory: true });
     if (isReadonly) return; // 只读模式不触发保存
     // 防抖保存
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveMutation.mutate({ workflowSchema: schema });
+      saveMutation.mutate({ workflowSchema: finalSchema });
     }, 1000);
   };
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,7 +127,15 @@ export default function ProcessEditor() {
   const handleModeSwitch = (mode: 'simplified' | 'standard') => {
     if (mode === 'standard') {
       // 简化→标准：WorkflowSchema → BPMN XML
-      const schema = store.schema ?? processDef?.workflowSchema;
+      // 优先使用 store.schema，但如果其 edges 为空而原始 processDef 有 edges，则合并
+      let schema = store.schema ?? processDef?.workflowSchema;
+      if (schema && (!schema.edges || schema.edges.length === 0)) {
+        const origSchema = processDef?.workflowSchema;
+        if (origSchema?.edges && origSchema.edges.length > 0) {
+          // store.schema 丢失了 edges（FlowGram 导出问题），使用原始 schema
+          schema = origSchema;
+        }
+      }
       if (schema) {
         const { bpmnXml, warnings } = workflowToBpmnXml(schema);
         store.setBpmnXml(bpmnXml);

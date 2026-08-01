@@ -16,14 +16,37 @@ import type { WorkflowSchema, WorkflowNode } from '@apaas/shared';
  * FlowDocumentJSON (flowgram 内部格式) → WorkflowSchema (SSOT)
  */
 export function flowToWorkflowSchema(doc: FlowDocumentJSON): WorkflowSchema {
-  return {
-    nodes: (doc.nodes || []).map(flowNodeToWorkflowNode),
-    edges: (doc.edges || []).map((e) => ({
+  const nodes = (doc.nodes || []).map(flowNodeToWorkflowNode);
+
+  // 收集边：优先从顶层 doc.edges 获取；若为空，从节点内部 edges 属性提取
+  let edges: WorkflowSchema['edges'];
+  if (doc.edges && doc.edges.length > 0) {
+    edges = doc.edges.map((e) => ({
       sourceNodeID: e.sourceNodeID,
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
-    })),
+    }));
+  } else {
+    // FlowGram FixedLayout 可能将边存在节点内部
+    edges = [];
+    for (const node of doc.nodes || []) {
+      if (node.edges) {
+        for (const e of node.edges) {
+          edges.push({
+            sourceNodeID: e.sourceNodeID,
+            targetNodeID: e.targetNodeID,
+            sourcePortID: e.sourcePortID,
+            targetPortID: e.targetPortID,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    nodes,
+    edges,
     groups: doc.groups as WorkflowSchema['groups'],
   };
 }

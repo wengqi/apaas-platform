@@ -161,16 +161,19 @@ export class ProcessController {
   async listInstances(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
+    @Query('state') state?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    const data = await this.processService.listInstancesByProcess(
+    const result = await this.processService.listInstancesByProcess(
       req.user.tenantId,
       processId,
+      state,
       page ? parseInt(page, 10) : undefined,
       pageSize ? parseInt(pageSize, 10) : undefined,
     );
-    return { ok: true as const, data };
+    // 前端期望数组，直接返回 items
+    return { ok: true as const, data: result.items };
   }
 
   @Get('instances/:instanceId')
@@ -208,14 +211,15 @@ export class ProcessController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    const data = await this.processService.listTasks(
+    const result = await this.processService.listTasks(
       req.user.tenantId,
       req.user.id,
       status,
       page ? parseInt(page, 10) : undefined,
       pageSize ? parseInt(pageSize, 10) : undefined,
     );
-    return { ok: true as const, data };
+    // 前端期望数组，直接返回 items
+    return { ok: true as const, data: result.items };
   }
 
   @Get('tasks/:taskId')

@@ -49,8 +49,8 @@ export default function Home() {
                       </Text>
                       <div style={{ marginTop: 8 }}>
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          {app.stats.objects} 对象 · {app.stats.pages} 页面 ·{' '}
-                          {app.stats.processes} 流程
+                          {app.stats?.objects ?? 0} 对象 · {app.stats?.pages ?? 0} 页面 ·{' '}
+                          {app.stats?.processes ?? 0} 流程
                         </Text>
                       </div>
                     </div>

@@ -265,10 +265,13 @@ export class ProcessService {
   async listInstancesByProcess(
     tenantId: string,
     processId: string,
+    status?: string,
     page?: number,
     pageSize?: number,
   ) {
-    return this.listInstances(tenantId, processId, undefined, page, pageSize);
+    // 前端传入小写状态，需映射为 Prisma 枚举
+    const normalizedStatus = status ? status.toUpperCase() : undefined;
+    return this.listInstances(tenantId, processId, normalizedStatus, page, pageSize);
   }
 
   /** 取消实例。 */
@@ -312,7 +315,21 @@ export class ProcessService {
       { assignee: userId },
       ...(roleIds.length > 0 ? [{ candidateGroups: { hasSome: roleIds } }] : []),
     ];
-    if (status) where.status = status as TaskStatus;
+
+    // 前端传入小写 status（pending/completed），需要映射为 Prisma 枚举值
+    if (status) {
+      const statusMap: Record<string, TaskStatus[]> = {
+        pending: ['PENDING'],
+        completed: ['APPROVED', 'REJECTED', 'DELEGATED', 'CANCELLED'],
+      };
+      const mapped = statusMap[status.toLowerCase()];
+      if (mapped) {
+        where.status = { in: mapped };
+      } else {
+        // 直接作为枚举值使用（兼容大写传入）
+        where.status = status.toUpperCase() as TaskStatus;
+      }
+    }
 
     const [items, total] = await Promise.all([
       prisma.processTask.findMany({

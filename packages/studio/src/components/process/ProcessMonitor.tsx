@@ -127,8 +127,8 @@ export default function ProcessMonitor() {
 
   /** 转办任务 mutation。 */
   const delegateMutation = useMutation({
-    mutationFn: (params: { taskId: string; userId: string; comment?: string }) =>
-      processesApi.delegateTask(params.taskId, params.userId, params.comment),
+    mutationFn: (params: { taskId: string; delegatedTo: string }) =>
+      processesApi.delegateTask(params.taskId, params.delegatedTo),
     onSuccess: () => {
       message.success('任务已转办');
       setTaskModal(null);
@@ -339,12 +339,11 @@ export default function ProcessMonitor() {
             comment,
           })
         }
-        onDelegate={(userId, comment) =>
+        onDelegate={(userId) =>
           taskModal &&
           delegateMutation.mutate({
             taskId: taskModal.id,
-            userId,
-            comment,
+            delegatedTo: userId,
           })
         }
       />

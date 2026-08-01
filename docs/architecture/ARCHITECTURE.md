@@ -7,6 +7,7 @@
 1. **元数据驱动 (Metadata-Driven)**：搭建器产出的是配置/元数据 JSON，运行时引擎读取元数据动态渲染——而非生成源代码。
 2. **同源 WorkflowSchema (SSOT)**：双模式流程建模器共用单一数据源 WorkflowSchema JSON，自研状态机引擎直接消费执行；BPMN 2.0 XML 仅供标准模式互操作（导入/导出/查看）。
 3. **类型契约先行**：`packages/shared` 定义所有跨服务 DTO/接口，作为前后端与各 agent 的对接边界。
+4. **开发态/运行态分离 (Dev/Prod Isolation)**：对标飞书 aPaaS 架构理念，开发态 (Builder/Studio) 的修改不直接生效到运行态 (Runtime)，必须经过「检查→发布」流程生成不可变版本快照后，运行态才读取已发布版本。详见 `docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`。
 
 ## 系统分层
 
@@ -48,3 +49,42 @@ API 网关 (NestJS) — 认证 / 多租户路由 / 权限 / 限流
 
 ## 技术栈速查
 见根 `package.json` 与各子包 `package.json`。核心：pnpm monorepo + Turborepo / React+Vite / NestJS+Prisma / PostgreSQL / Redis / BullMQ。
+
+## 应用生命周期与发布流程（Phase 9 — 规划中）
+
+> 调研基准: `docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`
+
+对标飞书 aPaaS 的应用生命周期管理，核心实现「开发态/运行态分离 + 版本化发布」：
+
+```
+应用 (Application)
+  ├── 开发环境 (develop lane)
+  │   ├── 页面/对象/流程/权限/云函数 (可实时编辑)
+  │   └── 变更追踪 (ChangeLog 自动记录)
+  ├── 沙箱环境 (sandbox) — 测试验证
+  └── 生产环境 (production)
+      └── 已发布版本 (不可变快照)
+          ├── v0.1.0 (AppVersion.snapshot JSON)
+          └── v1.0.0 (可回滚)
+```
+
+### 发布流程
+
+```
+开发态修改 → 检查(预检) → 填写版本号+更新说明 → 生成变更清单 → 发布 → 生成快照 → 上架运行态
+```
+
+### 核心数据模型（待实现）
+
+| 模型 | 用途 |
+|------|------|
+| `AppVersion` | 发布版本记录（版本号/更新说明/完整配置快照/状态/变更清单） |
+| `ChangeLog` | 开发态变更追踪（模块/实体/变更类型/变更人/时间） |
+| `AppCheck` | 预检记录（检查结果/问题列表/检查人/时间） |
+
+### 环境隔离原则
+
+- Studio (构建器) 操作开发态数据 — 实时编辑
+- Runtime UI 只读取已发布版本 — 通过 getBySlug API 返回快照
+- 发布操作 = 收集所有模块开发态配置 → 生成不可变 JSON 快照 → 写入 AppVersion
+- 运行态用户看不到未发布的变更

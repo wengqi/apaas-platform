@@ -108,8 +108,7 @@ export interface CompleteTaskRequest {
 }
 
 export interface DelegateTaskRequest {
-  userId: string;
-  comment?: string;
+  delegatedTo: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,20 +308,20 @@ export const processesApi = {
   /** 实例详情(含节点执行状态) */
   getInstance: (instanceId: string) =>
     client
-      .get<ApiResponse<ProcessInstanceReport>>(`/api/process-instances/${instanceId}`)
+      .get<ApiResponse<ProcessInstanceReport>>(`/api/instances/${instanceId}`)
       .then((res) => res.data.data as ProcessInstanceReport),
 
   /** 取消实例 */
   cancelInstance: (instanceId: string) =>
     client
-      .post<ApiResponse<ProcessInstance>>(`/api/process-instances/${instanceId}/cancel`)
+      .post<ApiResponse<ProcessInstance>>(`/api/instances/${instanceId}/cancel`)
       .then((res) => res.data.data as ProcessInstance),
 
   // —— 人工任务 ——
   /** 任务列表(待审批/已审批) */
   listTasks: (filter: ListTasksParams) =>
     client
-      .get<ApiResponse<UserTask[]>>(`/api/process-tasks`, {
+      .get<ApiResponse<UserTask[]>>(`/api/tasks`, {
         params: {
           assignee: filter.assignee,
           status: filter.status,
@@ -334,18 +333,17 @@ export const processesApi = {
   /** 完成任务(审批/驳回) */
   completeTask: (taskId: string, decision: 'approve' | 'reject', comment?: string) =>
     client
-      .post<ApiResponse<UserTask>>(`/api/process-tasks/${taskId}/complete`, {
+      .post<ApiResponse<UserTask>>(`/api/tasks/${taskId}/complete`, {
         decision,
         comment,
       } satisfies CompleteTaskRequest)
       .then((res) => res.data.data as UserTask),
 
   /** 转办任务 */
-  delegateTask: (taskId: string, userId: string, comment?: string) =>
+  delegateTask: (taskId: string, delegatedTo: string) =>
     client
-      .post<ApiResponse<UserTask>>(`/api/process-tasks/${taskId}/transfer`, {
-        userId,
-        comment,
+      .post<ApiResponse<UserTask>>(`/api/tasks/${taskId}/delegate`, {
+        delegatedTo,
       } satisfies DelegateTaskRequest)
       .then((res) => res.data.data as UserTask),
 

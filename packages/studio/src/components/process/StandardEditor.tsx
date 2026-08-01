@@ -73,7 +73,7 @@ export default function StandardEditor({
     const importXml = async () => {
       try {
         await modeler.importXML(initialXml);
-        // 缩放适应视区(modeler.get 返回 unknown,需断言)
+        // 缩放适应视区
         const canvas = modeler.get('canvas') as {
           zoom: (z: string | number, center?: unknown) => void;
         };

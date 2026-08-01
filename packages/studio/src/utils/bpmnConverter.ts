@@ -55,62 +55,52 @@ export function workflowToBpmnXml(schema: WorkflowSchema): WorkflowToBpmnResult 
 
   const shapes: string[] = [];
   const flows: string[] = [];
+  const edgeShapes: string[] = [];
+  /** 节点位置映射(用于计算边的 waypoint 坐标)。 */
+  const nodePositions = new Map<string, { x: number; y: number; w: number; h: number }>();
   let x = 160;
   const y = 160;
   const step = 200;
 
-  for (const node of nodes) {
-    const bpmnType = NODE_TYPE_TO_BPMN[node.type] ?? 'bpmn:task';
-    const name = escapeXml(String(node.data?.title ?? node.type));
-    const id = sanitizeId(node.id);
-    shapes.push(
-      `    <bpmndi:BPMNShape id="${id}_di" bpmnElement="${id}">
-      <dc:Box x="${x}" y="${y}" width="100" height="80"/>
-    </bpmndi:BPMNShape>`,
-    );
-    // 节点声明(简版:仅 type + name)
-    const isEvent = bpmnType.includes('Event');
-    const sizeAttr = isEvent ? '' : '';
-    void sizeAttr;
-    x += step;
-    void node;
-  }
-
-  // 重新生成节点声明(确保 id 安全)
+  // 生成节点声明 + 图形
   const nodeDecls: string[] = [];
   for (const node of nodes) {
     const bpmnType = NODE_TYPE_TO_BPMN[node.type] ?? 'bpmn:task';
     const id = sanitizeId(node.id);
     const name = escapeXml(String(node.data?.title ?? ''));
-    if (bpmnType.includes('Event') || bpmnType.includes('Gateway')) {
-      nodeDecls.push(`    <${bpmnType} id="${id}" name="${name}"/>`);
-    } else {
-      nodeDecls.push(`    <${bpmnType} id="${id}" name="${name}"/>`);
-    }
+    const isEvent = bpmnType.includes('Event');
+    const w = isEvent ? 36 : 100;
+    const h = isEvent ? 36 : 80;
+    nodePositions.set(id, { x, y, w, h });
+    nodeDecls.push(`    <${bpmnType} id="${id}" name="${name}"/>`);
+    shapes.push(
+      `    <bpmndi:BPMNShape id="${id}_di" bpmnElement="${id}">
+      <dc:Bounds x="${x}" y="${y}" width="${w}" height="${h}"/>
+    </bpmndi:BPMNShape>`,
+    );
+    x += step;
   }
 
+  // 生成边声明 + 图形(使用节点位置计算 waypoint)
   for (const edge of edges) {
     const source = sanitizeId(edge.sourceNodeID);
     const target = sanitizeId(edge.targetNodeID);
     const flowId = sanitizeId(`flow_${edge.sourceNodeID}_${edge.targetNodeID}`);
     const labelAttr = edge.label ? ` name="${escapeXml(edge.label)}"` : '';
     flows.push(`    <bpmn:sequenceFlow id="${flowId}" sourceRef="${source}" targetRef="${target}"${labelAttr}/>`);
-  }
 
-  // 边的图形(简化:直线)
-  const edgeShapes: string[] = [];
-  for (const edge of edges) {
-    const source = sanitizeId(edge.sourceNodeID);
-    const target = sanitizeId(edge.targetNodeID);
-    const flowId = sanitizeId(`flow_${edge.sourceNodeID}_${edge.targetNodeID}`);
+    const srcPos = nodePositions.get(source);
+    const tgtPos = nodePositions.get(target);
+    const sx = srcPos ? srcPos.x + srcPos.w : 0;
+    const sy = srcPos ? srcPos.y + srcPos.h / 2 : 0;
+    const tx = tgtPos ? tgtPos.x : 0;
+    const ty = tgtPos ? tgtPos.y + tgtPos.h / 2 : 0;
     edgeShapes.push(
       `      <bpmndi:BPMNEdge id="${flowId}_di" bpmnElement="${flowId}">
-        <di:waypoint x="0" y="0"/>
-        <di:waypoint x="0" y="0"/>
+        <di:waypoint x="${sx}" y="${sy}"/>
+        <di:waypoint x="${tx}" y="${ty}"/>
       </bpmndi:BPMNEdge>`,
     );
-    void source;
-    void target;
   }
 
   const bpmnXml = `<?xml version="1.0" encoding="UTF-8"?>

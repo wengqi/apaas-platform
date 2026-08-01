@@ -9,7 +9,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import { PermissionGuard } from '../permission/permission.guard.js';
+import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { ObjectService } from './object.service.js';
 import type {
@@ -46,7 +47,7 @@ import type {
  *   DELETE /api/views/:viewId               — 删除视图
  */
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(PermissionGuard)
 export class ObjectController {
   constructor(private readonly objectService: ObjectService) {}
 
@@ -64,6 +65,7 @@ export class ObjectController {
   }
 
   @Post('apps/:appId/objects')
+  @RequirePermission('DATA_MODEL', 'CREATE')
   async createObject(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
@@ -88,6 +90,7 @@ export class ObjectController {
   }
 
   @Put('objects/:objectId')
+  @RequirePermission('DATA_MODEL', 'EDIT', 'objectId')
   async updateObject(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -102,6 +105,7 @@ export class ObjectController {
   }
 
   @Delete('objects/:objectId')
+  @RequirePermission('DATA_MODEL', 'DELETE', 'objectId')
   async deleteObject(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -115,6 +119,7 @@ export class ObjectController {
   // ===========================================================================
 
   @Post('objects/:objectId/fields')
+  @RequirePermission('DATA_MODEL', 'CREATE', 'objectId')
   async addField(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -129,6 +134,7 @@ export class ObjectController {
   }
 
   @Put('objects/:objectId/fields/:fieldId')
+  @RequirePermission('DATA_MODEL', 'EDIT', 'objectId')
   async updateField(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -145,6 +151,7 @@ export class ObjectController {
   }
 
   @Delete('objects/:objectId/fields/:fieldId')
+  @RequirePermission('DATA_MODEL', 'DELETE', 'objectId')
   async deleteField(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -169,6 +176,7 @@ export class ObjectController {
   }
 
   @Post('objects/:objectId/views')
+  @RequirePermission('DATA_MODEL', 'CREATE', 'objectId')
   async createView(
     @Param('objectId') objectId: string,
     @Body() body: CreateViewInput,
@@ -178,6 +186,7 @@ export class ObjectController {
   }
 
   @Put('views/:viewId')
+  @RequirePermission('DATA_MODEL', 'EDIT')
   async updateView(
     @Param('viewId') viewId: string,
     @Body() body: UpdateViewInput,
@@ -187,6 +196,7 @@ export class ObjectController {
   }
 
   @Delete('views/:viewId')
+  @RequirePermission('DATA_MODEL', 'DELETE')
   async deleteView(@Param('viewId') viewId: string) {
     await this.objectService.deleteView(viewId);
     return { ok: true as const, data: { deleted: true } };

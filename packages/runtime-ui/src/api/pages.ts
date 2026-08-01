@@ -1,0 +1,129 @@
+/**
+ * 页面 API 客户端 — Runtime UI 用。
+ * 对接 Gateway 的 /api/apps/:appId/pages 和 /api/pages 端点。
+ * 类型从 studio api/pages.ts 精简复制（仅运行时所需）。
+ */
+
+import apiClient from './client';
+
+// ---------------------------------------------------------------------------
+// 枚举
+// ---------------------------------------------------------------------------
+
+export type ComponentType =
+  | 'page' | 'section' | 'tabs' | 'grid' | 'grid_column'
+  | 'data_table' | 'detail_card' | 'list'
+  | 'form' | 'text_input' | 'textarea' | 'number_input' | 'select'
+  | 'multi_select' | 'date_picker' | 'radio' | 'checkbox' | 'switch'
+  | 'lookup_picker' | 'sub_form_table' | 'attachment_upload' | 'user_picker'
+  | 'button' | 'statistic' | 'chart' | 'rich_text_display' | 'divider' | 'text';
+
+export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
+
+export type ActionType =
+  | 'query_records' | 'create_record' | 'update_record' | 'delete_record'
+  | 'navigate' | 'open_modal' | 'close_modal' | 'confirm' | 'toast'
+  | 'call_api' | 'trigger_process' | 'set_variable';
+
+export type VariableType = 'record' | 'record_list' | 'scalar' | 'object' | 'array';
+
+// ---------------------------------------------------------------------------
+// 组件树 (Schema)
+// ---------------------------------------------------------------------------
+
+export interface ActionConfig {
+  type: ActionType;
+  params?: Record<string, PropValue>;
+}
+
+export type PropValue =
+  | string
+  | number
+  | boolean
+  | null
+  | PropValue[]
+  | { __bind: string }
+  | { __expr: string }
+  | { __action: ActionConfig }
+  | { [key: string]: PropValue };
+
+export type ComponentProps = Record<string, PropValue>;
+
+export interface ComponentNode {
+  id: string;
+  type: ComponentType;
+  name?: string;
+  props: ComponentProps;
+  children?: ComponentNode[];
+  hidden?: boolean | { __bind: string };
+}
+
+// ---------------------------------------------------------------------------
+// 视图模型
+// ---------------------------------------------------------------------------
+
+export interface DatasourceConfig {
+  objectId: string;
+  viewId?: string;
+  autoQuery: boolean;
+}
+
+export interface VariableDef {
+  type: VariableType;
+  initialValue?: PropValue;
+  datasource?: DatasourceConfig;
+  description?: string;
+}
+
+export interface ViewModel {
+  variables: Record<string, VariableDef>;
+}
+
+// ---------------------------------------------------------------------------
+// 页面 Schema / 元数据
+// ---------------------------------------------------------------------------
+
+export interface PageSchema {
+  version: '1';
+  pageType: PageType;
+  viewModel: ViewModel;
+  root: ComponentNode;
+}
+
+export interface PageMeta {
+  id: string;
+  tenantId?: string;
+  appId: string;
+  name: string;
+  apiName: string;
+  type: PageType;
+  objectId?: string;
+  schema: PageSchema;
+  published: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// API
+// ---------------------------------------------------------------------------
+
+export const pagesApi = {
+  /** 列出应用下已发布页面 */
+  list: (appId: string) =>
+    apiClient
+      .get(`/apps/${appId}/pages`)
+      .then((res) => res.data.data as PageMeta[]),
+
+  /** 按 ID 获取页面详情 */
+  get: (pageId: string) =>
+    apiClient
+      .get(`/pages/${pageId}`)
+      .then((res) => res.data.data as PageMeta),
+
+  /** 按 slug 获取已发布页面（运行时渲染用） */
+  getBySlug: (appId: string, slug: string) =>
+    apiClient
+      .get(`/apps/${appId}/pages/slug/${slug}`)
+      .then((res) => res.data.data as PageMeta),
+};

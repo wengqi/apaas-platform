@@ -13,7 +13,8 @@
  *   到达 End 节点 → 令牌终止；无活跃令牌则实例 COMPLETED
  */
 
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { prisma, Prisma } from '@apaas/db';
 import type {
   WorkflowSchema,
@@ -26,12 +27,17 @@ import {
   writeNodeOutput,
 } from './process-utils.js';
 import type { ExecutionContext, InstanceRow } from './types.js';
+import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 
 @Injectable()
 export class ProcessEngine {
   private readonly logger = new Logger(ProcessEngine.name);
 
-  constructor(private readonly registry: NodeExecutorRegistry) {}
+  constructor(
+    private readonly registry: NodeExecutorRegistry,
+    @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
+    @Inject(DELAY_QUEUE) private readonly delayQueue: Queue,
+  ) {}
 
   // ===========================================================================
   // 启动流程实例
@@ -87,8 +93,8 @@ export class ProcessEngine {
       `启动流程实例 ${instance.id}（流程 ${def.apiName} v${def.version}），start 节点 ${startNode.id}`,
     );
 
-    // 推进令牌执行
-    await this.executeNextNode(instance.id);
+    // 异步入队：由 BullMQ Worker 消费推进令牌
+    await this.processQueue.add('execute', { instanceId: instance.id });
     return instance.id;
   }
 
@@ -99,7 +105,10 @@ export class ProcessEngine {
   /**
    * 执行下一个节点（token 流推进）。
    *
-   * 循环处理当前所有活跃令牌，每个令牌执行对应节点并推进，直到：
+   * 每次调用处理一个活跃令牌的推进，然后重新入队继续下一轮。
+   * 这样每个节点的执行都在独立的 BullMQ job 中，实现异步解耦 + 崩溃恢复。
+   *
+   * 终止条件：
    * - 无活跃令牌（全部到达 End，实例 COMPLETED）
    * - 某节点返回 wait（实例 WAITING_USER_TASK）
    * - 节点执行失败（实例 FAILED）
@@ -121,7 +130,7 @@ export class ProcessEngine {
     const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
     const variables = (instance.variables as Record<string, unknown>) ?? {};
 
-    // 处理活跃令牌，逐个推进直到稳定
+    // 处理活跃令牌，逐个推进
     while (instance.activeNodeIds.length > 0 && instance.status === 'RUNNING') {
       const nodeId = instance.activeNodeIds[0]!;
       const node = this.findNode(schema, nodeId);
@@ -195,6 +204,8 @@ export class ProcessEngine {
       appId: instance.processDef.appId,
       startSubProcess: (defId, trigCtx) =>
         this.startProcess(instance.tenantId, defId, trigCtx),
+      scheduleDelay: (instanceId, nodeId, delayMs) =>
+        this.scheduleDelay(instanceId, nodeId, delayMs),
     };
 
     try {
@@ -334,8 +345,8 @@ export class ProcessEngine {
       `任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`,
     );
 
-    // 继续推进令牌
-    await this.executeNextNode(task.instance.id);
+    // 异步入队：由 BullMQ Worker 消费推进令牌
+    await this.processQueue.add('execute', { instanceId: task.instance.id });
   }
 
   // ===========================================================================
@@ -365,6 +376,96 @@ export class ProcessEngine {
     ]);
 
     this.logger.log(`流程实例 ${instanceId} 已取消`);
+  }
+
+  // ===========================================================================
+  // 延时节点恢复
+  // ===========================================================================
+
+  /**
+   * 恢复延时节点 — BullMQ delayed job 到时后调用。
+   *
+   * 将延时节点的 NodeExecution 标记为 COMPLETED，
+   * 然后重新入队推进令牌（此时节点已执行完毕，引擎会计算下游节点并推进）。
+   *
+   * @param instanceId 流程实例 ID
+   * @param nodeId 延时节点 ID
+   */
+  async resumeDelayedNode(instanceId: string, nodeId: string): Promise<void> {
+    const instance = await prisma.processInstance.findFirst({
+      where: { id: instanceId },
+      include: { processDef: true },
+    });
+    if (!instance) throw new NotFoundException('流程实例不存在');
+    // 延时节点恢复时，实例状态应为 WAITING_USER_TASK（delay executor 返回 wait: true 导致）
+    // 也可能是 RUNNING（其他场景），两者都允许恢复
+    if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
+      this.logger.debug(
+        `实例 ${instanceId} 状态为 ${instance.status}，延时恢复跳过`,
+      );
+      return;
+    }
+
+    // 标记延时节点的 NodeExecution 为 COMPLETED
+    await prisma.nodeExecution.updateMany({
+      where: { instanceId, nodeId, status: 'WAITING' },
+      data: { status: 'COMPLETED', finishedAt: new Date() },
+    });
+
+    // 恢复实例状态为 RUNNING（从 WAITING_USER_TASK 恢复）
+    if (instance.status === 'WAITING_USER_TASK') {
+      await prisma.processInstance.update({
+        where: { id: instanceId },
+        data: { status: 'RUNNING' },
+      });
+    }
+
+    // 推进令牌：移除当前延时节点的令牌，添加下游节点令牌
+    const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
+    const node = this.findNode(schema, nodeId);
+    const outgoing = this.getOutgoingEdges(schema, nodeId);
+    const nextNodeIds = outgoing.map((e) => e.targetNodeID);
+
+    await this.advanceTokens(instance, nodeId, nextNodeIds, (instance.variables as Record<string, unknown>) ?? {});
+
+    this.logger.log(
+      `实例 ${instanceId} 延时节点 ${nodeId} 已恢复，令牌推进到下游: ${nextNodeIds.join(', ')}`,
+    );
+
+    // 重新入队推进下一节点
+    await this.processQueue.add('execute', { instanceId });
+  }
+
+  /**
+   * 调度延时恢复 — 供 DelayExecutor 调用。
+   *
+   * 将实例置为 WAITING 状态（暂停令牌推进），并添加 BullMQ delayed job。
+   *
+   * @param instanceId 流程实例 ID
+   * @param nodeId 延时节点 ID
+   * @param delayMs 延时毫秒数
+   */
+  async scheduleDelay(
+    instanceId: string,
+    nodeId: string,
+    delayMs: number,
+  ): Promise<void> {
+    // 标记 NodeExecution 为 WAITING
+    await prisma.nodeExecution.updateMany({
+      where: { instanceId, nodeId, status: 'RUNNING' },
+      data: { status: 'WAITING' },
+    });
+
+    // 添加 delayed job
+    await this.delayQueue.add(
+      'resume',
+      { instanceId, nodeId },
+      { delay: delayMs },
+    );
+
+    this.logger.log(
+      `实例 ${instanceId} 节点 ${nodeId} 延时 ${delayMs}ms，已调度 BullMQ delayed job`,
+    );
   }
 
   // ===========================================================================

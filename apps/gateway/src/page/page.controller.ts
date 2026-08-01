@@ -9,7 +9,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import { PermissionGuard } from '../permission/permission.guard.js';
+import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { PageService } from './page.service.js';
 import type { CreatePageRequest, UpdatePageRequest } from '@apaas/shared';
@@ -28,7 +29,7 @@ import type { CreatePageRequest, UpdatePageRequest } from '@apaas/shared';
  *   POST   /api/pages/:pageId/publish      — 发布页面
  */
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(PermissionGuard)
 export class PageController {
   constructor(private readonly pageService: PageService) {}
 
@@ -42,6 +43,7 @@ export class PageController {
   }
 
   @Post('apps/:appId/pages')
+  @RequirePermission('PAGE', 'CREATE')
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
@@ -64,7 +66,18 @@ export class PageController {
     return { ok: true as const, data: page };
   }
 
+  @Get('apps/:appId/pages/slug/:slug')
+  async getBySlug(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') _appId: string,
+    @Param('slug') slug: string,
+  ) {
+    const page = await this.pageService.getBySlug(req.user.tenantId, slug);
+    return { ok: true as const, data: page };
+  }
+
   @Put('pages/:pageId')
+  @RequirePermission('PAGE', 'EDIT', 'pageId')
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
@@ -79,6 +92,7 @@ export class PageController {
   }
 
   @Delete('pages/:pageId')
+  @RequirePermission('PAGE', 'DELETE', 'pageId')
   async delete(
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
@@ -88,6 +102,7 @@ export class PageController {
   }
 
   @Post('pages/:pageId/publish')
+  @RequirePermission('PAGE', 'EDIT', 'pageId')
   async publish(
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,

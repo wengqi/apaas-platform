@@ -49,13 +49,23 @@ export class PermissionGuard extends JwtAuthGuard {
       ? request.params?.[permission.targetIdParam]
       : undefined;
 
-    // 有 targetIdParam 但 params 中没有 → 仅检查类型+动作级权限
+    // 有 targetId → 检查具体目标级权限
+    // 无 targetId（CREATE 等路由 targetId 在 body 中）→ 仍需检查类型+动作级权限
+    //   使用通配符 '*' 作为 targetId，检查用户是否有该类型+动作的 ALLOW 规则
     if (targetId) {
       await this.permissionService.check(
         user,
         permission.type,
         permission.action,
         targetId,
+      );
+    } else {
+      // 无具体目标：检查类型+动作级权限（通配符）
+      await this.permissionService.check(
+        user,
+        permission.type,
+        permission.action,
+        '*',
       );
     }
 

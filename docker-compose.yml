@@ -1,0 +1,98 @@
+# ============================================================
+# aPaaS 全量 Docker 部署
+# 用法: docker compose up -d --build
+# ============================================================
+
+services:
+  # ---------- 基础设施 ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: apaas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apaas
+      POSTGRES_PASSWORD: apaas
+      POSTGRES_DB: apaas
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - apaas_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apaas -d apaas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: apaas-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - apaas_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ---------- 后端 API 网关 ----------
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    container_name: apaas-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://apaas:apaas@postgres:5432/apaas?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-in-production-use-long-random-string}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      GATEWAY_PORT: "3000"
+      CORS_ORIGINS: "http://localhost:8080,http://localhost:8081"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------- 前端：Studio 搭建器 ----------
+  studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: studio
+    container_name: apaas-studio
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - gateway
+
+  # ---------- 前端：Runtime UI 运行时 ----------
+  runtime-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-ui
+    container_name: apaas-runtime-ui
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - gateway
+
+volumes:
+  apaas_pg_data:
+    name: apaas_pg_data
+  apaas_redis_data:
+    name: apaas_redis_data

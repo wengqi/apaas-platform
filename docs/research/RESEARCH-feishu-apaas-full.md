@@ -1,6 +1,7 @@
 # 飞书 aPaaS 平台完整功能体系研究报告
 
 > 调研日期：2026-07-31
+> 差距分析更新：2026-08-01（Phase 1-4 完成后基于代码审计修正）
 > 调研目标：全面调研飞书 aPaaS 的所有功能模块（除 AI 功能外），产出完整功能清单，指导低代码平台开发
 > 数据来源：飞书 aPaaS 帮助中心、产品官网、架构剖析文章、代码库现状分析
 > 用途：作为后续所有 Phase 的功能对齐基准
@@ -721,7 +722,7 @@
 | Docker Compose（PG + Redis） | 基础设施 | `infra/` |
 | flowgram.ai fork | 流程画布引擎 | `packages/studio/` (simplified 目录) |
 
-#### 对象与数据建模层（Phase 1 进行中）
+#### 对象与数据建模层（Phase 1 ✅ 已完成）
 
 | 已实现功能 | 对应飞书 aPaaS 模块 | 实现位置 |
 |---|---|---|
@@ -733,10 +734,13 @@
 | 关联关系类型 | A.3 关联关系 | `shared/src/object/index.ts` (RelationType) |
 | JSONB 宽表存储 | 数据存储 | `schema.prisma` (Record model) |
 | 系统字段定义 | A.5 系统字段 | `schema.prisma` + `shared/src/object/index.ts` |
-| 对象设计器前端骨架 | A.1 对象管理 UI | `packages/studio/src/components/object/` |
-| 对象列表 + 详情 | A.1 对象列表/详情 | `ObjectListPanel.tsx`, `ObjectDetail.tsx` |
-| 字段表格 + 类型选择器 + 配置抽屉 | A.2 字段管理 UI | `FieldTable.tsx`, `FieldTypePicker.tsx`, `FieldConfigDrawer.tsx` |
-| 视图列表面板 | A.4 视图管理 UI | `ViewListPanel.tsx` |
+| 对象/字段/视图 CRUD 后端 (16 路由) | A.1 对象 API | `apps/gateway/src/object.controller.ts` + `object.service.ts` |
+| 记录 CRUD + JSONB 动态查询 (5 路由, 12 筛选操作符) | J.1 记录管理 | `apps/gateway/src/record.controller.ts` + `record.service.ts` |
+| 公式引擎 (expr-eval, 内置函数 ROUND/ABS/LEN/UPPER/LOWER/CONCAT/IF/NOW/TODAY) | A.2 公式 | `apps/gateway/src/object/formula-engine.ts` |
+| 自动编号生成 ({seq:0000}/{yyyy}/{mm}/{dd} 占位符) | A.2 自动编号 | `apps/gateway/src/object/auto-number.ts` |
+| 对象设计器 (字段表格+类型选择器+配置抽屉+视图配置器+记录列表) | A.1 对象管理 UI | `packages/studio/src/components/object/` (6 组件) |
+| 视图配置器 (筛选 AND/OR + 14 操作符 / 排序 / 字段显隐) | A.4 列表视图能力 | `ViewConfigurator.tsx` |
+| 字段拖拽排序 | A.2 字段管理 | `FieldTable.tsx` (dnd-kit) |
 | 对象 CRUD API 封装 | A.1 对象 API | `packages/studio/src/api/objects.ts` |
 | 应用管理（创建/列表/工作台） | I.1 应用生命周期 | `AppList.tsx`, `AppDashboard.tsx` |
 | 应用元数据模型 | I.1 应用管理 | `schema.prisma` (Application) + `shared/src/application/index.ts` |
@@ -764,145 +768,177 @@
 | 权限五级类型 | E.1 五级权限 | `shared/src/permission/index.ts` (PermissionType) |
 | 角色与组织类型 | E.3 角色与组织 | `shared/src/permission/index.ts` (Role/OrgNode) |
 
-### 4.2 已规划但未实现的功能
+#### 页面搭建器层（Phase 2 ✅ 已完成）
 
-#### 对象与数据建模（Phase 1 待完成）
+| 已实现功能 | 对应飞书 aPaaS 模块 | 实现位置 |
+|---|---|---|
+| 页面 Schema 存取 API (5 路由: CRUD + publish) | C.3 页面搭建 | `apps/gateway/src/page.controller.ts` + `page.service.ts` |
+| 三栏搭建器 (组件面板 + 画布 + 属性面板 + 工具栏 + ViewModel 面板) | C.3 页面搭建 | `packages/studio/src/pages/PageBuilder.tsx` |
+| 25 组件库 (容器 5 + 数据 3 + 表单 14 + 展示 7) | C.2 组件库 | `constants/pageComponents.ts` + `ComponentRenderer.tsx` |
+| dnd-kit 拖拽 (DragOverlay + 选择边框 + 悬浮工具栏 + 放置区) | C.3 拖拽式搭建 | `PageBuilder.tsx` |
+| 视图模型 (变量树 + datasource + autoQuery) | C.3 视图模型 | `RuntimeStore.tsx` |
+| 表达式引擎 ({ __bind } / { __expr } / {{ }} 模板插值) | C.3 表达式绑定 | `expression-engine.ts` |
+| 事件动作引擎 (12 动作: query/create/update/delete/navigate/modal/confirm/toast/call_api/trigger_process/set_variable) | C.4 事件与交互 | `action-executor.ts` |
+| Studio 预览渲染器 (递归渲染 + 表单双向绑定 + 数据加载) | C.3 运行时渲染 | `ComponentRenderer.tsx` + `RuntimeStore.tsx` |
+| 5 种页面类型 (list/detail/form/dashboard/custom) | C.1 页面类型 | `constants/pageComponents.ts` |
+| 撤销/重做历史栈 | — | `BuilderToolbar.tsx` |
 
-| 待实现功能 | 飞书 aPaaS 对应 | 当前状态 | 备注 |
+#### 流程引擎层（Phase 3 ✅ 已完成）
+
+| 已实现功能 | 对应飞书 aPaaS 模块 | 实现位置 |
+|---|---|---|
+| 状态机引擎 (token-flow + activeNodeIds + NodeExecution 持久化 + crash 可恢复) | D.4 流程运行时 | `apps/gateway/src/process/process-engine.ts` |
+| 节点执行器注册 (12 类型: start/end/trigger/assign/condition/parallel/delay/object_operation/user_task/notification/http_request/sub_process) | D.2 流程节点 | `node-executor.registry.ts` + 各 executor |
+| 人工任务 (审批/委派 + 候选组 + 表单数据) | D.2 人工任务 | `process.service.ts` + `ProcessTask` 模型 |
+| IFlowValue 四态变量 (constant/ref/expression/template + dotted-path 导航) | D.5 变量系统 | `process-utils.ts` |
+| 通知模版管理 (CRUD + 变量插值 + 3 渠道: in_app/email/webhook) | D.3 通知模版 | `process.controller.ts` + `NotificationTemplate` 模型 |
+| 流程定义 CRUD + 发布 (14 路由) | D. 流程引擎 | `process.controller.ts` |
+| 简化模式编辑器 (FlowGram Fixed Layout + aPaaS 业务节点物料) | D. 流程编排 | `SimplifiedEditor.tsx` + `ApaasNodeRenderer.tsx` |
+| 标准模式编辑器 (bpmn-js Modeler + 调色板 + 属性面板 + XML 视图) | D. 流程编排 | `StandardEditor.tsx` |
+| 双模式同源互转 (workflowToBpmnXml / bpmnXmlToWorkflow + 只读降级) | D. 流程引擎 | `ModeSwitcher.tsx` |
+| 流程监控 (运行实例列表 5s 轮询 + 节点执行状态 + 人工任务处理面板) | D.4 流程监控 | `ProcessMonitor.tsx` |
+| 10 节点配置表单 (trigger/start/end/objectOperation/condition/userTask/notification/httpRequest/assign/delay) | D.2 流程节点 | `configs/*ConfigForm.tsx` |
+| FlowValueEditor + VariablePicker + FieldMapper | D.5 变量系统 | `FlowValueEditor.tsx`, `VariablePicker.tsx`, `FieldMapper.tsx` |
+
+#### 权限与多租户层（Phase 4 ✅ 已完成）
+
+| 已实现功能 | 对应飞书 aPaaS 模块 | 实现位置 |
+|---|---|---|
+| 五级权限引擎 (RBAC+ABAC, deny-overrides, default-deny, super-admin 短路, 5 类型: PAGE/RECORD/PROCESS/DATA_MODEL/CONNECTOR, 7 动作) | E.1 五级权限 | `permission.service.ts` |
+| 行级条件权限 (condition JSON) + 字段级权限 (fieldScope JSON) | E.2 权限粒度 | `permission.service.ts` (引擎内实现, **未挂载路由**) |
+| 角色管理 (租户级 + 应用级 + 内置角色 ADMIN/BUILDER) | E.3 角色与组织 | `role.service.ts` + `role.controller.ts` |
+| 组织架构 (自引用树 + DEPARTMENT/TEAM/POSITION + 成员 + 角色授予) | E.3 组织架构 | `org.service.ts` + `org.controller.ts` |
+| 用户管理 (CRUD + 角色/组织分配) | E.3 角色与组织 | `user.service.ts` + `user.controller.ts` |
+| JWT 增强 (payload 携带 userId/tenantId/email + 加载直接+组织授予角色) | E.4 多租户 | `jwt.strategy.ts` |
+| 租户隔离 (tenantId 行级过滤) | E.4 多租户 | 全局 service 层 |
+| 权限管理 UI (角色管理 + 组织树 + 用户管理, 3 tab) | E.3 角色与组织 UI | `pages/Permissions.tsx` + 3 组件 |
+
+### 4.2 已完成模块的剩余缺口
+
+> Phase 1-4 均已落地实现，以下为各模块尚未完成的部分。
+
+#### 对象与数据建模（Phase 1 ✅ 已完成，剩余缺口）
+
+| 缺口 | 飞书 aPaaS 对应 | 严重度 | 备注 |
 |---|---|---|---|
-| meta-svc 对象 CRUD 后端逻辑 | A.1 对象 API | 骨架，仅 HealthController | 需填充完整 CRUD |
-| runtime-svc 记录 CRUD + JSONB 查询 | J.1 记录管理 | 骨架，仅 HealthController | 需填充记录 API |
-| 视图配置器（筛选/排序/显隐） | A.4 列表视图能力 | ViewListPanel 仅列表 | 需 ViewConfigurator |
-| 字段拖拽排序 | A.2 字段管理 | 表格已有，dnd-kit 未接入 | 需新增依赖 |
-| 选项管理器 | A.2 选择类字段 | 未实现 | 单选/多选专用 |
-| 公式/汇总字段执行引擎 | A.2 公式/汇总 | 类型已定义，执行未实现 | P2 |
-| 记录导入导出 | J.2 数据导入导出 | 未实现 | P1 |
-| 批量操作 | J.1 批量删除/编辑 | 未实现 | P1 |
-| 软删除/回收站 | J.1 删除记录 | 未实现 | P2 |
+| 无 GIN 索引 | — | 中 | records.data JSONB 查询无加速，大数据量全表扫描 |
+| 无软删除/回收站 | J.1 删除记录 | 低 | 当前为硬删除 |
+| 无批量操作 | J.1 批量删除/编辑 | 中 | 移入 Phase 10 |
+| 无数据导入导出 | J.2 数据导入导出 | 中 | 移入 Phase 10 |
 
-#### 页面搭建器（Phase 2 待实现）
+#### 页面搭建器（Phase 2 ✅ 已完成，剩余缺口）
 
-| 待实现功能 | 飞书 aPaaS 对应 | 当前状态 | 备注 |
+| 缺口 | 飞书 aPaaS 对应 | 严重度 | 备注 |
 |---|---|---|---|
-| 拖拽式可视化搭建器 | C.3 页面搭建 | 占位页 | Phase 2 核心 |
-| 组件面板 + 画布 + 属性面板 | C.3 页面搭建 | 未实现 | — |
-| 组件树管理 | C.3 组件树 | 未实现 | — |
-| 表达式绑定 | C.3 表达式绑定 | 类型已定义 | 需实现引擎 |
-| 视图模型运行时 | C.3 视图模型 | 类型已定义 | 需实现引擎 |
-| 事件系统 | C.4 事件与交互 | 类型已定义 | 需实现 |
-| 运行时渲染器 | C.3 页面渲染 | 未实现 | runtime-ui |
-| PC/移动端同步 | C.3 PC/移动同步 | 未实现 | — |
-| 自定义组件 | C.2 自定义组件 | 未实现 | 后续 |
-| 组件市场 | C.2 组件市场 | 未实现 | 后续 |
+| **runtime-ui 独立渲染引擎未实现** | C.3 页面渲染 | 🔴 高 | 桩函数，搭建的应用只能在 Studio 预览运行，阻塞 P9 应用发布 |
+| 事件配置 UI 占位 | C.4 事件与交互 | 中 | action-executor 引擎完整但属性面板 Events tab 为占位符 |
+| trigger_process 动作未对接 | C.4 事件与交互 | 中 | 仅 console.log |
+| 图表组件占位 | H.1 图表组件 | 中 | 无图表引擎（依赖 Phase 7） |
+| PC/移动端适配 | C.3 PC/移动同步 | 低 | — |
+| JS 页面代码扩展 | C.3 JS 扩展 | 低 | — |
+| 自定义组件 | C.2 自定义组件 | 低 | — |
 
-#### 流程引擎（Phase 3 待实现）
+#### 流程引擎（Phase 3 ✅ 已完成，剩余缺口）
 
-| 待实现功能 | 飞书 aPaaS 对应 | 当前状态 | 备注 |
+| 缺口 | 飞书 aPaaS 对应 | 严重度 | 备注 |
 |---|---|---|---|
-| 自研执行引擎（状态机 + BullMQ） | D.4 流程运行时 | 骨架 + 自检端点 | Phase 3 核心 |
-| 节点执行器注册 | D.2 流程节点 | 类型已定义 | 需逐个实现 |
-| bpmn-to-workflow 转换器 | D. 流程引擎 | 类型已定义 | 需实现 |
-| workflow-to-bpmn 转换器 | D. 流程引擎 | 类型已定义 | 需实现 |
-| 简化模式编辑器（flowgram fork） | D. 流程编排 | fork 已就绪 | 需定制业务节点 |
-| 标准模式编辑器（bpmn-js） | D. 流程编排 | 未实现 | — |
-| 双模式同源互转 | D. 流程引擎 | 未实现 | — |
-| 流程监控仪表盘 | D.4 流程监控 | 未实现 | — |
-| 人工任务处理 | D.2 人工任务 | 未实现 | — |
-| 流程模板 | D.3 流程模板 | 未实现 | — |
+| **无 BullMQ 异步队列** | D.4 异步执行 | 🔴 高 | 同步执行，无崩溃恢复，延时 ≤60s |
+| **无自动触发器** | D.1 触发器 | 🔴 高 | 仅手动启动，无记录事件/定时/按钮触发 |
+| 7 节点类型未实现 | D.2 流程节点 | 中 | batch_operation/inclusive/loop/wait_for_condition/break/continue/comment |
+| 通知 email/in_app 为日志桩 | D.2 发送通知 | 中 | 无 SMTP/消息表，仅 webhook 可用 |
+| 后端无 BPMN 转换器 | D. 流程引擎 | 低 | 前端已实现互转，后端 bpmnXml 原样存储 |
+| 流程 undo/redo 无 handler | — | 低 | 按钮渲染但不可用 |
+| 流程导出菜单无实现 | — | 低 | UI 存在但 onClick 空 |
+| NotificationTemplateManager 孤立 | D.3 通知模版 | 低 | 完整组件未路由 |
+| 流程模板 | D.3 流程模板 | 低 | — |
 
-#### 权限与多租户（Phase 4 待实现）
+#### 权限与多租户（Phase 4 ✅ 已完成，剩余缺口）
 
-| 待实现功能 | 飞书 aPaaS 对应 | 当前状态 | 备注 |
+| 缺口 | 飞书 aPaaS 对应 | 严重度 | 备注 |
 |---|---|---|---|
-| 角色定义与分配 | E.3 角色与组织 | Prisma 模型已定义 | 需实现逻辑 |
-| 五级权限规则 | E.1 五级权限 | 类型已定义 | 需实现执行 |
-| 行级数据权限 | E.2 行级权限 | recordLevelSecurity 字段预留 | 需实现 |
-| 字段级权限 | E.2 列级权限 | 未实现 | — |
-| 组织架构管理 | E.3 组织架构 | Prisma 模型已定义 | 需实现 |
-| 行为追踪/审计日志 | E.4 行为追踪 | 未实现 | — |
+| **权限引擎未挂载路由** | E.1 五级权限 | 🔴 高 | @RequirePermission 应用于 0 个控制器，任何登录用户可访问所有 API |
+| 无审计日志写入 | E.4 行为追踪 | 中 | AuditLog 模型存在但无写入路径 |
+| 无组织授权继承扩散 | E.3 组织授权 | 中 | 上级不自动继承下级权限 |
+| 权限规则编辑 UI 只读 | E.1 五级权限 UI | 中 | setRules API 存在但 UI 未使用 |
 
-### 4.3 完全遗漏的功能模块
+### 4.3 完全未启动的功能模块
 
-| 遗漏模块 | 飞书 aPaaS 对应 | 严重程度 | 建议 |
-|---|---|---|---|
-| **数据集与数据流** | B. 数据集与数据流 | 高 | 飞书核心亮点之一，需新增模块 |
-| **连接器与集成** | F. 连接器与集成 | 高 | 流程引擎 HTTP 节点有类型定义，但无连接器管理 |
-| **云函数** | G.1 云函数 | 中 | 流程有代码处理节点类型，但无云函数平台 |
-| **自定义组件开发** | G.2 自定义组件 | 中 | 页面组件类型已定义，但无自定义组件开发能力 |
-| **JS 代码扩展** | G.3 JS 代码扩展 | 中 | 飞书事件系统核心能力，当前完全缺失 |
-| **仪表盘/图表** | H. 仪表盘与报表 | 中 | 页面有 Chart 组件类型，但无图表引擎 |
-| **运营报表** | H.2 运营报表 | 低 | 应用管理层面功能 |
-| **OpenAPI 凭证管理** | F.3 OpenAPI | 中 | 外部集成所需 |
-| **应用发布快照** | I.1 应用快照 | 中 | publishedSnapshot 字段已预留，逻辑未实现 |
-| **飞书生态集成** | K. 飞书生态集成 | 低（非对标必需） | 我们是独立平台，不依赖飞书 |
-| **本地代理服务** | F.2 本地代理 | 低 | 企业内网访问 |
-| **组件市场** | C.2 组件市场 | 低 | 后续迭代 |
+> 以下模块在 Phase 5-10 范围内，尚无任何代码实现。
+
+| 遗漏模块 | 飞书 aPaaS 对应 | 严重程度 | 对应 Phase | 建议 |
+|---|---|---|---|---|
+| **数据集与数据流** | B. 数据集与数据流 | 高 | Phase 6 | 飞书核心亮点之一，需新增模块 |
+| **连接器管理** | F. 连接器与集成 | 高 | Phase 5 | 流程 http_request 节点已有，但无连接器实体/管理/OpenAPI 凭证 |
+| **应用发布快照与版本** | I.1 应用快照 / I.2 环境管理 | 高 | Phase 9 | publishedSnapshot 字段已预留，逻辑未实现；依赖 runtime-ui 渲染引擎 |
+| **仪表盘/图表引擎** | H. 仪表盘与报表 | 中 | Phase 7 | 页面有 chart 组件类型占位，但无图表引擎 |
+| **云函数平台** | G.1 云函数 | 中 | Phase 8 | 流程有代码处理节点类型，但无云函数运行时 |
+| **自定义组件开发** | G.2 自定义组件 | 中 | Phase 8 | 页面组件类型已定义，但无自定义组件开发能力 |
+| **JS 代码扩展** | G.3 JS 代码扩展 | 中 | Phase 8 | 飞书事件系统核心能力，当前完全缺失 |
+| **数据导入导出** | J.2 数据导入导出 | 中 | Phase 10 | CSV/Excel 导入导出 + 列映射 + 预校验 |
+| **运营报表** | H.2 运营报表 | 低 | Phase 9 | 应用管理层面功能 |
+| **本地代理服务** | F.2 本地代理 | 低 | Phase 5 | 企业内网访问 |
+| **组件市场** | C.2 组件市场 | 低 | 后续 | 后续迭代 |
+| **飞书生态集成** | K. 飞书生态集成 | N/A | — | 独立平台，不依赖飞书，不作为对标项 |
 
 ### 4.4 差距总结矩阵
 
+> 更新日期：2026-08-01（基于代码审计，Phase 1-4 已完成后的实际状态）
+
 | 飞书 aPaaS 模块 | 我们的状态 | 覆盖率 | 差距说明 |
 |---|---|---|---|
-| 对象与数据建模 | 类型契约 + 前端骨架已就绪，后端逻辑待填充 | ~40% | 核心类型齐全，但后端 CRUD 和视图配置器未实现 |
-| 数据集与数据流 | 完全缺失 | 0% | 需新增整个模块 |
-| 页面与 UI | 类型契约已定义（25 组件），搭建器未实现 | ~15% | Phase 2 范围，类型先行 |
-| 流程引擎 | 类型契约已定义（18 节点），引擎未实现 | ~20% | Phase 3 范围，flowgram fork 已就绪 |
-| 权限与多租户 | 类型契约骨架 + Prisma 模型已定义 | ~15% | Phase 4 范围 |
-| 连接器与集成 | HTTP 节点类型已定义，连接器管理缺失 | ~5% | 需新增连接器管理模块 |
-| 云函数与扩展 | 类型预留（代码节点），平台缺失 | ~5% | 需新增云函数平台 |
-| 仪表盘与报表 | Chart 组件类型预留，引擎缺失 | ~5% | 需新增图表引擎 |
-| 应用管理 | 基本完成（创建/列表/工作台/环境模型） | ~50% | 发布快照逻辑待实现 |
-| 数据管理 | 类型定义齐全，导入导出缺失 | ~20% | 需实现导入导出 |
-| 飞书生态集成 | 不适用（独立平台） | N/A | 不作为对标项 |
+| 对象与数据建模 | ✅ 已完成：18 字段类型 / CRUD 16 路由 / 公式引擎 / 自动编号 / 6 视图 / 视图配置器 / 记录 JSONB 查询 (12 操作符) | **~85%** | 缺 GIN 索引、软删除、批量操作、导入导出 |
+| 数据集与数据流 | 完全缺失 | **0%** | 需新增整个模块（Phase 6） |
+| 页面与 UI | ✅ 已完成：25 组件 / 三栏搭建器 / 视图模型 / 表达式引擎 / 12 动作事件引擎 / Studio 预览渲染器 / 5 页面类型 | **~65%** | 缺 runtime-ui 独立渲染器、事件配置 UI、图表引擎、JS 扩展、移动端 |
+| 流程引擎 | ✅ 已完成：状态机引擎 / 12 节点执行器 / 双模式编辑器(简化+标准) / 模式互转 / 流程监控 / 人工任务 / IFlowValue 四态 / 通知模版 | **~60%** | 缺 BullMQ 异步队列、自动触发器、7 节点类型、通知 email/in_app 发送、后端 BPMN 转换器 |
+| 权限与多租户 | ✅ 已完成：RBAC+ABAC 引擎 / 角色+组织+用户 CRUD / 管理 UI / JWT 增强 / 租户隔离 | **~55%** | 缺权限路由挂载(阻断性)、审计日志、组织继承扩散、规则编辑 UI |
+| 连接器与集成 | 仅 http_request 流程节点 | **~5%** | 需新增连接器实体/管理 API/OpenAPI 凭证（Phase 5） |
+| 云函数与扩展 | 类型预留（代码节点） | **~5%** | 需新增云函数平台/自定义组件/JS 扩展（Phase 8） |
+| 仪表盘与报表 | Chart 组件类型占位 | **~5%** | 需新增图表引擎/仪表盘布局（Phase 7） |
+| 应用管理 | App CRUD + 列表 + 工作台 + 环境模型（类型层） | **~30%** | 缺发布快照逻辑、版本管理、环境隔离（Phase 9） |
+| 数据管理 | 记录 CRUD + JSONB 查询完整 | **~40%** | 缺导入导出、批量操作（Phase 10） |
+| 飞书生态集成 | 不适用（独立平台） | **N/A** | 不作为对标项 |
+
+**整体覆盖率：约 ~40%**（10 个模块加权平均，排除飞书生态集成）
 
 ---
 
 ## 五、功能优先级建议
 
-基于飞书 aPaaS 功能体系和当前平台差距，建议按以下优先级推进：
+> 更新日期：2026-08-01。Phase 1-4 已完成，以下建议基于代码审计后的实际状态 + 模块依赖分析。
 
-### P0 — 当前 Phase 1 必须完成
+### P0 — 阻断性技术债修复（推进新模块前/并行处理）
 
-1. meta-svc 对象/字段/视图 CRUD 后端逻辑
-2. runtime-svc 记录 CRUD + JSONB 动态查询
-3. 视图配置器（筛选/排序/字段显隐）
-4. 字段拖拽排序（dnd-kit 接入）
-5. 选项管理器（单选/多选）
-6. 记录列表查询 + 分页 + 筛选 + 排序
+1. **权限强制执行** — 将 PermissionGuard 挂载到路由 + 添加 @RequirePermission 装饰器（引擎已完整，仅需接线）
+2. **runtime-ui 渲染引擎** — 移植 Studio 预览渲染器到 runtime-ui（P9 应用发布的前置依赖）
+3. **BullMQ 异步队列** — 接入 Redis 队列驱动流程引擎（流程生产化的前提）
+4. **自动触发器** — 记录事件/定时调度触发流程（依赖 BullMQ）
 
-### P1 — Phase 1 尽量做 / Phase 2 前置
+### P1 — Phase 5 连接器与集成（相对独立）
 
-1. 记录导入导出（CSV/Excel）
-2. 批量操作（批量删除/批量编辑）
-3. 公式/汇总字段执行引擎
-4. 页面搭建器 MVP（拖拽 + 组件树 + 属性面板 + 运行时渲染）
+1. 连接器实体 + 管理 API（创建/配置/测试/调用）
+2. 内置连接器（HTTP / 数据库 / Webhook）
+3. OpenAPI 凭证管理
+4. 连接器管理 UI + 配置向导 + 调试面板
+5. 升级流程 http_request 节点为正式连接器调用
 
-### P2 — Phase 2-3 范围
+### P2 — Phase 6 数据集与数据流（依赖 Phase 1 ✅）
 
-1. 页面搭建器完整版（事件系统 + 表达式绑定 + 视图模型）
-2. 流程引擎自研执行内核
-3. 流程双模式编辑器（简化 + 标准 BPMN）
-4. 流程监控仪表盘
-5. 人工任务/审批节点
+1. 数据集实体 + 数据流引擎（多表关联 / 筛选 / 分组 / 汇总 / 输出）
+2. 数据流可视化画布（节点式编排）
+3. 数据集在页面表格中使用
 
-### P3 — Phase 4-5 范围
+### P3 — Phase 9 应用发布与版本（依赖 P0 runtime-ui ✅）
 
-1. 权限五级体系完整实现
-2. 行级数据权限 + 字段级权限
-3. 数据集与数据流模块
-4. 连接器管理模块
-5. 仪表盘/图表引擎
-6. 应用发布快照与版本管理
+1. 应用发布快照（publishedSnapshot 逻辑实现）
+2. 版本管理 + 环境隔离（Dev/Prod）
+3. 应用发布向导 UI + 版本历史 + 环境切换
 
-### P4 — 后续迭代
+### P4 — 后续模块
 
-1. 云函数平台
-2. 自定义组件开发
-3. JS 代码扩展
-4. 组件市场
-5. 运营报表
-6. OpenAPI 凭证管理
-7. 软删除/回收站
-8. 行为追踪/审计日志
+1. **Phase 7** 仪表盘与报表（图表引擎 + 仪表盘布局，解决 chart 组件占位）
+2. **Phase 8** 云函数与扩展（云函数平台 + 自定义组件 + JS 扩展）
+3. **Phase 10** 打磨与集成（数据导入导出 / 批量操作 / 完整 Demo / 性能优化 / 测试覆盖 / GIN 索引）
+4. 非阻断性技术债逐步消化（审计日志 / 通知 email/in_app / 事件配置 UI / 流程 undo/redo 等）
 
 ---
 
@@ -913,7 +949,7 @@
 | 帮助中心主文章 | https://ae.feishu.cn/hc/zh-CN/articles/126935747291 | 五大核心功能、20+ 字段类型、85+ 组件、150+ 节点、AI 能力、最佳实践 |
 | 产品官网 | https://www.feishu.cn/paid/lowcode | 产品定位、2000 万行/2000+ 对象/130+ 组件/150+ 节点/2000+ API/15 认证 |
 | 架构剖析 | https://www.feishu.cn/content/7308924128029966337 | 数据集 vs 对象、数据流设计、页面组件分类、流程节点类型、五级权限、环境隔离 |
-| 代码库现状 | `packages/shared/src/`, `packages/db/prisma/schema.prisma`, `packages/studio/src/` | 已实现类型契约、Prisma 模型、前端骨架 |
-| 已有文档 | `docs/architecture/ARCHITECTURE.md`, `docs/roadmap/ROADMAP.md`, `docs/prd/PRD-object.md`, `docs/design/DESIGN-object.md` | 架构决策、路线图、对象 PRD、对象设计规范 |
+| 代码库现状 | `packages/shared/src/`, `packages/db/prisma/schema.prisma`, `apps/gateway/src/`, `packages/studio/src/` | Phase 0-4 已实现：类型契约、Prisma 模型(18表)、后端全栈(gateway ~70路由)、前端全栈(studio 对象设计器/页面搭建器/流程编辑器/权限管理) |
+| 已有文档 | `docs/architecture/ARCHITECTURE.md`, `docs/roadmap/ROADMAP.md`, `docs/prd/PRD-*.md`(4份), `docs/design/DESIGN-*.md`(4份) | 架构决策、路线图(已修正)、4个Phase的PRD+设计规范 |
 
 > **注意**：飞书 aPaaS 帮助中心为 SPA（单页应用），子页面需登录后通过 API 获取。本次调研通过直接解析 HTML 中的 `window._templateValue` 提取了主文章的完整内容。具体子文档（如对象/页面/流程/权限的详细操作手册）的 URL 未能在未登录状态下获取，相关功能细节已从官网和架构文章中综合补充。

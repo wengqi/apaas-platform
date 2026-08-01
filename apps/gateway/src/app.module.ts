@@ -7,6 +7,7 @@ import { RecordModule } from './record/record.module.js';
 import { PageModule } from './page/page.module.js';
 import { ProcessModule } from './process/process.module.js';
 import { PermissionModule } from './permission/permission.module.js';
+import { QueueModule } from './queue/queue.module.js';
 import { HealthController } from './health.controller.js';
 
 @Module({
@@ -19,6 +20,7 @@ import { HealthController } from './health.controller.js';
     PageModule,
     ProcessModule,
     PermissionModule,
+    QueueModule,
   ],
   controllers: [HealthController],
 })

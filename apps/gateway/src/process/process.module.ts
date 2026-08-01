@@ -11,10 +11,12 @@
  * 模式同 ApplicationModule。
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
+import { PermissionModule } from '../permission/permission.module.js';
+import { QueueModule } from '../queue/queue.module.js';
 import { ProcessController } from './process.controller.js';
 import { ProcessService } from './process.service.js';
 import { ProcessEngine } from './process-engine.js';
@@ -31,6 +33,7 @@ import { UserTaskExecutor } from './node-executors/user-task.executor.js';
 import { NotificationExecutor } from './node-executors/notification.executor.js';
 import { HttpRequestExecutor } from './node-executors/http-request.executor.js';
 import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
+import { TriggerService } from './trigger.service.js';
 
 @Module({
   imports: [
@@ -43,6 +46,8 @@ import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
         signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d' },
       }),
     }),
+    PermissionModule,
+    forwardRef(() => QueueModule),
   ],
   controllers: [ProcessController],
   providers: [
@@ -64,7 +69,9 @@ import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
     SubProcessExecutor,
     // JWT 策略
     JwtStrategy,
+    // 触发器服务
+    TriggerService,
   ],
-  exports: [ProcessService],
+  exports: [ProcessService, ProcessEngine, TriggerService],
 })
 export class ProcessModule {}

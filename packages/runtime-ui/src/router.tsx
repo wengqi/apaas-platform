@@ -4,6 +4,7 @@ import RuntimeLayout from './layouts/RuntimeLayout';
 import Login from './pages/Login';
 import Home from './pages/Home';
 import AppView from './pages/AppView';
+import PageView from './pages/PageView';
 import TaskCenter from './pages/TaskCenter';
 
 /** 路由守卫:未登录重定向到 /login。 */
@@ -23,6 +24,7 @@ export default function AppRoutes() {
         <Route element={<RuntimeLayout />}>
           <Route path="/home" element={<Home />} />
           <Route path="/app/:appId" element={<AppView />} />
+          <Route path="/app/:appId/p/:slug" element={<PageView />} />
           <Route path="/tasks" element={<TaskCenter />} />
         </Route>
       </Route>

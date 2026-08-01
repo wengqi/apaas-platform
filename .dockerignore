@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Prisma generated
+packages/db/prisma/generated/
+packages/*/node_modules/.prisma/
+
+# Environment (排除 .env，确保 Vite 构建时不读取 dev 配置)
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+
+# Docs & plans
+docs/
+.zcode/
+
+# Data & logs
+infra/data/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+coverage/

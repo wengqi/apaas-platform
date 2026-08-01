@@ -43,7 +43,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import { PermissionGuard } from '../permission/permission.guard.js';
+import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { ProcessService } from './process.service.js';
 import type {
@@ -55,7 +56,7 @@ import type {
 } from './process.service.js';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(PermissionGuard)
 export class ProcessController {
   constructor(private readonly processService: ProcessService) {}
 
@@ -73,6 +74,7 @@ export class ProcessController {
   }
 
   @Post('apps/:appId/processes')
+  @RequirePermission('PROCESS', 'CREATE')
   async createProcess(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
@@ -96,6 +98,7 @@ export class ProcessController {
   }
 
   @Put('processes/:processId')
+  @RequirePermission('PROCESS', 'EDIT', 'processId')
   async updateProcess(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
@@ -110,6 +113,7 @@ export class ProcessController {
   }
 
   @Delete('processes/:processId')
+  @RequirePermission('PROCESS', 'DELETE', 'processId')
   async deleteProcess(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
@@ -122,6 +126,7 @@ export class ProcessController {
   }
 
   @Post('processes/:processId/publish')
+  @RequirePermission('PROCESS', 'EDIT', 'processId')
   async publishProcess(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
@@ -138,6 +143,7 @@ export class ProcessController {
   // ===========================================================================
 
   @Post('processes/:processId/start')
+  @RequirePermission('PROCESS', 'EXECUTE', 'processId')
   async startInstance(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,

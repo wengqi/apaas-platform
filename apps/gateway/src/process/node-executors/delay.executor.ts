@@ -3,10 +3,13 @@
  *
  * 定位：流程暂停指定时长后继续。
  * 配置项（node.data）：duration（数值）/ unit（SECONDS/MINUTES/HOURS/DAYS）。
- * 执行逻辑：调度延时任务，到点后恢复令牌。
  *
- * MVP 简化实现：用 setTimeout 在进程内等待（任务约定：Redis 未就绪时先用 setTimeout 简化）。
- * 生产环境应改用 BullMQ delayed job 以保障崩溃恢复。
+ * 实现：通过 BullMQ delayed job 实现异步延时。
+ *  1. 调用 ctx.scheduleDelay() 调度 delayed job（到时由 Worker 恢复令牌）
+ *  2. 返回 { wait: true } 暂停引擎推进
+ *  3. delayed job 到时后调用 ProcessEngine.resumeDelayedNode() 恢复
+ *
+ * 无 60s 上限（BullMQ delayed job 支持任意时长）。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -27,7 +30,7 @@ const UNIT_TO_MS: Record<string, number> = {
 
 @Injectable()
 export class DelayExecutor implements NodeExecutor {
-  private readonly logger = new Logger(DelayExecutor.name);
+  private readonly logger = Logger;
   readonly type = 'delay';
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
@@ -36,18 +39,15 @@ export class DelayExecutor implements NodeExecutor {
     const unit = (data['unit'] as string) ?? 'SECONDS';
     const ms = Math.max(0, duration * (UNIT_TO_MS[unit] ?? 1000));
 
-    // 上限 60s，避免进程内长延时阻塞过久（MVP 保护）
-    const cappedMs = Math.min(ms, 60_000);
-    if (cappedMs !== ms) {
-      this.logger.warn(
-        `延时 ${ms}ms 超过 60s 上限，已截断为 60s（MVP setTimeout 限制）`,
-      );
+    if (ms > 0) {
+      // 调度 BullMQ delayed job，到时恢复令牌
+      await ctx.scheduleDelay(ctx.instance.id, ctx.node.id, ms);
     }
 
-    if (cappedMs > 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, cappedMs));
-    }
-
-    return { output: { delayedMs: cappedMs } };
+    // 返回 wait: true 暂停引擎推进（由 delayed job 恢复）
+    return {
+      output: { delayedMs: ms },
+      wait: ms > 0,
+    };
   }
 }

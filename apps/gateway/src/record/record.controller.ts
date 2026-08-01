@@ -10,7 +10,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import { PermissionGuard } from '../permission/permission.guard.js';
+import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { RecordService } from './record.service.js';
 import type { RecordQueryParams } from './record.service.js';
@@ -28,7 +29,7 @@ import type { RecordQueryParams } from './record.service.js';
  * 所有路由受 JWT 保护，从 req.user 取 { sub, tenantId }。
  */
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(PermissionGuard)
 export class RecordController {
   constructor(private readonly recordService: RecordService) {}
 
@@ -65,6 +66,7 @@ export class RecordController {
   }
 
   @Post('objects/:objectId/records')
+  @RequirePermission('RECORD', 'CREATE', 'objectId')
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -80,6 +82,7 @@ export class RecordController {
   }
 
   @Put('records/:recordId')
+  @RequirePermission('RECORD', 'EDIT')
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,
@@ -95,6 +98,7 @@ export class RecordController {
   }
 
   @Delete('records/:recordId')
+  @RequirePermission('RECORD', 'DELETE')
   async delete(
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,

@@ -4,11 +4,12 @@ import { PageController } from './page.controller.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
+import { PermissionModule } from '../permission/permission.module.js';
 
 /**
  * 页面模块 — 页面 Schema 存取 CRUD。
  * 独立持有 JwtModule + JwtStrategy，使页面路由可受 JWT 保护。
- * 模式同 ApplicationModule / ObjectModule。
+ * 导入 PermissionModule 使 PermissionGuard 可注入。
  */
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { JwtStrategy } from '../auth/jwt.strategy.js';
         signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d' },
       }),
     }),
+    PermissionModule,
   ],
   controllers: [PageController],
   providers: [PageService, JwtStrategy],

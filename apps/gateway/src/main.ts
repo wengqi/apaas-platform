@@ -18,11 +18,12 @@ async function bootstrap() {
   );
 
   // CORS（前端 Studio/Runtime UI 跨域）
+  // Docker 部署通过 nginx 同源代理，不触发 CORS；此处保留 dev 模式默认值
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
+    : ['http://localhost:5173', 'http://localhost:5174']; // dev 默认
   app.enableCors({
-    origin: [
-      'http://localhost:5173', // Studio
-      'http://localhost:5174', // Runtime UI
-    ],
+    origin: corsOrigins,
     credentials: true,
   });
 

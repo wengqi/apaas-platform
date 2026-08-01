@@ -1,11 +1,14 @@
 import {
   Injectable,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { FieldType } from '@apaas/shared';
 import { FormulaEngine } from '../object/formula-engine.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
+import { TriggerService } from '../process/trigger.service.js';
 
 /**
  * 存储在 ObjectMeta.fields JSON 数组中的字段定义（与 object.service.ts 的 StoredField 一致）。
@@ -83,6 +86,8 @@ export class RecordService {
   constructor(
     private readonly formulaEngine: FormulaEngine,
     private readonly autoNumberGenerator: AutoNumberGenerator,
+    @Inject(forwardRef(() => TriggerService))
+    private readonly triggerService: TriggerService,
   ) {}
   // ===========================================================================
   // 查询
@@ -196,7 +201,17 @@ export class RecordService {
       },
     });
 
-    return this.toResult(record);
+    // 触发记录创建事件（非阻塞）
+    const result = this.toResult(record);
+    void this.triggerService.onRecordEvent(
+      tenantId,
+      obj.appId,
+      objectId,
+      'created',
+      { id: record.id, ...record.data as Record<string, unknown> },
+    );
+
+    return result;
   }
 
   /**
@@ -249,17 +264,43 @@ export class RecordService {
       },
     });
 
-    return this.toResult(record);
+    // 触发记录更新事件（非阻塞）
+    const result = this.toResult(record);
+    void this.triggerService.onRecordEvent(
+      tenantId,
+      existing.appId,
+      existing.objectId,
+      'updated',
+      { id: record.id, ...mergedData },
+    );
+
+    return result;
   }
 
   /**
    * 删除记录。
    */
   async delete(tenantId: string, recordId: string): Promise<void> {
+    // 先查记录信息（删除后无法获取 appId/objectId）
+    const existing = await prisma.record.findFirst({
+      where: { id: recordId, tenantId },
+      select: { appId: true, objectId: true, data: true },
+    });
+    if (!existing) throw new NotFoundException('记录不存在');
+
     const result = await prisma.record.deleteMany({
       where: { id: recordId, tenantId },
     });
     if (result.count === 0) throw new NotFoundException('记录不存在');
+
+    // 触发记录删除事件（非阻塞）
+    void this.triggerService.onRecordEvent(
+      tenantId,
+      existing.appId,
+      existing.objectId,
+      'deleted',
+      { id: recordId, ...(existing.data as Record<string, unknown>) },
+    );
   }
 
   // ===========================================================================

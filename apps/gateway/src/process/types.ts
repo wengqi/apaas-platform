@@ -43,6 +43,16 @@ export interface ExecutionContext {
     processDefId: string,
     triggerContext: Record<string, unknown>,
   ) => Promise<string>;
+
+  /**
+   * 调度延时恢复（供 DelayExecutor 调用 BullMQ delayed job，避免 DI 循环依赖）。
+   * 调用后实例令牌暂停，到时由 Worker 恢复推进。
+   */
+  scheduleDelay: (
+    instanceId: string,
+    nodeId: string,
+    delayMs: number,
+  ) => Promise<void>;
 }
 
 /** 节点执行结果。 */

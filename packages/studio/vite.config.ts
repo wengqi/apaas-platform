@@ -16,7 +16,7 @@ export default defineConfig({
     port: Number(process.env.VITE_STUDIO_PORT) || 5173,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_TARGET ?? 'http://localhost:3005',
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
         changeOrigin: true,
       },
     },

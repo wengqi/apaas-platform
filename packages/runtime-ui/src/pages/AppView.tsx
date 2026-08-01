@@ -54,7 +54,7 @@ export default function AppView() {
             </Tag>
             <Tag>v{app.version}</Tag>
             <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-              {app.stats.objects} 对象 · {app.stats.pages} 页面 · {app.stats.processes} 流程
+              {app.stats ? `${app.stats.objects} 对象 · ${app.stats.pages} 页面 · ${app.stats.processes} 流程` : app.apiName}
             </Text>
           </div>
         )}
@@ -73,13 +73,13 @@ export default function AppView() {
             renderItem={(page) => (
               <List.Item
                 style={{ cursor: 'pointer' }}
-                onClick={() => navigate(`/app/${appId}/p/${page.apiName}`)}
+                onClick={() => navigate(`/app/${appId}/p/${page.slug}`)}
               >
                 <List.Item.Meta
                   title={page.name}
                   description={
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      /{page.apiName} · {page.type}
+                      /{page.slug} · {page.type}
                     </Text>
                   }
                 />

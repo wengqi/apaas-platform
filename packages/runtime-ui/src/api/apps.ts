@@ -14,7 +14,8 @@ export interface AppSummary {
   color?: string;
   status: string;
   version: number;
-  stats: { objects: number; pages: number; processes: number };
+  /** 资源统计（仅列表接口返回，详情接口不返回） */
+  stats?: { objects: number; pages: number; processes: number };
   createdAt: string;
   updatedAt: string;
 }

@@ -95,7 +95,8 @@ export interface PageMeta {
   tenantId?: string;
   appId: string;
   name: string;
-  apiName: string;
+  /** 页面路径标识（后端 Prisma apiName 映射为 slug 返回） */
+  slug: string;
   type: PageType;
   objectId?: string;
   schema: PageSchema;

@@ -21,8 +21,9 @@ export default function Login() {
   const onFinish = async (values: LoginFormValues) => {
     setLoading(true);
     try {
-      const { data } = await apiClient.post<LoginResponse>('/api/auth/login', values);
-      login(data.token, data.user);
+      const res = await apiClient.post<{ ok: boolean; data: LoginResponse }>('/auth/login', values);
+      const { accessToken, user } = res.data.data;
+      login(accessToken, { id: user.id, name: user.name, email: user.email });
       message.success('登录成功');
       navigate('/home', { replace: true });
     } catch {
@@ -71,6 +72,31 @@ export default function Login() {
             </Button>
           </Form.Item>
         </Form>
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            测试账号: admin@apaas.dev / admin123
+          </Text>
+          <br />
+          <Button
+            type="link"
+            size="small"
+            onClick={async () => {
+              try {
+                const res = await apiClient.post<{ ok: boolean; data: LoginResponse }>('/auth/login', {
+                  email: 'admin@apaas.dev',
+                  password: 'admin123',
+                });
+                const { accessToken, user } = res.data.data;
+                login(accessToken, { id: user.id, name: user.name, email: user.email });
+                navigate('/home', { replace: true });
+              } catch {
+                message.error('快速登录失败');
+              }
+            }}
+          >
+            快速登录 (测试)
+          </Button>
+        </div>
       </Card>
     </div>
   );

@@ -11,10 +11,17 @@ export interface AuthUser {
   email: string;
 }
 
-/** /api/auth/login 响应体。 */
+/** 后端 /api/auth/login 响应体（data 部分）。 */
 export interface LoginResponse {
-  token: string;
-  user: AuthUser;
+  accessToken: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    tenantId?: string;
+    avatar?: string | null;
+    roles?: Array<{ id: string; code: string; name: string }>;
+  };
 }
 
 interface AuthState {
@@ -29,6 +36,15 @@ interface AuthState {
 
 function readToken(): string | null {
   try {
+    // Support URL hash token for testing/SSO: #token=xxx
+    const hash = window.location.hash;
+    if (hash.startsWith('#token=')) {
+      const token = hash.slice(7);
+      localStorage.setItem(TOKEN_KEY, token);
+      // Clean the URL
+      window.history.replaceState(null, '', window.location.pathname);
+      return token;
+    }
     return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
@@ -47,6 +63,7 @@ function readUser(): AuthUser | null {
 export const useAuthStore = create<AuthState>((set) => ({
   token: readToken(),
   user: readUser(),
+  // Authenticated if token exists (user may be null when using hash token)
   isAuthenticated: readToken() !== null,
   login: (token, user) => {
     localStorage.setItem(TOKEN_KEY, token);

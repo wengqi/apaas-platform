@@ -337,7 +337,8 @@ model Record {
   @@index([objectId])
   @@index([tenantId, objectId])
   @@index([appId, objectId])
-  // GIN 索引加速 JSONB 查询（通过迁移 SQL 补充，Prisma 不直接支持 GIN on Json）
+  // GIN 索引加速 JSONB data 字段查询（Prisma 5.1+ 支持 type: Gin）
+  @@index([data], type: Gin)
   @@map("records")
 }
 

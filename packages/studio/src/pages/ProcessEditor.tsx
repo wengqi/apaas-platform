@@ -30,6 +30,7 @@ import { getProcessStatusMeta, getTriggerMeta } from '../constants/process.js';
 import SimplifiedEditor from '../components/process/SimplifiedEditor.js';
 import StandardEditor from '../components/process/StandardEditor.js';
 import ModeSwitcher from '../components/process/ModeSwitcher.js';
+import { workflowToBpmnXml, bpmnXmlToWorkflow } from '../utils/bpmnConverter.js';
 
 const { Title } = Typography;
 
@@ -114,10 +115,30 @@ export default function ProcessEditor() {
     }, 1000);
   };
 
-  /** 模式切换。 */
+  /** 模式切换 — 简化↔标准，自动转换数据。 */
   const handleModeSwitch = (mode: 'simplified' | 'standard') => {
+    if (mode === 'standard') {
+      // 简化→标准：WorkflowSchema → BPMN XML
+      const schema = store.schema ?? processDef?.workflowSchema;
+      if (schema) {
+        const { bpmnXml, warnings } = workflowToBpmnXml(schema);
+        store.setBpmnXml(bpmnXml);
+        if (warnings.length > 0) {
+          message.warning(`已切换到标准模式，${warnings.length} 项提示`);
+        } else {
+          message.success('已切换到标准模式');
+        }
+      }
+    } else {
+      // 标准→简化：BPMN XML → WorkflowSchema
+      const bpmnXml = store.bpmnXml ?? processDef?.bpmnXml;
+      if (bpmnXml) {
+        const schema = bpmnXmlToWorkflow(bpmnXml);
+        store.setSchema(schema, { skipHistory: false });
+        message.success('已切换到简化模式');
+      }
+    }
     store.switchMode(mode);
-    // 持久化 editorMode
     saveMutation.mutate({ editorMode: mode });
   };
 

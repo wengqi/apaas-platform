@@ -7,6 +7,7 @@ import {
   LayoutOutlined,
   ApartmentOutlined,
   SafetyOutlined,
+  BellOutlined,
   LogoutOutlined,
   UserOutlined,
   ArrowLeftOutlined,
@@ -48,15 +49,21 @@ export default function StudioLayout() {
       { key: 'objects', icon: <DatabaseOutlined />, label: '对象' },
       { key: 'pages', icon: <LayoutOutlined />, label: '页面' },
       { key: 'processes', icon: <ApartmentOutlined />, label: '流程' },
+      { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
     ],
     [],
   );
 
-  /** 当前选中菜单项:取 /app/:appId 之后的第二段。 */
+  /** 当前选中菜单项:取 /app/:appId 之后的路径段(支持二级路径如 processes/notifications)。 */
   const selectedKey = useMemo(() => {
-    const seg = location.pathname.split('/')[3] ?? 'dashboard';
-    return seg;
+    const segments = location.pathname.split('/');
+    const seg3 = segments[3] ?? 'dashboard';
+    const seg4 = segments[4];
+    // processes/notifications 单独高亮
+    if (seg3 === 'processes' && seg4 === 'notifications') return 'processes/notifications';
+    if (seg3 === 'processes' && seg4 === 'monitor') return 'processes';
+    return seg3;
   }, [location.pathname]);
 
   /**

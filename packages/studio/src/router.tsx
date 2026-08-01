@@ -12,6 +12,8 @@ import ProcessEditor from './pages/ProcessEditor.js';
 import ProcessMonitor from './components/process/ProcessMonitor.js';
 import NotificationTemplateManager from './components/process/NotificationTemplateManager.js';
 import Permissions from './pages/Permissions.js';
+import PublishWizard from './pages/PublishWizard.js';
+import VersionHistory from './pages/VersionHistory.js';
 import { useAuthStore } from './stores/auth.js';
 
 /**
@@ -83,6 +85,8 @@ export function AppRoutes() {
         <Route path="processes/notifications" element={<NotificationTemplateManager />} />
         <Route path="processes/:processId" element={<ProcessEditor />} />
         <Route path="permissions" element={<Permissions />} />
+        <Route path="publish" element={<PublishWizard />} />
+        <Route path="versions" element={<VersionHistory />} />
       </Route>
 
       {/* 根路径与未匹配路由重定向 */}

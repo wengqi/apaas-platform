@@ -21,7 +21,7 @@ export interface AppSummary {
 
 /** 创建应用请求体。 */
 export interface CreateAppRequest {
-  apiName: string;
+  apiName?: string;
   name: string;
   description?: string;
   icon?: string;

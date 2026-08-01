@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Layout, Menu, theme, Dropdown, Space, Avatar, Button, Skeleton, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import { Layout, Menu, theme, Dropdown, Space, Avatar, Button, Skeleton, Typography, Drawer } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -11,11 +11,15 @@ import {
   LogoutOutlined,
   UserOutlined,
   ArrowLeftOutlined,
+  CheckCircleOutlined,
+  CloudUploadOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/auth.js';
 import { appsApi } from '../api/apps.js';
+import CheckPanel from '../components/publish/CheckPanel.js';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -31,6 +35,7 @@ export default function StudioLayout() {
   const location = useLocation();
   const { appId } = useParams<{ appId: string }>();
   const { user, logout } = useAuthStore();
+  const [checkDrawerOpen, setCheckDrawerOpen] = useState(false);
   const {
     token: { colorBgContainer },
   } = theme.useToken();
@@ -196,7 +201,27 @@ export default function StudioLayout() {
           >
             返回应用列表
           </Button>
-          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+          <Space>
+            <Button
+              icon={<CheckCircleOutlined />}
+              onClick={() => setCheckDrawerOpen(true)}
+            >
+              检查
+            </Button>
+            <Button
+              icon={<HistoryOutlined />}
+              onClick={() => navigate(`/app/${appId}/versions`)}
+            >
+              发布历史
+            </Button>
+            <Button
+              type="primary"
+              icon={<CloudUploadOutlined />}
+              onClick={() => navigate(`/app/${appId}/publish`)}
+            >
+              发布
+            </Button>
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <Space style={{ cursor: 'pointer' }}>
               <Avatar
                 size="small"
@@ -208,6 +233,7 @@ export default function StudioLayout() {
               </Text>
             </Space>
           </Dropdown>
+          </Space>
         </Header>
         <Content
           style={{
@@ -234,6 +260,14 @@ export default function StudioLayout() {
           )}
         </Content>
       </Layout>
+      <Drawer
+        title="预检"
+        open={checkDrawerOpen}
+        onClose={() => setCheckDrawerOpen(false)}
+        width={420}
+      >
+        {appId && <CheckPanel appId={appId} />}
+      </Drawer>
     </Layout>
   );
 }

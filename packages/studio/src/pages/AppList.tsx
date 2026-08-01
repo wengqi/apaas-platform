@@ -51,7 +51,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** 创建应用表单值。 */
 interface CreateFormValues {
-  apiName: string;
+  apiName?: string;
   name: string;
   description?: string;
   icon?: string;
@@ -100,7 +100,7 @@ export default function AppList() {
     try {
       const values = await form.validateFields();
       createMutation.mutate({
-        apiName: values.apiName,
+        apiName: values.apiName || undefined,
         name: values.name,
         description: values.description,
         icon: values.icon,
@@ -378,16 +378,15 @@ export default function AppList() {
           <Form.Item
             label="API 名称"
             name="apiName"
-            tooltip="小写下划线，租户内唯一，如 asset_management"
+            tooltip="小写下划线，租户内唯一，如 asset_management。留空则自动生成。"
             rules={[
-              { required: true, message: '请输入 API 名称' },
               {
                 pattern: /^[a-z][a-z0-9_]*$/,
                 message: '仅支持小写字母、数字、下划线，且以字母开头',
               },
             ]}
           >
-            <Input placeholder="asset_management" />
+            <Input placeholder="留空则自动生成" />
           </Form.Item>
           <Form.Item
             label="显示名称"

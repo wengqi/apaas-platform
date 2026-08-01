@@ -85,12 +85,12 @@ export default function StandardEditor({
     };
     void importXml();
 
-    /** 监听选中元素变化。 */
+    /** 监听选中元素变化 + 命令栈变更(通过 eventBus 统一注册)。 */
     const eventBus = modeler.get('eventBus') as {
-      on: (event: string, cb: (e: { element?: { id: string; type: string; businessObject?: { name?: string } } }) => void) => void;
+      on: (event: string, cb: (e?: { element?: { id: string; type: string; businessObject?: { name?: string } } }) => void) => void;
     };
     eventBus.on('selection.changed', (e) => {
-      const element = e.element;
+      const element = e?.element;
       if (element) {
         setSelectedElement({
           id: element.id,
@@ -102,12 +102,9 @@ export default function StandardEditor({
       }
     });
 
-    /** 监听变更(命令栈变化时导出 XML)。 */
-    const commandStack = modeler.get('commandStack') as {
-      on: (event: string, cb: () => void) => void;
-    };
+    /** 监听变更(命令栈变化时导出 XML,通过 eventBus 注册)。 */
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    commandStack.on('commandStack.changed', () => {
+    eventBus.on('commandStack.changed', () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         void exportXml(modeler);

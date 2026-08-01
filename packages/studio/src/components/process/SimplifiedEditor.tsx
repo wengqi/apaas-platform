@@ -62,12 +62,13 @@ export default function SimplifiedEditor({
   formOptions = [],
   templateOptions = [],
 }: SimplifiedEditorProps) {
-  /** 初始 flowgram 文档(从 WorkflowSchema 转换,或内置示例)。 */
+  /** 初始 flowgram 文档(从 WorkflowSchema 转换,空流程返回空文档)。 */
   const initialDoc = useMemo<FlowDocumentJSON>(() => {
     if (initialSchema && initialSchema.nodes.length > 0) {
       return workflowToFlowSchema(initialSchema);
     }
-    return initialData;
+    // 空流程返回空文档（不使用默认示例数据，防止覆盖用户流程）
+    return { nodes: [], edges: [], groups: [] };
   }, [initialSchema]);
 
   /**

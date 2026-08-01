@@ -62,11 +62,16 @@ export default function ProcessEditor() {
   /** 流程加载成功 → 写入 store(仅当 processId 变化时)。 */
   useEffect(() => {
     if (processDef && processDef.id !== loadedRef.current) {
+      // 先重置 store，清除上一个流程的残留状态（防止 SimplifiedEditor 导出旧 schema 覆盖新流程）
+      store.reset();
       loadedRef.current = processDef.id;
       store.loadProcess(processDef);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processDef]);
+
+  /** store 是否已加载当前流程（未加载时不渲染编辑器，防止旧数据导出覆盖）。 */
+  const storeLoaded = store.processDef?.id === processId;
 
   /** 是否只读(已发布或 store 标记只读)。 */
   const isReadonly = store.readonly || processDef?.status === 'published';
@@ -95,6 +100,8 @@ export default function ProcessEditor() {
 
   /** Schema 变化(防抖保存,只读模式不保存)。 */
   const handleSchemaChange = (schema: WorkflowSchema) => {
+    // store 未加载完成时不接受 schema 变更（防止旧数据覆盖）
+    if (!storeLoaded) return;
     // FlowGram 导出可能丢失 edges，如果新 schema edges 为空但当前有 edges，保留原 edges
     let finalSchema = schema;
     if ((!schema.edges || schema.edges.length === 0)) {
@@ -115,6 +122,7 @@ export default function ProcessEditor() {
 
   /** BPMN 变化。 */
   const handleBpmnChange = (bpmnXml: string) => {
+    if (!storeLoaded) return;
     store.setBpmnXml(bpmnXml);
     if (isReadonly) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -167,7 +175,7 @@ export default function ProcessEditor() {
     }
   };
 
-  if (isLoading && !store.processDef) {
+  if (isLoading || !storeLoaded) {
     return (
       <div style={{ padding: 24 }}>
         <Skeleton active paragraph={{ rows: 8 }} />
@@ -207,10 +215,11 @@ export default function ProcessEditor() {
         saving={saveMutation.isPending}
         publishing={publishMutation.isPending}
       />
-      {/* 编辑器主体 */}
-      <EditorErrorBoundary>
+      {/* 编辑器主体 — key={processId} 确保切换流程时组件重新挂载，防止 FlowGram 内部状态残留 */}
+      <EditorErrorBoundary key={processId}>
         {store.editorMode === 'simplified' ? (
           <SimplifiedEditor
+            key={processId}
             initialSchema={store.schema ?? processDef.workflowSchema}
             readonly={isReadonly}
             onSchemaChange={handleSchemaChange}
@@ -218,6 +227,7 @@ export default function ProcessEditor() {
           />
         ) : (
           <StandardEditor
+            key={processId}
             initialBpmnXml={store.bpmnXml ?? processDef.bpmnXml}
             initialSchema={store.schema ?? undefined}
             onBpmnChange={handleBpmnChange}

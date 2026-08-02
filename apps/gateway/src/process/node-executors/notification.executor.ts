@@ -7,9 +7,9 @@
  *   - 模版模式：templateId（加载 NotificationTemplate，渲染 title_template / body_template）
  * 执行逻辑：解析收件人与内容（支持 {{var}} 插值）→ 按渠道发送 → 记录回执。
  *
- * MVP 渠道实现：
- *   - in_app：日志输出（无站内消息表，后续补充）
- *   - email：日志输出（无 SMTP 集成，后续补充）
+ * 渠道实现状态：
+ *   - in_app：尚未实现（无站内消息表），返回 success=false
+ *   - email：尚未实现（无 SMTP 集成），返回 success=false
  *   - webhook：HTTP POST 到 recipients[0] 指定的 URL
  */
 
@@ -75,11 +75,13 @@ export class NotificationExecutor implements NodeExecutor {
           success = await this.sendWebhook(recipients, title, body);
           break;
         case 'email':
-          this.logger.log(`[邮件] to=${recipients.join(',')} | ${title} | ${body}`);
+          this.logger.warn(`[邮件] 渠道尚未实现(SMTP 未集成),跳过发送: to=${recipients.join(',')} | ${title}`);
+          success = false;
           break;
         case 'in_app':
         default:
-          this.logger.log(`[站内信] to=${recipients.join(',')} | ${title} | ${body}`);
+          this.logger.warn(`[站内信] 渠道尚未实现(无站内消息表),跳过发送: to=${recipients.join(',')} | ${title}`);
+          success = false;
           break;
       }
     } catch (err) {

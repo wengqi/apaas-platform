@@ -61,6 +61,28 @@ export class UserService {
     const exists = await prisma.user.findFirst({ where: { tenantId, email: data.email } });
     if (exists) throw new BadRequestException('邮箱已存在');
 
+    // 校验 roleIds 都属于当前租户
+    if (data.roleIds?.length) {
+      const validRoles = await prisma.role.findMany({
+        where: { id: { in: data.roleIds }, tenantId },
+        select: { id: true },
+      });
+      if (validRoles.length !== data.roleIds.length) {
+        throw new BadRequestException('部分角色不存在或不属于当前租户');
+      }
+    }
+
+    // 校验 orgIds 都属于当前租户
+    if (data.orgIds?.length) {
+      const validOrgs = await prisma.orgNode.findMany({
+        where: { id: { in: data.orgIds }, tenantId },
+        select: { id: true },
+      });
+      if (validOrgs.length !== data.orgIds.length) {
+        throw new BadRequestException('部分组织不存在或不属于当前租户');
+      }
+    }
+
     const passwordHash = await bcrypt.hash(data.password, 10);
 
     const user = await prisma.user.create({
@@ -115,7 +137,20 @@ export class UserService {
   }
 
   /** 设置用户角色（替换）。 */
-  async setRoles(userId: string, roleIds: string[]) {
+  async setRoles(tenantId: string, userId: string, roleIds: string[]) {
+    // 校验用户归属
+    const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('用户不存在');
+    // 校验所有角色都属于当前租户（UserRole 无 tenantId 列）
+    if (roleIds.length > 0) {
+      const validRoles = await prisma.role.findMany({
+        where: { id: { in: roleIds }, tenantId },
+        select: { id: true },
+      });
+      if (validRoles.length !== roleIds.length) {
+        throw new BadRequestException('部分角色不存在或不属于当前租户');
+      }
+    }
     await prisma.userRole.deleteMany({ where: { userId } });
     if (roleIds.length > 0) {
       await prisma.userRole.createMany({
@@ -125,7 +160,20 @@ export class UserService {
   }
 
   /** 设置用户组织（替换）。 */
-  async setOrgs(userId: string, orgIds: string[]) {
+  async setOrgs(tenantId: string, userId: string, orgIds: string[]) {
+    // 校验用户归属
+    const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('用户不存在');
+    // 校验所有组织都属于当前租户（OrgMember 无 tenantId 列）
+    if (orgIds.length > 0) {
+      const validOrgs = await prisma.orgNode.findMany({
+        where: { id: { in: orgIds }, tenantId },
+        select: { id: true },
+      });
+      if (validOrgs.length !== orgIds.length) {
+        throw new BadRequestException('部分组织不存在或不属于当前租户');
+      }
+    }
     await prisma.orgMember.deleteMany({ where: { userId } });
     if (orgIds.length > 0) {
       await prisma.orgMember.createMany({

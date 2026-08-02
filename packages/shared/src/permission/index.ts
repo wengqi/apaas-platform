@@ -182,58 +182,6 @@ export interface ConditionItem {
 }
 
 // ---------------------------------------------------------------------------
-// 权限上下文（运行时）
-// ---------------------------------------------------------------------------
-
-/** 权限求值上下文 — 运行时注入，包含当前用户信息。 */
-export interface PermissionContext {
-  userId: UserId;
-  tenantId: TenantId;
-  /** 当前用户拥有的角色 ID 集合（含组织授权的角色） */
-  roleIds: string[];
-  /** 当前用户所属组织节点 ID 集合 */
-  orgIds: string[];
-  /** 是否超级管理员（短路所有权限检查） */
-  isSuperAdmin: boolean;
-}
-
-/** 权限检查请求。 */
-export interface PermissionCheckRequest {
-  type: PermissionType;
-  action: PermissionAction;
-  targetId: string;
-  targetNodeId?: string;
-}
-
-/** 权限检查结果。 */
-export interface PermissionCheckResult {
-  allowed: boolean;
-  /** 拒绝原因 */
-  reason?: string;
-  /** 行级条件（若 allowed=true 且有条件过滤） */
-  condition?: ConditionExpr | null;
-  /** 字段级白名单（若 allowed=true 且有字段限制） */
-  fieldScope?: string[] | null;
-}
-
-// ---------------------------------------------------------------------------
-// 审计日志
-// ---------------------------------------------------------------------------
-
-/** 审计日志。 */
-export interface AuditLog {
-  id: string;
-  tenantId: TenantId;
-  userId: UserId;
-  action: string;
-  resource?: string;
-  resourceId?: string;
-  detail?: Record<string, unknown>;
-  ip?: string;
-  createdAt: ISODateString;
-}
-
-// ---------------------------------------------------------------------------
 // API 请求/响应 DTO
 // ---------------------------------------------------------------------------
 

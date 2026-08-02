@@ -49,14 +49,22 @@ export class UserController {
   }
 
   @Put(':id/roles')
-  async setRoles(@Param('id') id: string, @Body() body: { roleIds: string[] }) {
-    await this.userService.setRoles(id, body.roleIds);
+  async setRoles(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { roleIds: string[] },
+  ) {
+    await this.userService.setRoles(req.user.tenantId, id, body.roleIds);
     return { ok: true, data: null };
   }
 
   @Put(':id/orgs')
-  async setOrgs(@Param('id') id: string, @Body() body: { orgIds: string[] }) {
-    await this.userService.setOrgs(id, body.orgIds);
+  async setOrgs(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { orgIds: string[] },
+  ) {
+    await this.userService.setOrgs(req.user.tenantId, id, body.orgIds);
     return { ok: true, data: null };
   }
 }

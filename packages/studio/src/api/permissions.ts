@@ -213,10 +213,3 @@ export const usersApi = {
   setOrgs: (id: string, orgIds: string[]) =>
     unwrap<void>(client.put(`/api/permissions/users/${id}/orgs`, { orgIds })),
 };
-
-/** 权限管理 API 聚合导出。 */
-export const permissionsApi = {
-  roles: rolesApi,
-  orgs: orgsApi,
-  users: usersApi,
-};

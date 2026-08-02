@@ -7,8 +7,6 @@
  * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates — flowgram.ai 核心包 MIT 许可
  */
 
-export { SimplifiedProcessEditor, default } from './SimplifiedProcessEditor.js';
-export type { SimplifiedProcessEditorProps } from './SimplifiedProcessEditor.js';
 export { ApaasNodeRegistries } from './nodes/index.js';
 export { flowToWorkflowSchema, workflowToFlowSchema } from './schema-serializer.js';
 export { initialData } from './initial-data.js';

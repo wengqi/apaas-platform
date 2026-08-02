@@ -86,11 +86,17 @@ export class OrgService {
     const node = await prisma.orgNode.findFirst({ where: { id, tenantId } });
     if (!node) throw new NotFoundException('组织节点不存在');
     if (id === parentId) throw new BadRequestException('不能将节点设为自身的子节点');
+    // 校验目标父节点也属于当前租户
+    const parent = await prisma.orgNode.findFirst({ where: { id: parentId, tenantId } });
+    if (!parent) throw new NotFoundException('目标父节点不存在');
     return prisma.orgNode.update({ where: { id }, data: { parentId } });
   }
 
   /** 获取节点成员。 */
   async getMembers(tenantId: string, orgId: string) {
+    // OrgMember 无 tenantId 列，通过校验 org 归属来实现租户隔离
+    const org = await prisma.orgNode.findFirst({ where: { id: orgId, tenantId } });
+    if (!org) throw new NotFoundException('组织节点不存在');
     const memberships = await prisma.orgMember.findMany({
       where: { orgId },
       include: { user: true },
@@ -99,28 +105,42 @@ export class OrgService {
   }
 
   /** 添加成员。 */
-  async addMember(orgId: string, userId: string) {
-    await prisma.orgMember.create({ data: { orgId, userId } }).catch(() => {});
+  async addMember(tenantId: string, orgId: string, userId: string) {
+    // 校验 org 和 user 都属于当前租户（OrgMember 无 tenantId 列）
+    const org = await prisma.orgNode.findFirst({ where: { id: orgId, tenantId } });
+    if (!org) throw new NotFoundException('组织节点不存在');
+    const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('用户不存在');
+    await prisma.orgMember.create({ data: { orgId, userId } });
   }
 
   /** 移除成员。 */
-  async removeMember(orgId: string, userId: string) {
+  async removeMember(tenantId: string, orgId: string, userId: string) {
+    // 校验 org 归属（OrgMember 无 tenantId 列）
+    const org = await prisma.orgNode.findFirst({ where: { id: orgId, tenantId } });
+    if (!org) throw new NotFoundException('组织节点不存在');
     await prisma.orgMember.delete({
       where: { userId_orgId: { userId, orgId } },
-    }).catch(() => {});
+    });
   }
 
   /** 组织角色授权。 */
   async grantRole(tenantId: string, orgId: string, roleId: string, appId?: string) {
+    // 校验 org 和 role 都属于当前租户
+    const org = await prisma.orgNode.findFirst({ where: { id: orgId, tenantId } });
+    if (!org) throw new NotFoundException('组织节点不存在');
+    const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
+    if (!role) throw new NotFoundException('角色不存在');
     return prisma.orgRoleGrant.create({
       data: { tenantId, orgId, roleId, appId: appId ?? null },
-    }).catch(() => {});
+    });
   }
 
   /** 撤销组织角色授权。 */
-  async revokeRole(orgId: string, roleId: string) {
+  async revokeRole(tenantId: string, orgId: string, roleId: string) {
+    // OrgRoleGrant 有 tenantId 列，直接在 where 中过滤
     await prisma.orgRoleGrant.deleteMany({
-      where: { orgId, roleId },
+      where: { tenantId, orgId, roleId },
     });
   }
 }

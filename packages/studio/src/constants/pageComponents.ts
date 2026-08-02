@@ -322,37 +322,6 @@ export const COMPONENT_GROUPS: {
   },
 ];
 
-/** 组件支持的事件(按组件类型预定义)。 */
-export const COMPONENT_EVENTS: Partial<Record<ComponentType, string[]>> = {
-  button: ['onClick'],
-  form: ['onSubmit', 'onReset'],
-  text_input: ['onChange'],
-  textarea: ['onChange'],
-  number_input: ['onChange'],
-  select: ['onChange'],
-  multi_select: ['onChange'],
-  date_picker: ['onChange'],
-  switch: ['onChange'],
-  data_table: ['onRowClick', 'onRowDoubleClick'],
-  page: ['onLoad'],
-};
-
-/** 动作类型元数据。 */
-export const ACTION_TYPE_META: Record<string, { label: string; description: string }> = {
-  query_records: { label: '查询记录', description: '查询对象记录并填充到变量' },
-  create_record: { label: '新增记录', description: '创建一条新记录' },
-  update_record: { label: '更新记录', description: '更新一条记录' },
-  delete_record: { label: '删除记录', description: '删除一条记录' },
-  navigate: { label: '页面跳转', description: '跳转到指定页面或 URL' },
-  open_modal: { label: '打开弹窗', description: '打开一个弹窗' },
-  close_modal: { label: '关闭弹窗', description: '关闭当前弹窗' },
-  confirm: { label: '弹出确认框', description: '弹出确认对话框' },
-  toast: { label: '弹出提示', description: '显示一条提示消息' },
-  call_api: { label: '调用 API', description: '调用自定义 API' },
-  trigger_process: { label: '触发流程', description: '触发一个流程' },
-  set_variable: { label: '设置变量', description: '设置视图模型变量的值' },
-};
-
 /** 页面类型选项。 */
 export const PAGE_TYPE_OPTIONS: { label: string; value: string }[] = [
   { label: '列表页', value: 'list_page' },

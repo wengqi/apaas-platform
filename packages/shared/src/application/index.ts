@@ -21,14 +21,6 @@ export enum AppStatus {
   Archived = 'ARCHIVED',
 }
 
-/** 应用环境。对标飞书 aPaaS 的开发态/运行态隔离。 */
-export enum AppEnv {
-  /** 开发环境（搭建器编辑） */
-  Dev = 'dev',
-  /** 线上环境（运行时发布版） */
-  Prod = 'prod',
-}
-
 /**
  * 应用定义 —— 平台的顶层业务容器。
  * 一个应用包含对象、页面、流程、权限、连接器等资源。
@@ -179,7 +171,6 @@ export interface AppSnapshot {
     name: string;
     workflowSchema: Record<string, unknown>;
     triggerType: string | null;
-    bpmnXml: string | null;
   }>;
   permissions: {
     roles: Array<{

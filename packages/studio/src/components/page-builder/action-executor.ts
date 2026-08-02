@@ -11,6 +11,7 @@
 
 import { Modal, message } from 'antd';
 import { objectsApi } from '../../api/objects.js';
+import { processesApi } from '../../api/processes.js';
 import type { ActionConfig, ActionType, PropValue } from '../../api/pages.js';
 import { evalExpr, resolvePropValue } from './expression-engine.js';
 import type { EvalContext } from './expression-engine.js';
@@ -252,11 +253,21 @@ export async function executeAction(
       return;
     }
 
-    // —— 流程(Phase 3 对接) ——
+    // —— 流程触发 ——
     case 'trigger_process': {
       const processId = paramAsString(params, 'processId', context);
-      // eslint-disable-next-line no-console
-      console.log('[trigger_process] processId =', processId, '(流程引擎 Phase 3 对接)');
+      if (!processId) {
+        message.warning('trigger_process 缺少 processId');
+        return;
+      }
+      try {
+        await processesApi.start(processId, {
+          processKey: processId,
+          variables: { ...context.vm },
+        });
+      } catch {
+        message.error('流程启动失败');
+      }
       return;
     }
 

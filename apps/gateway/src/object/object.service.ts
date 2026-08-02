@@ -355,7 +355,11 @@ export class ObjectService {
   /**
    * 列出对象视图。
    */
-  async listViews(objectId: string) {
+  async listViews(tenantId: string, objectId: string) {
+    // View 无 tenantId 列，通过校验 object 归属来实现租户隔离
+    const obj = await prisma.objectMeta.findFirst({ where: { id: objectId, tenantId } });
+    if (!obj) throw new NotFoundException('对象不存在');
+
     const views = await prisma.view.findMany({
       where: { objectId },
       orderBy: { createdAt: 'asc' },
@@ -375,10 +379,10 @@ export class ObjectService {
   /**
    * 创建视图。
    */
-  async createView(objectId: string, data: CreateViewInput) {
-    // 校验对象存在
-    const obj = await prisma.objectMeta.findUnique({
-      where: { id: objectId },
+  async createView(tenantId: string, objectId: string, data: CreateViewInput) {
+    // 校验对象存在且属于当前租户
+    const obj = await prisma.objectMeta.findFirst({
+      where: { id: objectId, tenantId },
     });
     if (!obj) throw new NotFoundException('对象不存在');
 
@@ -405,11 +409,16 @@ export class ObjectService {
   /**
    * 更新视图。
    */
-  async updateView(viewId: string, data: UpdateViewInput) {
+  async updateView(tenantId: string, viewId: string, data: UpdateViewInput) {
+    // View 无 tenantId 列，先查视图获取 objectId，再校验 object 归属
     const existing = await prisma.view.findUnique({
       where: { id: viewId },
     });
     if (!existing) throw new NotFoundException('视图不存在');
+    const obj = await prisma.objectMeta.findFirst({
+      where: { id: existing.objectId, tenantId },
+    });
+    if (!obj) throw new NotFoundException('对象不存在');
 
     const view = await prisma.view.update({
       where: { id: viewId },
@@ -434,11 +443,16 @@ export class ObjectService {
   /**
    * 删除视图。
    */
-  async deleteView(viewId: string): Promise<void> {
+  async deleteView(tenantId: string, viewId: string): Promise<void> {
+    // View 无 tenantId 列，先查视图获取 objectId，再校验 object 归属
     const existing = await prisma.view.findUnique({
       where: { id: viewId },
     });
     if (!existing) throw new NotFoundException('视图不存在');
+    const obj = await prisma.objectMeta.findFirst({
+      where: { id: existing.objectId, tenantId },
+    });
+    if (!obj) throw new NotFoundException('对象不存在');
 
     await prisma.view.delete({ where: { id: viewId } });
   }

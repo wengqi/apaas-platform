@@ -730,8 +730,16 @@ function renderStatistic(node: ComponentNode, ctx: RenderContext): React.ReactNo
   return <Statistic title={title} value={value} prefix={prefix} suffix={suffix} />;
 }
 
+/**
+ * 图表渲染 — 尚未实现。
+ *
+ * 图表引擎（ECharts/AntV 等）尚未集成，当前仅渲染占位 UI。
+ * 后续接入图表库后替换此实现。
+ */
 function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx) || '图表';
+  // eslint-disable-next-line no-console
+  console.warn('[ComponentRenderer] 图表组件尚未实现，渲染占位 UI');
   return (
     <div
       style={{
@@ -748,7 +756,7 @@ function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
       }}
     >
       <Text type="secondary" style={{ fontSize: 13 }}>
-        {title}(图表引擎后续迭代)
+        {title}（图表组件尚未实现）
       </Text>
     </div>
   );

@@ -73,9 +73,4 @@ export class NodeExecutorRegistry {
     }
     return executor;
   }
-
-  /** 是否已注册该类型。 */
-  has(type: string): boolean {
-    return this.registry.has(type);
-  }
 }

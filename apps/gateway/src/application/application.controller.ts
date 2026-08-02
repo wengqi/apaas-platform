@@ -12,7 +12,6 @@ import {
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApplicationService } from './application.service.js';
-import { CheckService } from './check.service.js';
 import { ChangeLogService } from './changelog.service.js';
 import type {
   CreateAppRequest,
@@ -31,7 +30,6 @@ import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 export class ApplicationController {
   constructor(
     private readonly appService: ApplicationService,
-    private readonly checkService: CheckService,
     private readonly changeLogService: ChangeLogService,
   ) {}
 

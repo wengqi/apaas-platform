@@ -50,6 +50,9 @@ export class RoleService {
 
   /** 获取角色下的用户列表。 */
   async getUsers(tenantId: string, roleId: string) {
+    // UserRole 无 tenantId 列，先校验角色归属
+    const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
+    if (!role) throw new NotFoundException('角色不存在');
     const userRoles = await prisma.userRole.findMany({
       where: { roleId },
       include: { user: true },
@@ -58,7 +61,19 @@ export class RoleService {
   }
 
   /** 批量分配用户到角色。 */
-  async assignUsers(roleId: string, userIds: string[]) {
+  async assignUsers(tenantId: string, roleId: string, userIds: string[]) {
+    // UserRole 无 tenantId 列，校验 role 和所有 user 都属于当前租户
+    const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
+    if (!role) throw new NotFoundException('角色不存在');
+    if (userIds.length > 0) {
+      const validUsers = await prisma.user.findMany({
+        where: { id: { in: userIds }, tenantId },
+        select: { id: true },
+      });
+      if (validUsers.length !== userIds.length) {
+        throw new BadRequestException('部分用户不存在或不属于当前租户');
+      }
+    }
     await prisma.userRole.createMany({
       data: userIds.map((userId) => ({ userId, roleId })),
       skipDuplicates: true,
@@ -66,7 +81,10 @@ export class RoleService {
   }
 
   /** 移除用户的角色。 */
-  async removeUser(roleId: string, userId: string) {
+  async removeUser(tenantId: string, roleId: string, userId: string) {
+    // UserRole 无 tenantId 列，校验角色归属
+    const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
+    if (!role) throw new NotFoundException('角色不存在');
     await prisma.userRole.delete({ where: { userId_roleId: { userId, roleId } } });
   }
 

@@ -23,14 +23,9 @@ export type AppId = Brand<string, 'AppId'>;
 
 /** 生成品牌 ID 的辅助函数（实现就是透传 string）。 */
 export const asObjectId = (s: string): ObjectId => s as ObjectId;
-export const asFieldId = (s: string): FieldId => s as FieldId;
-export const asRecordId = (s: string): RecordId => s as RecordId;
-export const asViewId = (s: string): ViewId => s as ViewId;
 export const asPageId = (s: string): PageId => s as PageId;
-export const asProcessId = (s: string): ProcessId => s as ProcessId;
 export const asTenantId = (s: string): TenantId => s as TenantId;
 export const asUserId = (s: string): UserId => s as UserId;
-export const asRoleId = (s: string): RoleId => s as RoleId;
 export const asAppId = (s: string): AppId => s as AppId;
 
 /** ISO 8601 时间戳字符串。 */
@@ -50,12 +45,6 @@ export interface ApiError {
   fieldErrors?: Record<string, string>;
   /** 调试用 trace id。 */
   traceId?: string;
-}
-
-/** 分页请求参数。 */
-export interface PaginationParams {
-  page: number; // 从 1 开始
-  pageSize: number;
 }
 
 /** 分页响应。 */

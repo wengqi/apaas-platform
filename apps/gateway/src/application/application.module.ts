@@ -18,7 +18,7 @@ import { PermissionModule } from '../permission/permission.module.js';
  *   ApplicationService → {SnapshotService, CheckService, ChangeLogService}
  *   CheckService → SnapshotService
  *   ChangeLogService → (无，直接用 prisma)
- *   ApplicationController → {ApplicationService, CheckService, ChangeLogService}
+ *   ApplicationController → {ApplicationService, ChangeLogService}
  */
 @Module({
   imports: [

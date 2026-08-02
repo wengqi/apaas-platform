@@ -49,14 +49,22 @@ export class RoleController {
   }
 
   @Post(':id/users')
-  async assignUsers(@Param('id') id: string, @Body() body: { userIds: string[] }) {
-    await this.roleService.assignUsers(id, body.userIds);
+  async assignUsers(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { userIds: string[] },
+  ) {
+    await this.roleService.assignUsers(req.user.tenantId, id, body.userIds);
     return { ok: true, data: null };
   }
 
   @Delete(':id/users/:userId')
-  async removeUser(@Param('id') id: string, @Param('userId') userId: string) {
-    await this.roleService.removeUser(id, userId);
+  async removeUser(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+  ) {
+    await this.roleService.removeUser(req.user.tenantId, id, userId);
     return { ok: true, data: null };
   }
 

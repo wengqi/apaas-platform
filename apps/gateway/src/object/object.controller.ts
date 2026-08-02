@@ -170,35 +170,43 @@ export class ObjectController {
   // ===========================================================================
 
   @Get('objects/:objectId/views')
-  async listViews(@Param('objectId') objectId: string) {
-    const views = await this.objectService.listViews(objectId);
+  async listViews(
+    @Req() req: AuthenticatedRequest,
+    @Param('objectId') objectId: string,
+  ) {
+    const views = await this.objectService.listViews(req.user.tenantId, objectId);
     return { ok: true as const, data: views };
   }
 
   @Post('objects/:objectId/views')
   @RequirePermission('DATA_MODEL', 'CREATE', 'objectId')
   async createView(
+    @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
     @Body() body: CreateViewInput,
   ) {
-    const view = await this.objectService.createView(objectId, body);
+    const view = await this.objectService.createView(req.user.tenantId, objectId, body);
     return { ok: true as const, data: view };
   }
 
   @Put('views/:viewId')
   @RequirePermission('DATA_MODEL', 'EDIT')
   async updateView(
+    @Req() req: AuthenticatedRequest,
     @Param('viewId') viewId: string,
     @Body() body: UpdateViewInput,
   ) {
-    const view = await this.objectService.updateView(viewId, body);
+    const view = await this.objectService.updateView(req.user.tenantId, viewId, body);
     return { ok: true as const, data: view };
   }
 
   @Delete('views/:viewId')
   @RequirePermission('DATA_MODEL', 'DELETE')
-  async deleteView(@Param('viewId') viewId: string) {
-    await this.objectService.deleteView(viewId);
+  async deleteView(
+    @Req() req: AuthenticatedRequest,
+    @Param('viewId') viewId: string,
+  ) {
+    await this.objectService.deleteView(req.user.tenantId, viewId);
     return { ok: true as const, data: { deleted: true } };
   }
 }

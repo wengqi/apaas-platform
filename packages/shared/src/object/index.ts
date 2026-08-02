@@ -12,9 +12,6 @@ import type {
   FieldId,
   ISODateString,
   ObjectId,
-  Paginated,
-  PaginationParams,
-  RecordId,
   SortParam,
   TenantId,
   UserId,
@@ -299,50 +296,4 @@ export interface View {
   isDefault: boolean;
   createdAt: ISODateString;
   updatedAt: ISODateString;
-}
-
-// ---------------------------------------------------------------------------
-// 记录（运行时数据）
-// ---------------------------------------------------------------------------
-
-/**
- * 一条记录。字段值存于 data JSONB。
- * 系统字段（id/created_at/updated_at/created_by 等）单独列出。
- */
-export interface RecordData {
-  id: RecordId;
-  objectId: ObjectId;
-  tenantId: TenantId;
-  /** 所属应用 ID */
-  appId: AppId;
-  /** 业务字段值，key = field.apiName */
-  data: Record<string, FieldValue>;
-  createdAt: ISODateString;
-  updatedAt: ISODateString;
-  createdBy: UserId;
-  updatedBy: UserId;
-}
-
-/** 查询记录请求。 */
-export interface QueryRecordsRequest {
-  objectId: ObjectId;
-  pagination: PaginationParams;
-  sorts?: SortParam[];
-  /** 运行时筛选（与视图筛选合并） */
-  filters?: FilterGroup;
-  /** 仅返回指定字段（性能优化） */
-  fieldIds?: FieldId[];
-}
-
-export type QueryRecordsResponse = Paginated<RecordData>;
-
-/** 创建记录请求。 */
-export interface CreateRecordRequest {
-  objectId: ObjectId;
-  data: Record<string, FieldValue>;
-}
-
-/** 更新记录请求（部分更新）。 */
-export interface UpdateRecordRequest {
-  data: Record<string, FieldValue>;
 }

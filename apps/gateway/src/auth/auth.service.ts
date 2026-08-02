@@ -58,20 +58,6 @@ export class AuthService {
       },
     };
   }
-
-  /**
-   * 根据 JWT payload 校验并返回用户（Passport Strategy 调用）。
-   */
-  async validateUser(payload: JwtPayload) {
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      include: { tenant: true, userRoles: { include: { role: true } } },
-    });
-    if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('用户无效');
-    }
-    return user;
-  }
 }
 
 export interface JwtPayload {

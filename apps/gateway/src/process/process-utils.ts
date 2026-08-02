@@ -12,24 +12,6 @@ import type { IFlowValue } from '@apaas/shared';
 const parser = new Parser();
 
 /**
- * 模版变量插值 —— 简单变量名匹配（\w+）。
- * 用于通知模版标题/正文渲染（变量名为扁平 key）。
- *
- * `{{applicant}} 的申请` → `张三 的申请`
- * 未提供值的变量替换为空字符串，不阻断。
- */
-export function renderTemplate(
-  template: string,
-  variables: Record<string, unknown>,
-): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
-    variables[name] !== undefined && variables[name] !== null
-      ? String(variables[name])
-      : '',
-  );
-}
-
-/**
  * 沿路径数组导航变量对象。
  * ['trigger_0', 'output', 'recordId'] → variables.trigger_0.output.recordId
  */

@@ -14,11 +14,9 @@ import type {
   ProcessDef as SharedProcessDef,
   WorkflowSchema,
   ProcessInstance,
-  NodeExecutionStatus,
   ProcessInstanceReport,
 } from '@apaas/shared';
 import type {
-  EditorMode,
   ProcessStatus,
   TriggerType,
   ProcessInstanceState,
@@ -29,25 +27,9 @@ import type {
 // 重新导出 shared 类型(便于上层统一从 api/processes 引入)
 // ---------------------------------------------------------------------------
 
-export type {
-  WorkflowSchema,
-  WorkflowNode,
-  WorkflowEdge,
-  IFlowValue,
-  ProcessInstance,
-  NodeExecutionStatus,
-  ProcessInstanceReport,
-  TriggerConfig,
-  ObjectOperationConfig,
-  ConditionBranch,
-  NotificationConfig,
-  UserTaskConfig,
-  HttpConfig,
-  CapabilityCheckResult,
-  UnsupportedElement,
-} from '@apaas/shared';
+export type { WorkflowSchema, WorkflowNode, ProcessInstance, ProcessInstanceReport } from '@apaas/shared';
 
-export type { EditorMode, ProcessStatus, TriggerType, NotificationChannel };
+export type { ProcessStatus, TriggerType, NotificationChannel };
 
 /**
  * 流程定义(UI 扩展)。
@@ -69,19 +51,14 @@ export interface ProcessDef extends SharedProcessDef {
 export interface CreateProcessRequest {
   name: string;
   apiName: string;
-  editorMode?: EditorMode;
   triggerType?: TriggerType;
-  /** 初始 WorkflowSchema(简化模式);不传后端生成空 start→end */
+  /** 初始 WorkflowSchema;不传后端生成空 start→end */
   workflowSchema?: WorkflowSchema;
-  /** 初始 BPMN XML(标准模式) */
-  bpmnXml?: string;
 }
 
 export interface UpdateProcessRequest {
   name?: string;
   workflowSchema?: WorkflowSchema;
-  bpmnXml?: string;
-  editorMode?: EditorMode;
   triggerType?: TriggerType;
   status?: ProcessStatus;
 }
@@ -186,7 +163,7 @@ export interface UpdateTemplateRequest {
 // 默认空 Schema(新建流程用)
 // ---------------------------------------------------------------------------
 
-/** 简化模式空 WorkflowSchema(仅 start→end)。 */
+/** 空 WorkflowSchema(仅 start→end)。 */
 export function createEmptyWorkflowSchema(): WorkflowSchema {
   return {
     nodes: [
@@ -213,36 +190,6 @@ export function createEmptyWorkflowSchema(): WorkflowSchema {
     ],
     edges: [{ sourceNodeID: 'start_0', targetNodeID: 'end_0' }],
   };
-}
-
-/** 标准模式空 BPMN 2.0 XML(StartEvent→EndEvent)。 */
-export function createEmptyBpmnXml(processKey: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                  id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="${processKey}" isExecutable="false">
-    <bpmn:startEvent id="StartEvent_1" name="开始"/>
-    <bpmn:endEvent id="EndEvent_1" name="结束"/>
-    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="EndEvent_1"/>
-  </bpmn:process>
-  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="${processKey}">
-      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
-        <dc:Box x="160" y="160" width="36" height="36"/>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="EndEvent_1_di" bpmnElement="EndEvent_1">
-        <dc:Box x="360" y="160" width="36" height="36"/>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
-        <di:waypoint x="196" y="178"/>
-        <di:waypoint x="360" y="178"/>
-      </bpmndi:BPMNEdge>
-    </bpmndi:BPMNPlane>
-  </bpmndi:BPMNDiagram>
-</bpmn:definitions>`;
 }
 
 // ---------------------------------------------------------------------------

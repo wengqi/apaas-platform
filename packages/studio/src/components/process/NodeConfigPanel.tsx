@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { Button, Empty, Popconfirm, Space, Tag, Typography } from 'antd';
+import { Button, Divider, Empty, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { WorkflowNode } from '@apaas/shared';
 import { getNodeMeta } from '../../constants/process.js';
@@ -57,18 +57,7 @@ export default function NodeConfigPanel({
 
   if (!node || !meta) {
     return (
-      <div
-        style={{
-          width: 360,
-          flexShrink: 0,
-          height: '100%',
-          background: '#fff',
-          borderLeft: '1px solid #eef0f4',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <div style={{ padding: '8px 16px' }}>
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="选中一个节点以配置"
@@ -77,7 +66,6 @@ export default function NodeConfigPanel({
     );
   }
 
-  const Icon = meta.icon;
   const nodeData = (node.data ?? {}) as Record<string, unknown>;
 
   /** 通用:节点标题变更。 */
@@ -93,56 +81,13 @@ export default function NodeConfigPanel({
   return (
     <div
       style={{
-        width: 360,
-        flexShrink: 0,
-        height: '100%',
-        background: '#fff',
-        borderLeft: '1px solid #eef0f4',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
+        overflow: 'auto',
       }}
     >
-      {/* 选中节点头 */}
-      <div
-        style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid #eef0f4',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-          flexShrink: 0,
-        }}
-      >
-        <Space align="center" size={8}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: `linear-gradient(135deg, ${meta.color}, ${meta.color}dd)`,
-              color: '#fff',
-              fontSize: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Icon style={{ fontSize: 16 }} />
-          </div>
-          <Text strong style={{ fontSize: 14 }}>
-            {node.data?.title ?? meta.label}
-          </Text>
-          {readonly && <Tag color="default">只读</Tag>}
-        </Space>
-        <Text code style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-          {node.id}
-        </Text>
-      </div>
-
       {/* 表单区 */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+      <div style={{ padding: '8px 16px' }}>
         {/* 通用:节点标题 */}
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           节点标题
@@ -157,10 +102,12 @@ export default function NodeConfigPanel({
                   tooltip: '点击编辑节点标题',
                 }
           }
-          style={{ marginTop: 4, marginBottom: 16 }}
+          style={{ marginTop: 4, marginBottom: 12 }}
         >
           {(node.data?.title as string) ?? meta.label}
         </Title>
+
+        <Divider style={{ margin: '8px 0 12px' }} />
 
         {/* 类型专属配置 */}
         {renderConfigForm(node.type, nodeData, handleConfigChange, readonly, {
@@ -174,23 +121,23 @@ export default function NodeConfigPanel({
       {!readonly && (
         <div
           style={{
-            padding: '8px 16px',
-            borderTop: '1px solid #eef0f4',
+            padding: '4px 16px 8px',
+            borderTop: '1px solid #f0f2f5',
             display: 'flex',
             justifyContent: 'flex-end',
-            flexShrink: 0,
           }}
         >
-          <Popconfirm
-            title="删除节点"
-            description="确定删除此节点吗?"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => onDeleteNode?.(node.id)}
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            size="small"
+            // 直接删除,不弹确认框(flowgram 画布 overlay 拦截 DOM 事件,
+            // 导致 Popconfirm/Modal.confirm/window.confirm 均无法触发)
+            onClick={() => onDeleteNode?.(node.id)}
           >
-            <Button type="text" danger icon={<DeleteOutlined />} size="small">
-              删除节点
-            </Button>
-          </Popconfirm>
+            删除节点
+          </Button>
         </div>
       )}
     </div>
@@ -299,12 +246,4 @@ function renderConfigForm(
         </Typography.Text>
       );
   }
-}
-
-/** 便捷 hook:从 store 取选中节点。 */
-export function useSelectedNode(): WorkflowNode | null {
-  const schema = useProcessEditorStore((s) => s.schema);
-  const selectedNodeId = useProcessEditorStore((s) => s.selectedNodeId);
-  if (!schema || !selectedNodeId) return null;
-  return schema.nodes.find((n) => n.id === selectedNodeId) ?? null;
 }

@@ -44,17 +44,6 @@ export class PermissionService {
   }
 
   /**
-   * 获取用户的组织节点 ID 集合。
-   */
-  async getUserOrgIds(userId: string): Promise<string[]> {
-    const orgMembers = await prisma.orgMember.findMany({
-      where: { userId },
-      select: { orgId: true },
-    });
-    return orgMembers.map((m) => m.orgId);
-  }
-
-  /**
    * 权限检查 — 校验用户是否有权限执行某操作。
    *
    * @returns 允许时返回 { allowed: true, condition?, fieldScope? }
@@ -107,22 +96,5 @@ export class PermissionService {
 
     // 无匹配规则 → 默认拒绝
     throw new ForbiddenException('无操作权限');
-  }
-
-  /**
-   * 检查用户是否有权限，返回布尔值（不抛异常）。
-   */
-  async can(
-    user: AuthenticatedUser,
-    type: string,
-    action: string,
-    targetId: string,
-  ): Promise<boolean> {
-    try {
-      await this.check(user, type, action, targetId);
-      return true;
-    } catch {
-      return false;
-    }
   }
 }

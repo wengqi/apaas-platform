@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@apaas/db';
-import { asAppId, asUserId, type ChangeSet, type ChangeLogEntry } from '@apaas/shared';
+import { asAppId, type ChangeSet } from '@apaas/shared';
 import { Prisma } from '@apaas/db';
 
 /**
@@ -106,33 +106,5 @@ export class ChangeLogService {
       })),
       baselineVersion,
     };
-  }
-
-  /**
-   * 获取变更记录列表。
-   */
-  async listChanges(
-    tenantId: string,
-    appId: string,
-    limit = 50,
-  ): Promise<ChangeLogEntry[]> {
-    const logs = await prisma.changeLog.findMany({
-      where: { tenantId, appId },
-      orderBy: { changedAt: 'desc' },
-      take: limit,
-    });
-
-    return logs.map((log) => ({
-      id: log.id,
-      appId: asAppId(log.appId),
-      module: log.module,
-      entityType: log.entityType,
-      entityId: log.entityId,
-      entityName: log.entityName,
-      changeType: log.changeType as 'CREATE' | 'UPDATE' | 'DELETE',
-      changedBy: asUserId(log.changedBy),
-      changeDescription: log.changeDescription,
-      changedAt: log.changedAt.toISOString(),
-    }));
   }
 }

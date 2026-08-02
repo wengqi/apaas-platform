@@ -57,14 +57,22 @@ export class OrgController {
   }
 
   @Post(':id/members')
-  async addMember(@Param('id') id: string, @Body() body: { userId: string }) {
-    await this.orgService.addMember(id, body.userId);
+  async addMember(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { userId: string },
+  ) {
+    await this.orgService.addMember(req.user.tenantId, id, body.userId);
     return { ok: true, data: null };
   }
 
   @Delete(':id/members/:userId')
-  async removeMember(@Param('id') id: string, @Param('userId') userId: string) {
-    await this.orgService.removeMember(id, userId);
+  async removeMember(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+  ) {
+    await this.orgService.removeMember(req.user.tenantId, id, userId);
     return { ok: true, data: null };
   }
 
@@ -79,8 +87,12 @@ export class OrgController {
   }
 
   @Delete(':id/roles/:roleId')
-  async revokeRole(@Param('id') id: string, @Param('roleId') roleId: string) {
-    await this.orgService.revokeRole(id, roleId);
+  async revokeRole(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('roleId') roleId: string,
+  ) {
+    await this.orgService.revokeRole(req.user.tenantId, id, roleId);
     return { ok: true, data: null };
   }
 }

@@ -1078,12 +1078,3 @@ function renderText(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   }
   return <Text>{content}</Text>;
 }
-
-// ---------------------------------------------------------------------------
-// 辅助:根据 ComponentType 获取图标(供 PageBuilder DragOverlay 使用)
-// ---------------------------------------------------------------------------
-
-/** 获取组件类型的图标组件。 */
-export function getComponentIcon(type: ComponentType) {
-  return getComponentMeta(type).icon;
-}

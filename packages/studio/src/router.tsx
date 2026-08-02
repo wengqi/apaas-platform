@@ -45,7 +45,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
    *   - /app/:appId/processes         流程列表 (Phase 3)
      *     - /app/:appId/processes/monitor       流程监控(实例列表 + 详情)
      *     - /app/:appId/processes/notifications 通知模板管理
-     *     - /app/:appId/processes/:processId    流程编辑器(简化/标准模式,全屏)
+     *     - /app/:appId/processes/:processId    流程编辑器(全屏)
  *   - /app/:appId/permissions       权限管理占位 (Phase 4)
  */
 export function AppRoutes() {

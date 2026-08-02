@@ -26,10 +26,8 @@ import {
 type IconType = ComponentType<{ style?: React.CSSProperties }>;
 
 // ---------------------------------------------------------------------------
-// 编辑模式 / 流程状态 / 触发器类型(字符串字面量,对齐 shared 枚举)
+// 流程状态 / 触发器类型(字符串字面量,对齐 shared 枚举)
 // ---------------------------------------------------------------------------
-
-export type EditorMode = 'simplified' | 'standard';
 
 export type ProcessStatus = 'draft' | 'published' | 'deprecated';
 
@@ -284,15 +282,6 @@ export const PROCESS_STATUS_META: Record<ProcessStatus, ProcessStatusMeta> = {
 export function getProcessStatusMeta(status: string): ProcessStatusMeta {
   return PROCESS_STATUS_META[status as ProcessStatus] ?? PROCESS_STATUS_META.draft;
 }
-
-/** 编辑模式标记。 */
-export const EDITOR_MODE_META: Record<
-  EditorMode,
-  { label: string; tagColor: string }
-> = {
-  simplified: { label: '简化', tagColor: 'blue' },
-  standard: { label: '标准', tagColor: 'geekblue' },
-};
 
 // ---------------------------------------------------------------------------
 // 实例 / 节点执行状态颜色(对齐 §9.4 / §8.2)

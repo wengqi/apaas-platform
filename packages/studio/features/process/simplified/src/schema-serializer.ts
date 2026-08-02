@@ -1,25 +1,59 @@
 /**
  * Schema 序列化器 — flowgram 内部格式 ↔ WorkflowSchema (SSOT) 双向转换。
  *
+ * 基于 flowgram.ai Fixed Layout 引擎:
+ *  - fixed-layout 的 toJSON() 只输出 { nodes: [...] },不含 edges
+ *  - 节点间的顺序关系靠树结构中兄弟节点排列顺序隐式表达
+ *  - edges 从树结构推导生成
+ *
  * 这是"同源互转"的核心：
- *  - 简化模式编辑器产出/消费 flowgram 内部格式 (FlowDocumentJSON)
+ *  - 编辑器产出/消费 flowgram 内部格式 (FlowDocumentJSON)
  *  - 转换为 WorkflowSchema JSON 后，存入 process_definitions.workflow_schema (Prisma)
  *  - 自研执行引擎直接消费 WorkflowSchema
- *
- * Phase 3 实现 bpmn-to-workflow / workflow-to-bpmn 时复用此模块。
  */
 
 import type { FlowDocumentJSON, FlowNodeJSON } from './typings.js';
-import type { WorkflowSchema, WorkflowNode } from '@apaas/shared';
+import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 
 /**
- * FlowDocumentJSON (flowgram 内部格式) → WorkflowSchema (SSOT)
+ * flowgram 内部系统节点类型 — 这些是布局引擎自动创建的结构性节点,
+ * 不应出现在 WorkflowSchema 中(它们由 condition 节点的 onCreate 重建)。
+ */
+const SYSTEM_NODE_TYPES = new Set([
+  'blockIcon',
+  'inlineBlocks',
+  'blockOrderIcon',
+  'root',
+]);
+
+/**
+ * 判断节点是否为系统节点(不应序列化到 WorkflowSchema)。
+ */
+function isSystemNode(node: FlowNodeJSON): boolean {
+  return SYSTEM_NODE_TYPES.has(node.type ?? '');
+}
+
+/**
+ * FlowDocumentJSON (flowgram fixed-layout 内部格式) → WorkflowSchema (SSOT)
+ *
+ * fixed-layout 的 toJSON() 只输出 { nodes: [...] },不含 edges。
+ * 节点间的顺序关系靠树结构中兄弟节点排列顺序隐式表达。
+ * 因此需要从树结构推导 edges(优先使用 doc.edges,若为空则从树推导)。
+ *
+ * 注意:flowgram 的 toJSON() 会包含系统节点(blockIcon/inlineBlocks/blockOrderIcon),
+ * 这些节点在转换为 WorkflowSchema 时被过滤 — 它们由 condition 的 onCreate 重建。
  */
 export function flowToWorkflowSchema(doc: FlowDocumentJSON): WorkflowSchema {
-  const nodes = (doc.nodes || []).map(flowNodeToWorkflowNode);
+  // 过滤系统节点(blockIcon/inlineBlocks/blockOrderIcon),
+  // 只保留业务节点和 block(分支容器,其 data 携带分支元数据)
+  const businessNodes = (doc.nodes || []).filter(
+    (n) => !isSystemNode(n),
+  );
 
-  // 收集边：优先从顶层 doc.edges 获取；若为空，从节点内部 edges 属性提取
-  let edges: WorkflowSchema['edges'];
+  const nodes = businessNodes.map(flowNodeToWorkflowNode);
+
+  // 若 doc.edges 存在(future compat),直接映射;否则从树结构推导
+  let edges: WorkflowEdge[];
   if (doc.edges && doc.edges.length > 0) {
     edges = doc.edges.map((e) => ({
       sourceNodeID: e.sourceNodeID,
@@ -28,20 +62,8 @@ export function flowToWorkflowSchema(doc: FlowDocumentJSON): WorkflowSchema {
       targetPortID: e.targetPortID,
     }));
   } else {
-    // FlowGram FixedLayout 可能将边存在节点内部
-    edges = [];
-    for (const node of doc.nodes || []) {
-      if (node.edges) {
-        for (const e of node.edges) {
-          edges.push({
-            sourceNodeID: e.sourceNodeID,
-            targetNodeID: e.targetNodeID,
-            sourcePortID: e.sourcePortID,
-            targetPortID: e.targetPortID,
-          });
-        }
-      }
-    }
+    // 兼容:从树结构推导 edges(fixed-layout 场景)
+    edges = generateEdgesFromTree(businessNodes);
   }
 
   return {
@@ -51,7 +73,103 @@ export function flowToWorkflowSchema(doc: FlowDocumentJSON): WorkflowSchema {
   };
 }
 
+/**
+ * 从 flowgram 树结构推导 edges。
+ *
+ * 规则：
+ * - 同一 blocks 数组中的连续兄弟节点生成顺序边 A→B
+ *   (但分支节点本身不生成兄弟边 — 其流通过分支汇聚)
+ * - 含子 blocks 的节点(如 condition) → 每个子 block(分支容器)生成边
+ * - 分支容器(block) → 其首子节点(如果分支非空)
+ * - 分支末节点(或空分支容器自身) → 父节点的下一个兄弟节点(分支汇聚)
+ * - 递归处理嵌套 blocks
+ * - 系统节点(blockIcon/inlineBlocks/blockOrderIcon)已在外层过滤,不传入此函数
+ *
+ * @param siblings 同一父节点下的兄弟节点数组(已过滤系统节点)
+ * @param nextOfParent 父节点的下一个兄弟节点(用于分支汇聚)
+ */
+function generateEdgesFromTree(
+  siblings: FlowNodeJSON[],
+  nextOfParent?: FlowNodeJSON,
+): WorkflowEdge[] {
+  const edges: WorkflowEdge[] = [];
+
+  for (let i = 0; i < siblings.length; i++) {
+    const node = siblings[i]!;
+    const nextSibling = siblings[i + 1];
+    const nodeBlocks = node.blocks;
+    const isBranching = !!(nodeBlocks && nodeBlocks.length > 0);
+
+    // 1. 兄弟节点间的顺序边(分支节点跳过 — 流通过分支汇聚)
+    //    block 类型节点(分支容器)不在这里生成兄弟边,它们由父分支节点管理
+    if (nextSibling && !isBranching && node.type !== 'block') {
+      edges.push({ sourceNodeID: node.id, targetNodeID: nextSibling.id });
+    }
+
+    // 2. 递归处理子 blocks(条件分支等复合节点)
+    if (isBranching && nodeBlocks) {
+      // 确定分支汇聚目标:优先下一个兄弟节点,否则用父级的下一个兄弟
+      const mergeTarget = nextSibling ?? nextOfParent;
+
+      for (const block of nodeBlocks) {
+        if (!block) continue;
+
+        // 父节点 → 分支容器
+        edges.push({ sourceNodeID: node.id, targetNodeID: block.id });
+
+        // block 的子节点:递归处理
+        // 注意:block 的子节点存储在 block.blocks 中(已过滤系统节点)
+        const blockChildren = block.blocks || [];
+
+        // 分支容器 → 首子节点(如果分支非空)
+        if (blockChildren.length > 0) {
+          const firstChild = blockChildren[0];
+          if (firstChild) {
+            edges.push({ sourceNodeID: block.id, targetNodeID: firstChild.id });
+          }
+        }
+
+        // 递归处理分支内部
+        const innerEdges = generateEdgesFromTree(blockChildren, mergeTarget);
+        edges.push(...innerEdges);
+
+        // 分支末节点(或空分支容器自身) → 汇聚目标
+        if (mergeTarget) {
+          const lastInBlock = getLastNodeInBlock(block);
+          if (lastInBlock) {
+            edges.push({
+              sourceNodeID: lastInBlock.id,
+              targetNodeID: mergeTarget.id,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return edges;
+}
+
+/**
+ * 获取 block(分支容器)内的最后一个业务节点。
+ * 如果 block 内有子节点(已过滤系统节点),取最后一个;否则返回 block 自身。
+ */
+function getLastNodeInBlock(block: FlowNodeJSON): FlowNodeJSON | undefined {
+  // 过滤系统节点,只看业务子节点
+  const businessChildren = (block.blocks || []).filter((b) => !isSystemNode(b));
+  if (businessChildren.length > 0) {
+  const last = businessChildren[businessChildren.length - 1];
+    if (last) return last;
+  }
+  return block;
+}
+
 function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
+  // 递归过滤子节点中的系统节点,只保留业务节点和 block(分支容器)
+  const filteredBlocks = node.blocks
+    ?.filter((b) => !isSystemNode(b))
+    .map(flowNodeToWorkflowNode);
+
   return {
     id: node.id,
     type: node.type as WorkflowNode['type'],
@@ -60,7 +178,7 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
       title: node.data?.title ?? node.type,
       ...(node.data ?? {}),
     },
-    blocks: node.blocks?.map(flowNodeToWorkflowNode),
+    blocks: filteredBlocks,
     edges: node.edges?.map((e) => ({
       sourceNodeID: e.sourceNodeID,
       targetNodeID: e.targetNodeID,
@@ -71,7 +189,11 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
 }
 
 /**
- * WorkflowSchema (SSOT) → FlowDocumentJSON (flowgram 内部格式)
+ * WorkflowSchema (SSOT) → FlowDocumentJSON (flowgram fixed-layout 内部格式)
+ *
+ * fixed-layout 不需要节点坐标(位置由布局引擎自动计算)。
+ * edges 在 fixed-layout 中被忽略(连接靠树结构兄弟顺序隐式表达),
+ * 但保留在输出中以兼容其他消费者。
  */
 export function workflowToFlowSchema(schema: WorkflowSchema): FlowDocumentJSON {
   return {

@@ -1,20 +1,10 @@
 /**
  * aPaaS 业务节点注册表
  *
- * 替换 flowgram.ai 默认节点（LLM/Agent/Code）为 aPaaS 流程节点。
- * 对齐 packages/shared/src/process/index.ts 中的 SimplifiedNodeType。
- *
- * 节点类型：
- *  - start:         开始节点（流程入口）
- *  - end:           结束节点
- *  - trigger:       触发器（记录创建/更新/定时/API 触发）
- *  - objectOperation: 对象操作（创建/更新/删除/查询记录）
- *  - condition:     条件分支（IF/ELSE）
- *  - userTask:      审批/人工任务
- *  - notification:  通知（邮件/消息）
- *  - httpRequest:   HTTP 请求
- *  - assign:        变量赋值
- *  - delay:         延时
+ * 对齐 flowgram.ai 官方最佳实践:
+ *  - 不覆盖 blockIcon/blockOrderIcon 注册表（使用 flowgram 默认值）
+ *  - 不设 meta.size（继承 DEFAULT_SIZE 280x60）
+ *  - 条件分支节点使用 extend: 'dynamicSplit'
  */
 
 import type { FlowNodeRegistry } from '../typings.js';

@@ -2,8 +2,8 @@
  * 流程编辑器状态管理 (Zustand)。
  *
  * 对齐 DESIGN-process.md §10.7。
- * 持有当前流程定义、WorkflowSchema / BPMN XML、编辑模式、选中节点、
- * 撤销/重做栈。自动保存由编辑器组件在 schema/bpmnXml 变化时防抖触发。
+ * 持有当前流程定义、WorkflowSchema、选中节点、撤销/重做栈。
+ * 自动保存由编辑器组件在 schema 变化时防抖触发。
  */
 
 import { create } from 'zustand';
@@ -11,7 +11,6 @@ import type {
   ProcessDef,
   WorkflowSchema,
 } from '@apaas/shared';
-import type { EditorMode } from '../constants/process.js';
 
 /** 深拷贝(支持嵌套对象/数组,JSON-safe 场景足够)。 */
 function deepClone<T>(value: T): T {
@@ -28,14 +27,8 @@ function deepClone<T>(value: T): T {
 interface ProcessEditorState {
   /** 当前流程定义 */
   processDef: ProcessDef | null;
-  /** 当前 WorkflowSchema(简化模式编辑中,SSOT) */
+  /** 当前 WorkflowSchema(编辑中,SSOT) */
   schema: WorkflowSchema | null;
-  /** 当前 BPMN XML(标准模式) */
-  bpmnXml: string | null;
-  /** 当前模式 */
-  editorMode: EditorMode;
-  /** 只读降级标志(标准→简化含高级元素时) */
-  readonly: boolean;
   /** 选中节点 ID */
   selectedNodeId: string | null;
   /** 撤销栈 */
@@ -46,18 +39,12 @@ interface ProcessEditorState {
   dirty: boolean;
 
   // —— actions ——
-  /** 加载流程定义,初始化 schema/bpmnXml/mode */
+  /** 加载流程定义,初始化 schema */
   loadProcess: (def: ProcessDef) => void;
   /** 重置(离开编辑器时) */
   reset: () => void;
   /** 设置当前 schema(并 push 撤销栈) */
   setSchema: (schema: WorkflowSchema, opts?: { skipHistory?: boolean }) => void;
-  /** 设置 BPMN XML */
-  setBpmnXml: (xml: string) => void;
-  /** 切换编辑模式 */
-  switchMode: (mode: EditorMode) => void;
-  /** 设置只读降级 */
-  setReadonly: (readonly: boolean) => void;
   /** 选中节点 */
   setSelectedNode: (nodeId: string | null) => void;
   /** 更新单个节点 data */
@@ -75,9 +62,6 @@ interface ProcessEditorState {
 const initialState = {
   processDef: null,
   schema: null,
-  bpmnXml: null,
-  editorMode: 'simplified' as EditorMode,
-  readonly: false,
   selectedNodeId: null,
   past: [] as WorkflowSchema[],
   future: [] as WorkflowSchema[],
@@ -91,9 +75,6 @@ export const useProcessEditorStore = create<ProcessEditorState>((set, get) => ({
     set({
       processDef: def,
       schema: def.workflowSchema ?? { nodes: [], edges: [] },
-      bpmnXml: def.bpmnXml ?? null,
-      editorMode: def.editorMode === 'standard' ? 'standard' : 'simplified',
-      readonly: false,
       selectedNodeId: null,
       past: [],
       future: [],
@@ -115,18 +96,6 @@ export const useProcessEditorStore = create<ProcessEditorState>((set, get) => ({
         dirty: true,
       };
     }),
-
-  setBpmnXml: (xml) => set({ bpmnXml: xml, dirty: true }),
-
-  switchMode: (mode) =>
-    set((state) => ({
-      editorMode: mode,
-      // 切到标准模式时清除只读降级;切到简化模式保留既有 readonly
-      readonly: mode === 'standard' ? false : state.readonly,
-      selectedNodeId: null,
-    })),
-
-  setReadonly: (readonly) => set({ readonly }),
 
   setSelectedNode: (nodeId) => set({ selectedNodeId: nodeId }),
 

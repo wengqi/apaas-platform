@@ -9,12 +9,12 @@ import type { FlowNodeRegistry as FlowgramNodeRegistry } from '@flowgram.ai/fixe
 import type { WorkflowSchema, WorkflowNode, SimplifiedNodeType } from '@apaas/shared';
 
 /**
- * flowgram.ai 的节点注册表类型（从 npm 包导入的别名）。
+ * flowgram.ai 的节点注册表类型（从 fixed-layout-editor 导入的别名）。
  */
 export type FlowNodeRegistry = FlowgramNodeRegistry;
 
 /**
- * flowgram.ai 的文档 JSON 格式（编辑器内部格式）。
+ * flowgram.ai 的文档 JSON 格式（编辑器内部格式,fixed-layout 的 FlowDocumentJSON）。
  */
 export interface FlowDocumentJSON {
   nodes: FlowNodeJSON[];

@@ -1,7 +1,7 @@
 /**
  * 流程列表页 —— 对齐 DESIGN-process.md §2。
  *
- * 工具栏(搜索/状态筛选/新建) + 流程卡片网格(名称/触发器/状态/版本/模式)。
+ * 工具栏(搜索/状态筛选/新建) + 流程卡片网格(名称/触发器/状态/版本)。
  * 点击卡片进入编辑器(/processes/:processId)。
  */
 
@@ -15,7 +15,6 @@ import {
   Form,
   Input,
   Modal,
-  Radio,
   Row,
   Select,
   Skeleton,
@@ -38,16 +37,13 @@ import dayjs from 'dayjs';
 import {
   processesApi,
   createEmptyWorkflowSchema,
-  createEmptyBpmnXml,
   type ProcessDef,
 } from '../api/processes.js';
 import {
   getProcessStatusMeta,
   getTriggerMeta,
-  EDITOR_MODE_META,
   PROCESS_STATUS_META,
   TRIGGER_OPTIONS,
-  type EditorMode,
 } from '../constants/process.js';
 
 const { Text, Title } = Typography;
@@ -55,7 +51,6 @@ const { Text, Title } = Typography;
 interface CreateProcessFormValues {
   name: string;
   processKey: string;
-  editorMode: EditorMode;
   triggerType?: string;
 }
 
@@ -89,14 +84,11 @@ export default function ProcessList() {
   /** 创建流程。 */
   const createMutation = useMutation({
     mutationFn: (data: CreateProcessFormValues) => {
-      const editorMode = data.editorMode;
       return processesApi.create(appId as string, {
         name: data.name,
         apiName: data.processKey,
-        editorMode,
         triggerType: data.triggerType as never,
-        workflowSchema: editorMode === 'simplified' ? createEmptyWorkflowSchema() : undefined,
-        bpmnXml: editorMode === 'standard' ? createEmptyBpmnXml(data.processKey) : undefined,
+        workflowSchema: createEmptyWorkflowSchema(),
       });
     },
     onSuccess: (proc) => {
@@ -246,7 +238,6 @@ function ProcessCard({
 }) {
   const triggerMeta = getTriggerMeta(process.triggerType as string | undefined);
   const statusMeta = getProcessStatusMeta(process.status);
-  const modeMeta = EDITOR_MODE_META[process.editorMode === 'standard' ? 'standard' : 'simplified'];
   const TriggerIcon = triggerMeta.icon;
 
   return (
@@ -308,7 +299,7 @@ function ProcessCard({
           </div>
         </div>
 
-        {/* 触发器 + 模式 */}
+        {/* 触发器 + 更新时间 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <Space size={4}>
             <TriggerIcon style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }} />
@@ -316,14 +307,9 @@ function ProcessCard({
               触发器: {triggerMeta.label}
             </Text>
           </Space>
-          <Space size={4}>
-            <Tag color={modeMeta.tagColor} style={{ margin: 0, fontSize: 11 }}>
-              {modeMeta.label}模式
-            </Tag>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              更新于 {dayjs(process.updatedAt).format('MM-DD HH:mm')}
-            </Text>
-          </Space>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            更新于 {dayjs(process.updatedAt).format('MM-DD HH:mm')}
+          </Text>
         </div>
 
         {/* 操作行 */}
@@ -340,7 +326,6 @@ function ProcessCard({
             menu={{
               items: [
                 { key: 'export-schema', label: '导出 Schema', icon: <ApartmentOutlined /> },
-                { key: 'export-bpmn', label: '导出 BPMN', icon: <ApartmentOutlined /> },
                 { type: 'divider' as const },
                 { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
               ],
@@ -406,7 +391,6 @@ function CreateProcessModal({
       <Form<CreateProcessFormValues>
         form={form}
         layout="vertical"
-        initialValues={{ editorMode: 'simplified' as EditorMode }}
         preserve={false}
       >
         <Form.Item
@@ -432,29 +416,6 @@ function CreateProcessModal({
           ]}
         >
           <Input placeholder="customer_approval" style={{ fontFamily: 'monospace' }} />
-        </Form.Item>
-        <Form.Item label="编辑模式" name="editorMode" rules={[{ required: true }]}>
-          <Radio.Group>
-            <Space direction="vertical">
-              <Radio value="simplified">
-                <Space>
-                  <Text strong>简化模式</Text>
-                  <Tag color="blue" style={{ margin: 0 }}>推荐</Tag>
-                </Space>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  飞书式业务节点,适合业务人员
-                </Text>
-              </Radio>
-              <Radio value="standard">
-                <Text strong>标准模式</Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  完整 BPMN 2.0,适合流程专家
-                </Text>
-              </Radio>
-            </Space>
-          </Radio.Group>
         </Form.Item>
         <Form.Item label="触发器类型(可选)" name="triggerType">
           <Select

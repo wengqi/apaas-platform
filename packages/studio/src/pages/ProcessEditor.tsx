@@ -1,9 +1,9 @@
 /**
- * 流程编辑器容器(三栏 + 工具栏 + 模式切换)。
+ * 流程编辑器容器(三栏 + 工具栏)。
  *
  * 路由:/app/:appId/processes/:processId
- * 根据 ProcessDef.editorMode 渲染简化模式(SimplifiedEditor)或标准模式(StandardEditor)。
- * 顶部工具栏:返回/流程名/模式切换/撤销重做/保存/发布。
+ * 渲染流程编辑器(SimplifiedEditor,基于 flowgram.ai Free Layout)。
+ * 顶部工具栏:返回/流程名/撤销重做/预览/保存/发布。
  * 全屏三栏,撑满 calc(100vh - 56px)(StudioLayout Header)。
  */
 
@@ -28,9 +28,6 @@ import { objectsApi } from '../api/objects.js';
 import { useProcessEditorStore } from '../stores/processEditor.js';
 import { getProcessStatusMeta, getTriggerMeta } from '../constants/process.js';
 import SimplifiedEditor from '../components/process/SimplifiedEditor.js';
-import StandardEditor from '../components/process/StandardEditor.js';
-import ModeSwitcher from '../components/process/ModeSwitcher.js';
-import { workflowToBpmnXml, bpmnXmlToWorkflow } from '../utils/bpmnConverter.js';
 
 const { Title } = Typography;
 
@@ -41,6 +38,14 @@ export default function ProcessEditor() {
 
   const store = useProcessEditorStore();
   const loadedRef = useRef<string | null>(null);
+
+  /** flowgram 撤销/重做 API(由 SimplifiedEditor 内部 HistoryBridge 暴露)。 */
+  const [historyApi, setHistoryApi] = useState<{
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+  } | null>(null);
 
   /** 加载流程详情。 */
   const { data: processDef, isLoading } = useQuery({
@@ -62,7 +67,7 @@ export default function ProcessEditor() {
   /** 流程加载成功 → 写入 store(仅当 processId 变化时)。 */
   useEffect(() => {
     if (processDef && processDef.id !== loadedRef.current) {
-      // 先重置 store，清除上一个流程的残留状态（防止 SimplifiedEditor 导出旧 schema 覆盖新流程）
+      // 先重置 store，清除上一个流程的残留状态
       store.reset();
       loadedRef.current = processDef.id;
       store.loadProcess(processDef);
@@ -70,15 +75,15 @@ export default function ProcessEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processDef]);
 
-  /** store 是否已加载当前流程（未加载时不渲染编辑器，防止旧数据导出覆盖）。 */
+  /** store 是否已加载当前流程。 */
   const storeLoaded = store.processDef?.id === processId;
 
-  /** 是否只读(已发布或 store 标记只读)。 */
-  const isReadonly = store.readonly || processDef?.status === 'published';
+  /** 是否只读(已发布)。 */
+  const isReadonly = processDef?.status === 'published';
 
   /** 保存草稿。 */
   const saveMutation = useMutation({
-    mutationFn: (data: { workflowSchema?: WorkflowSchema; bpmnXml?: string; editorMode?: string }) =>
+    mutationFn: (data: { workflowSchema?: WorkflowSchema }) =>
       processesApi.update(processId as string, data as never),
     onSuccess: () => {
       message.success('已保存');
@@ -100,7 +105,6 @@ export default function ProcessEditor() {
 
   /** Schema 变化(防抖保存,只读模式不保存)。 */
   const handleSchemaChange = (schema: WorkflowSchema) => {
-    // store 未加载完成时不接受 schema 变更（防止旧数据覆盖）
     if (!storeLoaded) return;
     // FlowGram 导出可能丢失 edges，如果新 schema edges 为空但当前有 edges，保留原 edges
     let finalSchema = schema;
@@ -111,7 +115,7 @@ export default function ProcessEditor() {
       }
     }
     store.setSchema(finalSchema, { skipHistory: true });
-    if (isReadonly) return; // 只读模式不触发保存
+    if (isReadonly) return;
     // 防抖保存
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -120,58 +124,10 @@ export default function ProcessEditor() {
   };
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** BPMN 变化。 */
-  const handleBpmnChange = (bpmnXml: string) => {
-    if (!storeLoaded) return;
-    store.setBpmnXml(bpmnXml);
-    if (isReadonly) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveMutation.mutate({ bpmnXml });
-    }, 1000);
-  };
-
-  /** 模式切换 — 简化↔标准，自动转换数据。 */
-  const handleModeSwitch = (mode: 'simplified' | 'standard') => {
-    if (mode === 'standard') {
-      // 简化→标准：WorkflowSchema → BPMN XML
-      // 优先使用 store.schema，但如果其 edges 为空而原始 processDef 有 edges，则合并
-      let schema = store.schema ?? processDef?.workflowSchema;
-      if (schema && (!schema.edges || schema.edges.length === 0)) {
-        const origSchema = processDef?.workflowSchema;
-        if (origSchema?.edges && origSchema.edges.length > 0) {
-          // store.schema 丢失了 edges（FlowGram 导出问题），使用原始 schema
-          schema = origSchema;
-        }
-      }
-      if (schema) {
-        const { bpmnXml, warnings } = workflowToBpmnXml(schema);
-        store.setBpmnXml(bpmnXml);
-        if (warnings.length > 0) {
-          message.warning(`已切换到标准模式，${warnings.length} 项提示`);
-        } else {
-          message.success('已切换到标准模式');
-        }
-      }
-    } else {
-      // 标准→简化：BPMN XML → WorkflowSchema
-      const bpmnXml = store.bpmnXml ?? processDef?.bpmnXml;
-      if (bpmnXml) {
-        const schema = bpmnXmlToWorkflow(bpmnXml);
-        store.setSchema(schema, { skipHistory: false });
-        message.success('已切换到简化模式');
-      }
-    }
-    store.switchMode(mode);
-    saveMutation.mutate({ editorMode: mode });
-  };
-
   /** 手动保存。 */
   const handleSave = () => {
-    if (store.editorMode === 'simplified' && store.schema) {
+    if (store.schema) {
       saveMutation.mutate({ workflowSchema: store.schema });
-    } else if (store.editorMode === 'standard' && store.bpmnXml) {
-      saveMutation.mutate({ bpmnXml: store.bpmnXml });
     }
   };
 
@@ -205,35 +161,28 @@ export default function ProcessEditor() {
       {/* 工具栏 */}
       <ProcessEditorToolbar
         processDef={processDef}
-        editorMode={store.editorMode}
         readonly={isReadonly}
         dirty={store.dirty}
         onBack={() => navigate(`/app/${appId}/processes`)}
-        onModeSwitch={handleModeSwitch}
         onSave={handleSave}
         onPublish={() => publishMutation.mutate()}
         saving={saveMutation.isPending}
         publishing={publishMutation.isPending}
+        canUndo={historyApi?.canUndo ?? false}
+        canRedo={historyApi?.canRedo ?? false}
+        onUndo={() => historyApi?.undo()}
+        onRedo={() => historyApi?.redo()}
       />
-      {/* 编辑器主体 — key={processId} 确保切换流程时组件重新挂载，防止 FlowGram 内部状态残留 */}
+      {/* 编辑器主体 — key={processId} 确保切换流程时组件重新挂载 */}
       <EditorErrorBoundary key={processId}>
-        {store.editorMode === 'simplified' ? (
-          <SimplifiedEditor
-            key={processId}
-            initialSchema={store.schema ?? processDef.workflowSchema}
-            readonly={isReadonly}
-            onSchemaChange={handleSchemaChange}
-            objectOptions={objectOptions}
-          />
-        ) : (
-          <StandardEditor
-            key={processId}
-            initialBpmnXml={store.bpmnXml ?? processDef.bpmnXml}
-            initialSchema={store.schema ?? undefined}
-            onBpmnChange={handleBpmnChange}
-            onSchemaChange={handleSchemaChange}
-          />
-        )}
+        <SimplifiedEditor
+          key={processId}
+          initialSchema={store.schema ?? processDef.workflowSchema}
+          readonly={isReadonly}
+          onSchemaChange={handleSchemaChange}
+          objectOptions={objectOptions}
+          onHistoryReady={setHistoryApi}
+        />
       </EditorErrorBoundary>
     </div>
   );
@@ -245,28 +194,32 @@ export default function ProcessEditor() {
 
 interface ProcessEditorToolbarProps {
   processDef: ProcessDef;
-  editorMode: 'simplified' | 'standard';
   readonly: boolean;
   dirty: boolean;
   onBack: () => void;
-  onModeSwitch: (mode: 'simplified' | 'standard') => void;
   onSave: () => void;
   onPublish: () => void;
   saving: boolean;
   publishing: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 function ProcessEditorToolbar({
   processDef,
-  editorMode,
   readonly,
   dirty,
   onBack,
-  onModeSwitch,
   onSave,
   onPublish,
   saving,
   publishing,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: ProcessEditorToolbarProps) {
   const statusMeta = getProcessStatusMeta(processDef.status);
   const triggerMeta = getTriggerMeta(processDef.triggerType as string | undefined);
@@ -314,24 +267,24 @@ function ProcessEditorToolbar({
         </Space>
       </Space>
 
-      {/* 中间:模式切换 */}
-      <Space size={8}>
-        {!readonly && (
-          <ModeSwitcher
-            mode={editorMode}
-            onSwitch={(mode) => onModeSwitch(mode)}
-            disabled={readonly}
-          />
-        )}
-        {readonly && <Tag color="default">只读</Tag>}
-      </Space>
-
       {/* 右侧:撤销/重做 + 预览 + 保存 + 发布 */}
       <Space size={8}>
-        {!readonly && editorMode === 'simplified' && (
+        {!readonly && (
           <>
-            <Button type="text" icon={<UndoOutlined />} size="small" />
-            <Button type="text" icon={<RedoOutlined />} size="small" />
+            <Button
+              type="text"
+              icon={<UndoOutlined />}
+              size="small"
+              disabled={!canUndo}
+              onClick={onUndo}
+            />
+            <Button
+              type="text"
+              icon={<RedoOutlined />}
+              size="small"
+              disabled={!canRedo}
+              onClick={onRedo}
+            />
           </>
         )}
         <Button icon={<EyeOutlined />} size="small">
@@ -365,7 +318,7 @@ function ProcessEditorToolbar({
 }
 
 // ---------------------------------------------------------------------------
-// Error Boundary — 捕获 SimplifiedEditor/StandardEditor 渲染崩溃
+// Error Boundary — 捕获编辑器渲染崩溃
 // ---------------------------------------------------------------------------
 
 interface ErrorBoundaryProps {

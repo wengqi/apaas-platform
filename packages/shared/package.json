@@ -45,5 +45,11 @@
   },
   "devDependencies": {
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@flowgram.ai/fixed-drag-plugin": "^1.0.12",
+    "@flowgram.ai/fixed-history-plugin": "^1.0.12",
+    "@flowgram.ai/fixed-layout-core": "^1.0.12",
+    "@flowgram.ai/fixed-layout-editor": "^1.0.12"
   }
 }

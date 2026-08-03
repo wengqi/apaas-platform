@@ -13,6 +13,9 @@ export default function Home() {
     queryFn: appsApi.list,
   });
 
+  // 运行时只展示非归档应用
+  const visibleApps = (apps ?? []).filter((a: AppSummary) => a.status !== 'ARCHIVED');
+
   return (
     <Card>
       <Title level={4}>
@@ -24,11 +27,11 @@ export default function Home() {
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin size="large" />
         </div>
-      ) : !apps || apps.length === 0 ? (
+      ) : visibleApps.length === 0 ? (
         <Empty description="暂无可用应用" />
       ) : (
         <Row gutter={[16, 16]}>
-          {apps.map((app: AppSummary) => (
+          {visibleApps.map((app: AppSummary) => (
             <Col key={app.id} xs={24} sm={12} md={8} lg={6}>
               <Card
                 hoverable

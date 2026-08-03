@@ -74,6 +74,17 @@ export class ApplicationController {
     return { ok: true as const, data: { deleted: true } };
   }
 
+  @Post(':appId/archive')
+  @RequirePermission('PAGE', 'MANAGE', 'appId')
+  async archive(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
+    const app = await this.appService.archive(
+      req.user.tenantId,
+      appId,
+      req.user.id,
+    );
+    return { ok: true as const, data: app };
+  }
+
   // ===========================================================================
   // 预检
   // ===========================================================================

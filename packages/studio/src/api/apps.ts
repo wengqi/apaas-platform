@@ -55,4 +55,8 @@ export const appsApi = {
     client
       .delete<ApiResponse<{ deleted: boolean }>>(`/api/apps/${appId}`)
       .then((res) => res.data.data as { deleted: boolean }),
+  archive: (appId: string) =>
+    client
+      .post<ApiResponse<AppSummary>>(`/api/apps/${appId}/archive`)
+      .then((res) => res.data.data as AppSummary),
 };

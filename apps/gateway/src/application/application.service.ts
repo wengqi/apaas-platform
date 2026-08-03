@@ -176,14 +176,79 @@ export class ApplicationService {
   }
 
   /**
+   * 归档应用 — 冻结运行态入口，在途流程仍可继续完成。
+   * 仅 PUBLISHED 状态可归档。
+   */
+  async archive(
+    tenantId: string,
+    appId: string,
+    archivedBy: string,
+  ): Promise<Application> {
+    const app = await prisma.application.findFirst({
+      where: { id: appId, tenantId },
+      select: { id: true, name: true, status: true },
+    });
+    if (!app) throw new NotFoundException('应用不存在');
+    if (app.status === 'ARCHIVED') {
+      throw new BadRequestException('应用已归档');
+    }
+    if (app.status !== 'PUBLISHED') {
+      throw new BadRequestException('仅已发布的应用可归档');
+    }
+
+    await prisma.application.update({
+      where: { id: appId },
+      data: { status: 'ARCHIVED' },
+    });
+
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'Application',
+      entityId: appId,
+      entityName: app.name,
+      changeType: 'UPDATE',
+      changedBy: archivedBy,
+      changeDescription: `归档应用: ${app.name}`,
+    });
+
+    return this.get(tenantId, appId);
+  }
+
+  /**
    * 删除应用。
+   * - DRAFT：可直接删除（无运行态数据）
+   * - PUBLISHED：不可直接删除，需先归档
+   * - ARCHIVED：检查是否有在途流程实例，有则阻止删除
    */
   async delete(tenantId: string, appId: string, changedBy?: string): Promise<void> {
     const existing = await prisma.application.findFirst({
       where: { id: appId, tenantId },
-      select: { name: true },
+      select: { id: true, name: true, status: true },
     });
     if (!existing) throw new NotFoundException('应用不存在');
+
+    // 已发布应用不可直接删除，需先归档
+    if (existing.status === 'PUBLISHED') {
+      throw new BadRequestException('已发布的应用不可直接删除，请先归档');
+    }
+
+    // 已归档应用：检查是否有在途流程实例
+    if (existing.status === 'ARCHIVED') {
+      const activeInstances = await prisma.processInstance.count({
+        where: {
+          tenantId,
+          processDef: { appId },
+          status: { in: ['RUNNING', 'WAITING_USER_TASK'] },
+        },
+      });
+      if (activeInstances > 0) {
+        throw new BadRequestException(
+          `应用下有 ${activeInstances} 个在途流程实例，无法删除。请等待流程完成后再删除。`,
+        );
+      }
+    }
 
     const result = await prisma.application.deleteMany({
       where: { id: appId, tenantId },

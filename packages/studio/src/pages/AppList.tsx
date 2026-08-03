@@ -29,6 +29,7 @@ import {
   ThunderboltFilled,
   DeleteOutlined,
   MoreOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -116,26 +117,65 @@ export default function AppList() {
     },
   });
 
-  /** 卡片更多操作菜单。 */
-  const cardMenuItems = (app: AppSummary): MenuProps['items'] => [
-    {
-      key: 'delete',
-      icon: <DeleteOutlined />,
-      label: '删除应用',
-      danger: true,
+  /** 归档应用。 */
+  const archiveMutation = useMutation({
+    mutationFn: (appId: string) => appsApi.archive(appId),
+    onSuccess: () => {
+      message.success('应用已归档');
+      queryClient.invalidateQueries({ queryKey: ['apps'] });
     },
-  ];
+    onError: (err) => {
+      const axErr = err as {
+        response?: { data?: { error?: { message?: string } }; message?: string };
+        message?: string;
+      };
+      message.error(
+        axErr.response?.data?.error?.message ?? axErr.message ?? '归档失败，请重试',
+      );
+    },
+  });
+
+  /** 卡片更多操作菜单 — 按状态显示不同操作。 */
+  const cardMenuItems = (app: AppSummary): MenuProps['items'] => {
+    const items: MenuProps['items'] = [];
+    if (app.status === 'PUBLISHED') {
+      items.push({
+        key: 'archive',
+        icon: <InboxOutlined />,
+        label: '归档应用',
+      });
+    }
+    if (app.status === 'DRAFT' || app.status === 'ARCHIVED') {
+      items.push({
+        key: 'delete',
+        icon: <DeleteOutlined />,
+        label: '删除应用',
+        danger: true,
+      });
+    }
+    return items;
+  };
 
   /** 处理卡片菜单点击。 */
   const handleCardMenuClick = (app: AppSummary, info: { key: string }) => {
     if (info.key === 'delete') {
       Modal.confirm({
         title: '删除应用',
-        content: `确定要删除应用「${app.name}」吗？删除后不可恢复，应用下的所有对象、页面、流程数据将一并删除。`,
+        content: app.status === 'ARCHIVED'
+          ? `确定要彻底删除已归档应用「${app.name}」吗？删除后不可恢复，应用下的所有数据将一并删除。`
+          : `确定要删除应用「${app.name}」吗？删除后不可恢复，应用下的所有对象、页面、流程数据将一并删除。`,
         okText: '确认删除',
         okType: 'danger',
         cancelText: '取消',
         onOk: () => deleteMutation.mutate(app.id),
+      });
+    } else if (info.key === 'archive') {
+      Modal.confirm({
+        title: '归档应用',
+        content: `确定要归档应用「${app.name}」吗？归档后运行时不再展示此应用，不可提交新申请。在途流程仍可正常完成。`,
+        okText: '确认归档',
+        cancelText: '取消',
+        onOk: () => archiveMutation.mutate(app.id),
       });
     }
   };

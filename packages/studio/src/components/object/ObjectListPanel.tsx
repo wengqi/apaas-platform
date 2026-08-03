@@ -10,9 +10,10 @@ import {
   Space,
   Tag,
   Typography,
+  Popconfirm,
   message,
 } from 'antd';
-import { PlusOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { PlusOutlined, DatabaseOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { objectsApi, type CreateObjectRequest, type ObjectInfo } from '../../api/objects.js';
@@ -97,6 +98,28 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
     }
   };
 
+  /** 删除对象。 */
+  const deleteMutation = useMutation({
+    mutationFn: (objectId: string) => objectsApi.delete(objectId),
+    onSuccess: () => {
+      message.success('对象已删除');
+      queryClient.invalidateQueries({ queryKey: ['objects', appId] });
+      // 如果删除的是当前选中的对象，返回对象列表
+      if (objectId) {
+        navigate(`/app/${appId}/objects`, { replace: true });
+      }
+    },
+    onError: (err) => {
+      const axErr = err as {
+        response?: { data?: { message?: string; error?: { message?: string } } };
+        message?: string;
+      };
+      message.error(
+        axErr.response?.data?.message ?? axErr.response?.data?.error?.message ?? axErr.message ?? '删除失败',
+      );
+    },
+  });
+
   return (
     <div
       style={{
@@ -175,6 +198,8 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
                 obj={obj}
                 selected={obj.id === objectId}
                 onClick={() => navigate(`/app/${appId}/objects/${obj.id}`)}
+                onDelete={() => deleteMutation.mutate(obj.id)}
+                deleting={deleteMutation.isPending}
               />
             )}
           />
@@ -236,10 +261,14 @@ function ObjectListItem({
   obj,
   selected,
   onClick,
+  onDelete,
+  deleting,
 }: {
   obj: ObjectInfo;
   selected: boolean;
   onClick: () => void;
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   return (
     <div
@@ -305,6 +334,31 @@ function ObjectListItem({
           <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
             {obj.fieldCount}字段
           </Text>
+        )}
+        {/* 删除按钮 — 系统对象不显示 */}
+        {!obj.isSystem && (
+          <Popconfirm
+            title="删除对象"
+            description={`确定要删除对象「${obj.label}」吗？删除后不可恢复，对象下的所有字段和数据将一并删除。`}
+            okText="确认删除"
+            okType="danger"
+            cancelText="取消"
+            onConfirm={(e) => {
+              e?.stopPropagation();
+              onDelete();
+            }}
+            onCancel={(e) => e?.stopPropagation()}
+          >
+            <Button
+              type="text"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deleting}
+              onClick={(e) => e.stopPropagation()}
+              style={{ flexShrink: 0, opacity: 0.6 }}
+            />
+          </Popconfirm>
         )}
       </div>
     </div>

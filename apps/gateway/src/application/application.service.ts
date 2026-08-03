@@ -72,9 +72,14 @@ export class ApplicationService {
   /**
    * 获取单个应用详情。
    */
-  async get(tenantId: string, appId: string): Promise<Application> {
+  async get(tenantId: string, appId: string) {
     const app = await prisma.application.findFirst({
       where: { id: appId, tenantId },
+      include: {
+        _count: {
+          select: { objects: true, pages: true, processes: true },
+        },
+      },
     });
     if (!app) throw new NotFoundException('应用不存在');
     return {
@@ -92,6 +97,11 @@ export class ApplicationService {
       createdBy: asUserId(app.createdBy),
       createdAt: app.createdAt.toISOString(),
       updatedAt: app.updatedAt.toISOString(),
+      stats: {
+        objects: app._count.objects,
+        pages: app._count.pages,
+        processes: app._count.processes,
+      },
     };
   }
 

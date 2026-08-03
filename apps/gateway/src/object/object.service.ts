@@ -95,6 +95,54 @@ export class ObjectService {
   constructor(private readonly changeLogService: ChangeLogService) {}
 
   // ===========================================================================
+  // 系统字段定义
+  // ===========================================================================
+
+  /**
+   * 预置系统字段 — 创建对象时自动生成。
+   *
+   * 这些字段不可删除、不可修改类型，由系统自动维护：
+   *   - name        : 记录名称（主字段）
+   *   - created_by  : 创建人
+   *   - created_at  : 创建时间
+   *   - updated_by  : 更新人
+   *   - updated_at  : 更新时间
+   *   - owner       : 拥有者（默认为创建人，可转交）
+   */
+  private static readonly SYSTEM_FIELDS: Array<{
+    apiName: string;
+    label: string;
+    type: string;
+    description: string;
+  }> = [
+    { apiName: 'created_by', label: '创建人', type: 'user', description: '记录创建人，系统自动填充' },
+    { apiName: 'created_at', label: '创建时间', type: 'datetime', description: '记录创建时间，系统自动填充' },
+    { apiName: 'updated_by', label: '更新人', type: 'user', description: '最后更新人，系统自动填充' },
+    { apiName: 'updated_at', label: '更新时间', type: 'datetime', description: '最后更新时间，系统自动填充' },
+    { apiName: 'owner', label: '拥有者', type: 'user', description: '记录拥有者，默认为创建人' },
+  ];
+
+  /** 生成预置系统字段列表。 */
+  private static createSystemFields(objectId: string): StoredField[] {
+    const now = new Date().toISOString();
+    return ObjectService.SYSTEM_FIELDS.map((f) => ({
+      id: randomUUID(),
+      objectId,
+      apiName: f.apiName,
+      label: f.label,
+      type: f.type,
+      config: {},
+      required: false,
+      unique: false,
+      searchable: true,
+      description: f.description,
+      isSystem: true,
+      createdAt: now,
+      updatedAt: now,
+    }));
+  }
+
+  // ===========================================================================
   // 对象 CRUD
   // ===========================================================================
 
@@ -148,7 +196,7 @@ export class ObjectService {
   }
 
   /**
-   * 创建对象。
+   * 创建对象（自动预置 6 个系统字段）。
    */
   async create(
     tenantId: string,
@@ -167,6 +215,13 @@ export class ObjectService {
         fields: [],
         isSystem: false,
       },
+    });
+
+    // 预置系统字段
+    const systemFields = ObjectService.createSystemFields(obj.id);
+    await prisma.objectMeta.update({
+      where: { id: obj.id },
+      data: { fields: systemFields as unknown as object[] },
     });
 
     await this.changeLogService.log({
@@ -219,7 +274,13 @@ export class ObjectService {
   }
 
   /**
-   * 删除对象（校验有无记录）。
+   * 删除对象（校验引用关系）。
+   *
+   * 阻断性校验（有则拒绝删除）：
+   *   1. 对象下有业务记录
+   *   2. 有页面引用此对象
+   *   3. 有流程引用此对象（RECORD_CREATED/RECORD_UPDATED 触发器）
+   *   4. 有权限规则引用此对象（DATA_MODEL/RECORD 类型的 targetId）
    */
   async delete(tenantId: string, objectId: string, changedBy?: string): Promise<void> {
     const existing = await prisma.objectMeta.findFirst({
@@ -227,13 +288,52 @@ export class ObjectService {
     });
     if (!existing) throw new NotFoundException('对象不存在');
 
-    // 校验对象下是否有记录
+    // 1. 校验对象下是否有业务记录
     const recordCount = await prisma.record.count({
       where: { objectId, tenantId },
     });
     if (recordCount > 0) {
       throw new BadRequestException(
-        `对象下存在 ${recordCount} 条记录，无法删除`,
+        `对象下存在 ${recordCount} 条业务记录，无法删除。请先清空数据后再删除对象。`,
+      );
+    }
+
+    // 2. 校验是否有页面引用此对象
+    const pageCount = await prisma.pageMeta.count({
+      where: { objectId, tenantId },
+    });
+    if (pageCount > 0) {
+      throw new BadRequestException(
+        `有 ${pageCount} 个页面引用了此对象，无法删除。请先删除或解绑相关页面后再删除对象。`,
+      );
+    }
+
+    // 3. 校验是否有流程引用此对象（触发器类型为 RECORD_CREATED/RECORD_UPDATED）
+    const processCount = await prisma.processDef.count({
+      where: {
+        tenantId,
+        appId: existing.appId,
+        triggerType: { in: ['RECORD_CREATED', 'RECORD_UPDATED'] },
+        status: { not: 'ARCHIVED' },
+      },
+    });
+    if (processCount > 0) {
+      throw new BadRequestException(
+        `有 ${processCount} 个流程的触发器引用了对象变更事件，无法删除。请先删除或归档相关流程后再删除对象。`,
+      );
+    }
+
+    // 4. 校验是否有权限规则引用此对象（DATA_MODEL 或 RECORD 类型的 targetId）
+    const ruleCount = await prisma.permissionRule.count({
+      where: {
+        tenantId,
+        type: { in: ['DATA_MODEL', 'RECORD'] },
+        targetId: objectId,
+      },
+    });
+    if (ruleCount > 0) {
+      throw new BadRequestException(
+        `有 ${ruleCount} 条权限规则引用了此对象，无法删除。请先删除相关权限规则后再删除对象。`,
       );
     }
 

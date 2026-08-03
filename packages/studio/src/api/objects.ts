@@ -278,29 +278,46 @@ export interface RecordFilterCondition {
 // ---------------------------------------------------------------------------
 
 export const objectsApi = {
-  /** 对象列表 */
+  /** 对象列表 — 后端返回 name，前端映射为 label */
   list: (appId: string) =>
     client
       .get<ApiResponse<ObjectInfo[]>>(`/api/apps/${appId}/objects`)
-      .then((res) => res.data.data as ObjectInfo[]),
+      .then((res) =>
+        (res.data.data as ObjectInfo[]).map((o) => ({ ...o, label: o.label ?? o.name })),
+      ),
 
-  /** 对象详情(含字段) */
+  /** 对象详情(含字段) — 后端返回 name，前端映射为 label */
   get: (objectId: string) =>
     client
       .get<ApiResponse<ObjectWithFields>>(`/api/objects/${objectId}`)
-      .then((res) => res.data.data as ObjectWithFields),
+      .then((res) => {
+        const data = res.data.data as ObjectWithFields;
+        return { ...data, label: data.label ?? data.name };
+      }),
 
-  /** 创建对象 */
+  /** 创建对象 — 前端用 label，后端用 name，双向转换 */
   create: (appId: string, data: CreateObjectRequest) =>
     client
-      .post<ApiResponse<ObjectInfo>>(`/api/apps/${appId}/objects`, data)
-      .then((res) => res.data.data as ObjectInfo),
+      .post<ApiResponse<ObjectInfo>>(`/api/apps/${appId}/objects`, {
+        ...data,
+        name: data.label,
+      })
+      .then((res) => {
+        const d = res.data.data as ObjectInfo;
+        return { ...d, label: d.label ?? d.name };
+      }),
 
-  /** 更新对象 */
+  /** 更新对象 — 前端用 label，后端用 name，双向转换 */
   update: (objectId: string, data: UpdateObjectRequest) =>
     client
-      .put<ApiResponse<ObjectInfo>>(`/api/objects/${objectId}`, data)
-      .then((res) => res.data.data as ObjectInfo),
+      .put<ApiResponse<ObjectInfo>>(`/api/objects/${objectId}`, {
+        ...data,
+        ...(data.label !== undefined && { name: data.label }),
+      })
+      .then((res) => {
+        const d = res.data.data as ObjectInfo;
+        return { ...d, label: d.label ?? d.name };
+      }),
 
   /** 删除对象 */
   delete: (objectId: string) =>

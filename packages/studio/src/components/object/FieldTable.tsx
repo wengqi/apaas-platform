@@ -7,6 +7,7 @@ import {
   Space,
   Switch,
   Table,
+  Tag,
   Tooltip,
   Typography,
   message,
@@ -213,7 +214,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
       title: '',
       width: 40,
       align: 'center',
-      render: () => <DragHandle />,
+      render: (_, record) => (record.isSystem ? null : <DragHandle />),
     },
     {
       title: '字段名',
@@ -226,6 +227,11 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
           <Space size={8}>
             <Icon style={{ fontSize: 16, color: '#1677ff' }} />
             <Text strong>{record.label}</Text>
+            {record.isSystem && (
+              <Tag color="default" style={{ margin: 0, fontSize: 11, lineHeight: '18px' }}>
+                系统
+              </Tag>
+            )}
             {record.required && (
               <Text type="danger" style={{ fontSize: 14 }}>
                 *

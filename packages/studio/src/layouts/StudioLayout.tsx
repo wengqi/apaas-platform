@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Layout, Menu, theme, Dropdown, Space, Avatar, Button, Skeleton, Typography, Drawer } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -37,6 +37,7 @@ export default function StudioLayout() {
   const { appId } = useParams<{ appId: string }>();
   const { user, logout } = useAuthStore();
   const [checkDrawerOpen, setCheckDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const {
     token: { colorBgContainer },
   } = theme.useToken();
@@ -114,6 +115,8 @@ export default function StudioLayout() {
       <Sider
         breakpoint="lg"
         collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
         width={220}
         style={{
           overflow: 'auto',
@@ -186,7 +189,7 @@ export default function StudioLayout() {
           style={{ borderRight: 0 }}
         />
       </Sider>
-      <Layout style={{ marginLeft: 220 }}>
+      <Layout style={{ marginLeft: collapsed ? 80 : 220 }}>
         <Header
           style={{
             padding: '0 24px',

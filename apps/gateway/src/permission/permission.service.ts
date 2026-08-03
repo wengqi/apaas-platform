@@ -61,7 +61,10 @@ export class PermissionService {
       return { allowed: true };
     }
 
-    const roleIds = await this.getUserRoleIds(user.id, user.tenantId);
+    // 平台超管无租户上下文，不应走到这里（isSuperAdmin 已短路）
+    const tenantId = user.tenantId ?? '';
+
+    const roleIds = await this.getUserRoleIds(user.id, tenantId);
     if (roleIds.length === 0) {
       throw new ForbiddenException('无操作权限');
     }
@@ -69,7 +72,7 @@ export class PermissionService {
     // 查询匹配的权限规则（包括通配符 '*' 规则和具体 targetId 规则）
     const rules = await prisma.permissionRule.findMany({
       where: {
-        tenantId: user.tenantId,
+        tenantId: tenantId,
         roleId: { in: roleIds },
         type,
         action,

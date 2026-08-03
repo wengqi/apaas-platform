@@ -8,12 +8,14 @@ import { PageModule } from './page/page.module.js';
 import { ProcessModule } from './process/process.module.js';
 import { PermissionModule } from './permission/permission.module.js';
 import { QueueModule } from './queue/queue.module.js';
+import { TenantModule } from './tenant/tenant.module.js';
 import { HealthController } from './health.controller.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     AuthModule,
+    TenantModule,
     ApplicationModule,
     ObjectModule,
     RecordModule,

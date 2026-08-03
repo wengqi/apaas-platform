@@ -30,6 +30,7 @@ import {
   DeleteOutlined,
   MoreOutlined,
   InboxOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -201,6 +202,23 @@ export default function AppList() {
 
   /** 用户下拉菜单。 */
   const userMenuItems: MenuProps['items'] = [
+    // 平台超管显示租户管理
+    ...(user?.isPlatformAdmin
+      ? [{
+          key: 'tenants',
+          icon: <GlobalOutlined />,
+          label: '租户管理',
+          onClick: () => navigate('/platform/tenants'),
+        }]
+      : []),
+    // 租户管理员显示用户管理/组织架构
+    ...(user?.roles?.some((r) => r.code === 'TENANT_ADMIN')
+      ? [
+          { key: 'users', icon: <UserOutlined />, label: '用户管理', onClick: () => navigate('/platform/users') },
+          { key: 'orgs', icon: <ApartmentOutlined />, label: '组织架构', onClick: () => navigate('/platform/orgs') },
+        ]
+      : []),
+    { type: 'divider' as const },
     {
       key: 'logout',
       icon: <LogoutOutlined />,
@@ -230,11 +248,41 @@ export default function AppList() {
           boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
         }}
       >
-        <Space size={8}>
-          <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
-          <Text strong style={{ fontSize: 16 }}>
-            aPaaS Studio
-          </Text>
+        <Space size={16}>
+          <Space size={8}>
+            <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
+            <Text strong style={{ fontSize: 16 }}>
+              aPaaS Studio
+            </Text>
+          </Space>
+          {/* 管理入口 — 仅平台超管或租户管理员可见 */}
+          {(user?.isPlatformAdmin || user?.roles?.some((r) => r.code === 'TENANT_ADMIN')) && (
+            <Dropdown
+              menu={{
+                items: [
+                  ...(user?.isPlatformAdmin
+                    ? [{
+                        key: 'tenants',
+                        icon: <GlobalOutlined />,
+                        label: '租户管理',
+                        onClick: () => navigate('/platform/tenants'),
+                      }]
+                    : []),
+                  ...(user?.roles?.some((r) => r.code === 'TENANT_ADMIN')
+                    ? [
+                        { key: 'users', icon: <UserOutlined />, label: '用户管理', onClick: () => navigate('/platform/users') },
+                        { key: 'orgs', icon: <ApartmentOutlined />, label: '组织架构', onClick: () => navigate('/platform/orgs') },
+                      ]
+                    : []),
+                ],
+              }}
+              placement="bottomLeft"
+            >
+              <Button type="text" style={{ fontSize: 14 }}>
+                平台管理
+              </Button>
+            </Dropdown>
+          )}
         </Space>
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
           <Space style={{ cursor: 'pointer' }}>

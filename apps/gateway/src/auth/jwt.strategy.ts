@@ -24,11 +24,34 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    * 返回的 AuthenticatedUser 注入到 req.user，供下游 Guard/Service 使用。
    */
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
-    if (!payload.sub || !payload.tenantId) {
+    if (!payload.sub) {
       throw new UnauthorizedException('无效的认证令牌');
     }
 
-    // 加载用户的角色（直接角色 + 组织授权角色）
+    // 从 DB 验证用户状态（防止已禁用的用户仍持有有效 token）
+    const dbUser = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, tenantId: true, email: true, isPlatformAdmin: true, status: true },
+    });
+
+    if (!dbUser || dbUser.status !== 'ACTIVE') {
+      throw new UnauthorizedException('用户不存在或已禁用');
+    }
+
+    // 平台超管：跳过角色加载，直接返回
+    if (dbUser.isPlatformAdmin) {
+      return {
+        id: dbUser.id,
+        tenantId: dbUser.tenantId, // null for platform admin
+        email: dbUser.email,
+        roleIds: [],
+        roleCodes: [],
+        isPlatformAdmin: true,
+        isSuperAdmin: true, // 平台超管短路所有权限检查
+      };
+    }
+
+    // 租户用户：加载角色（直接角色 + 组织授权角色）
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({
         where: { userId: payload.sub },
@@ -53,14 +76,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       roleCodes = [...new Set([...roleCodes, ...orgGrants.map((g) => g.role.code)])];
     }
 
-    const isSuperAdmin = roleCodes.includes('ADMIN');
+    // 租户管理员视为超管（短路权限检查）
+    const isSuperAdmin = roleCodes.includes('TENANT_ADMIN');
 
     return {
-      id: payload.sub,
-      tenantId: payload.tenantId,
-      email: payload.email,
+      id: dbUser.id,
+      tenantId: dbUser.tenantId!,
+      email: dbUser.email,
       roleIds,
       roleCodes,
+      isPlatformAdmin: false,
       isSuperAdmin,
     };
   }
@@ -69,12 +94,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 /** 认证后的用户信息（注入到 req.user）。 */
 export interface AuthenticatedUser {
   id: string;
-  tenantId: string;
+  /** 租户 ID。null = 平台超管（跨租户） */
+  tenantId: string | null;
   email: string;
-  /** 用户拥有的所有角色 ID（含组织授权） */
+  /** 用户拥有的所有角色 ID（含组织授权）。平台超管为空数组 */
   roleIds: string[];
   /** 角色编码集合 */
   roleCodes: string[];
-  /** 是否超级管理员（短路所有权限检查） */
+  /** 是否平台超管（跨租户） */
+  isPlatformAdmin: boolean;
+  /** 是否超级管理员（平台超管 或 租户管理员），短路所有权限检查 */
   isSuperAdmin: boolean;
 }

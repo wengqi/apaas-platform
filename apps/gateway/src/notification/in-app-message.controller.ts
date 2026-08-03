@@ -20,6 +20,7 @@ import {
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
 import { InAppMessageService } from './in-app-message.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -34,7 +35,7 @@ export class InAppMessageController {
     @Query('unreadOnly') unreadOnly?: string,
   ) {
     const result = await this.inAppMessageService.list(
-      req.user.tenantId,
+      requireTenantId(req),
       req.user.id,
       {
         page: page ? parseInt(page, 10) : undefined,
@@ -48,7 +49,7 @@ export class InAppMessageController {
   @Get('unread-count')
   async getUnreadCount(@Req() req: AuthenticatedRequest) {
     const count = await this.inAppMessageService.getUnreadCount(
-      req.user.tenantId,
+      requireTenantId(req),
       req.user.id,
     );
     return { ok: true as const, data: { count } };
@@ -60,7 +61,7 @@ export class InAppMessageController {
     @Param('id') id: string,
   ) {
     await this.inAppMessageService.markAsRead(
-      req.user.tenantId,
+      requireTenantId(req),
       req.user.id,
       id,
     );
@@ -70,7 +71,7 @@ export class InAppMessageController {
   @Put('read-all')
   async markAllAsRead(@Req() req: AuthenticatedRequest) {
     const count = await this.inAppMessageService.markAllAsRead(
-      req.user.tenantId,
+      requireTenantId(req),
       req.user.id,
     );
     return { ok: true as const, data: { marked: count } };

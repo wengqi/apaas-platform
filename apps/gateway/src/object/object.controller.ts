@@ -12,6 +12,7 @@ import {
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 import { ObjectService } from './object.service.js';
 import type {
   CreateObjectInput,
@@ -60,7 +61,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
   ) {
-    const objects = await this.objectService.list(req.user.tenantId, appId);
+    const objects = await this.objectService.list(requireTenantId(req), appId);
     return { ok: true as const, data: objects };
   }
 
@@ -72,7 +73,7 @@ export class ObjectController {
     @Body() body: CreateObjectInput,
   ) {
     const object = await this.objectService.create(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       req.user.id,
       body,
@@ -85,7 +86,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
   ) {
-    const object = await this.objectService.get(req.user.tenantId, objectId);
+    const object = await this.objectService.get(requireTenantId(req), objectId);
     return { ok: true as const, data: object };
   }
 
@@ -97,7 +98,7 @@ export class ObjectController {
     @Body() body: UpdateObjectInput,
   ) {
     const object = await this.objectService.update(
-      req.user.tenantId,
+      requireTenantId(req),
       objectId,
       body,
       req.user.id,
@@ -111,7 +112,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
   ) {
-    await this.objectService.delete(req.user.tenantId, objectId, req.user.id);
+    await this.objectService.delete(requireTenantId(req), objectId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
 
@@ -127,7 +128,7 @@ export class ObjectController {
     @Body() body: CreateFieldInput,
   ) {
     const field = await this.objectService.addField(
-      req.user.tenantId,
+      requireTenantId(req),
       objectId,
       body,
     );
@@ -143,7 +144,7 @@ export class ObjectController {
     @Body() body: UpdateFieldInput,
   ) {
     const field = await this.objectService.updateField(
-      req.user.tenantId,
+      requireTenantId(req),
       objectId,
       fieldId,
       body,
@@ -159,7 +160,7 @@ export class ObjectController {
     @Param('fieldId') fieldId: string,
   ) {
     await this.objectService.deleteField(
-      req.user.tenantId,
+      requireTenantId(req),
       objectId,
       fieldId,
     );
@@ -175,7 +176,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
   ) {
-    const views = await this.objectService.listViews(req.user.tenantId, objectId);
+    const views = await this.objectService.listViews(requireTenantId(req), objectId);
     return { ok: true as const, data: views };
   }
 
@@ -186,7 +187,7 @@ export class ObjectController {
     @Param('objectId') objectId: string,
     @Body() body: CreateViewInput,
   ) {
-    const view = await this.objectService.createView(req.user.tenantId, objectId, body);
+    const view = await this.objectService.createView(requireTenantId(req), objectId, body);
     return { ok: true as const, data: view };
   }
 
@@ -197,7 +198,7 @@ export class ObjectController {
     @Param('viewId') viewId: string,
     @Body() body: UpdateViewInput,
   ) {
-    const view = await this.objectService.updateView(req.user.tenantId, viewId, body);
+    const view = await this.objectService.updateView(requireTenantId(req), viewId, body);
     return { ok: true as const, data: view };
   }
 
@@ -207,7 +208,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('viewId') viewId: string,
   ) {
-    await this.objectService.deleteView(req.user.tenantId, viewId);
+    await this.objectService.deleteView(requireTenantId(req), viewId);
     return { ok: true as const, data: { deleted: true } };
   }
 }

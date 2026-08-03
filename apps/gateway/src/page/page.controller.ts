@@ -12,6 +12,7 @@ import {
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 import { PageService } from './page.service.js';
 import type { CreatePageRequest, UpdatePageRequest } from '@apaas/shared';
 
@@ -38,7 +39,7 @@ export class PageController {
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
   ) {
-    const pages = await this.pageService.list(req.user.tenantId, appId);
+    const pages = await this.pageService.list(requireTenantId(req), appId);
     return { ok: true as const, data: pages };
   }
 
@@ -50,7 +51,7 @@ export class PageController {
     @Body() body: CreatePageRequest,
   ) {
     const page = await this.pageService.create(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       body,
       req.user.id,
@@ -63,7 +64,7 @@ export class PageController {
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
   ) {
-    const page = await this.pageService.get(req.user.tenantId, pageId);
+    const page = await this.pageService.get(requireTenantId(req), pageId);
     return { ok: true as const, data: page };
   }
 
@@ -75,7 +76,7 @@ export class PageController {
   ) {
     // 运行态环境隔离：从已发布快照读取页面，而非开发态 PageMeta
     const page = await this.pageService.getPublishedBySlug(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       slug,
     );
@@ -90,7 +91,7 @@ export class PageController {
     @Body() body: UpdatePageRequest,
   ) {
     const page = await this.pageService.update(
-      req.user.tenantId,
+      requireTenantId(req),
       pageId,
       body,
       req.user.id,
@@ -104,7 +105,7 @@ export class PageController {
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
   ) {
-    await this.pageService.delete(req.user.tenantId, pageId, req.user.id);
+    await this.pageService.delete(requireTenantId(req), pageId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
 
@@ -114,7 +115,7 @@ export class PageController {
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
   ) {
-    const page = await this.pageService.publish(req.user.tenantId, pageId);
+    const page = await this.pageService.publish(requireTenantId(req), pageId);
     return { ok: true as const, data: page };
   }
 }

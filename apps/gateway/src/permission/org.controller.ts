@@ -1,30 +1,31 @@
 import {
   Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
+import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import { OrgService } from './org.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 
 @Controller('permissions/orgs')
-@UseGuards(JwtAuthGuard)
+@UseGuards(TenantAdminGuard)
 export class OrgController {
   constructor(private readonly orgService: OrgService) {}
 
   @Get()
   async getTree(@Req() req: AuthenticatedRequest) {
-    return { ok: true, data: await this.orgService.getTree(req.user.tenantId) };
+    return { ok: true, data: await this.orgService.getTree(requireTenantId(req)) };
   }
 
   @Get(':id')
   async getNode(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return { ok: true, data: await this.orgService.getNode(req.user.tenantId, id) };
+    return { ok: true, data: await this.orgService.getNode(requireTenantId(req), id) };
   }
 
   @Post()
   async create(@Req() req: AuthenticatedRequest, @Body() body: {
     parentId?: string; name: string; code: string; nodeType?: string; sort?: number;
   }) {
-    return { ok: true, data: await this.orgService.create(req.user.tenantId, body) };
+    return { ok: true, data: await this.orgService.create(requireTenantId(req), body) };
   }
 
   @Put(':id')
@@ -33,12 +34,12 @@ export class OrgController {
     @Param('id') id: string,
     @Body() body: { name?: string; sort?: number; parentId?: string },
   ) {
-    return { ok: true, data: await this.orgService.update(req.user.tenantId, id, body) };
+    return { ok: true, data: await this.orgService.update(requireTenantId(req), id, body) };
   }
 
   @Delete(':id')
   async delete(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    await this.orgService.delete(req.user.tenantId, id);
+    await this.orgService.delete(requireTenantId(req), id);
     return { ok: true, data: null };
   }
 
@@ -48,12 +49,12 @@ export class OrgController {
     @Param('id') id: string,
     @Body() body: { parentId: string },
   ) {
-    return { ok: true, data: await this.orgService.moveNode(req.user.tenantId, id, body.parentId) };
+    return { ok: true, data: await this.orgService.moveNode(requireTenantId(req), id, body.parentId) };
   }
 
   @Get(':id/members')
   async getMembers(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return { ok: true, data: await this.orgService.getMembers(req.user.tenantId, id) };
+    return { ok: true, data: await this.orgService.getMembers(requireTenantId(req), id) };
   }
 
   @Post(':id/members')
@@ -62,7 +63,7 @@ export class OrgController {
     @Param('id') id: string,
     @Body() body: { userId: string },
   ) {
-    await this.orgService.addMember(req.user.tenantId, id, body.userId);
+    await this.orgService.addMember(requireTenantId(req), id, body.userId);
     return { ok: true, data: null };
   }
 
@@ -72,7 +73,7 @@ export class OrgController {
     @Param('id') id: string,
     @Param('userId') userId: string,
   ) {
-    await this.orgService.removeMember(req.user.tenantId, id, userId);
+    await this.orgService.removeMember(requireTenantId(req), id, userId);
     return { ok: true, data: null };
   }
 
@@ -82,7 +83,7 @@ export class OrgController {
     @Param('id') id: string,
     @Body() body: { roleId: string; appId?: string },
   ) {
-    await this.orgService.grantRole(req.user.tenantId, id, body.roleId, body.appId);
+    await this.orgService.grantRole(requireTenantId(req), id, body.roleId, body.appId);
     return { ok: true, data: null };
   }
 
@@ -92,7 +93,7 @@ export class OrgController {
     @Param('id') id: string,
     @Param('roleId') roleId: string,
   ) {
-    await this.orgService.revokeRole(req.user.tenantId, id, roleId);
+    await this.orgService.revokeRole(requireTenantId(req), id, roleId);
     return { ok: true, data: null };
   }
 }

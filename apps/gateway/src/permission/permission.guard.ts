@@ -76,7 +76,7 @@ export class PermissionGuard extends JwtAuthGuard {
 
       // 记录审计日志（权限检查通过）
       void this.auditLogService?.log({
-        tenantId: user.tenantId,
+        tenantId: user.tenantId ?? '',
         userId: user.id,
         action: 'PERMISSION_CHECK',
         resource: permission.type,
@@ -89,7 +89,7 @@ export class PermissionGuard extends JwtAuthGuard {
     } catch (err) {
       // 记录审计日志（权限检查拒绝）
       void this.auditLogService?.log({
-        tenantId: user.tenantId,
+        tenantId: user.tenantId ?? '',
         userId: user.id,
         action: 'PERMISSION_DENIED',
         resource: permission.type,

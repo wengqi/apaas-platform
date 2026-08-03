@@ -22,12 +22,13 @@ datasource db {
 // ============================================================================
 
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique // 租户短标识，用于 URL 路由
-  status    TenantStatus @default(ACTIVE)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique // 租户短标识，用于 URL 路由
+  description String?  // 租户描述
+  status      TenantStatus @default(ACTIVE)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   users       User[]
   roles       Role[]
@@ -97,22 +98,24 @@ enum AppStatus {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  tenantId      String   @map("tenant_id")
-  email         String
-  name          String
-  avatar        String?
-  passwordHash  String   @map("password_hash") // bcrypt
-  status        UserStatus @default(ACTIVE)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  tenantId        String?  @map("tenant_id") // null = 平台超管（跨租户）
+  email           String
+  name            String
+  avatar          String?
+  passwordHash    String   @map("password_hash") // bcrypt
+  isPlatformAdmin Boolean  @default(false) @map("is_platform_admin") // 平台超管标识
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userRoles     UserRole[]
-  orgMemberships OrgMember[]
+  tenant          Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles       UserRole[]
+  orgMemberships  OrgMember[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
+  @@index([isPlatformAdmin])
   @@map("users")
 }
 

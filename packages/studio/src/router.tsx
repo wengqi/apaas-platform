@@ -14,6 +14,10 @@ import NotificationTemplateManager from './components/process/NotificationTempla
 import Permissions from './pages/Permissions.js';
 import PublishWizard from './pages/PublishWizard.js';
 import VersionHistory from './pages/VersionHistory.js';
+import PlatformUsers from './pages/PlatformUsers.js';
+import PlatformOrgs from './pages/PlatformOrgs.js';
+import TenantManagement from './pages/TenantManagement.js';
+import TenantDetail from './pages/TenantDetail.js';
 import { useAuthStore } from './stores/auth.js';
 
 /**
@@ -28,30 +32,64 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * 平台超管守卫：仅 isPlatformAdmin=true 的用户可访问。
+ * 用于租户管理路由。
+ */
+function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  if (!user?.isPlatformAdmin) {
+    return <Navigate to="/apps" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * 租户管理员守卫：仅 TENANT_ADMIN 或平台超管可访问。
+ * 用于用户管理、组织架构路由。
+ */
+function TenantAdminRoute({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  // 平台超管 或 TENANT_ADMIN 角色
+  const isTenantAdmin = user?.isPlatformAdmin || user?.roles?.some((r) => r.code === 'TENANT_ADMIN');
+  if (!isTenantAdmin) {
+    return <Navigate to="/apps" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
  * 路由表 (react-router-dom v6)。
  *
- * 引入「应用」上下文层级：租户 → 应用 → 对象/页面/流程/权限。
+ * 层级：平台超管 → 租户管理 → 应用
  * - /login                          登录页(公开)
- * - /                               重定向到 /apps
- * - /apps                           应用列表(受保护，全屏首页)
- * - /app/:appId                     重定向到 /app/:appId/dashboard
- *   - /app/:appId/dashboard         应用工作台(受保护，StudioLayout 内)
- *   - /app/:appId/objects           对象设计器 (Phase 1)
- *     - /app/:appId/objects/        右栏空状态
- *     - /app/:appId/objects/:objectId  对象详情(字段/视图)
- *   - /app/:appId/pages             页面列表 (Phase 2)
- *     - /app/:appId/pages/          页面列表
- *     - /app/:appId/pages/:pageId   页面搭建器
-   *   - /app/:appId/processes         流程列表 (Phase 3)
-     *     - /app/:appId/processes/monitor       流程监控(实例列表 + 详情)
-     *     - /app/:appId/processes/notifications 通知模板管理
-     *     - /app/:appId/processes/:processId    流程编辑器(全屏)
- *   - /app/:appId/permissions       权限管理占位 (Phase 4)
+ * - /t/:slug/login                  带租户标识的登录页(预填 slug)
+ * - /apps                           应用列表(租户用户首页)
+ * - /platform/tenants               平台超管 — 租户管理
+ * - /platform/tenants/:id           平台超管 — 租户详情
+ * - /platform/users                 租户管理员 — 用户管理
+ * - /platform/orgs                  租户管理员 — 组织架构
+ * - /app/:appId                     应用内路由(StudioLayout)
+ *   - /app/:appId/dashboard         应用工作台
+ *   - /app/:appId/objects           对象设计器
+ *   - /app/:appId/pages             页面列表/搭建器
+ *   - /app/:appId/processes         流程列表/编辑器/监控
+ *   - /app/:appId/permissions       应用级角色权限
+ *   - /app/:appId/publish           发布向导
+ *   - /app/:appId/versions          版本历史
  */
 export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/t/:slug/login" element={<Login />} />
 
       {/* 应用列表 —— 全屏首页，无侧边栏 */}
       <Route
@@ -60,6 +98,42 @@ export function AppRoutes() {
           <ProtectedRoute>
             <AppList />
           </ProtectedRoute>
+        }
+      />
+
+      {/* 平台超管路由 — 租户管理 */}
+      <Route
+        path="/platform/tenants"
+        element={
+          <PlatformAdminRoute>
+            <TenantManagement />
+          </PlatformAdminRoute>
+        }
+      />
+      <Route
+        path="/platform/tenants/:id"
+        element={
+          <PlatformAdminRoute>
+            <TenantDetail />
+          </PlatformAdminRoute>
+        }
+      />
+
+      {/* 租户管理员路由 — 用户管理 / 组织架构 */}
+      <Route
+        path="/platform/users"
+        element={
+          <TenantAdminRoute>
+            <PlatformUsers />
+          </TenantAdminRoute>
+        }
+      />
+      <Route
+        path="/platform/orgs"
+        element={
+          <TenantAdminRoute>
+            <PlatformOrgs />
+          </TenantAdminRoute>
         }
       />
 

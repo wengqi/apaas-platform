@@ -14,10 +14,13 @@ export interface Role {
 /** 登录后用户信息(对应网关 LoginUserDto)。 */
 export interface User {
   id: string;
-  tenantId: string;
+  /** 租户 ID。null = 平台超管（跨租户） */
+  tenantId: string | null;
   email: string;
   name: string;
   avatar: string | null;
+  /** 是否平台超管 */
+  isPlatformAdmin: boolean;
   roles: Role[];
 }
 

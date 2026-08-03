@@ -19,6 +19,7 @@ import type {
   PublishAppRequest,
 } from '@apaas/shared';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 
 /**
  * 应用控制器 — Application CRUD + 发布/预检/版本管理。
@@ -39,20 +40,20 @@ export class ApplicationController {
 
   @Get()
   async list(@Req() req: AuthenticatedRequest) {
-    const apps = await this.appService.list(req.user.tenantId);
+    const apps = await this.appService.list(requireTenantId(req));
     return { ok: true as const, data: apps };
   }
 
   @Get(':appId')
   async get(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const app = await this.appService.get(req.user.tenantId, appId);
+    const app = await this.appService.get(requireTenantId(req), appId);
     return { ok: true as const, data: app };
   }
 
   @Post()
   @RequirePermission('PAGE', 'MANAGE')
   async create(@Req() req: AuthenticatedRequest, @Body() body: CreateAppRequest) {
-    const app = await this.appService.create(req.user.tenantId, req.user.id, body);
+    const app = await this.appService.create(requireTenantId(req), req.user.id, body);
     return { ok: true as const, data: app };
   }
 
@@ -63,14 +64,14 @@ export class ApplicationController {
     @Param('appId') appId: string,
     @Body() body: UpdateAppRequest,
   ) {
-    const app = await this.appService.update(req.user.tenantId, appId, body, req.user.id);
+    const app = await this.appService.update(requireTenantId(req), appId, body, req.user.id);
     return { ok: true as const, data: app };
   }
 
   @Delete(':appId')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async delete(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    await this.appService.delete(req.user.tenantId, appId, req.user.id);
+    await this.appService.delete(requireTenantId(req), appId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
 
@@ -78,7 +79,7 @@ export class ApplicationController {
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async archive(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const app = await this.appService.archive(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       req.user.id,
     );
@@ -93,7 +94,7 @@ export class ApplicationController {
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async check(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const result = await this.appService.check(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       req.user.id,
     );
@@ -105,7 +106,7 @@ export class ApplicationController {
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
   ) {
-    const checks = await this.appService.listChecks(req.user.tenantId, appId);
+    const checks = await this.appService.listChecks(requireTenantId(req), appId);
     return { ok: true as const, data: checks };
   }
 
@@ -119,7 +120,7 @@ export class ApplicationController {
     @Param('appId') appId: string,
   ) {
     const changeSet = await this.changeLogService.getChangeSet(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
     );
     return { ok: true as const, data: changeSet };
@@ -137,7 +138,7 @@ export class ApplicationController {
     @Body() body: PublishAppRequest,
   ) {
     const version = await this.appService.publish(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       req.user.id,
       body,
@@ -151,7 +152,7 @@ export class ApplicationController {
     @Param('appId') appId: string,
   ) {
     const versions = await this.appService.listVersions(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
     );
     return { ok: true as const, data: versions };
@@ -164,7 +165,7 @@ export class ApplicationController {
     @Param('versionId') versionId: string,
   ) {
     const version = await this.appService.getVersion(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       versionId,
     );
@@ -179,7 +180,7 @@ export class ApplicationController {
     @Param('versionId') versionId: string,
   ) {
     const version = await this.appService.rollback(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       versionId,
       req.user.id,

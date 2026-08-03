@@ -14,6 +14,7 @@ import {
   CheckCircleOutlined,
   CloudUploadOutlined,
   HistoryOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -88,6 +89,15 @@ export default function StudioLayout() {
   }, [location.pathname]);
 
   const userMenuItems: MenuProps['items'] = [
+    // 平台超管显示返回租户管理
+    ...(user?.isPlatformAdmin
+      ? [{
+          key: 'tenants',
+          icon: <GlobalOutlined />,
+          label: '租户管理',
+          onClick: () => navigate('/platform/tenants'),
+        }]
+      : []),
     {
       key: 'logout',
       icon: <LogoutOutlined />,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Form, Input, Button, message, Typography } from 'antd';
-import { LockOutlined, MailOutlined, ThunderboltFilled } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { Form, Input, Button, message, Typography, Space } from 'antd';
+import { LockOutlined, MailOutlined, ThunderboltFilled, GlobalOutlined } from '@ant-design/icons';
+import { useNavigate, useParams } from 'react-router-dom';
 import client, { type ApiResponse } from '../api/client.js';
 import { useAuthStore, type User } from '../stores/auth.js';
 
@@ -15,26 +15,45 @@ interface LoginPayload {
 interface LoginForm {
   email: string;
   password: string;
+  tenantSlug?: string;
 }
 
 /**
- * 登录页:email + password 表单,调 POST /api/auth/login,
- * 成功后存 token + user 到 zustand(同步 localStorage),跳转 /apps。
+ * 登录页。
+ *
+ * 两种登录方式：
+ *  1. 平台超管登录 — 不填租户标识，仅 email + password
+ *  2. 租户用户登录 — 填租户标识 + email + password
+ *
+ * 支持 /t/:slug/login 路由参数预填租户标识。
+ * 登录成功后：
+ *  - 平台超管 → /platform/tenants
+ *  - 租户用户 → /apps
  */
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const { slug: routeSlug } = useParams<{ slug: string }>();
 
   const onFinish = async (values: LoginForm) => {
     setLoading(true);
     try {
-      const res = await client.post<ApiResponse<LoginPayload>>('/api/auth/login', values);
+      const res = await client.post<ApiResponse<LoginPayload>>('/api/auth/login', {
+        email: values.email,
+        password: values.password,
+        tenantSlug: values.tenantSlug || undefined,
+      });
       const body = res.data;
       if (body.ok && body.data) {
         login(body.data.accessToken, body.data.user);
         message.success('登录成功');
-        navigate('/apps', { replace: true });
+        // 平台超管跳转租户管理页，租户用户跳转应用列表
+        if (body.data.user.isPlatformAdmin) {
+          navigate('/platform/tenants', { replace: true });
+        } else {
+          navigate('/apps', { replace: true });
+        }
       } else {
         message.error(body.error?.message ?? '登录失败');
       }
@@ -98,9 +117,21 @@ export default function Login() {
           layout="vertical"
           onFinish={onFinish}
           autoComplete="off"
-          initialValues={{ email: '', password: '' }}
+          initialValues={{ email: '', password: '', tenantSlug: routeSlug ?? '' }}
           requiredMark={false}
         >
+          <Form.Item
+            label="租户标识"
+            name="tenantSlug"
+            tooltip="租户用户请填写租户标识（如 demo）；平台管理员可留空"
+          >
+            <Input
+              prefix={<GlobalOutlined style={{ color: '#bfbfbf' }} />}
+              placeholder="留空则使用平台管理员登录"
+              size="large"
+              style={{ borderRadius: 8 }}
+            />
+          </Form.Item>
           <Form.Item
             label="邮箱"
             name="email"
@@ -157,9 +188,17 @@ export default function Login() {
             textAlign: 'center',
           }}
         >
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            测试账号：admin@apaas.dev / admin123
-          </Text>
+          <Space direction="vertical" size={2}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              平台超管: superadmin@apaas.dev / superadmin123（无需租户标识）
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              租户管理员: admin@apaas.dev / admin123（租户标识: demo）
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              搭建者: builder@apaas.dev / builder123（租户标识: demo）
+            </Text>
+          </Space>
         </div>
       </div>
     </div>

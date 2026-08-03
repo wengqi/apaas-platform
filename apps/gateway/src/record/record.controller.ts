@@ -13,6 +13,7 @@ import {
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 import { RecordService } from './record.service.js';
 import type { RecordQueryParams } from './record.service.js';
 
@@ -50,7 +51,7 @@ export class RecordController {
       filter,
     };
     const result = await this.recordService.query(
-      req.user.tenantId,
+      requireTenantId(req),
       objectId,
       params,
       req.permissionContext,
@@ -65,7 +66,7 @@ export class RecordController {
     @Param('recordId') recordId: string,
   ) {
     const record = await this.recordService.get(
-      req.user.tenantId,
+      requireTenantId(req),
       recordId,
       req.permissionContext,
     );
@@ -80,7 +81,7 @@ export class RecordController {
     @Body() body: Record<string, unknown>,
   ) {
     const record = await this.recordService.create(
-      req.user.tenantId,
+      requireTenantId(req),
       objectId,
       req.user.id,
       body ?? {},
@@ -96,7 +97,7 @@ export class RecordController {
     @Body() body: Record<string, unknown>,
   ) {
     const record = await this.recordService.update(
-      req.user.tenantId,
+      requireTenantId(req),
       recordId,
       req.user.id,
       body ?? {},
@@ -110,7 +111,7 @@ export class RecordController {
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,
   ) {
-    await this.recordService.delete(req.user.tenantId, recordId);
+    await this.recordService.delete(requireTenantId(req), recordId);
     return { ok: true as const, data: { deleted: true } };
   }
 }

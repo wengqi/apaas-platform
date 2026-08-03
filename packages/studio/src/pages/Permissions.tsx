@@ -1,56 +1,33 @@
 /**
- * 权限管理页 — Phase 4。
+ * 应用内 — 角色权限管理（应用级）。
  *
- * Tab 容器,分 3 个 Tab:角色管理 / 组织架构 / 用户管理。
- * 对齐飞书 aPaaS 权限管理界面。
+ * 组织架构和用户管理已移至平台级路由：
+ *   /platform/orgs   — 组织架构（租户级）
+ *   /platform/users  — 用户管理（租户级）
+ *
+ * 本页面仅保留角色管理 + 权限规则（应用级权限配置）。
  */
 
-import { useState } from 'react';
-import { Tabs } from 'antd';
-import { TeamOutlined, ApartmentOutlined, UserOutlined } from '@ant-design/icons';
+import { Card, Typography } from 'antd';
+import { SafetyOutlined } from '@ant-design/icons';
 import RoleManager from '../components/permission/RoleManager.js';
-import OrgManager from '../components/permission/OrgManager.js';
-import UserManager from '../components/permission/UserManager.js';
+
+const { Title, Paragraph } = Typography;
 
 export default function Permissions() {
-  const [activeTab, setActiveTab] = useState('roles');
-
   return (
-    <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column', background: '#f5f7fa' }}>
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        style={{ paddingLeft: 16, background: '#fff', borderBottom: '1px solid #eef0f4', flexShrink: 0 }}
-        items={[
-          {
-            key: 'roles',
-            label: (
-              <span>
-                <TeamOutlined /> 角色管理
-              </span>
-            ),
-            children: <RoleManager />,
-          },
-          {
-            key: 'orgs',
-            label: (
-              <span>
-                <ApartmentOutlined /> 组织架构
-              </span>
-            ),
-            children: <OrgManager />,
-          },
-          {
-            key: 'users',
-            label: (
-              <span>
-                <UserOutlined /> 用户管理
-              </span>
-            ),
-            children: <UserManager />,
-          },
-        ]}
-      />
+    <div style={{ height: 'calc(100vh - 56px)', overflow: 'auto', background: '#f5f7fa', padding: 24 }}>
+      <Card style={{ marginBottom: 16 }}>
+        <Title level={4}>
+          <SafetyOutlined /> 角色权限
+        </Title>
+        <Paragraph type="secondary">
+          管理本应用的角色与权限规则 — 角色定义用户权限边界，权限规则控制对具体资源的访问。
+        </Paragraph>
+      </Card>
+      <Card>
+        <RoleManager />
+      </Card>
     </div>
   );
 }

@@ -20,6 +20,7 @@ export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/t/:slug/login" element={<Login />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<RuntimeLayout />}>
           <Route path="/home" element={<Home />} />

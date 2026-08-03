@@ -46,6 +46,7 @@ import {
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
+import { requireTenantId } from '../auth/tenant-context.js';
 import { ProcessService } from './process.service.js';
 import type {
   CreateProcessDefRequest,
@@ -69,7 +70,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
   ) {
-    const data = await this.processService.listProcesses(req.user.tenantId, appId);
+    const data = await this.processService.listProcesses(requireTenantId(req), appId);
     return { ok: true as const, data };
   }
 
@@ -81,7 +82,7 @@ export class ProcessController {
     @Body() body: CreateProcessDefRequest,
   ) {
     const data = await this.processService.createProcess(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       body,
       req.user.id,
@@ -94,7 +95,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
   ) {
-    const data = await this.processService.getProcess(req.user.tenantId, processId);
+    const data = await this.processService.getProcess(requireTenantId(req), processId);
     return { ok: true as const, data };
   }
 
@@ -106,7 +107,7 @@ export class ProcessController {
     @Body() body: UpdateProcessDefRequest,
   ) {
     const data = await this.processService.updateProcess(
-      req.user.tenantId,
+      requireTenantId(req),
       processId,
       body,
       req.user.id,
@@ -121,7 +122,7 @@ export class ProcessController {
     @Param('processId') processId: string,
   ) {
     const data = await this.processService.deleteProcess(
-      req.user.tenantId,
+      requireTenantId(req),
       processId,
       req.user.id,
     );
@@ -135,7 +136,7 @@ export class ProcessController {
     @Param('processId') processId: string,
   ) {
     const data = await this.processService.publishProcess(
-      req.user.tenantId,
+      requireTenantId(req),
       processId,
     );
     return { ok: true as const, data };
@@ -153,7 +154,7 @@ export class ProcessController {
     @Body() body: StartInstanceRequest,
   ) {
     const data = await this.processService.startInstance(
-      req.user.tenantId,
+      requireTenantId(req),
       processId,
       body,
     );
@@ -169,7 +170,7 @@ export class ProcessController {
     @Query('pageSize') pageSize?: string,
   ) {
     const result = await this.processService.listInstancesByProcess(
-      req.user.tenantId,
+      requireTenantId(req),
       processId,
       state,
       page ? parseInt(page, 10) : undefined,
@@ -185,7 +186,7 @@ export class ProcessController {
     @Param('instanceId') instanceId: string,
   ) {
     const data = await this.processService.getInstance(
-      req.user.tenantId,
+      requireTenantId(req),
       instanceId,
     );
     return { ok: true as const, data };
@@ -197,7 +198,7 @@ export class ProcessController {
     @Param('instanceId') instanceId: string,
   ) {
     const data = await this.processService.cancelInstance(
-      req.user.tenantId,
+      requireTenantId(req),
       instanceId,
     );
     return { ok: true as const, data };
@@ -215,7 +216,7 @@ export class ProcessController {
     @Query('pageSize') pageSize?: string,
   ) {
     const result = await this.processService.listTasks(
-      req.user.tenantId,
+      requireTenantId(req),
       req.user.id,
       status,
       page ? parseInt(page, 10) : undefined,
@@ -230,7 +231,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('taskId') taskId: string,
   ) {
-    const data = await this.processService.getTask(req.user.tenantId, taskId);
+    const data = await this.processService.getTask(requireTenantId(req), taskId);
     return { ok: true as const, data };
   }
 
@@ -241,7 +242,7 @@ export class ProcessController {
     @Body() body: { decision: string; comment?: string; formData?: Record<string, unknown> },
   ) {
     const data = await this.processService.completeTask(
-      req.user.tenantId,
+      requireTenantId(req),
       taskId,
       req.user.id,
       body.decision,
@@ -258,7 +259,7 @@ export class ProcessController {
     @Body() body: { delegatedTo: string },
   ) {
     const data = await this.processService.delegateTask(
-      req.user.tenantId,
+      requireTenantId(req),
       taskId,
       req.user.id,
       body.delegatedTo,
@@ -276,7 +277,7 @@ export class ProcessController {
     @Param('appId') appId: string,
   ) {
     const data = await this.processService.listTemplates(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
     );
     return { ok: true as const, data };
@@ -289,7 +290,7 @@ export class ProcessController {
     @Body() body: CreateTemplateRequest,
   ) {
     const data = await this.processService.createTemplate(
-      req.user.tenantId,
+      requireTenantId(req),
       appId,
       body,
     );
@@ -303,7 +304,7 @@ export class ProcessController {
     @Body() body: UpdateTemplateRequest,
   ) {
     const data = await this.processService.updateTemplate(
-      req.user.tenantId,
+      requireTenantId(req),
       templateId,
       body,
     );
@@ -316,7 +317,7 @@ export class ProcessController {
     @Param('templateId') templateId: string,
   ) {
     const data = await this.processService.deleteTemplate(
-      req.user.tenantId,
+      requireTenantId(req),
       templateId,
     );
     return { ok: true as const, data };

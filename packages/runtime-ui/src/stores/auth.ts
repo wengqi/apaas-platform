@@ -9,6 +9,8 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  /** 租户 ID。null = 平台超管（跨租户） */
+  tenantId: string | null;
 }
 
 /** 后端 /api/auth/login 响应体（data 部分）。 */
@@ -18,8 +20,9 @@ export interface LoginResponse {
     id: string;
     name: string;
     email: string;
-    tenantId?: string;
+    tenantId?: string | null;
     avatar?: string | null;
+    isPlatformAdmin?: boolean;
     roles?: Array<{ id: string; code: string; name: string }>;
   };
 }

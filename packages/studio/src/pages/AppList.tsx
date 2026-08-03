@@ -15,6 +15,7 @@ import {
   ColorPicker,
   Dropdown,
   Avatar,
+  Popconfirm,
   message,
 } from 'antd';
 import {
@@ -26,6 +27,8 @@ import {
   LogoutOutlined,
   UserOutlined,
   ThunderboltFilled,
+  DeleteOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -94,6 +97,48 @@ export default function AppList() {
       );
     },
   });
+
+  /** 删除应用。 */
+  const deleteMutation = useMutation({
+    mutationFn: (appId: string) => appsApi.delete(appId),
+    onSuccess: () => {
+      message.success('应用已删除');
+      queryClient.invalidateQueries({ queryKey: ['apps'] });
+    },
+    onError: (err) => {
+      const axErr = err as {
+        response?: { data?: { error?: { message?: string } }; message?: string };
+        message?: string;
+      };
+      message.error(
+        axErr.response?.data?.error?.message ?? axErr.message ?? '删除失败，请重试',
+      );
+    },
+  });
+
+  /** 卡片更多操作菜单。 */
+  const cardMenuItems = (app: AppSummary): MenuProps['items'] => [
+    {
+      key: 'delete',
+      icon: <DeleteOutlined />,
+      label: '删除应用',
+      danger: true,
+    },
+  ];
+
+  /** 处理卡片菜单点击。 */
+  const handleCardMenuClick = (app: AppSummary, info: { key: string }) => {
+    if (info.key === 'delete') {
+      Modal.confirm({
+        title: '删除应用',
+        content: `确定要删除应用「${app.name}」吗？删除后不可恢复，应用下的所有对象、页面、流程数据将一并删除。`,
+        okText: '确认删除',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: () => deleteMutation.mutate(app.id),
+      });
+    }
+  };
 
   /** 提交创建表单。 */
   const handleCreate = async () => {
@@ -258,7 +303,7 @@ export default function AppList() {
                     body: { padding: 20 },
                   }}
                 >
-                  {/* 图标 + 名称 */}
+                  {/* 图标 + 名称 + 更多操作 */}
                   <Space align="start" style={{ width: '100%' }}>
                     <div
                       style={{
@@ -289,6 +334,25 @@ export default function AppList() {
                         {app.apiName}
                       </Text>
                     </div>
+                    <Dropdown
+                      menu={{
+                        items: cardMenuItems(app),
+                        onClick: (info) => {
+                          info.domEvent?.stopPropagation();
+                          handleCardMenuClick(app, info);
+                        },
+                      }}
+                      placement="bottomRight"
+                      trigger={['click']}
+                    >
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<MoreOutlined />}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ flexShrink: 0, color: '#8c8c8c' }}
+                      />
+                    </Dropdown>
                   </Space>
 
                   {/* 描述 */}

@@ -36,7 +36,7 @@ import type {
   ViewModel,
 } from '../../api/pages.js';
 import type { Dayjs } from 'dayjs';
-import { resolvePropValue } from './expression-engine.js';
+import { resolvePropValue, getByPath } from './expression-engine.js';
 import { useRuntimeCtx, type RuntimeContext } from './RuntimeStore.js';
 
 const { Text, Title } = Typography;
@@ -385,9 +385,15 @@ function getPropAsBool(node: ComponentNode, key: string, ctx?: RenderContext): b
 
 /** 从 value 属性推断写回路径(优先 __bind,回退 vm.record.<apiName>)。 */
 function getFieldBindPath(node: ComponentNode): string | null {
+  // 优先检查 __bind 表达式
   const raw = node.props.value;
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && '__bind' in raw) {
     return (raw as { __bind: string }).__bind;
+  }
+  // 检查 bindPath 属性（Studio 搭建器输出的直接绑定路径）
+  const bindPath = node.props.bindPath;
+  if (typeof bindPath === 'string' && bindPath) {
+    return bindPath;
   }
   const apiName = node.props.apiName;
   return typeof apiName === 'string' ? `vm.record.${apiName}` : null;
@@ -400,8 +406,10 @@ function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
   setValue: (v: unknown) => void;
 } {
   const isPreview = ctx.mode === 'preview';
-  const value = isPreview ? getProp(node, 'value', ctx) : undefined;
   const bindPath = isPreview ? getFieldBindPath(node) : null;
+  const value = isPreview
+    ? (bindPath ? getByPath(ctx.vm, bindPath) : getProp(node, 'value', ctx))
+    : undefined;
   const setValue = (v: unknown) => {
     if (bindPath) ctx.runtime.setVariable(bindPath, v);
   };

@@ -142,7 +142,14 @@ export class ApplicationService {
     tenantId: string,
     appId: string,
     req: UpdateAppRequest,
+    changedBy?: string,
   ): Promise<Application> {
+    const existing = await prisma.application.findFirst({
+      where: { id: appId, tenantId },
+      select: { name: true },
+    });
+    if (!existing) throw new NotFoundException('应用不存在');
+
     await prisma.application.updateMany({
       where: { id: appId, tenantId },
       data: {
@@ -152,17 +159,48 @@ export class ApplicationService {
         color: req.color,
       },
     });
+
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'Application',
+      entityId: appId,
+      entityName: req.name ?? existing.name,
+      changeType: 'UPDATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `更新应用: ${req.name ?? existing.name}`,
+    });
+
     return this.get(tenantId, appId);
   }
 
   /**
    * 删除应用。
    */
-  async delete(tenantId: string, appId: string): Promise<void> {
+  async delete(tenantId: string, appId: string, changedBy?: string): Promise<void> {
+    const existing = await prisma.application.findFirst({
+      where: { id: appId, tenantId },
+      select: { name: true },
+    });
+    if (!existing) throw new NotFoundException('应用不存在');
+
     const result = await prisma.application.deleteMany({
       where: { id: appId, tenantId },
     });
     if (result.count === 0) throw new NotFoundException('应用不存在');
+
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'Application',
+      entityId: appId,
+      entityName: existing.name,
+      changeType: 'DELETE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `删除应用: ${existing.name}`,
+    });
   }
 
   // ===========================================================================

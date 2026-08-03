@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { randomUUID } from 'node:crypto';
+import { ChangeLogService } from '../application/changelog.service.js';
 
 /**
  * 存储在 ObjectMeta.fields JSON 数组中的字段定义。
@@ -91,6 +92,8 @@ export interface UpdateViewInput {
  */
 @Injectable()
 export class ObjectService {
+  constructor(private readonly changeLogService: ChangeLogService) {}
+
   // ===========================================================================
   // 对象 CRUD
   // ===========================================================================
@@ -166,13 +169,25 @@ export class ObjectService {
       },
     });
 
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'OBJECT',
+      entityType: 'ObjectMeta',
+      entityId: obj.id,
+      entityName: data.name,
+      changeType: 'CREATE',
+      changedBy: createdBy,
+      changeDescription: `新建对象: ${data.name}`,
+    });
+
     return this.get(tenantId, obj.id);
   }
 
   /**
    * 更新对象（name/description/icon）。
    */
-  async update(tenantId: string, objectId: string, data: UpdateObjectInput) {
+  async update(tenantId: string, objectId: string, data: UpdateObjectInput, changedBy?: string) {
     // 先校验对象存在且属于该租户
     const existing = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId },
@@ -188,13 +203,25 @@ export class ObjectService {
       },
     });
 
+    await this.changeLogService.log({
+      tenantId,
+      appId: existing.appId,
+      module: 'OBJECT',
+      entityType: 'ObjectMeta',
+      entityId: objectId,
+      entityName: data.name ?? existing.name,
+      changeType: 'UPDATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `更新对象: ${data.name ?? existing.name}`,
+    });
+
     return this.get(tenantId, objectId);
   }
 
   /**
    * 删除对象（校验有无记录）。
    */
-  async delete(tenantId: string, objectId: string): Promise<void> {
+  async delete(tenantId: string, objectId: string, changedBy?: string): Promise<void> {
     const existing = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId },
     });
@@ -211,6 +238,18 @@ export class ObjectService {
     }
 
     await prisma.objectMeta.delete({ where: { id: objectId } });
+
+    await this.changeLogService.log({
+      tenantId,
+      appId: existing.appId,
+      module: 'OBJECT',
+      entityType: 'ObjectMeta',
+      entityId: objectId,
+      entityName: existing.name,
+      changeType: 'DELETE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `删除对象: ${existing.name}`,
+    });
   }
 
   // ===========================================================================

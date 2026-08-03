@@ -100,6 +100,7 @@ export class ObjectController {
       req.user.tenantId,
       objectId,
       body,
+      req.user.id,
     );
     return { ok: true as const, data: object };
   }
@@ -110,7 +111,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
   ) {
-    await this.objectService.delete(req.user.tenantId, objectId);
+    await this.objectService.delete(req.user.tenantId, objectId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
 

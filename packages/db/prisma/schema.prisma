@@ -43,6 +43,7 @@ model Tenant {
   appVersions AppVersion[]
   changeLogs  ChangeLog[]
   appChecks   AppCheck[]
+  inAppMessages InAppMessage[]
 
   @@map("tenants")
 }
@@ -393,6 +394,7 @@ model ProcessDef {
   version   Int      @default(1)
   status    ProcessDefStatus @default(DRAFT)
   triggerType String? @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | SCHEDULED | MANUAL | API
+  cron        String? // Cron 表达式（仅 triggerType=SCHEDULED 时使用）
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -531,6 +533,26 @@ model NotificationTemplate {
   @@index([tenantId])
   @@index([appId])
   @@map("notification_templates")
+}
+
+/// 站内消息 — 流程通知节点 in_app 渠道写入，用户在运行时查看。
+model InAppMessage {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  appId     String   @map("app_id")
+  userId    String   @map("user_id") // 收件人
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  readAt    DateTime? @map("read_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([userId, read])
+  @@map("in_app_messages")
 }
 
 // ============================================================================

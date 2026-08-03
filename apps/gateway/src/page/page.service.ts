@@ -13,6 +13,7 @@ import {
   type PageType,
   type UpdatePageRequest,
 } from '@apaas/shared';
+import { ChangeLogService } from '../application/changelog.service.js';
 
 /**
  * 页面服务 — 页面 Schema 存取 CRUD。
@@ -24,6 +25,7 @@ import {
  */
 @Injectable()
 export class PageService {
+  constructor(private readonly changeLogService: ChangeLogService) {}
   /**
    * 列出应用下所有页面。
    */
@@ -115,6 +117,7 @@ export class PageService {
     tenantId: string,
     appId: string,
     req: CreatePageRequest,
+    changedBy?: string,
   ): Promise<PageMeta> {
     const page = await prisma.pageMeta.create({
       data: {
@@ -128,6 +131,20 @@ export class PageService {
         isPublished: false,
       },
     });
+
+    // 记录变更日志
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'PageMeta',
+      entityId: page.id,
+      entityName: req.name,
+      changeType: 'CREATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `新建页面: ${req.name}`,
+    });
+
     return this.get(tenantId, page.id);
   }
 
@@ -138,7 +155,14 @@ export class PageService {
     tenantId: string,
     pageId: string,
     req: UpdatePageRequest,
+    changedBy?: string,
   ): Promise<PageMeta> {
+    // 先查 appId（变更日志需要）
+    const existing = await prisma.pageMeta.findFirst({
+      where: { id: pageId, tenantId },
+      select: { appId: true, name: true },
+    });
+
     await prisma.pageMeta.updateMany({
       where: { id: pageId, tenantId },
       data: {
@@ -147,17 +171,52 @@ export class PageService {
         isPublished: req.isPublished,
       },
     });
+
+    if (existing) {
+      await this.changeLogService.log({
+        tenantId,
+        appId: existing.appId,
+        module: 'PAGE',
+        entityType: 'PageMeta',
+        entityId: pageId,
+        entityName: req.name ?? existing.name,
+        changeType: 'UPDATE',
+        changedBy: changedBy ?? 'system',
+        changeDescription: `更新页面: ${req.name ?? existing.name}`,
+      });
+    }
+
     return this.get(tenantId, pageId);
   }
 
   /**
    * 删除页面。
    */
-  async delete(tenantId: string, pageId: string): Promise<void> {
+  async delete(tenantId: string, pageId: string, changedBy?: string): Promise<void> {
+    // 先查信息（删除后无法获取）
+    const existing = await prisma.pageMeta.findFirst({
+      where: { id: pageId, tenantId },
+      select: { appId: true, name: true },
+    });
+
     const result = await prisma.pageMeta.deleteMany({
       where: { id: pageId, tenantId },
     });
     if (result.count === 0) throw new NotFoundException('页面不存在');
+
+    if (existing) {
+      await this.changeLogService.log({
+        tenantId,
+        appId: existing.appId,
+        module: 'PAGE',
+        entityType: 'PageMeta',
+        entityId: pageId,
+        entityName: existing.name,
+        changeType: 'DELETE',
+        changedBy: changedBy ?? 'system',
+        changeDescription: `删除页面: ${existing.name}`,
+      });
+    }
   }
 
   /**

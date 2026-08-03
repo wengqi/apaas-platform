@@ -3,7 +3,7 @@ import { ApplicationService } from './application.service.js';
 import { ApplicationController } from './application.controller.js';
 import { SnapshotService } from './snapshot.service.js';
 import { CheckService } from './check.service.js';
-import { ChangeLogService } from './changelog.service.js';
+import { ChangeLogModule } from './changelog.module.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
@@ -19,6 +19,8 @@ import { PermissionModule } from '../permission/permission.module.js';
  *   CheckService → SnapshotService
  *   ChangeLogService → (无，直接用 prisma)
  *   ApplicationController → {ApplicationService, ChangeLogService}
+ *
+ * ChangeLogService 通过 ChangeLogModule 导入，供其他模块复用。
  */
 @Module({
   imports: [
@@ -32,15 +34,15 @@ import { PermissionModule } from '../permission/permission.module.js';
       }),
     }),
     PermissionModule,
+    ChangeLogModule,
   ],
   controllers: [ApplicationController],
   providers: [
     ApplicationService,
     SnapshotService,
     CheckService,
-    ChangeLogService,
     JwtStrategy,
   ],
-  exports: [ApplicationService, ChangeLogService],
+  exports: [ApplicationService],
 })
 export class ApplicationModule {}

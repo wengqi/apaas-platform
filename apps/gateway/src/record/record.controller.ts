@@ -34,6 +34,7 @@ export class RecordController {
   constructor(private readonly recordService: RecordService) {}
 
   @Get('objects/:objectId/records')
+  @RequirePermission('RECORD', 'VIEW', 'objectId')
   async query(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
@@ -52,16 +53,22 @@ export class RecordController {
       req.user.tenantId,
       objectId,
       params,
+      req.permissionContext,
     );
     return { ok: true as const, data: result };
   }
 
   @Get('records/:recordId')
+  @RequirePermission('RECORD', 'VIEW')
   async get(
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,
   ) {
-    const record = await this.recordService.get(req.user.tenantId, recordId);
+    const record = await this.recordService.get(
+      req.user.tenantId,
+      recordId,
+      req.permissionContext,
+    );
     return { ok: true as const, data: record };
   }
 

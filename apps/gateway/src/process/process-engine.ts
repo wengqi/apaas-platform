@@ -98,6 +98,30 @@ export class ProcessEngine {
     return instance.id;
   }
 
+  /**
+   * 按 processDefId 启动流程实例（用于定时触发器 — 无 tenantId 上下文）。
+   * 先加载流程定义获取 tenantId，再委托 startProcess。
+   */
+  async startProcessByDefId(
+    processDefId: string,
+    triggerContext: Record<string, unknown>,
+  ): Promise<string> {
+    const def = await prisma.processDef.findFirst({
+      where: { id: processDefId, status: 'PUBLISHED' },
+      select: { id: true, tenantId: true, apiName: true },
+    });
+    if (!def) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: `流程 ${processDefId} 不存在或未发布`,
+      });
+    }
+
+    this.logger.log(`定时触发流程 ${def.apiName}(${processDefId})`);
+
+    return this.startProcess(def.tenantId, def.id, triggerContext);
+  }
+
   // ===========================================================================
   // token 流推进
   // ===========================================================================

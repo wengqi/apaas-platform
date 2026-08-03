@@ -9,6 +9,8 @@ import { FieldType } from '@apaas/shared';
 import { FormulaEngine } from '../object/formula-engine.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { TriggerService } from '../process/trigger.service.js';
+import { translateCondition } from '../permission/condition-translator.js';
+import type { PermissionContext } from '../auth/authenticated-request.js';
 
 /**
  * 存储在 ObjectMeta.fields JSON 数组中的字段定义（与 object.service.ts 的 StoredField 一致）。
@@ -94,13 +96,16 @@ export class RecordService {
   // ===========================================================================
 
   /**
-   * 分页查询记录（支持筛选 / 排序）。
+   * 分页查询记录（支持筛选 / 排序 / 行级权限过滤 / 字段级投影）。
    * 用 Prisma 的 JSONB path 查询过滤 data JSON 内的字段值。
+   *
+   * @param permissionContext 权限上下文（condition 注入 where，fieldScope 投影 data 字段）
    */
   async query(
     tenantId: string,
     objectId: string,
     params: RecordQueryParams,
+    permissionContext?: PermissionContext,
   ): Promise<PaginatedRecords> {
     const page = Math.max(1, params.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
@@ -111,6 +116,21 @@ export class RecordService {
     const filters = this.parseFilter(params.filter);
     if (filters.length > 0) {
       where.AND = filters.map((f) => this.buildCondition(f));
+    }
+
+    // 注入行级权限条件
+    if (permissionContext?.condition) {
+      const conditionWhere = translateCondition(
+        permissionContext.condition,
+        { currentUser: permissionContext.currentUserId },
+      );
+      if (conditionWhere) {
+        if (where.AND) {
+          (where.AND as Prisma.RecordWhereInput[]).push(conditionWhere);
+        } else {
+          where.AND = [conditionWhere];
+        }
+      }
     }
 
     // 构建 orderBy
@@ -127,7 +147,7 @@ export class RecordService {
     ]);
 
     return {
-      items: records.map((r) => this.toResult(r)),
+      items: records.map((r) => this.toResult(r, permissionContext?.fieldScope)),
       total,
       page,
       pageSize,
@@ -135,14 +155,20 @@ export class RecordService {
   }
 
   /**
-   * 按 ID 查单条记录。
+   * 按 ID 查单条记录（支持字段级投影）。
+   *
+   * @param permissionContext 权限上下文（fieldScope 投影 data 字段）
    */
-  async get(tenantId: string, recordId: string): Promise<RecordResult> {
+  async get(
+    tenantId: string,
+    recordId: string,
+    permissionContext?: PermissionContext,
+  ): Promise<RecordResult> {
     const record = await prisma.record.findFirst({
       where: { id: recordId, tenantId },
     });
     if (!record) throw new NotFoundException('记录不存在');
-    return this.toResult(record);
+    return this.toResult(record, permissionContext?.fieldScope);
   }
 
   /**
@@ -318,14 +344,28 @@ export class RecordService {
 
   /**
    * 将 Prisma Record 映射为返回结果。
+   * 若提供了 fieldScope，则仅保留白名单内的字段（字段级权限）。
    */
-  private toResult(record: Prisma.RecordGetPayload<{}>): RecordResult {
+  private toResult(
+    record: Prisma.RecordGetPayload<{}>,
+    fieldScope?: string[] | null,
+  ): RecordResult {
+    const fullData = (record.data as Record<string, unknown>) ?? {};
+
+    // 字段级投影：仅保留 fieldScope 白名单中的字段
+    const data =
+      fieldScope && fieldScope.length > 0
+        ? Object.fromEntries(
+            Object.entries(fullData).filter(([key]) => fieldScope.includes(key)),
+          )
+        : fullData;
+
     return {
       id: record.id,
       tenantId: record.tenantId,
       appId: record.appId,
       objectId: record.objectId,
-      data: (record.data as Record<string, unknown>) ?? {},
+      data,
       createdBy: record.createdBy,
       updatedBy: record.updatedBy,
       createdAt: record.createdAt.toISOString(),

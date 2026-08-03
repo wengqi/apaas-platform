@@ -7,9 +7,9 @@
  *   - 模版模式：templateId（加载 NotificationTemplate，渲染 title_template / body_template）
  * 执行逻辑：解析收件人与内容（支持 {{var}} 插值）→ 按渠道发送 → 记录回执。
  *
- * 渠道实现状态：
- *   - in_app：尚未实现（无站内消息表），返回 success=false
- *   - email：尚未实现（无 SMTP 集成），返回 success=false
+ * 渠道实现：
+ *   - in_app：写入 InAppMessage 表，用户在运行时前端查看
+ *   - email：通过 MailService (nodemailer SMTP) 发送
  *   - webhook：HTTP POST 到 recipients[0] 指定的 URL
  */
 
@@ -17,11 +17,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { prisma } from '@apaas/db';
 import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../types.js';
 import { renderTemplateDotted } from '../process-utils.js';
+import { MailService } from '../../notification/mail.service.js';
+import { InAppMessageService } from '../../notification/in-app-message.service.js';
 
 @Injectable()
 export class NotificationExecutor implements NodeExecutor {
   private readonly logger = new Logger(NotificationExecutor.name);
   readonly type = 'notification';
+
+  constructor(
+    private readonly mailService: MailService,
+    private readonly inAppMessageService: InAppMessageService,
+  ) {}
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
@@ -75,14 +82,24 @@ export class NotificationExecutor implements NodeExecutor {
           success = await this.sendWebhook(recipients, title, body);
           break;
         case 'email':
-          this.logger.warn(`[邮件] 渠道尚未实现(SMTP 未集成),跳过发送: to=${recipients.join(',')} | ${title}`);
-          success = false;
+          success = await this.mailService.sendMail({
+            to: recipients,
+            subject: title,
+            html: body,
+          });
           break;
         case 'in_app':
-        default:
-          this.logger.warn(`[站内信] 渠道尚未实现(无站内消息表),跳过发送: to=${recipients.join(',')} | ${title}`);
-          success = false;
+        default: {
+          const created = await this.inAppMessageService.create({
+            tenantId: ctx.tenantId,
+            appId: ctx.appId,
+            userIds: recipients,
+            title,
+            body,
+          });
+          success = created > 0;
           break;
+        }
       }
     } catch (err) {
       success = false;

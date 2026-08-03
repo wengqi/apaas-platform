@@ -5,11 +5,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { ChangeLogModule } from '../application/changelog.module.js';
 
 /**
  * 对象模块 — 对象元数据 / 字段 / 视图 CRUD。
  * 独立持有 JwtModule + JwtStrategy，使对象路由可受 JWT 保护。
  * 导入 PermissionModule 使 PermissionGuard 可注入。
+ * 导入 ChangeLogModule 使 ObjectService 可记录变更。
  */
 @Module({
   imports: [
@@ -23,6 +25,7 @@ import { PermissionModule } from '../permission/permission.module.js';
       }),
     }),
     PermissionModule,
+    ChangeLogModule,
   ],
   controllers: [ObjectController],
   providers: [ObjectService, JwtStrategy],

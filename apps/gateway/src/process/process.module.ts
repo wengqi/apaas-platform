@@ -16,6 +16,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { ChangeLogModule } from '../application/changelog.module.js';
+import { NotificationModule } from '../notification/notification.module.js';
 import { QueueModule } from '../queue/queue.module.js';
 import { ProcessController } from './process.controller.js';
 import { ProcessService } from './process.service.js';
@@ -47,6 +49,8 @@ import { TriggerService } from './trigger.service.js';
       }),
     }),
     PermissionModule,
+    ChangeLogModule,
+    NotificationModule,
     forwardRef(() => QueueModule),
   ],
   controllers: [ProcessController],

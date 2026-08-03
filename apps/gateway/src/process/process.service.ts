@@ -19,6 +19,7 @@ import {
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
+import { ChangeLogService } from '../application/changelog.service.js';
 
 // ---------------------------------------------------------------------------
 // DTO 类型（创建/更新请求体）
@@ -62,7 +63,10 @@ export interface UpdateTemplateRequest {
 
 @Injectable()
 export class ProcessService {
-  constructor(private readonly engine: ProcessEngine) {}
+  constructor(
+    private readonly engine: ProcessEngine,
+    private readonly changeLogService: ChangeLogService,
+  ) {}
 
   // ===========================================================================
   // 流程定义 CRUD
@@ -91,6 +95,7 @@ export class ProcessService {
     tenantId: string,
     appId: string,
     req: CreateProcessDefRequest,
+    changedBy?: string,
   ) {
     // 校验 apiName 唯一（同应用）
     const existing = await prisma.processDef.findFirst({
@@ -116,6 +121,19 @@ export class ProcessService {
         triggerType: req.triggerType ?? 'MANUAL',
       },
     });
+
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PROCESS',
+      entityType: 'ProcessDef',
+      entityId: def.id,
+      entityName: req.name,
+      changeType: 'CREATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `新建流程: ${req.name}`,
+    });
+
     return this.toProcessDefDto(def);
   }
 
@@ -124,6 +142,7 @@ export class ProcessService {
     tenantId: string,
     processId: string,
     req: UpdateProcessDefRequest,
+    changedBy?: string,
   ) {
     const existing = await prisma.processDef.findFirst({
       where: { id: processId, tenantId },
@@ -148,11 +167,24 @@ export class ProcessService {
     if (req.triggerType !== undefined) data.triggerType = req.triggerType;
 
     await prisma.processDef.update({ where: { id: processId }, data });
+
+    await this.changeLogService.log({
+      tenantId,
+      appId: existing.appId,
+      module: 'PROCESS',
+      entityType: 'ProcessDef',
+      entityId: processId,
+      entityName: req.name ?? existing.name,
+      changeType: 'UPDATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `更新流程: ${req.name ?? existing.name}`,
+    });
+
     return this.getProcess(tenantId, processId);
   }
 
   /** 删除流程定义（草稿可删，已发布需先归档）。 */
-  async deleteProcess(tenantId: string, processId: string) {
+  async deleteProcess(tenantId: string, processId: string, changedBy?: string) {
     const existing = await prisma.processDef.findFirst({
       where: { id: processId, tenantId },
     });
@@ -165,6 +197,19 @@ export class ProcessService {
     }
 
     await prisma.processDef.delete({ where: { id: processId } });
+
+    await this.changeLogService.log({
+      tenantId,
+      appId: existing.appId,
+      module: 'PROCESS',
+      entityType: 'ProcessDef',
+      entityId: processId,
+      entityName: existing.name,
+      changeType: 'DELETE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `删除流程: ${existing.name}`,
+    });
+
     return { deleted: true };
   }
 

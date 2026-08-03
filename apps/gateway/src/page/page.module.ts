@@ -5,11 +5,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { ChangeLogModule } from '../application/changelog.module.js';
 
 /**
  * 页面模块 — 页面 Schema 存取 CRUD。
  * 独立持有 JwtModule + JwtStrategy，使页面路由可受 JWT 保护。
  * 导入 PermissionModule 使 PermissionGuard 可注入。
+ * 导入 ChangeLogModule 使 PageService 可记录变更。
  */
 @Module({
   imports: [
@@ -23,6 +25,7 @@ import { PermissionModule } from '../permission/permission.module.js';
       }),
     }),
     PermissionModule,
+    ChangeLogModule,
   ],
   controllers: [PageController],
   providers: [PageService, JwtStrategy],

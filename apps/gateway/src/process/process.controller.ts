@@ -84,6 +84,7 @@ export class ProcessController {
       req.user.tenantId,
       appId,
       body,
+      req.user.id,
     );
     return { ok: true as const, data };
   }
@@ -108,6 +109,7 @@ export class ProcessController {
       req.user.tenantId,
       processId,
       body,
+      req.user.id,
     );
     return { ok: true as const, data };
   }
@@ -121,6 +123,7 @@ export class ProcessController {
     const data = await this.processService.deleteProcess(
       req.user.tenantId,
       processId,
+      req.user.id,
     );
     return { ok: true as const, data };
   }

@@ -53,6 +53,7 @@ export class PageController {
       req.user.tenantId,
       appId,
       body,
+      req.user.id,
     );
     return { ok: true as const, data: page };
   }
@@ -92,6 +93,7 @@ export class PageController {
       req.user.tenantId,
       pageId,
       body,
+      req.user.id,
     );
     return { ok: true as const, data: page };
   }
@@ -102,7 +104,7 @@ export class PageController {
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
   ) {
-    await this.pageService.delete(req.user.tenantId, pageId);
+    await this.pageService.delete(req.user.tenantId, pageId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
 

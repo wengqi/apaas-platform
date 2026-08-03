@@ -31,18 +31,33 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit() {
-    // 流程令牌推进 Worker
+    // 流程令牌推进 Worker + 定时触发处理
     const processWorker = new Worker(
       PROCESS_QUEUE,
       async (job: Job) => {
-        const { instanceId } = job.data as { instanceId: string };
-        this.logger.debug(`消费 process job: instanceId=${instanceId}`);
-        await this.processEngine.executeNextNode(instanceId);
+        const data = job.data as { instanceId?: string; processDefId?: string; type?: string };
+
+        // 定时触发 job：启动流程实例
+        if (data.type === 'scheduled' && data.processDefId) {
+          this.logger.debug(`消费 scheduled trigger job: processDefId=${data.processDefId}`);
+          await this.processEngine.startProcessByDefId(data.processDefId, {
+            eventType: 'scheduled',
+            triggeredBy: 'scheduled_trigger',
+          });
+          return;
+        }
+
+        // 普通流程推进 job
+        const { instanceId } = data;
+        if (instanceId) {
+          this.logger.debug(`消费 process job: instanceId=${instanceId}`);
+          await this.processEngine.executeNextNode(instanceId);
+        }
       },
       { connection: this.connection.duplicate(), concurrency: 5 },
     );
     processWorker.on('failed', (job, err) => {
-      this.logger.error(`process job 失败 (instanceId=${job?.data?.instanceId}): ${err.message}`);
+      this.logger.error(`process job 失败: ${err.message}`);
     });
     this.workers.push(processWorker);
 

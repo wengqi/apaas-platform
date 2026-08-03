@@ -63,14 +63,14 @@ export class ApplicationController {
     @Param('appId') appId: string,
     @Body() body: UpdateAppRequest,
   ) {
-    const app = await this.appService.update(req.user.tenantId, appId, body);
+    const app = await this.appService.update(req.user.tenantId, appId, body, req.user.id);
     return { ok: true as const, data: app };
   }
 
   @Delete(':appId')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async delete(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    await this.appService.delete(req.user.tenantId, appId);
+    await this.appService.delete(req.user.tenantId, appId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
 

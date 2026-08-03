@@ -408,7 +408,7 @@ function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
   const isPreview = ctx.mode === 'preview';
   const bindPath = isPreview ? getFieldBindPath(node) : null;
   const value = isPreview
-    ? (bindPath ? getByPath(ctx.vm, bindPath) : getProp(node, 'value', ctx))
+    ? (bindPath ? getByPath(ctx.vm, bindPath.startsWith('vm.') ? bindPath.slice(3) : bindPath) : getProp(node, 'value', ctx))
     : undefined;
   const setValue = (v: unknown) => {
     if (bindPath) ctx.runtime.setVariable(bindPath, v);

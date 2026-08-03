@@ -202,7 +202,7 @@ function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
   const bindPath = getFieldBindPath(node);
   // 如果有绑定路径，从 VM 中读取当前值；否则从 props 读取
   const value = bindPath
-    ? getByPath(ctx.vm, bindPath)
+    ? getByPath(ctx.vm, bindPath.startsWith('vm.') ? bindPath.slice(3) : bindPath)
     : getProp(node, 'value', ctx);
   const setValue = (v: unknown) => {
     if (bindPath) ctx.runtime.setVariable(bindPath, v);

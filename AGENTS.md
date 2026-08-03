@@ -39,15 +39,26 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 4. **类型契约先行**：packages/shared 定义所有跨层 DTO，前后端共享
 5. **行级权限通过条件翻译器**：PermissionService 算出 condition → condition-translator 翻译为 Prisma where → RecordService 注入查询
 
+## 飞书 aPaaS 对齐原则
+
+**后续所有功能开发必须与飞书 aPaaS 对齐。** 对齐基准文档：`docs/knowledge-base/FEISHU-ALIGNMENT-BENCHMARK.md`
+
+- 功能开发前查阅对齐基准文档，确认飞书实现方案
+- PRD 编写时以飞书功能为基准，标注「对齐/增强/简化/偏离」
+- UI 设计时参考飞书交互模式（三栏布局、异步进度、模板驱动等）
+- 偏离时在 PR/commit 中说明理由
+- 原始调研材料：`docs/research/RESEARCH-feishu-apaas-full.md`（功能体系全景）+ `docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`（应用生命周期深度调研）
+
 ## 知识库
 
 工程实践知识持久化在 `docs/knowledge-base/`，包含：
+- **飞书对齐基准**（功能体系 + 对齐度矩阵）
 - 代码审计报告
 - 阶段修复记录
 - 功能完成度矩阵
 - 路线图更新
 
-详见 `docs/knowledge-base/README.md`。
+详见 `docs/knowledge-base/README.md`。每次完成阶段性工作后及时更新。
 
 ## 分析排除目录
 

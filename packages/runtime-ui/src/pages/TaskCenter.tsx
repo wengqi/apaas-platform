@@ -192,7 +192,15 @@ export default function TaskCenter() {
     },
   ];
 
-  const currentData = activeTab === 'pending' ? pendingData : completedData;
+  // API 返回 data 为数组（非分页对象），统一转为 items 数组
+  const normalizeItems = (data: unknown): ProcessTask[] => {
+    if (Array.isArray(data)) return data as ProcessTask[];
+    if (data && typeof data === 'object' && 'items' in data) return (data as { items: ProcessTask[] }).items;
+    return [];
+  };
+  const pendingItems = normalizeItems(pendingData);
+  const completedItems = normalizeItems(completedData);
+  const currentData = activeTab === 'pending' ? pendingItems : completedItems;
   const currentLoading = activeTab === 'pending' ? pendingLoading : completedLoading;
 
   return (
@@ -213,11 +221,11 @@ export default function TaskCenter() {
           items={[
             {
               key: 'pending',
-              label: `待办 (${pendingData?.total ?? 0})`,
+              label: `待办 (${pendingItems.length})`,
               children: (
                 <Table<ProcessTask>
                   columns={columns}
-                  dataSource={currentData?.items ?? []}
+                  dataSource={currentData}
                   rowKey="id"
                   loading={currentLoading}
                   pagination={false}
@@ -227,11 +235,11 @@ export default function TaskCenter() {
             },
             {
               key: 'completed',
-              label: `已办 (${completedData?.total ?? 0})`,
+              label: `已办 (${completedItems.length})`,
               children: (
                 <Table<ProcessTask>
                   columns={columns}
-                  dataSource={currentData?.items ?? []}
+                  dataSource={currentData}
                   rowKey="id"
                   loading={currentLoading}
                   pagination={false}

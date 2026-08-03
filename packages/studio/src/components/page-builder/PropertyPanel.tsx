@@ -25,6 +25,7 @@ import {
   PAGE_TYPE_OPTIONS,
 } from '../../constants/pageComponents.js';
 import type { ComponentNode, PageType, PropValue } from '../../api/pages.js';
+import { EventsTab } from './EventsTab.js';
 
 const { Text, Title } = Typography;
 
@@ -270,7 +271,7 @@ function ComponentPropertyPanel({ node }: { node: ComponentNode }) {
             {
               key: 'events',
               label: '事件',
-              children: <PlaceholderTab text="事件配置功能将在后续版本支持" />,
+              children: <EventsTab node={node} />,
             },
           ]}
         />

@@ -96,6 +96,40 @@ async function main() {
 
   console.log(`✅ 用户: ${admin.email} (ADMIN), ${builder.email} (BUILDER)`);
 
+  // 4.5 为 BUILDER 角色创建权限规则（允许搭建操作）
+  const builderRules = [
+    { type: 'PAGE', action: 'MANAGE', targetId: '*' },
+    { type: 'PAGE', action: 'CREATE', targetId: '*' },
+    { type: 'PAGE', action: 'EDIT', targetId: '*' },
+    { type: 'PAGE', action: 'DELETE', targetId: '*' },
+    { type: 'PAGE', action: 'VIEW', targetId: '*' },
+    { type: 'DATA_MODEL', action: 'CREATE', targetId: '*' },
+    { type: 'DATA_MODEL', action: 'EDIT', targetId: '*' },
+    { type: 'DATA_MODEL', action: 'DELETE', targetId: '*' },
+    { type: 'DATA_MODEL', action: 'VIEW', targetId: '*' },
+    { type: 'PROCESS', action: 'CREATE', targetId: '*' },
+    { type: 'PROCESS', action: 'EDIT', targetId: '*' },
+    { type: 'PROCESS', action: 'DELETE', targetId: '*' },
+    { type: 'PROCESS', action: 'EXECUTE', targetId: '*' },
+    { type: 'PROCESS', action: 'VIEW', targetId: '*' },
+    { type: 'RECORD', action: 'CREATE', targetId: '*' },
+    { type: 'RECORD', action: 'EDIT', targetId: '*' },
+    { type: 'RECORD', action: 'DELETE', targetId: '*' },
+    { type: 'RECORD', action: 'VIEW', targetId: '*' },
+  ];
+  await prisma.permissionRule.createMany({
+    data: builderRules.map((rule) => ({
+      tenantId: tenant.id,
+      roleId: builderRole.id,
+      type: rule.type,
+      action: rule.action,
+      targetId: rule.targetId,
+      effect: 'ALLOW',
+    })),
+    skipDuplicates: true,
+  });
+  console.log(`✅ BUILDER 权限规则: ${builderRules.length} 条`);
+
   // 5. 创建示例应用
   const app = await prisma.application.upsert({
     where: { tenantId_apiName: { tenantId: tenant.id, apiName: 'asset_management' } },

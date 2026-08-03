@@ -356,8 +356,15 @@ export class ProcessService {
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
     }
 
+    // 查找用户邮箱（assignee 可能存的是邮箱而非 userId）
+    const user = await prisma.user.findFirst({
+      where: { id: userId },
+      select: { email: true },
+    });
+
     where.OR = [
       { assignee: userId },
+      ...(user?.email ? [{ assignee: user.email }] : []),
       ...(roleIds.length > 0 ? [{ candidateGroups: { hasSome: roleIds } }] : []),
     ];
 
@@ -405,6 +412,9 @@ export class ProcessService {
         instance: {
           select: {
             id: true,
+            status: true,
+            variables: true,
+            triggerContext: true,
             processDef: { select: { name: true, apiName: true } },
           },
         },
@@ -429,7 +439,12 @@ export class ProcessService {
     if (!task) throw new NotFoundException('任务不存在');
 
     // 权限校验：任务须属于当前用户（受理人或候选组——candidateGroups 存角色ID）
-    const isAssignee = task.assignee === userId;
+    // assignee 可能存的是 userId 或邮箱，都需匹配
+    const user = await prisma.user.findFirst({
+      where: { id: userId },
+      select: { email: true },
+    });
+    const isAssignee = task.assignee === userId || (user?.email != null && task.assignee === user.email);
     // 查询用户角色（直接 + 组织授权）
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({ where: { userId }, select: { roleId: true } }),

@@ -77,12 +77,15 @@ export class ProcessEngine {
     }
 
     // 创建流程实例，活跃令牌置于 start 节点
+    // 将 triggerContext 中的输入变量展开到 variables 顶层，供条件分支等节点直接引用
+    const inputs = (triggerContext['inputs'] as Record<string, unknown> | undefined) ?? {};
+    const initialVariables: Record<string, unknown> = { ...triggerContext, ...inputs };
     const instance = await prisma.processInstance.create({
       data: {
         tenantId,
         processDefId: def.id,
         triggerContext: triggerContext as Prisma.InputJsonValue,
-        variables: {} as Prisma.InputJsonValue,
+        variables: initialVariables as Prisma.InputJsonValue,
         status: 'RUNNING',
         activeNodeIds: [startNode.id],
       },
@@ -350,13 +353,26 @@ export class ProcessEngine {
       assignee: userId,
     });
 
-    // 标记关联 NodeExecution 完成
+    // 推进令牌：移除当前节点，添加下游节点
+    const schema = task.instance.processDef.workflowSchema as unknown as WorkflowSchema;
+    const outgoing = this.getOutgoingEdges(schema, task.nodeId);
+    const nextNodeIds = outgoing.map((e) => e.targetNodeID);
+    const currentActive = (task.instance.activeNodeIds as string[]) ?? [];
+    const updatedActive = [
+      ...new Set([
+      ...currentActive.filter((id) => id !== task.nodeId),
+      ...nextNodeIds,
+      ]),
+    ];
+
+    // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
     await prisma.$transaction([
       prisma.processInstance.update({
         where: { id: task.instance.id },
         data: {
           variables: variables as Prisma.InputJsonValue,
           status: 'RUNNING',
+          activeNodeIds: updatedActive,
         },
       }),
       prisma.nodeExecution.update({

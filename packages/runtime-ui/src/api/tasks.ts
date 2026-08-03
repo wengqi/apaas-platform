@@ -13,6 +13,7 @@ export interface ProcessTask {
   id: string;
   instanceId: string;
   nodeId: string;
+  taskName?: string;
   assignee: string | null;
   status: TaskStatus;
   decision: string | null;
@@ -20,6 +21,14 @@ export interface ProcessTask {
   formData: Record<string, unknown> | null;
   createdAt: string;
   completedAt: string | null;
+  /** 关联的流程实例（getTask 详情时返回）。 */
+  instance?: {
+    id: string;
+    status: string;
+    variables: Record<string, unknown> | null;
+    triggerContext: Record<string, unknown> | null;
+    processDef: { name: string; apiName: string };
+  };
 }
 
 /** 分页任务结果。 */

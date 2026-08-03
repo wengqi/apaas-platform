@@ -66,14 +66,14 @@ export class PermissionService {
       throw new ForbiddenException('无操作权限');
     }
 
-    // 查询匹配的权限规则
+    // 查询匹配的权限规则（包括通配符 '*' 规则和具体 targetId 规则）
     const rules = await prisma.permissionRule.findMany({
       where: {
         tenantId: user.tenantId,
         roleId: { in: roleIds },
         type,
         action,
-        targetId,
+        targetId: { in: [targetId, '*'] },
         ...(targetNodeId ? { targetNodeId } : {}),
       },
     });

@@ -108,12 +108,11 @@ export default function AppList() {
     },
     onError: (err) => {
       const axErr = err as {
-        response?: { data?: { error?: { message?: string } }; message?: string };
+        response?: { data?: { message?: string; error?: { message?: string } } };
         message?: string;
       };
-      message.error(
-        axErr.response?.data?.error?.message ?? axErr.message ?? '删除失败，请重试',
-      );
+      const errMsg = axErr.response?.data?.message ?? axErr.response?.data?.error?.message ?? axErr.message ?? '删除失败，请重试';
+      message.error(errMsg, 5);
     },
   });
 
@@ -126,12 +125,11 @@ export default function AppList() {
     },
     onError: (err) => {
       const axErr = err as {
-        response?: { data?: { error?: { message?: string } }; message?: string };
+        response?: { data?: { message?: string; error?: { message?: string } } };
         message?: string;
       };
-      message.error(
-        axErr.response?.data?.error?.message ?? axErr.message ?? '归档失败，请重试',
-      );
+      const errMsg = axErr.response?.data?.message ?? axErr.response?.data?.error?.message ?? axErr.message ?? '归档失败，请重试';
+      message.error(errMsg, 5);
     },
   });
 

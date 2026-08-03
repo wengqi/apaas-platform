@@ -129,10 +129,16 @@ export default function ComponentRenderer({ node, root, isRoot }: ComponentRende
     viewModel: { variables: {} },
     onAction: (nodeId: string, eventName: string) => {
       const target = findNodeById(root, nodeId);
-      if (!target) return;
-      const actions = extractActions(target.props[eventName]);
+      if (!target) {
+        console.warn(`[onAction] Node ${nodeId} not found in root`);
+        return;
+      }
+      const propValue = target.props[eventName];
+      const actions = extractActions(propValue);
       if (actions.length > 0) {
         void runtime.executeActions(actions);
+      } else {
+        console.warn(`[onAction] No actions found for event ${eventName} on node ${nodeId}`, propValue);
       }
     },
     runtime,

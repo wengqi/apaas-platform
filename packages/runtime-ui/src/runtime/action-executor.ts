@@ -261,12 +261,31 @@ export async function executeAction(
         return;
       }
       try {
-        await apiClient.post(`/api/processes/${processId}/start`, {
-          processKey: processId,
-          variables: { ...context.vm },
+        // 从 VM 中提取表单数据作为流程变量
+        const { employee_name, leave_days, leave_reason, ...rest } = context.vm as Record<string, unknown>;
+        const variables: Record<string, unknown> = {};
+        // 收集所有非函数、非对象的标量值
+        for (const [key, value] of Object.entries(context.vm)) {
+          if (typeof value !== 'function' && typeof value !== 'object') {
+            variables[key] = value;
+          } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // 展开一层对象
+            for (const [k2, v2] of Object.entries(value as Record<string, unknown>)) {
+              if (typeof v2 !== 'object' && typeof v2 !== 'function') {
+                variables[k2] = v2;
+              }
+            }
+          }
+        }
+        await apiClient.post(`/processes/${processId}/start`, {
+          variables,
         });
-      } catch {
-        message.error('流程启动失败');
+        message.success('流程已启动');
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : '未知错误';
+        // Try to extract API error message
+        const apiErr = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+        message.error(`流程启动失败: ${apiErr ?? errMsg}`);
       }
       return;
     }

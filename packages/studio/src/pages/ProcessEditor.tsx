@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState, Component, type ReactNode } from 'react';
-import { Button, Popconfirm, Skeleton, Space, Tag, Typography, message } from 'antd';
+import { Button, Modal, Popconfirm, Skeleton, Space, Tag, Typography, message } from 'antd';
 import {
   ArrowLeftOutlined,
   EyeOutlined,
@@ -103,7 +103,7 @@ export default function ProcessEditor() {
     onError: () => message.error('发布失败'),
   });
 
-  /** Schema 变化(防抖保存,只读模式不保存)。 */
+  /** Schema 变化(仅更新内存状态,不自动保存)。 */
   const handleSchemaChange = (schema: WorkflowSchema) => {
     if (!storeLoaded) return;
     // FlowGram 导出可能丢失 edges，如果新 schema edges 为空但当前有 edges，保留原 edges
@@ -115,19 +115,39 @@ export default function ProcessEditor() {
       }
     }
     store.setSchema(finalSchema, { skipHistory: true });
-    if (isReadonly) return;
-    // 防抖保存
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveMutation.mutate({ workflowSchema: finalSchema });
-    }, 1000);
   };
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 浏览器关闭/刷新时提示未保存。 */
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (store.dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [store.dirty]);
 
   /** 手动保存。 */
   const handleSave = () => {
     if (store.schema) {
       saveMutation.mutate({ workflowSchema: store.schema });
+    }
+  };
+
+  /** 返回流程列表（有未保存更改时提示）。 */
+  const handleBack = () => {
+    if (store.dirty) {
+      Modal.confirm({
+        title: '未保存的更改',
+        content: '当前流程有未保存的更改，确定要离开吗？',
+        okText: '离开',
+        cancelText: '继续编辑',
+        onOk: () => navigate(`/app/${appId}/processes`),
+      });
+    } else {
+      navigate(`/app/${appId}/processes`);
     }
   };
 
@@ -163,7 +183,7 @@ export default function ProcessEditor() {
         processDef={processDef}
         readonly={isReadonly}
         dirty={store.dirty}
-        onBack={() => navigate(`/app/${appId}/processes`)}
+        onBack={handleBack}
         onSave={handleSave}
         onPublish={() => publishMutation.mutate()}
         saving={saveMutation.isPending}

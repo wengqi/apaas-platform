@@ -1,13 +1,21 @@
-# 条件分支点击选中
+# 去掉流程自动保存，改为手动保存 + 退出提示
 
-## 问题
-条件分支的菱形图标（blockIcon）没有 onClick，点击无法选中 condition 节点，只能框选。
+## 改动
 
-## 修复
-在 `SimplifiedEditor.tsx` 的 `blockIcon` 渲染中添加 `onClick`：
-- 通过 `ctx.document.getNode(node.id)` 获取 blockIcon 的 flowNode
-- 通过 `flowNode.originParent` 获取父 condition 节点
-- 设置 `ctx.selection.selection = [conditionNode]` 选中它
-- 添加 `cursor: pointer` 样式
+### 1. ProcessEditor.tsx — 去掉防抖自动保存
+- `handleSchemaChange` 中移除防抖保存逻辑（`saveTimerRef` + `saveMutation.mutate`）
+- 仅保留 `store.setSchema(finalSchema)` 更新内存状态
+- 手动保存按钮已有（`handleSave`），保持不变
 
-**文件**: `packages/studio/src/components/process/SimplifiedEditor.tsx`（blockIcon 渲染，约 5 行改动）
+### 2. ProcessEditor.tsx — 添加退出提示
+- 添加 `useBeforeUnload` 或 `beforeunload` 事件监听
+- 当 `store.dirty` 为 true 时，浏览器关闭/刷新前提示"您有未保存的更改"
+- 添加路由级离开提示：通过 `useNavigate` 的 `beforeunload` 或 React Router 的 `useBlocker`（如果可用）
+- 在工具栏显示"未保存"状态提示（已有 `dirty` 状态，检查是否已展示）
+
+### 3. 工具栏 — 保存状态展示
+- 检查 `ProcessEditorToolbar` 是否已显示"未保存"标记
+- 如果没有，添加一个"未保存"提示在保存按钮旁
+
+## 文件
+- `packages/studio/src/pages/ProcessEditor.tsx`

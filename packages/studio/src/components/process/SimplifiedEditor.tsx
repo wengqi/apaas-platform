@@ -43,7 +43,6 @@ import {
 } from '../../constants/process.js';
 
 import '@flowgram.ai/fixed-layout-editor/index.css';
-import NodePanel from './NodePanel.js';
 import NodeConfigPanel from './NodeConfigPanel.js';
 import { useProcessEditorStore } from '../../stores/processEditor.js';
 
@@ -108,8 +107,6 @@ export default function SimplifiedEditor({
     [initialDoc, readonly],
   );
 
-  const createNodeRef = useRef<((type: string, fromId?: string) => void) | null>(null);
-
   // 存储选项到 window 供 ConfigSidebar 使用
   useEffect(() => {
     const w = window as unknown as { __apaasConfigOptions?: { objectOptions: typeof objectOptions; formOptions: typeof formOptions; templateOptions: typeof templateOptions } };
@@ -118,12 +115,7 @@ export default function SimplifiedEditor({
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, background: '#f5f7fa' }}>
-      <NodePanel
-        readonly={readonly}
-        onCreateNode={(type) => createNodeRef.current?.(type)}
-      />
       <FixedLayoutEditorProvider {...editorProps}>
-        <NodeCreationBridge createNodeRef={createNodeRef} />
         <HistoryBridge onHistoryReady={onHistoryReady} />
         <CanvasColumn
           readonly={readonly}
@@ -650,12 +642,6 @@ function useFindDropAnchor() {
     }
     return closest?.id ?? businessNodes[businessNodes.length - 1]?.id;
   }, [ctx]);
-}
-
-function NodeCreationBridge({ createNodeRef }: { createNodeRef: React.MutableRefObject<((type: string, fromId?: string) => void) | null> }) {
-  const createNode = useCreateNode();
-  useEffect(() => { createNodeRef.current = createNode; return () => { createNodeRef.current = null; }; }, [createNode]);
-  return null;
 }
 
 // ---------------------------------------------------------------------------

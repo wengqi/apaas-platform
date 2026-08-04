@@ -166,9 +166,10 @@ function getLastNodeInBlock(block: FlowNodeJSON): FlowNodeJSON | undefined {
 
 function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
   // 递归过滤子节点中的系统节点,只保留业务节点和 block(分支容器)
-  const filteredBlocks = node.blocks
-    ?.filter((b) => !isSystemNode(b))
-    .map(flowNodeToWorkflowNode);
+  // 注意:flowgram 的 toNodeJSON 已经跳过了以 $ 开头的系统节点,
+  // 但 block 节点(分支容器)不应以 $ 开头,否则也会被跳过。
+  const filteredBlocks = (node.blocks ?? [])
+    .filter((b) => b && !isSystemNode(b));
 
   return {
     id: node.id,
@@ -178,7 +179,7 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
       title: node.data?.title ?? node.type,
       ...(node.data ?? {}),
     },
-    blocks: filteredBlocks,
+    blocks: filteredBlocks.map(flowNodeToWorkflowNode),
     edges: node.edges?.map((e) => ({
       sourceNodeID: e.sourceNodeID,
       targetNodeID: e.targetNodeID,

@@ -485,8 +485,8 @@ function ApaasAdder(props: {
     // 条件分支节点:提供初始 blocks 数据,让 DynamicSplitRegistry.onCreate 创建分支
     if (type === 'condition') {
       nodeJSON.blocks = [
-        { id: `$ifBlock$${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
-        { id: `$elseBlock$${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
+        { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
+        { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
       ];
       nodeJSON.data = { title: meta.label, conditions: [
         { label: '条件成立', condition: '' },
@@ -580,8 +580,8 @@ function useCreateNode() {
     // 条件分支节点:提供初始 blocks 数据,让 DynamicSplitRegistry.onCreate 创建分支
     if (type === 'condition') {
       nodeJSON.blocks = [
-        { id: `$ifBlock$${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
-        { id: `$elseBlock$${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
+        { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
+        { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
       ];
       nodeJSON.data = { title: meta.label, conditions: [
         { label: '条件成立', condition: '' },
@@ -601,6 +601,54 @@ function useCreateNode() {
     }
     if (anchorNode) ctx.operation.addFromNode(anchorNode, nodeJSON);
     else ctx.operation.addNode(nodeJSON);
+  }, [ctx]);
+}
+
+/**
+ * 根据拖放位置找到最近的插入位置节点。
+ *
+ * 使用 flowgram 的 playground.getRelativePos() 将鼠标事件转换为画布坐标，
+ * 然后与节点的 bounds.center.y 比较找到最近节点。
+ * 如果 getRelativePos 不可用，回退到追加到最后一个非 end 节点之后。
+ */
+function useFindDropAnchor() {
+  const ctx = useClientContext();
+  return useCallback((e: React.DragEvent): string | undefined => {
+    const allNodes = ctx.document.getAllNodes();
+    // 过滤出业务节点（排除系统节点和 end 节点）
+    const businessNodes = allNodes.filter((n) => {
+      const type = n.flowNodeType as string;
+      return type && !['block', 'inlineBlocks', 'blockIcon', 'blockOrderIcon', 'dynamicSplit', 'end'].includes(type);
+    });
+    if (businessNodes.length === 0) return undefined;
+
+    // 使用 flowgram 的坐标转换：将鼠标事件转为画布坐标
+    const playground = ctx.playground as unknown as {
+      getRelativePos?: (event: { clientX: number; clientY: number }) => { x: number; y: number };
+    };
+
+    if (!playground?.getRelativePos) {
+      // 回退：返回最后一个业务节点（追加到末尾）
+      return businessNodes[businessNodes.length - 1]?.id;
+    }
+
+    const pos = playground.getRelativePos({ clientX: e.clientX, clientY: e.clientY });
+    const canvasY = pos.y;
+
+    // 找到中心 Y 最接近 canvasY 的节点
+    let closest: typeof businessNodes[0] | undefined;
+    let minDist = Infinity;
+    for (const n of businessNodes) {
+      const bounds = n.bounds;
+      if (!bounds) continue;
+      const centerY = bounds.center.y;
+      const dist = Math.abs(centerY - canvasY);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = n;
+      }
+    }
+    return closest?.id ?? businessNodes[businessNodes.length - 1]?.id;
   }, [ctx]);
 }
 
@@ -635,6 +683,7 @@ interface CanvasColumnProps {
 
 function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
   const createNode = useCreateNode();
+  const findDropAnchor = useFindDropAnchor();
   const [isDragOver, setIsDragOver] = useState(false);
 
   return (
@@ -645,7 +694,11 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
         if (readonly) return;
         e.preventDefault(); setIsDragOver(false);
         const type = e.dataTransfer.getData(NODE_TYPE_MIME);
-        if (type) createNode(type);
+        if (type) {
+          // 根据拖放位置找到最近的节点作为锚点，实现位置感知插入
+          const anchorId = findDropAnchor(e);
+          createNode(type, anchorId);
+        }
       }}
       style={{
         flex: 1, position: 'relative', minHeight: 0,

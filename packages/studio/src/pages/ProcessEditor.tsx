@@ -25,6 +25,7 @@ import {
   type WorkflowSchema,
 } from '../api/processes.js';
 import { objectsApi } from '../api/objects.js';
+import { pagesApi } from '../api/pages.js';
 import { useProcessEditorStore } from '../stores/processEditor.js';
 import { getProcessStatusMeta, getTriggerMeta } from '../constants/process.js';
 import SimplifiedEditor from '../components/process/SimplifiedEditor.js';
@@ -63,6 +64,15 @@ export default function ProcessEditor() {
   });
 
   const objectOptions = (objects ?? []).map((o) => ({ label: o.name || o.label, value: o.id }));
+
+  /** 加载页面列表(任务表单选择用)。 */
+  const { data: pages } = useQuery({
+    queryKey: ['pages', appId],
+    queryFn: () => pagesApi.list(appId as string),
+    enabled: !!appId,
+  });
+
+  const formOptions = (pages ?? []).map((p) => ({ label: p.name, value: p.id }));
 
   /** 流程加载成功 → 写入 store(仅当 processId 变化时)。 */
   useEffect(() => {
@@ -201,6 +211,7 @@ export default function ProcessEditor() {
           readonly={isReadonly}
           onSchemaChange={handleSchemaChange}
           objectOptions={objectOptions}
+          formOptions={formOptions}
           onHistoryReady={setHistoryApi}
         />
       </EditorErrorBoundary>

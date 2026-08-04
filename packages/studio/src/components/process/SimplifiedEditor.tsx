@@ -576,6 +576,19 @@ function useCreateNode() {
     const meta = getNodeMeta(type);
     const nodeId = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const nodeJSON: FlowNodeJSON = { id: nodeId, type, data: { title: meta.label } };
+
+    // 条件分支节点:提供初始 blocks 数据,让 DynamicSplitRegistry.onCreate 创建分支
+    if (type === 'condition') {
+      nodeJSON.blocks = [
+        { id: `$ifBlock$${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
+        { id: `$elseBlock$${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
+      ];
+      nodeJSON.data = { title: meta.label, conditions: [
+        { label: '条件成立', condition: '' },
+        { label: '否则', condition: '' },
+      ] };
+    }
+
     if (fromId) {
       const fromNode = ctx.document.getNode(fromId);
       if (fromNode) { ctx.operation.addFromNode(fromNode, nodeJSON); return; }

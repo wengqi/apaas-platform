@@ -63,4 +63,46 @@ export const tasksApi = {
     apiClient
       .post(`/tasks/${taskId}/delegate`, { delegatedTo })
       .then((res) => res.data.data),
+
+  /** 获取流程轨迹 */
+  getTrace: (instanceId: string) =>
+    apiClient
+      .get(`/instances/${instanceId}/trace`)
+      .then((res) => res.data.data as ProcessTraceData),
 };
+
+/** 节点执行状态。 */
+export type NodeTraceStatus = 'COMPLETED' | 'RUNNING' | 'WAITING' | 'SKIPPED' | 'PENDING';
+
+/** 流程轨迹数据。 */
+export interface ProcessTraceData {
+  instance: {
+    id: string;
+    status: string;
+    startedAt: string;
+    finishedAt?: string;
+    activeNodeIds: string[];
+  };
+  schema: {
+    nodes: Array<{
+      id: string;
+      type: string;
+      data?: Record<string, unknown>;
+      traceStatus: NodeTraceStatus;
+      traceStartedAt?: string;
+      traceFinishedAt?: string;
+    }>;
+    edges: Array<{ sourceNodeID: string; targetNodeID: string }>;
+  };
+  tasks: Array<{
+    id: string;
+    nodeId: string;
+    taskName: string;
+    assignee: string;
+    status: string;
+    decision: string;
+    comment: string;
+    createdAt: string;
+    completedAt?: string;
+  }>;
+}

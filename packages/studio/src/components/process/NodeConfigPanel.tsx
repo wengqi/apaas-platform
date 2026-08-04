@@ -35,6 +35,8 @@ export interface NodeConfigPanelProps {
   formOptions?: { label: string; value: string }[];
   /** 通知模版候选 */
   templateOptions?: { label: string; value: string }[];
+  /** 流程中所有节点(驳回目标选择用) */
+  nodeOptions?: { label: string; value: string }[];
   /** 节点 data 变更回调 */
   onNodeDataChange?: (nodeId: string, data: Record<string, unknown>) => void;
   /** 删除节点回调 */
@@ -47,6 +49,7 @@ export default function NodeConfigPanel({
   objectOptions = [],
   formOptions = [],
   templateOptions = [],
+  nodeOptions = [],
   onNodeDataChange,
   onDeleteNode,
 }: NodeConfigPanelProps) {
@@ -114,6 +117,7 @@ export default function NodeConfigPanel({
           objectOptions,
           formOptions,
           templateOptions,
+          nodeOptions,
         })}
       </div>
 
@@ -154,6 +158,7 @@ function renderConfigForm(
     objectOptions: { label: string; value: string }[];
     formOptions: { label: string; value: string }[];
     templateOptions: { label: string; value: string }[];
+    nodeOptions: { label: string; value: string }[];
   },
 ) {
   switch (type) {
@@ -190,6 +195,7 @@ function renderConfigForm(
           onChange={onChange as never}
           disabled={readonly}
           formOptions={options.formOptions}
+          nodeOptions={options.nodeOptions}
         />
       );
     case 'notification':

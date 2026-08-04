@@ -275,6 +275,100 @@ export class ProcessService {
     return this.toInstanceDto(instance);
   }
 
+  /**
+   * 获取流程实例轨迹（WorkflowSchema + 节点执行状态合并）。
+   *
+   * 返回流程定义的节点/边 + 每个节点的执行状态：
+   *   COMPLETED — 已完成（绿色）
+   *   RUNNING   — 执行中（蓝色）
+   *   WAITING   — 等待人工处理（橙色）
+   *   SKIPPED   — 条件分支未命中（灰色半透明）
+   *   PENDING   — 尚未到达（灰色）
+   */
+  async getTrace(tenantId: string, instanceId: string) {
+    const instance = await prisma.processInstance.findFirst({
+      where: { id: instanceId, tenantId },
+      include: {
+        processDef: true,
+        nodeExecutions: { orderBy: { startedAt: 'asc' } },
+        tasks: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!instance) throw new NotFoundException('流程实例不存在');
+
+    const schema = instance.processDef.workflowSchema as {
+      nodes?: Array<{ id: string; type: string; data?: Record<string, unknown> }>;
+      edges?: Array<{ sourceNodeID: string; targetNodeID: string }>;
+    };
+
+    const activeNodeIds = (instance.activeNodeIds as string[]) ?? [];
+
+    // 构建节点状态映射
+    const nodeStatusMap: Record<string, {
+      status: string;
+      startedAt?: string;
+      finishedAt?: string;
+      error?: string;
+    }> = {};
+
+    // 从 NodeExecution 记录构建状态
+    for (const exec of instance.nodeExecutions) {
+      let status = exec.status;
+      // 如果节点在 activeNodeIds 中且 NodeExecution 状态为 RUNNING/WAITING，映射为 WAITING（人工任务等待）
+      if (activeNodeIds.includes(exec.nodeId) && (status === 'RUNNING' || status === 'WAITING')) {
+        status = 'WAITING';
+      }
+      nodeStatusMap[exec.nodeId] = {
+        status,
+        startedAt: exec.startedAt?.toISOString(),
+        finishedAt: exec.finishedAt?.toISOString(),
+        error: exec.error ?? undefined,
+      };
+    }
+
+    // activeNodeIds 中的节点如果没有 NodeExecution 记录，标记为 RUNNING
+    for (const nodeId of activeNodeIds) {
+      if (!nodeStatusMap[nodeId]) {
+        nodeStatusMap[nodeId] = { status: 'RUNNING' };
+      }
+    }
+
+    // 所有 schema 中的节点，未在 nodeStatusMap 中的标记为 PENDING
+    const nodes = (schema.nodes ?? []).map((n) => ({
+      ...n,
+      traceStatus: nodeStatusMap[n.id]?.status ?? 'PENDING',
+      traceStartedAt: nodeStatusMap[n.id]?.startedAt,
+      traceFinishedAt: nodeStatusMap[n.id]?.finishedAt,
+    }));
+
+    return {
+      instance: {
+        id: instance.id,
+        status: instance.status,
+        startedAt: instance.startedAt.toISOString(),
+        finishedAt: instance.finishedAt?.toISOString(),
+        triggerContext: instance.triggerContext,
+        variables: instance.variables,
+        activeNodeIds,
+      },
+      schema: {
+        nodes,
+        edges: schema.edges ?? [],
+      },
+      tasks: instance.tasks.map((t) => ({
+        id: t.id,
+        nodeId: t.nodeId,
+        taskName: t.taskName,
+        assignee: t.assignee,
+        status: t.status,
+        decision: t.decision,
+        comment: t.comment,
+        createdAt: t.createdAt.toISOString(),
+        completedAt: t.completedAt?.toISOString(),
+      })),
+    };
+  }
+
   /** 列出实例。 */
   async listInstances(
     tenantId: string,

@@ -13,6 +13,8 @@ export interface UserTaskConfigData {
   dueDate?: number;
   dueUnit?: string;
   title?: string;
+  allowReject?: boolean;
+  rejectToNodeId?: string;
 }
 
 export interface UserTaskConfigFormProps {
@@ -21,6 +23,8 @@ export interface UserTaskConfigFormProps {
   disabled?: boolean;
   /** 表单候选(应用内 form_page) */
   formOptions?: { label: string; value: string }[];
+  /** 流程中可选的驳回目标节点 */
+  nodeOptions?: { label: string; value: string }[];
 }
 
 const ASSIGNEE_TYPE_OPTIONS = [
@@ -49,6 +53,7 @@ export default function UserTaskConfigForm({
   onChange,
   disabled = false,
   formOptions = [],
+  nodeOptions = [],
 }: UserTaskConfigFormProps) {
   const update = (patch: Partial<UserTaskConfigData>) =>
     onChange({ ...data, ...patch });
@@ -126,6 +131,28 @@ export default function UserTaskConfigForm({
           />
         </Input.Group>
       </Form.Item>
+      <Divider orientation="left" plain>驳回配置</Divider>
+      <Form.Item label="允许驳回">
+        <Select
+          value={data.allowReject ? 'true' : 'false'}
+          onChange={(v) => update({ allowReject: v === 'true', rejectToNodeId: v === 'true' ? data.rejectToNodeId : undefined })}
+          options={[
+            { label: '不允许', value: 'false' },
+            { label: '允许驳回', value: 'true' },
+          ]}
+        />
+      </Form.Item>
+      {data.allowReject && (
+        <Form.Item label="驳回目标节点" required>
+          <Select
+            value={data.rejectToNodeId}
+            onChange={(v) => update({ rejectToNodeId: v })}
+            options={nodeOptions}
+            allowClear
+            placeholder="选择驳回后跳回的节点"
+          />
+        </Form.Item>
+      )}
     </Form>
   );
 }

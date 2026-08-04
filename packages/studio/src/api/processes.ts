@@ -31,6 +31,44 @@ export type { WorkflowSchema, WorkflowNode, ProcessInstance, ProcessInstanceRepo
 
 export type { ProcessStatus, TriggerType, NotificationChannel };
 
+/** 节点执行状态（流程轨迹用）。 */
+export type NodeTraceStatus = 'COMPLETED' | 'RUNNING' | 'WAITING' | 'SKIPPED' | 'PENDING';
+
+/** 流程轨迹数据。 */
+export interface ProcessTraceData {
+  instance: {
+    id: string;
+    status: string;
+    startedAt: string;
+    finishedAt?: string;
+    triggerContext: unknown;
+    variables: unknown;
+    activeNodeIds: string[];
+  };
+  schema: {
+    nodes: Array<{
+      id: string;
+      type: string;
+      data?: Record<string, unknown>;
+      traceStatus: NodeTraceStatus;
+      traceStartedAt?: string;
+      traceFinishedAt?: string;
+    }>;
+    edges: Array<{ sourceNodeID: string; targetNodeID: string }>;
+  };
+  tasks: Array<{
+    id: string;
+    nodeId: string;
+    taskName: string;
+    assignee: string;
+    status: string;
+    decision: string;
+    comment: string;
+    createdAt: string;
+    completedAt?: string;
+  }>;
+}
+
 /**
  * 流程定义(UI 扩展)。
  *
@@ -257,6 +295,12 @@ export const processesApi = {
     client
       .get<ApiResponse<ProcessInstanceReport>>(`/api/instances/${instanceId}`)
       .then((res) => res.data.data as ProcessInstanceReport),
+
+  /** 流程轨迹（节点状态 + 连线） */
+  getTrace: (instanceId: string) =>
+    client
+      .get<ApiResponse<ProcessTraceData>>(`/api/instances/${instanceId}/trace`)
+      .then((res) => res.data.data as ProcessTraceData),
 
   /** 取消实例 */
   cancelInstance: (instanceId: string) =>

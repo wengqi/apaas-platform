@@ -14,6 +14,7 @@
  *     POST   /processes/:processId/start         — 启动流程实例
  *     GET    /processes/:processId/instances     — 列出实例
  *     GET    /instances/:instanceId              — 获取实例详情
+ *     GET    /instances/:instanceId/trace        — 获取流程轨迹（节点状态+连线）
  *     POST   /instances/:instanceId/cancel       — 取消实例
  *
  *   人工任务：
@@ -186,6 +187,18 @@ export class ProcessController {
     @Param('instanceId') instanceId: string,
   ) {
     const data = await this.processService.getInstance(
+      requireTenantId(req),
+      instanceId,
+    );
+    return { ok: true as const, data };
+  }
+
+  @Get('instances/:instanceId/trace')
+  async getTrace(
+    @Req() req: AuthenticatedRequest,
+    @Param('instanceId') instanceId: string,
+  ) {
+    const data = await this.processService.getTrace(
       requireTenantId(req),
       instanceId,
     );

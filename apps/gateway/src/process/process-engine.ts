@@ -353,11 +353,33 @@ export class ProcessEngine {
       assignee: userId,
     });
 
-    // 推进令牌：移除当前节点，添加下游节点
     const schema = task.instance.processDef.workflowSchema as unknown as WorkflowSchema;
-    const outgoing = this.getOutgoingEdges(schema, task.nodeId);
-    const nextNodeIds = outgoing.map((e) => e.targetNodeID);
     const currentActive = (task.instance.activeNodeIds as string[]) ?? [];
+
+    // 驳回逻辑：如果 decision=rejected 且节点配置了 rejectToNodeId，
+    // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
+    let nextNodeIds: string[];
+    if (decisionUpper === 'REJECTED') {
+      // 从节点 data 中读取 rejectToNodeId 配置
+      const currentNode = schema.nodes?.find((n) => n.id === task.nodeId);
+      const rejectToNodeId = currentNode?.data?.rejectToNodeId as string | undefined;
+      if (rejectToNodeId) {
+        // 驳回：跳回指定节点
+        nextNodeIds = [rejectToNodeId];
+        this.logger.log(
+          `任务 ${taskId} 驳回，实例 ${task.instance.id} 跳回节点 ${rejectToNodeId}`,
+        );
+      } else {
+        // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
+        const outgoing = this.getOutgoingEdges(schema, task.nodeId);
+        nextNodeIds = outgoing.map((e) => e.targetNodeID);
+      }
+    } else {
+      // 正常推进：移除当前节点，添加下游节点
+      const outgoing = this.getOutgoingEdges(schema, task.nodeId);
+      nextNodeIds = outgoing.map((e) => e.targetNodeID);
+    }
+
     const updatedActive = [
       ...new Set([
       ...currentActive.filter((id) => id !== task.nodeId),

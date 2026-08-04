@@ -403,6 +403,12 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
   const w = window as unknown as { __apaasConfigOptions?: { objectOptions: { label: string; value: string }[]; formOptions: { label: string; value: string }[]; templateOptions: { label: string; value: string }[] } };
   const options = w.__apaasConfigOptions ?? { objectOptions: [], formOptions: [], templateOptions: [] };
 
+  // 从 schema 构建节点候选列表（用于驳回目标选择）
+  const nodeOptions = (schema?.nodes ?? []).map((n) => ({
+    label: (n.data?.title as string) || n.type || n.id,
+    value: n.id,
+  }));
+
   return (
     <div style={{
       position: 'absolute', top: 0, right: 0, bottom: 0, width: 400,
@@ -424,6 +430,7 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
           objectOptions={options.objectOptions}
           formOptions={options.formOptions}
           templateOptions={options.templateOptions}
+          nodeOptions={nodeOptions}
           onNodeDataChange={handleNodeDataChange}
           onDeleteNode={handleDeleteNode}
         />

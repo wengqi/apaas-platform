@@ -10,6 +10,7 @@ import { create } from 'zustand';
 import type {
   ProcessDef,
   WorkflowSchema,
+  WorkflowNode,
 } from '@apaas/shared';
 
 /** 深拷贝(支持嵌套对象/数组,JSON-safe 场景足够)。 */
@@ -103,10 +104,20 @@ export const useProcessEditorStore = create<ProcessEditorState>((set, get) => ({
     set((state) => {
       if (!state.schema) return {};
       const schema = deepClone(state.schema);
-      const node = schema.nodes.find((n) => n.id === nodeId);
-      if (node) {
-        node.data = { ...node.data, ...data };
-      }
+      // 递归搜索节点（含嵌套在 condition blocks 内的节点）
+      const findAndUpdate = (nodes: WorkflowNode[]): boolean => {
+        for (const n of nodes) {
+          if (n.id === nodeId) {
+            n.data = { ...n.data, ...data };
+            return true;
+          }
+          if (n.blocks) {
+            if (findAndUpdate(n.blocks)) return true;
+          }
+        }
+        return false;
+      };
+      if (!findAndUpdate(schema.nodes)) return {}; // 未找到不覆盖
       return {
         schema,
         past: [...state.past, deepClone(state.schema as WorkflowSchema)].slice(-50),

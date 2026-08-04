@@ -1,21 +1,37 @@
-# 代码审查结果 + 修复计划
+# 修复延时节点下拉选择始终显示"小时"
 
-## 审查发现
+## 根因
+`processEditor.ts` store 的 `updateNodeData` 方法有两个问题：
 
-### 1. block ID `$` 前缀问题（已修复）
-- `$ifBlock$` → `ifBlock_` 已修复
-- flowgram `toNodeJSON` 跳过以 `$` 开头的节点，导致 block 被丢失
-- `addBlock` 内部使用 `$blockOrderIcon$${blockData.id}` 生成子节点 ID，不受 block ID 前缀影响
+1. **只搜索顶层节点**：`schema.nodes.find(n => n.id === nodeId)` 不递归搜索嵌套在 condition blocks 内的节点。如果延时节点在条件分支内，`find` 返回 `undefined`，`node.data` 不更新。
 
-### 2. `useFindDropAnchor` 坐标转换问题（需修复）
-- `getRelativePos` 返回的坐标可能与 `bounds.center.y` 不在同一坐标系
-- 回退逻辑（直接用 `clientY`）会导致位置完全错误
-- 修复：当 `getRelativePos` 不可用时，回退到"追加到最后一个非 end 节点"而非用错误的坐标
-- 排除 `end` 节点作为锚点（否则节点会插入到 end 之后）
+2. **未找到节点时仍覆盖 schema**：即使 `find` 失败（`node` 为 `undefined`），方法仍返回 `{ schema: deepClone(state.schema), ... }`，用旧数据覆盖 store。这导致表单短暂回退到旧值（"小时"），直到 300ms 后 SelectionBridge 重新导出才修正。
 
-### 3. 序列化器 `flowNodeToWorkflowNode` 已简化（已修复）
-- 移除了不必要的 `inlineBlocks` 提升逻辑
-- flowgram 的 `toNodeJSON` 已处理系统节点跳过
+## 修复
+**文件**: `packages/studio/src/stores/processEditor.ts`
 
-## 修复文件
-- `SimplifiedEditor.tsx` — `useFindDropAnchor` 改进回退逻辑 + 排除 end 节点
+1. `updateNodeData` 递归搜索节点（支持嵌套在 blocks 内的节点）
+2. 未找到节点时不更新 schema（返回 `{}`），避免覆盖
+
+```ts
+updateNodeData: (nodeId, data) =>
+  set((state) => {
+    if (!state.schema) return {};
+    const schema = deepClone(state.schema);
+    // 递归搜索节点（含嵌套在 condition blocks 内的节点）
+    const findAndUpdate = (nodes: WorkflowNode[]): boolean => {
+      for (const n of nodes) {
+        if (n.id === nodeId) {
+          n.data = { ...n.data, ...data };
+          return true;
+        }
+        if (n.blocks) {
+          if (findAndUpdate(n.blocks)) return true;
+        }
+      }
+      return false;
+    };
+    if (!findAndUpdate(schema.nodes)) return {}; // 未找到不覆盖
+    return { schema, past: [...], future: [], dirty: true };
+  }),
+```

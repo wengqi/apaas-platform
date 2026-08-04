@@ -188,10 +188,23 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
     return null;
   }
 
-  // blockIcon: 渲染菱形图标
+  // blockIcon: 渲染菱形图标 — 点击选中其父 condition 节点
   if (type === 'blockIcon') {
+    const handleBlockIconClick = () => {
+      const flowNode = ctx.document.getNode(node.id);
+      if (flowNode) {
+        // blockIcon 的 originParent 是 condition 节点
+        const conditionNode = flowNode.originParent;
+        if (conditionNode) {
+          ctx.selection.selection = [conditionNode];
+        }
+      }
+    };
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40 }}>
+      <div
+        onClick={handleBlockIconClick}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, cursor: 'pointer' }}
+      >
         <div style={{ width: 24, height: 24, transform: 'rotate(45deg)', background: '#fff', border: '2px solid #1677ff', borderRadius: 4 }} />
       </div>
     );

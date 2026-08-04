@@ -27,6 +27,8 @@ import {
   PlusOutlined,
   CompressOutlined,
   ExclamationCircleOutlined,
+  ColumnHeightOutlined,
+  ColumnWidthOutlined,
 } from '@ant-design/icons';
 import type { WorkflowSchema, WorkflowNode } from '../../api/processes.js';
 import {
@@ -735,6 +737,13 @@ function ZoomToolbar() {
         <span style={{ fontSize: 12, minWidth: 36, textAlign: 'center', color: 'rgba(0,0,0,0.65)' }}>{Math.round(tools.zoom * 100)}%</span>
         <Button size="small" type="text" icon={<PlusOutlined />} onClick={() => tools.zoomin()} />
         <Button size="small" type="text" icon={<CompressOutlined />} onClick={() => void tools.fitView()} />
+        <Button
+          size="small"
+          type="text"
+          title={tools.isVertical ? '切换为水平布局' : '切换为垂直布局'}
+          icon={tools.isVertical ? <ColumnWidthOutlined /> : <ColumnHeightOutlined />}
+          onClick={() => tools.changeLayout()}
+        />
       </Space>
     </div>
   );

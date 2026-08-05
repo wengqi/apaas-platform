@@ -329,9 +329,12 @@ export class ProcessEngine {
     }
 
     const decisionUpper = decision.toUpperCase();
+    // 兼容 "approve"/"approved" 两种写法
+    const isApproved = decisionUpper === 'APPROVED' || decisionUpper === 'APPROVE';
+    const isRejected = decisionUpper === 'REJECTED' || decisionUpper === 'REJECT';
     const taskStatus =
-      decisionUpper === 'APPROVED' ? 'APPROVED' :
-      decisionUpper === 'REJECTED' ? 'REJECTED' : 'DELEGATED';
+      isApproved ? 'APPROVED' :
+      isRejected ? 'REJECTED' : 'DELEGATED';
 
     // 更新任务
     await prisma.processTask.update({
@@ -358,10 +361,10 @@ export class ProcessEngine {
     const schema = task.instance.processDef.workflowSchema as unknown as WorkflowSchema;
     const currentActive = (task.instance.activeNodeIds as string[]) ?? [];
 
-    // 驳回逻辑：如果 decision=rejected 且节点配置了 rejectToNodeId，
+    // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
     // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
     let nextNodeIds: string[];
-    if (decisionUpper === 'REJECTED') {
+    if (isRejected) {
       // 从节点 data 中读取 rejectToNodeId 配置
       const currentNode = schema.nodes?.find((n) => n.id === task.nodeId);
       const rejectToNodeId = currentNode?.data?.rejectToNodeId as string | undefined;
@@ -682,10 +685,13 @@ export class ProcessEngine {
       if (!ccEnabled) return;
 
       const ccTrigger = (nodeData.ccTrigger as string) ?? 'onApprove';
+      // 兼容 "APPROVE"/"APPROVED" 两种写法
+      const isApproved = decisionUpper === 'APPROVED' || decisionUpper === 'APPROVE';
+      const isRejected = decisionUpper === 'REJECTED' || decisionUpper === 'REJECT';
       const shouldNotify =
         ccTrigger === 'onComplete' ||
-        (ccTrigger === 'onApprove' && decisionUpper === 'APPROVED') ||
-        (ccTrigger === 'onReject' && decisionUpper === 'REJECTED');
+        (ccTrigger === 'onApprove' && isApproved) ||
+        (ccTrigger === 'onReject' && isRejected);
       if (!shouldNotify) return;
 
       const ccType = (nodeData.ccAssigneeType as string) ?? 'USER';
@@ -693,7 +699,7 @@ export class ProcessEngine {
       const userIds = await this.resolveCcRecipients(tenantId, ccType, ccList);
       if (userIds.length === 0) return;
 
-      const decisionText = decisionUpper === 'APPROVED' ? '通过' : '驳回';
+      const decisionText = isApproved ? '通过' : '驳回';
       await this.inAppMessageService.create({
         tenantId,
         appId,

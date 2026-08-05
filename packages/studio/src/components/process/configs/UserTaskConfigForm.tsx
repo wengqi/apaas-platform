@@ -2,7 +2,7 @@
  * 人工任务节点配置表单 —— 对齐 DESIGN-process.md §6.4。
  */
 
-import { Divider, Form, Input, InputNumber, Select } from 'antd';
+import { Divider, Form, Input, InputNumber, Select, Switch } from 'antd';
 
 export interface UserTaskConfigData {
   taskName?: string;
@@ -15,6 +15,11 @@ export interface UserTaskConfigData {
   title?: string;
   allowReject?: boolean;
   rejectToNodeId?: string;
+  // --- 抄送配置 ---
+  ccEnabled?: boolean;
+  ccAssigneeType?: string;
+  ccRecipients?: string[];
+  ccTrigger?: string;
 }
 
 export interface UserTaskConfigFormProps {
@@ -46,6 +51,18 @@ const DUE_UNIT_OPTIONS = [
   { label: '分钟', value: 'MINUTES' },
   { label: '小时', value: 'HOURS' },
   { label: '天', value: 'DAYS' },
+];
+
+const CC_ASSIGNEE_TYPE_OPTIONS = [
+  { label: '指定用户', value: 'USER' },
+  { label: '指定角色', value: 'ROLE' },
+  { label: '指定组织', value: 'ORG' },
+];
+
+const CC_TRIGGER_OPTIONS = [
+  { label: '审批通过时', value: 'onApprove' },
+  { label: '审批驳回时', value: 'onReject' },
+  { label: '完成时（通过或驳回）', value: 'onComplete' },
 ];
 
 export default function UserTaskConfigForm({
@@ -152,6 +169,40 @@ export default function UserTaskConfigForm({
             placeholder="选择驳回后跳回的节点"
           />
         </Form.Item>
+      )}
+      <Divider orientation="left" plain>抄送配置</Divider>
+      <Form.Item label="启用抄送">
+        <Switch
+          checked={data.ccEnabled ?? false}
+          onChange={(checked) => update({ ccEnabled: checked })}
+        />
+      </Form.Item>
+      {data.ccEnabled && (
+        <>
+          <Form.Item label="抄送人类型" required>
+            <Select
+              value={data.ccAssigneeType || 'USER'}
+              onChange={(v) => update({ ccAssigneeType: v })}
+              options={CC_ASSIGNEE_TYPE_OPTIONS}
+            />
+          </Form.Item>
+          <Form.Item label="抄送目标 ID" required>
+            <Select
+              mode="tags"
+              value={data.ccRecipients ?? []}
+              onChange={(v) => update({ ccRecipients: v })}
+              placeholder={data.ccAssigneeType === 'ROLE' ? '输入角色 ID（回车添加）' : data.ccAssigneeType === 'ORG' ? '输入组织 ID（回车添加）' : '输入用户 ID（回车添加）'}
+              tokenSeparators={[',']}
+            />
+          </Form.Item>
+          <Form.Item label="触发时机" required>
+            <Select
+              value={data.ccTrigger || 'onApprove'}
+              onChange={(v) => update({ ccTrigger: v })}
+              options={CC_TRIGGER_OPTIONS}
+            />
+          </Form.Item>
+        </>
       )}
     </Form>
   );

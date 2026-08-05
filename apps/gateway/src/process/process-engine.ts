@@ -28,6 +28,7 @@ import {
 } from './process-utils.js';
 import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
+import { InAppMessageService } from '../notification/in-app-message.service.js';
 
 @Injectable()
 export class ProcessEngine {
@@ -35,6 +36,7 @@ export class ProcessEngine {
 
   constructor(
     private readonly registry: NodeExecutorRegistry,
+    private readonly inAppMessageService: InAppMessageService,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
     @Inject(DELAY_QUEUE) private readonly delayQueue: Queue,
   ) {}
@@ -407,6 +409,18 @@ export class ProcessEngine {
       `任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`,
     );
 
+    // --- 抄送逻辑 ---
+    await this.sendCcNotification(
+      schema,
+      task.nodeId,
+      task.instance.tenantId,
+      task.instance.processDef.appId,
+      task.instance.processDef.name,
+      task.taskName,
+      decisionUpper,
+      comment,
+    );
+
     // 异步入队：由 BullMQ Worker 消费推进令牌
     await this.processQueue.add('execute', { instanceId: task.instance.id });
   }
@@ -603,5 +617,98 @@ export class ProcessEngine {
       data: { activeNodeIds: updated },
       include: { processDef: true },
     });
+  }
+
+  // ===========================================================================
+  // 辅助：抄送通知
+  // ===========================================================================
+
+  /**
+   * 根据抄送人类型解析实际用户 ID 列表。
+   * - USER: 直接返回
+   * - ROLE: 查 UserRole 连接表展开
+   * - ORG: 查 OrgMember 连接表展开
+   */
+  private async resolveCcRecipients(
+    tenantId: string,
+    ccAssigneeType: string,
+    ccRecipients: string[],
+  ): Promise<string[]> {
+    if (ccRecipients.length === 0) return [];
+
+    if (ccAssigneeType === 'USER') {
+      return ccRecipients;
+    }
+
+    if (ccAssigneeType === 'ROLE') {
+      const userRoles = await prisma.userRole.findMany({
+        where: { roleId: { in: ccRecipients } },
+        select: { userId: true },
+      });
+      return [...new Set(userRoles.map((r) => r.userId))];
+    }
+
+    if (ccAssigneeType === 'ORG') {
+      const members = await prisma.orgMember.findMany({
+        where: { orgId: { in: ccRecipients } },
+        select: { userId: true },
+      });
+      return [...new Set(members.map((m) => m.userId))];
+    }
+
+    return [];
+  }
+
+  /**
+   * 发送抄送通知（审批完成后触发）。
+   *
+   * 从节点 data 读取抄送配置，按触发时机判断是否发送站内信。
+   * 通知发送失败不阻塞流程执行（仅记日志）。
+   */
+  private async sendCcNotification(
+    schema: WorkflowSchema,
+    nodeId: string,
+    tenantId: string,
+    appId: string,
+    processName: string,
+    taskName: string,
+    decisionUpper: string,
+    comment: string | undefined,
+  ): Promise<void> {
+    try {
+      const node = schema.nodes?.find((n) => n.id === nodeId);
+      const nodeData = node?.data ?? {};
+      const ccEnabled = nodeData.ccEnabled as boolean;
+      if (!ccEnabled) return;
+
+      const ccTrigger = (nodeData.ccTrigger as string) ?? 'onApprove';
+      const shouldNotify =
+        ccTrigger === 'onComplete' ||
+        (ccTrigger === 'onApprove' && decisionUpper === 'APPROVED') ||
+        (ccTrigger === 'onReject' && decisionUpper === 'REJECTED');
+      if (!shouldNotify) return;
+
+      const ccType = (nodeData.ccAssigneeType as string) ?? 'USER';
+      const ccList = (nodeData.ccRecipients as string[]) ?? [];
+      const userIds = await this.resolveCcRecipients(tenantId, ccType, ccList);
+      if (userIds.length === 0) return;
+
+      const decisionText = decisionUpper === 'APPROVED' ? '通过' : '驳回';
+      await this.inAppMessageService.create({
+        tenantId,
+        appId,
+        userIds,
+        title: '审批抄送通知',
+        body: `流程「${processName}」的审批节点「${taskName}」已由审批人${decisionText}。${comment ? '备注：' + comment : ''}`,
+      });
+
+      this.logger.log(
+        `抄送通知已发送：实例节点 ${nodeId}，收件人 ${userIds.length} 人`,
+      );
+    } catch (err) {
+      // 通知发送失败不阻塞流程
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`抄送通知发送失败（节点 ${nodeId}）: ${errorMsg}`);
+    }
   }
 }

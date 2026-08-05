@@ -265,6 +265,24 @@ export interface UserTaskConfig {
   dueDate?: string;
 }
 
+/** 抄送触发时机。 */
+export type CcTrigger = 'onApprove' | 'onReject' | 'onComplete';
+
+/** 抄送人类型。 */
+export type CcAssigneeType = 'USER' | 'ROLE' | 'ORG';
+
+/** 抄送配置（嵌入 UserTask 节点 data）。 */
+export interface CcConfig {
+  /** 是否启用抄送 */
+  ccEnabled?: boolean;
+  /** 抄送人类型 */
+  ccAssigneeType?: CcAssigneeType;
+  /** 抄送目标 ID 列表（用户 ID / 角色 ID / 组织 ID） */
+  ccRecipients?: string[];
+  /** 触发时机 */
+  ccTrigger?: CcTrigger;
+}
+
 /** HTTP 请求配置（连接器）。 */
 export interface HttpConfig {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

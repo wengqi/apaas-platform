@@ -149,8 +149,9 @@ interface ConditionEditorProps {
 function ConditionEditor({ condition, onChange, variableOptions = [] }: ConditionEditorProps) {
   // 尝试从现有表达式解析可视化结构
   const initialVisual = expressionToVisual(condition);
+  // 空表达式或可解析的表达式 → 默认可视化模式；含括号等无法解析的 → 表达式模式
   const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
-    initialVisual ? 'visual' : 'expression',
+    !condition.trim() || initialVisual ? 'visual' : 'expression',
   );
   // 可视化状态：若解析失败，初始化为空行
   const [visual, setVisual] = useState<VisualCondition>(
@@ -162,7 +163,9 @@ function ConditionEditor({ condition, onChange, variableOptions = [] }: Conditio
     const parsed = expressionToVisual(condition);
     if (parsed) {
       setVisual(parsed);
-      // 如果当前在表达式 Tab 且新表达式可可视化，保持不变（用户可能正在编辑）
+    } else if (!condition.trim()) {
+      // 空表达式 → 重置为空可视化行
+      setVisual({ rows: [createEmptyRow()], combiner: 'AND' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition]);
@@ -180,8 +183,12 @@ function ConditionEditor({ condition, onChange, variableOptions = [] }: Conditio
       if (parsed) {
         setVisual(parsed);
         setActiveTab('visual');
+      } else if (!condition.trim()) {
+        // 空表达式 → 初始化为空可视化行，允许进入可视化模式
+        setVisual({ rows: [createEmptyRow()], combiner: 'AND' });
+        setActiveTab('visual');
       } else {
-        // 无法解析 → 留在表达式 Tab，提示用户
+        // 含括号等无法解析的表达式 → 留在表达式 Tab
         return;
       }
     } else {

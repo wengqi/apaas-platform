@@ -56,10 +56,10 @@ export function buildQbConfig(variables: VariableOption[]): Config {
     };
   }
 
-  return {
-    ...AntdConfig,
-    fields,
-  } as Config;
+  // 保持 AntdConfig 的 ctx 引用完整性，只覆盖 fields
+  const config = { ...AntdConfig } as Config;
+  (config as { fields: Record<string, unknown> }).fields = fields;
+  return config;
 }
 
 // ---------------------------------------------------------------------------

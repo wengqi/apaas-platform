@@ -11,12 +11,12 @@
  *   后端 → jsonLogic.apply(rule, data) → boolean
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { createElement, memo, useCallback, useMemo, useState } from 'react';
 import { Alert, Button, Divider, Form, Input, Space, Tabs, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
 import { Query, Builder } from '@react-awesome-query-builder/antd';
-import type { BuilderProps } from '@react-awesome-query-builder/antd';
+import type { ImmutableTree, BuilderProps, Config } from '@react-awesome-query-builder/antd';
 import '@react-awesome-query-builder/antd/css/styles.css';
 
 import { resolveVariables, type VariableOption } from './variable-resolver.js';
@@ -56,6 +56,39 @@ export interface ConditionConfigFormProps {
   schema?: WorkflowSchema;
   currentNodeId?: string;
 }
+
+// ---------------------------------------------------------------------------
+// renderBuilder — 用 createElement 调用 React.memo 包装的 Builder 组件
+// ---------------------------------------------------------------------------
+
+const renderBuilder = (props: BuilderProps) => createElement(Builder, props);
+
+// ---------------------------------------------------------------------------
+// QueryBuilderPanel — 独立组件，避免 Tabs 重渲染导致 Query 重新挂载
+// ---------------------------------------------------------------------------
+
+interface QueryBuilderPanelProps {
+  config: Config;
+  tree: ImmutableTree;
+  onChange: (tree: ImmutableTree) => void;
+}
+
+const QueryBuilderPanel = memo(function QueryBuilderPanel({
+  config,
+  tree,
+  onChange,
+}: QueryBuilderPanelProps) {
+  return (
+    <div style={{ minHeight: 60 }}>
+      <Query
+        {...config}
+        value={tree}
+        onChange={onChange}
+        renderBuilder={renderBuilder}
+      />
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // 主组件
@@ -207,18 +240,14 @@ function ConditionEditor({
   );
 
   // RAQB 树状态
-  const [qbTree, setQbTree] = useState(() =>
+  const [qbTree, setQbTree] = useState<ImmutableTree>(() =>
     loadFromJsonLogic(normalizedCondition, qbConfig),
   );
 
-  const handleQbChange = useCallback((_tree: unknown) => {
-    // RAQB onChange 传入 Immutable 树
-    setQbTree(_tree as Parameters<typeof loadFromJsonLogic>[0] extends never ? never : never);
-  }, []);
-
-  // 处理 RAQB onChange — 导出 JsonLogic
+  // 处理 RAQB onChange — 更新树状态 + 导出 JsonLogic
   const onQbChange = useCallback(
-    (immutableTree: Parameters<typeof exportToJsonLogic>[0]) => {
+    (immutableTree: ImmutableTree) => {
+      setQbTree(immutableTree);
       const logic = exportToJsonLogic(immutableTree, qbConfig);
       onChange(logic);
     },
@@ -262,19 +291,17 @@ function ConditionEditor({
         size="small"
         activeKey={activeTab}
         onChange={handleTabChange}
+        destroyInactiveTabPane={false}
         items={[
           {
             key: 'visual',
             label: '可视化',
             children: (
-              <div style={{ minHeight: 60 }}>
-                <Query
-                  {...qbConfig}
-                  value={qbTree}
-                  onChange={onQbChange}
-                  renderBuilder={(props: BuilderProps) => <Builder {...props} />}
-                />
-              </div>
+              <QueryBuilderPanel
+                config={qbConfig}
+                tree={qbTree}
+                onChange={onQbChange}
+              />
             ),
           },
           {

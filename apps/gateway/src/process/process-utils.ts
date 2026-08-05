@@ -6,6 +6,7 @@
  */
 
 import { Parser } from 'expr-eval';
+import jsonLogic from 'json-logic-js';
 import type { IFlowValue } from '@apaas/shared';
 
 /** 单例 Parser（条件/表达式求值用）。 */
@@ -91,28 +92,39 @@ function buildEvalScope(
 }
 
 /**
- * 求值条件/表达式。
+ * 求值条件表达式。
  *
- * 支持：
- *   - 纯表达式：`amount > 1000`、`status == "approved"`
- *   - `{{ }}` 包裹：`{{ amount > 1000 }}`
+ * 支持两种格式：
+ *   - JsonLogic JSON 对象（新格式）：`{">": [{"var": "amount"}, 1000]}`
+ *   - expr-eval 字符串（旧格式，向后兼容）：`amount > 1000`
  *
+ * 空条件（null/undefined/空字符串）= else/default 分支，返回 true。
  * 求值失败或结果非布尔时，返回 false（不阻断流程，保守不进入该分支）。
  */
 export function evaluateCondition(
-  expression: string,
+  rule: object | string | null | undefined,
   variables: Record<string, unknown>,
 ): boolean {
-  if (!expression) return true; // 空条件 = else/default 分支
-  // 去除 {{ }} 包裹
-  let expr = expression.replace(/\{\{/g, '').replace(/\}\}/g, '').trim();
-  if (!expr) return true;
+  if (!rule) return true; // 空条件 = else/default 分支
+
+  // 向后兼容：字符串格式用 expr-eval 求值
+  if (typeof rule === 'string') {
+    let expr = rule.replace(/\{\{/g, '').replace(/\}\}/g, '').trim();
+    if (!expr) return true;
+    try {
+      const scope = buildEvalScope(variables);
+      const result = parser.parse(expr).evaluate(scope as never);
+      return Boolean(result);
+    } catch {
+      return false;
+    }
+  }
+
+  // JsonLogic JSON 格式求值
   try {
     const scope = buildEvalScope(variables);
-    const result = parser.parse(expr).evaluate(scope as never);
-    return Boolean(result);
+    return Boolean(jsonLogic.apply(rule, scope));
   } catch {
-    // 表达式语法错误或未知变量，保守返回 false
     return false;
   }
 }

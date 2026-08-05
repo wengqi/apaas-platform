@@ -245,7 +245,8 @@ export interface ObjectOperationConfig {
 /** 条件分支。 */
 export interface ConditionBranch {
   label: string;
-  condition?: string; // 空 = else/default
+  /** JsonLogic JSON 规则。空 = else/default。向后兼容：也可能是旧格式 expr-eval 字符串 */
+  condition?: object | string | null;
 }
 
 /** 通知配置。 */

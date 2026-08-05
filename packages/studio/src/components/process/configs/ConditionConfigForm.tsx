@@ -1,32 +1,47 @@
 /**
- * 条件分支节点配置表单 —— 对齐 DESIGN-process.md §6.3。
+ * 条件分支节点配置表单 —— 基于 react-awesome-query-builder + CodeMirror 双模式。
  *
- * 混合模式编辑器：
- * - 可视化 Tab：字段 + 运算符 + 值 行式编辑，多行用 AND/OR 组合
- * - 表达式 Tab：TextArea + 实时语法校验
- * 底层存储格式统一为 expr-eval 兼容表达式字符串（如 `amount > 1000 and status == "urgent"`）。
+ * - 可视化模式：react-awesome-query-builder（Ant Design 主题，嵌套 AND/OR 树）
+ * - 表达式模式：CodeMirror 6 编辑器 + 自动补全（变量名/运算符/函数提示）
+ * - 底层存储：JsonLogic JSON（标准、可序列化、跨语言）
+ *
+ * 数据流：
+ *   可视化 → exportToJsonLogic → JsonLogic → 存储
+ *   表达式 → expressionToJsonLogic → JsonLogic → 存储
+ *   后端 → jsonLogic.apply(rule, data) → boolean
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Divider, Form, Input, Select, Space, Tabs, Tag, Typography } from 'antd';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Button, Divider, Form, Input, Space, Tabs, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
-import {
-  OPERATOR_OPTIONS,
-  COMBINER_OPTIONS,
-  visualToExpression,
-  expressionToVisual,
-  validateExpression,
-  type VisualCondition,
-  type ConditionRow,
-} from './expression-utils.js';
+import { Query, Builder } from '@react-awesome-query-builder/antd';
+import type { BuilderProps } from '@react-awesome-query-builder/antd';
+import '@react-awesome-query-builder/antd/css/styles.css';
+
 import { resolveVariables, type VariableOption } from './variable-resolver.js';
+import {
+  buildQbConfig,
+  loadFromJsonLogic,
+  exportToJsonLogic,
+} from './query-builder-config.js';
+import {
+  expressionToJsonLogic,
+  jsonLogicToExpression,
+  validateExpression,
+} from './jsonlogic-utils.js';
+import ExpressionCodeEditor from './ExpressionCodeEditor.js';
 
 const { Text } = Typography;
 
+// ---------------------------------------------------------------------------
+// 类型定义
+// ---------------------------------------------------------------------------
+
 export interface ConditionBranchItem {
   label: string;
-  condition?: string;
+  /** JsonLogic JSON 规则（空 = else/default）。向后兼容：也可能是旧格式 expr-eval 字符串 */
+  condition?: object | string | null;
 }
 
 export interface ConditionConfigData {
@@ -38,11 +53,13 @@ export interface ConditionConfigFormProps {
   data: ConditionConfigData;
   onChange: (data: ConditionConfigData) => void;
   disabled?: boolean;
-  /** 流程 Schema（用于解析可用变量） */
   schema?: WorkflowSchema;
-  /** 当前节点 ID（用于查找上游节点） */
   currentNodeId?: string;
 }
+
+// ---------------------------------------------------------------------------
+// 主组件
+// ---------------------------------------------------------------------------
 
 export default function ConditionConfigForm({
   data,
@@ -53,10 +70,16 @@ export default function ConditionConfigForm({
 }: ConditionConfigFormProps) {
   const branches = data.conditions ?? [];
 
-  /** 解析当前节点可用的变量列表（来自上游节点输出 + 全局变量）。 */
+  /** 解析当前节点可用的变量列表 */
   const variableOptions = useMemo(
     () => resolveVariables(schema, currentNodeId),
     [schema, currentNodeId],
+  );
+
+  /** RAQB 配置（从变量列表构建） */
+  const qbConfig = useMemo(
+    () => buildQbConfig(variableOptions),
+    [variableOptions],
   );
 
   const update = (next: ConditionBranchItem[]) =>
@@ -69,7 +92,7 @@ export default function ConditionConfigForm({
   const addBranch = () => {
     update([
       ...branches,
-      { label: `分支 ${branches.length + 1}`, condition: '' },
+      { label: `分支 ${branches.length + 1}`, condition: null },
     ]);
   };
 
@@ -115,9 +138,11 @@ export default function ConditionConfigForm({
               </Text>
             ) : (
               <ConditionEditor
-                condition={branch.condition ?? ''}
+                condition={branch.condition ?? null}
                 onChange={(cond) => updateBranch(index, { condition: cond })}
+                qbConfig={qbConfig}
                 variableOptions={variableOptions}
+                disabled={disabled}
               />
             )}
           </div>
@@ -141,257 +166,131 @@ export default function ConditionConfigForm({
 // ---------------------------------------------------------------------------
 
 interface ConditionEditorProps {
-  condition: string;
-  onChange: (condition: string) => void;
-  variableOptions?: VariableOption[];
+  condition: object | string | null;
+  onChange: (condition: object | null) => void;
+  qbConfig: ReturnType<typeof buildQbConfig>;
+  variableOptions: VariableOption[];
+  disabled?: boolean;
 }
 
-function ConditionEditor({ condition, onChange, variableOptions = [] }: ConditionEditorProps) {
-  // 尝试从现有表达式解析可视化结构
-  const initialVisual = expressionToVisual(condition);
-  // 决定初始 Tab：
-  // - 空表达式 → 可视化（空行）
-  // - 可解析为可视化 → 可视化
-  // - 不完整表达式（validateExpression 失败，如 " > "）→ 可视化（保留空行）
-  // - 完整但无法可视化（含括号等，validateExpression 成功）→ 表达式
-  const initialValidation = validateExpression(condition);
-  const shouldStartVisual = !condition.trim() || !!initialVisual || !initialValidation.valid;
-  const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
-    shouldStartVisual ? 'visual' : 'expression',
-  );
-  // 可视化状态：若解析失败，初始化为空行
-  const [visual, setVisual] = useState<VisualCondition>(
-    initialVisual ?? { rows: [createEmptyRow()], combiner: 'AND' },
-  );
-
-  // 当外部 condition 变化（如切换节点）时，重新解析
-  useEffect(() => {
-    const parsed = expressionToVisual(condition);
-    if (parsed) {
-      setVisual(parsed);
-    } else if (!condition.trim()) {
-      // 空表达式 → 重置为空可视化行
-      setVisual({ rows: [createEmptyRow()], combiner: 'AND' });
+function ConditionEditor({
+  condition,
+  onChange,
+  qbConfig,
+  variableOptions,
+  disabled = false,
+}: ConditionEditorProps) {
+  // 向后兼容：旧数据可能是 expr-eval 字符串，转换为 JsonLogic
+  const normalizedCondition = useMemo(() => {
+    if (!condition) return null;
+    if (typeof condition === 'string') {
+      // 旧格式字符串 → 尝试转为 JsonLogic
+      const jl = expressionToJsonLogic(condition);
+      return jl; // 解析失败返回 null（作为空条件处理）
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return condition;
   }, [condition]);
 
-  const updateVisual = (next: VisualCondition) => {
-    setVisual(next);
-    const expr = visualToExpression(next);
-    onChange(expr);
-  };
+  // 表达式文本状态（用于表达式 Tab）
+  const [exprText, setExprText] = useState(() => {
+    if (!condition) return '';
+    if (typeof condition === 'string') return condition;
+    return jsonLogicToExpression(condition);
+  });
+
+  // 表达式是否为旧格式字符串（需要提示用户保存后将转为 JsonLogic）
+  const isLegacyString = typeof condition === 'string';
+
+  // 决定初始 Tab：空条件 → 可视化；旧字符串 → 表达式；JsonLogic → 可视化
+  const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
+    !condition || typeof condition === 'object' ? 'visual' : 'expression',
+  );
+
+  // RAQB 树状态
+  const [qbTree, setQbTree] = useState(() =>
+    loadFromJsonLogic(normalizedCondition, qbConfig),
+  );
+
+  const handleQbChange = useCallback((_tree: unknown) => {
+    // RAQB onChange 传入 Immutable 树
+    setQbTree(_tree as Parameters<typeof loadFromJsonLogic>[0] extends never ? never : never);
+  }, []);
+
+  // 处理 RAQB onChange — 导出 JsonLogic
+  const onQbChange = useCallback(
+    (immutableTree: Parameters<typeof exportToJsonLogic>[0]) => {
+      const logic = exportToJsonLogic(immutableTree, qbConfig);
+      onChange(logic);
+    },
+    [qbConfig, onChange],
+  );
+
+  // 处理表达式编辑 — 转换为 JsonLogic
+  const onExprChange = useCallback(
+    (text: string) => {
+      setExprText(text);
+      const logic = expressionToJsonLogic(text);
+      onChange(logic);
+    },
+    [onChange],
+  );
 
   const handleTabChange = (key: string) => {
     if (key === 'visual') {
-      // 切到可视化：尝试解析当前表达式
-      const parsed = expressionToVisual(condition);
-      if (parsed) {
-        setVisual(parsed);
-        setActiveTab('visual');
-      } else if (!condition.trim()) {
-        // 空表达式 → 初始化为空可视化行
-        setVisual({ rows: [createEmptyRow()], combiner: 'AND' });
-        setActiveTab('visual');
-      } else {
-        // 表达式非空但无法可视化解析
-        // 判断是"复杂表达式（含括号等，expr-eval 可解析）"还是"不完整表达式"
-        const validation = validateExpression(condition);
-        if (validation.valid) {
-          // expr-eval 可解析但无法可视化（含括号/混合AND/OR）→ 留在表达式 Tab
-          return;
-        } else {
-          // 不完整表达式（如可视化模式生成的中途状态）→ 保留 visual 状态，允许进入可视化
-          setActiveTab('visual');
-        }
-      }
+      // 切到可视化：从当前 JsonLogic 加载到 RAQB
+      setQbTree(loadFromJsonLogic(normalizedCondition, qbConfig));
+      setActiveTab('visual');
     } else {
-      // 切到表达式：从可视化生成表达式
-      const expr = visualToExpression(visual);
-      onChange(expr);
+      // 切到表达式：从 JsonLogic 生成表达式文本
+      setExprText(jsonLogicToExpression(normalizedCondition));
       setActiveTab('expression');
     }
   };
 
-  const validation = validateExpression(condition);
+  const validation = validateExpression(exprText);
 
   return (
-    <Tabs
-      size="small"
-      activeKey={activeTab}
-      onChange={handleTabChange}
-      items={[
-        {
-          key: 'visual',
-          label: '可视化',
-          children: (
-            <VisualConditionEditor
-              visual={visual}
-              onChange={updateVisual}
-              variableOptions={variableOptions}
-            />
-          ),
-        },
-        {
-          key: 'expression',
-          label: '表达式',
-          children: (
-            <ExpressionEditor
-              condition={condition}
-              onChange={onChange}
-              validation={validation}
-            />
-          ),
-        },
-      ]}
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 可视化条件编辑器
-// ---------------------------------------------------------------------------
-
-function createEmptyRow(): ConditionRow {
-  return { field: '', operator: '>', value: '', valueType: 'number' };
-}
-
-interface VisualConditionEditorProps {
-  visual: VisualCondition;
-  onChange: (visual: VisualCondition) => void;
-  variableOptions?: VariableOption[];
-}
-
-function VisualConditionEditor({ visual, onChange, variableOptions = [] }: VisualConditionEditorProps) {
-  const { rows, combiner } = visual;
-
-  const updateRow = (index: number, patch: Partial<ConditionRow>) => {
-    const nextRows = rows.map((r, i) => (i === index ? { ...r, ...patch } : r));
-    onChange({ rows: nextRows, combiner });
-  };
-
-  const addRow = () => {
-    onChange({ rows: [...rows, createEmptyRow()], combiner });
-  };
-
-  const removeRow = (index: number) => {
-    onChange({ rows: rows.filter((_, i) => i !== index), combiner });
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {rows.map((row, index) => (
-        <div key={index}>
-          {index > 0 && (
-            <div style={{ marginBottom: 4 }}>
-              <Select
-                size="small"
-                value={combiner}
-                onChange={(v) => onChange({ rows, combiner: v })}
-                options={COMBINER_OPTIONS}
-                style={{ width: 120 }}
-                variant="borderless"
+    <>
+      {isLegacyString && (
+        <Alert
+          type="info"
+          message="此条件使用旧格式表达式，保存后将自动转换为 JsonLogic 格式。"
+          style={{ marginBottom: 8, padding: '4px 8px', fontSize: 12 }}
+        />
+      )}
+      <Tabs
+        size="small"
+        activeKey={activeTab}
+        onChange={handleTabChange}
+        items={[
+          {
+            key: 'visual',
+            label: '可视化',
+            children: (
+              <div style={{ minHeight: 60 }}>
+                <Query
+                  {...qbConfig}
+                  value={qbTree}
+                  onChange={onQbChange}
+                  renderBuilder={(props: BuilderProps) => <Builder {...props} />}
+                />
+              </div>
+            ),
+          },
+          {
+            key: 'expression',
+            label: '表达式',
+            children: (
+              <ExpressionCodeEditor
+                value={exprText}
+                onChange={onExprChange}
+                variables={variableOptions}
+                disabled={disabled}
               />
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <Select
-              size="small"
-              showSearch
-              placeholder="选择变量"
-              value={row.field || undefined}
-              onChange={(v) => updateRow(index, { field: v })}
-              options={variableOptions.map((opt) => ({
-                label: opt.sourceNode ? `${opt.label} — ${opt.sourceNode}` : opt.label,
-                value: opt.value,
-              }))}
-              filterOption={(input, option) =>
-                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-              }
-              style={{ flex: 1, minWidth: 120 }}
-              allowClear
-            />
-            <Select
-              size="small"
-              value={row.operator}
-              onChange={(v) => updateRow(index, { operator: v })}
-              options={OPERATOR_OPTIONS}
-              style={{ width: 90 }}
-            />
-            <Input
-              size="small"
-              placeholder="值"
-              value={row.value}
-              onChange={(e) => updateRow(index, { value: e.target.value })}
-              style={{ flex: 1 }}
-            />
-            <Select
-              size="small"
-              value={row.valueType}
-              onChange={(v) => updateRow(index, { valueType: v })}
-              options={[
-                { label: '数字', value: 'number' },
-                { label: '文本', value: 'string' },
-              ]}
-              style={{ width: 70 }}
-            />
-            <Button
-              size="small"
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => removeRow(index)}
-              disabled={rows.length <= 1}
-            />
-          </div>
-        </div>
-      ))}
-      <Button
-        size="small"
-        type="dashed"
-        icon={<PlusOutlined />}
-        onClick={addRow}
-        block
-      >
-        添加条件
-      </Button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 表达式编辑器
-// ---------------------------------------------------------------------------
-
-interface ExpressionEditorProps {
-  condition: string;
-  onChange: (condition: string) => void;
-  validation: { valid: boolean; error?: string };
-}
-
-function ExpressionEditor({ condition, onChange, validation }: ExpressionEditorProps) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <Input.TextArea
-        size="small"
-        placeholder='条件表达式，例如: amount > 1000 and status == "urgent"'
-        value={condition}
-        onChange={(e) => onChange(e.target.value)}
-        rows={2}
+            ),
+          },
+        ]}
       />
-      {condition.trim() ? (
-        validation.valid ? (
-          <Tag color="green" style={{ alignSelf: 'flex-start' }}>
-            语法正确
-          </Tag>
-        ) : (
-          <Alert
-            type="error"
-            message={validation.error}
-            style={{ padding: '4px 8px', fontSize: 12 }}
-          />
-        )
-      ) : null}
-    </div>
+    </>
   );
 }

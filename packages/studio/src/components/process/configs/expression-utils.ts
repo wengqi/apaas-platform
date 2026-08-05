@@ -20,7 +20,7 @@ const parser = new Parser();
 
 export interface ConditionRow {
   field: string;
-  operator: '>' | '<' | '>=' | '<=' | '==' | '!=';
+  operator: '>' | '<' | '>=' | '<=' | '==' | '!=' | 'contains' | 'notContains';
   value: string;
   valueType: 'number' | 'string';
 }
@@ -41,6 +41,8 @@ export const OPERATOR_OPTIONS = [
   { label: '小于等于', value: '<=' },
   { label: '等于', value: '==' },
   { label: '不等于', value: '!=' },
+  { label: '包含', value: 'contains' },
+  { label: '不包含', value: 'notContains' },
 ];
 
 export const COMBINER_OPTIONS = [
@@ -55,12 +57,23 @@ export const COMBINER_OPTIONS = [
 /**
  * 可视化结构 → 表达式字符串。
  * 生成 expr-eval 兼容语法（小写 and/or，字符串双引号）。
+ *
+ * 包含/不包含运算符转换为自定义函数调用：
+ * - contains → contains(field, "value")
+ * - notContains → notContains(field, "value")
+ * 后端 evaluateCondition 需注册 contains/notContains 函数。
  */
 export function visualToExpression(vc: VisualCondition): string {
   const op = vc.combiner === 'AND' ? 'and' : 'or';
   return vc.rows
     .map((r) => {
       const val = r.valueType === 'number' ? r.value : `"${r.value}"`;
+      if (r.operator === 'contains') {
+        return `contains(${r.field}, ${val})`;
+      }
+      if (r.operator === 'notContains') {
+        return `notContains(${r.field}, ${val})`;
+      }
       return `${r.field} ${r.operator} ${val}`;
     })
     .join(` ${op} `);
@@ -87,30 +100,33 @@ export function expressionToVisual(expr: string): VisualCondition | null {
   const trimmed = expr.trim();
   if (!trimmed) return null;
 
-  // 含括号 → 无法可视化
-  if (trimmed.includes('(') || trimmed.includes(')')) return null;
+  // 先把 contains(field, "value") / notContains(field, "value") 规范化为占位符
+  // contains(field, "value") → field __contains__ "value"
+  // notContains(field, "value") → field __notContains__ "value"
+  const normalized = trimmed
+    .replace(/contains\((\w+),\s*(.+?)\)/g, '$1 __contains__ $2')
+    .replace(/notContains\((\w+),\s*(.+?)\)/g, '$1 __notContains__ $2');
+
+  // 规范化后若仍含括号 → 无法可视化
+  if (normalized.includes('(') || normalized.includes(')')) return null;
 
   // 按 ` and ` / ` or ` 分割（大小写不敏感）
-  const andParts = trimmed.split(/\s+and\s+/i);
-  const orParts = trimmed.split(/\s+or\s+/i);
+  const andParts = normalized.split(/\s+and\s+/i);
+  const orParts = normalized.split(/\s+or\s+/i);
 
   let combiner: 'AND' | 'OR';
   let parts: string[];
 
   if (andParts.length > 1 && orParts.length === 1) {
-    // 纯 AND 组合
     combiner = 'AND';
     parts = andParts;
   } else if (orParts.length > 1 && andParts.length === 1) {
-    // 纯 OR 组合
     combiner = 'OR';
     parts = orParts;
   } else if (andParts.length === 1 && orParts.length === 1) {
-    // 单个条件（无组合）
     combiner = 'AND';
-    parts = [trimmed];
+    parts = [normalized];
   } else {
-    // 混合 AND/OR → 无法可视化
     return null;
   }
 
@@ -126,46 +142,48 @@ export function expressionToVisual(expr: string): VisualCondition | null {
 
 /**
  * 解析单个比较表达式：`field operator value`。
+ *
+ * 支持标准比较运算符（> < >= <= == !=）和 contains/notContains 占位符。
  */
 function parseComparison(str: string): ConditionRow | null {
+  // 先尝试 contains/notContains 占位符
+  const containsMatch = str.match(/^(\w+)\s*__contains__\s*(.+)$/);
+  if (containsMatch && containsMatch[1] && containsMatch[3]) {
+    const val = parseValue(containsMatch[3].trim());
+    if (val) return { field: containsMatch[1], operator: 'contains', value: val.value, valueType: val.valueType };
+  }
+  const notContainsMatch = str.match(/^(\w+)\s*__notContains__\s*(.+)$/);
+  if (notContainsMatch && notContainsMatch[1] && notContainsMatch[3]) {
+    const val = parseValue(notContainsMatch[3].trim());
+    if (val) return { field: notContainsMatch[1], operator: 'notContains', value: val.value, valueType: val.valueType };
+  }
+
   // 匹配：字段名 + 运算符 + 值
   const match = str.match(/^(\w+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
   if (!match || !match[1] || !match[2] || !match[3]) return null;
 
   const field = match[1];
   const operator = match[2] as ConditionRow['operator'];
-  const trimmedValue = match[3].trim();
+  const val = parseValue(match[3].trim());
+  if (!val) return null;
 
+  return { field, operator, value: val.value, valueType: val.valueType };
+}
+
+/** 解析值字面量（双引号字符串 / 数字 / 单引号字符串）。 */
+function parseValue(str: string): { value: string; valueType: 'number' | 'string' } | null {
   // 双引号字符串
-  if (trimmedValue.startsWith('"') && trimmedValue.endsWith('"')) {
-    return {
-      field,
-      operator,
-      value: trimmedValue.slice(1, -1),
-      valueType: 'string',
-    };
+  if (str.startsWith('"') && str.endsWith('"')) {
+    return { value: str.slice(1, -1), valueType: 'string' };
   }
-
-  // 数字
-  if (/^-?\d+(\.\d+)?$/.test(trimmedValue)) {
-    return {
-      field,
-      operator,
-      value: trimmedValue,
-      valueType: 'number',
-    };
-  }
-
   // 单引号字符串（兼容）
-  if (trimmedValue.startsWith("'") && trimmedValue.endsWith("'")) {
-    return {
-      field,
-      operator,
-      value: trimmedValue.slice(1, -1),
-      valueType: 'string',
-    };
+  if (str.startsWith("'") && str.endsWith("'")) {
+    return { value: str.slice(1, -1), valueType: 'string' };
   }
-
+  // 数字
+  if (/^-?\d+(\.\d+)?$/.test(str)) {
+    return { value: str, valueType: 'number' };
+  }
   return null;
 }
 

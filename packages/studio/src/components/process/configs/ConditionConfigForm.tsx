@@ -149,9 +149,15 @@ interface ConditionEditorProps {
 function ConditionEditor({ condition, onChange, variableOptions = [] }: ConditionEditorProps) {
   // 尝试从现有表达式解析可视化结构
   const initialVisual = expressionToVisual(condition);
-  // 空表达式或可解析的表达式 → 默认可视化模式；含括号等无法解析的 → 表达式模式
+  // 决定初始 Tab：
+  // - 空表达式 → 可视化（空行）
+  // - 可解析为可视化 → 可视化
+  // - 不完整表达式（validateExpression 失败，如 " > "）→ 可视化（保留空行）
+  // - 完整但无法可视化（含括号等，validateExpression 成功）→ 表达式
+  const initialValidation = validateExpression(condition);
+  const shouldStartVisual = !condition.trim() || !!initialVisual || !initialValidation.valid;
   const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
-    !condition.trim() || initialVisual ? 'visual' : 'expression',
+    shouldStartVisual ? 'visual' : 'expression',
   );
   // 可视化状态：若解析失败，初始化为空行
   const [visual, setVisual] = useState<VisualCondition>(
@@ -184,12 +190,20 @@ function ConditionEditor({ condition, onChange, variableOptions = [] }: Conditio
         setVisual(parsed);
         setActiveTab('visual');
       } else if (!condition.trim()) {
-        // 空表达式 → 初始化为空可视化行，允许进入可视化模式
+        // 空表达式 → 初始化为空可视化行
         setVisual({ rows: [createEmptyRow()], combiner: 'AND' });
         setActiveTab('visual');
       } else {
-        // 含括号等无法解析的表达式 → 留在表达式 Tab
-        return;
+        // 表达式非空但无法可视化解析
+        // 判断是"复杂表达式（含括号等，expr-eval 可解析）"还是"不完整表达式"
+        const validation = validateExpression(condition);
+        if (validation.valid) {
+          // expr-eval 可解析但无法可视化（含括号/混合AND/OR）→ 留在表达式 Tab
+          return;
+        } else {
+          // 不完整表达式（如可视化模式生成的中途状态）→ 保留 visual 状态，允许进入可视化
+          setActiveTab('visual');
+        }
       }
     } else {
       // 切到表达式：从可视化生成表达式

@@ -11,11 +11,11 @@
  *   后端 → jsonLogic.apply(rule, data) → boolean
  */
 
-import { createElement, memo, useCallback, useMemo, useState } from 'react';
-import { Alert, Button, Divider, Form, Input, Space, Tabs, Typography } from 'antd';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Divider, Form, Input, Space, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
-import { Query, Builder } from '@react-awesome-query-builder/antd';
+import { Query, Builder, Utils as QbUtils } from '@react-awesome-query-builder/antd';
 import type { ImmutableTree, BuilderProps, Config } from '@react-awesome-query-builder/antd';
 import '@react-awesome-query-builder/antd/css/styles.css';
 
@@ -62,33 +62,6 @@ export interface ConditionConfigFormProps {
 // ---------------------------------------------------------------------------
 
 const renderBuilder = (props: BuilderProps) => createElement(Builder, props);
-
-// ---------------------------------------------------------------------------
-// QueryBuilderPanel — 独立组件，避免 Tabs 重渲染导致 Query 重新挂载
-// ---------------------------------------------------------------------------
-
-interface QueryBuilderPanelProps {
-  config: Config;
-  tree: ImmutableTree;
-  onChange: (tree: ImmutableTree) => void;
-}
-
-const QueryBuilderPanel = memo(function QueryBuilderPanel({
-  config,
-  tree,
-  onChange,
-}: QueryBuilderPanelProps) {
-  return (
-    <div style={{ minHeight: 60 }}>
-      <Query
-        {...config}
-        value={tree}
-        onChange={onChange}
-        renderBuilder={renderBuilder}
-      />
-    </div>
-  );
-});
 
 // ---------------------------------------------------------------------------
 // 主组件
@@ -217,44 +190,41 @@ function ConditionEditor({
   const normalizedCondition = useMemo(() => {
     if (!condition) return null;
     if (typeof condition === 'string') {
-      // 旧格式字符串 → 尝试转为 JsonLogic
       const jl = expressionToJsonLogic(condition);
-      return jl; // 解析失败返回 null（作为空条件处理）
+      return jl;
     }
     return condition;
   }, [condition]);
 
-  // 表达式文本状态（用于表达式 Tab）
+  // 表达式文本状态
   const [exprText, setExprText] = useState(() => {
     if (!condition) return '';
     if (typeof condition === 'string') return condition;
     return jsonLogicToExpression(condition);
   });
 
-  // 表达式是否为旧格式字符串（需要提示用户保存后将转为 JsonLogic）
   const isLegacyString = typeof condition === 'string';
 
-  // 决定初始 Tab：空条件 → 可视化；旧字符串 → 表达式；JsonLogic → 可视化
   const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
     !condition || typeof condition === 'object' ? 'visual' : 'expression',
   );
 
-  // RAQB 树状态
-  const [qbTree, setQbTree] = useState<ImmutableTree>(() =>
-    loadFromJsonLogic(normalizedCondition, qbConfig),
-  );
+  // RAQB 树 — 用 ref 存储避免重渲染循环，用 forceUpdate 触发渲染
+  const treeRef = useRef<ImmutableTree>(loadFromJsonLogic(normalizedCondition, qbConfig));
+  const [, forceUpdate] = useState(0);
 
-  // 处理 RAQB onChange — 更新树状态 + 导出 JsonLogic
+  // RAQB onChange — 更新 ref + 导出 JsonLogic + 强制重渲染
   const onQbChange = useCallback(
     (immutableTree: ImmutableTree) => {
-      setQbTree(immutableTree);
+      treeRef.current = immutableTree;
       const logic = exportToJsonLogic(immutableTree, qbConfig);
       onChange(logic);
+      forceUpdate(n => n + 1);
     },
     [qbConfig, onChange],
   );
 
-  // 处理表达式编辑 — 转换为 JsonLogic
+  // 表达式编辑
   const onExprChange = useCallback(
     (text: string) => {
       setExprText(text);
@@ -266,11 +236,10 @@ function ConditionEditor({
 
   const handleTabChange = (key: string) => {
     if (key === 'visual') {
-      // 切到可视化：从当前 JsonLogic 加载到 RAQB
-      setQbTree(loadFromJsonLogic(normalizedCondition, qbConfig));
+      treeRef.current = loadFromJsonLogic(normalizedCondition, qbConfig);
+      forceUpdate(n => n + 1);
       setActiveTab('visual');
     } else {
-      // 切到表达式：从 JsonLogic 生成表达式文本
       setExprText(jsonLogicToExpression(normalizedCondition));
       setActiveTab('expression');
     }
@@ -287,37 +256,45 @@ function ConditionEditor({
           style={{ marginBottom: 8, padding: '4px 8px', fontSize: 12 }}
         />
       )}
-      <Tabs
-        size="small"
-        activeKey={activeTab}
-        onChange={handleTabChange}
-        destroyInactiveTabPane={false}
-        items={[
-          {
-            key: 'visual',
-            label: '可视化',
-            children: (
-              <QueryBuilderPanel
-                config={qbConfig}
-                tree={qbTree}
-                onChange={onQbChange}
-              />
-            ),
-          },
-          {
-            key: 'expression',
-            label: '表达式',
-            children: (
-              <ExpressionCodeEditor
-                value={exprText}
-                onChange={onExprChange}
-                variables={variableOptions}
-                disabled={disabled}
-              />
-            ),
-          },
-        ]}
-      />
+      {/* 模式切换按钮 */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <Button
+          size="small"
+          type={activeTab === 'visual' ? 'primary' : 'default'}
+          onClick={() => handleTabChange('visual')}
+        >
+          可视化
+        </Button>
+        <Button
+          size="small"
+          type={activeTab === 'expression' ? 'primary' : 'default'}
+          onClick={() => handleTabChange('expression')}
+        >
+          表达式
+        </Button>
+      </div>
+
+      {/* 可视化模式 — 条件渲染而非 Tabs，避免 AntD Tabs 对 RAQB 内部 Redux 的影响 */}
+      {activeTab === 'visual' && (
+        <div style={{ minHeight: 60 }}>
+          {createElement(Query, {
+            ...qbConfig,
+            value: treeRef.current,
+            onChange: onQbChange,
+            renderBuilder: renderBuilder,
+          })}
+        </div>
+      )}
+
+      {/* 表达式模式 */}
+      {activeTab === 'expression' && (
+        <ExpressionCodeEditor
+          value={exprText}
+          onChange={onExprChange}
+          variables={variableOptions}
+          disabled={disabled}
+        />
+      )}
     </>
   );
 }

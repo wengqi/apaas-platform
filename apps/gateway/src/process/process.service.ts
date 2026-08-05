@@ -735,17 +735,39 @@ export class ProcessService {
       id: i.id,
       tenantId: i.tenantId,
       processDefId: i.processDefId,
+      processKey: 'processDef' in i ? i.processDef.apiName : undefined,
+      version: 'processDef' in i ? i.processDef.version : undefined,
       triggerContext: i.triggerContext,
       variables: i.variables,
+      // 映射 Prisma status → 前端 state（小写枚举值）
+      state: this.mapInstanceState(i.status),
       status: i.status,
       activeNodeIds: i.activeNodeIds,
       startedAt: i.startedAt.toISOString(),
+      startTime: i.startedAt.toISOString(),
+      endTime: i.finishedAt?.toISOString(),
       finishedAt: i.finishedAt?.toISOString(),
       error: i.error ?? undefined,
+      triggeredBy: (i.triggerContext as Record<string, unknown> | null)?.['triggeredBy'] as string | undefined,
+      triggeredByUser: (i.triggerContext as Record<string, unknown> | null)?.['triggeredByUser'] as string | undefined,
       processDef: 'processDef' in i ? i.processDef : undefined,
       nodeExecutions: 'nodeExecutions' in i ? i.nodeExecutions : undefined,
       tasks: 'tasks' in i ? i.tasks : undefined,
     };
+  }
+
+  /** Prisma status → 前端 state 映射。 */
+  private mapInstanceState(status: string): string {
+    const map: Record<string, string> = {
+      PENDING: 'pending',
+      RUNNING: 'running',
+      WAITING_USER_TASK: 'waiting',
+      COMPLETED: 'completed',
+      FAILED: 'failed',
+      TERMINATED: 'terminated',
+      CANCELLED: 'cancelled',
+    };
+    return map[status] ?? 'pending';
   }
 
   private toTemplateDto(t: Prisma.NotificationTemplateGetPayload<{}>) {

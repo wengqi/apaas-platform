@@ -206,6 +206,7 @@ export class ProcessController {
   }
 
   @Post('instances/:instanceId/cancel')
+  @RequirePermission('PROCESS', 'EXECUTE')
   async cancelInstance(
     @Req() req: AuthenticatedRequest,
     @Param('instanceId') instanceId: string,

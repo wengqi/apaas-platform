@@ -137,6 +137,16 @@ export default function ProcessMonitor() {
     onError: () => message.error('转办失败'),
   });
 
+  /** 终止实例 mutation。 */
+  const cancelInstanceMutation = useMutation({
+    mutationFn: (instanceId: string) => processesApi.cancelInstance(instanceId),
+    onSuccess: () => {
+      message.success('已终止');
+      void queryClient.invalidateQueries({ queryKey: ['process-instances'] });
+    },
+    onError: () => message.error('终止失败'),
+  });
+
   const instanceColumns: ColumnsType<ProcessInstance> = [
     {
       title: '流程名',
@@ -185,6 +195,20 @@ export default function ProcessMonitor() {
             >
               处理
             </Button>
+          )}
+          {(r.state === 'running' || r.state === 'waiting') && (
+            <Popconfirm
+              title="确认终止"
+              description="终止后所有待办任务将被取消，不可恢复。"
+              okText="终止"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => cancelInstanceMutation.mutate(r.id)}
+            >
+              <Button size="small" type="link" danger>
+                终止
+              </Button>
+            </Popconfirm>
           )}
         </Space>
       ),

@@ -431,6 +431,7 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
           formOptions={options.formOptions}
           templateOptions={options.templateOptions}
           nodeOptions={nodeOptions}
+          schema={schema ?? undefined}
           onNodeDataChange={handleNodeDataChange}
           onDeleteNode={handleDeleteNode}
         />

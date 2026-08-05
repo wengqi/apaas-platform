@@ -8,7 +8,7 @@
 import { useMemo } from 'react';
 import { Button, Divider, Empty, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
-import type { WorkflowNode } from '@apaas/shared';
+import type { WorkflowNode, WorkflowSchema } from '@apaas/shared';
 import { getNodeMeta } from '../../constants/process.js';
 import { useProcessEditorStore } from '../../stores/processEditor.js';
 
@@ -37,6 +37,8 @@ export interface NodeConfigPanelProps {
   templateOptions?: { label: string; value: string }[];
   /** 流程中所有节点(驳回目标选择用) */
   nodeOptions?: { label: string; value: string }[];
+  /** 流程 Schema（条件表达式变量解析用） */
+  schema?: WorkflowSchema;
   /** 节点 data 变更回调 */
   onNodeDataChange?: (nodeId: string, data: Record<string, unknown>) => void;
   /** 删除节点回调 */
@@ -50,6 +52,7 @@ export default function NodeConfigPanel({
   formOptions = [],
   templateOptions = [],
   nodeOptions = [],
+  schema,
   onNodeDataChange,
   onDeleteNode,
 }: NodeConfigPanelProps) {
@@ -118,6 +121,8 @@ export default function NodeConfigPanel({
           formOptions,
           templateOptions,
           nodeOptions,
+          schema,
+          currentNodeId: node.id,
         })}
       </div>
 
@@ -159,6 +164,8 @@ function renderConfigForm(
     formOptions: { label: string; value: string }[];
     templateOptions: { label: string; value: string }[];
     nodeOptions: { label: string; value: string }[];
+    schema?: WorkflowSchema;
+    currentNodeId?: string;
   },
 ) {
   switch (type) {
@@ -186,6 +193,8 @@ function renderConfigForm(
           data={data as never}
           onChange={onChange as never}
           disabled={readonly}
+          schema={options.schema}
+          currentNodeId={options.currentNodeId}
         />
       );
     case 'userTask':

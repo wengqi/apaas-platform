@@ -7,9 +7,10 @@
  * 底层存储格式统一为 expr-eval 兼容表达式字符串（如 `amount > 1000 and status == "urgent"`）。
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Divider, Form, Input, Select, Space, Tabs, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import type { WorkflowSchema } from '@apaas/shared';
 import {
   OPERATOR_OPTIONS,
   COMBINER_OPTIONS,
@@ -19,6 +20,7 @@ import {
   type VisualCondition,
   type ConditionRow,
 } from './expression-utils.js';
+import { resolveVariables, type VariableOption } from './variable-resolver.js';
 
 const { Text } = Typography;
 
@@ -36,14 +38,26 @@ export interface ConditionConfigFormProps {
   data: ConditionConfigData;
   onChange: (data: ConditionConfigData) => void;
   disabled?: boolean;
+  /** 流程 Schema（用于解析可用变量） */
+  schema?: WorkflowSchema;
+  /** 当前节点 ID（用于查找上游节点） */
+  currentNodeId?: string;
 }
 
 export default function ConditionConfigForm({
   data,
   onChange,
   disabled = false,
+  schema,
+  currentNodeId,
 }: ConditionConfigFormProps) {
   const branches = data.conditions ?? [];
+
+  /** 解析当前节点可用的变量列表（来自上游节点输出 + 全局变量）。 */
+  const variableOptions = useMemo(
+    () => resolveVariables(schema, currentNodeId),
+    [schema, currentNodeId],
+  );
 
   const update = (next: ConditionBranchItem[]) =>
     onChange({ ...data, conditions: next });
@@ -103,6 +117,7 @@ export default function ConditionConfigForm({
               <ConditionEditor
                 condition={branch.condition ?? ''}
                 onChange={(cond) => updateBranch(index, { condition: cond })}
+                variableOptions={variableOptions}
               />
             )}
           </div>
@@ -128,9 +143,10 @@ export default function ConditionConfigForm({
 interface ConditionEditorProps {
   condition: string;
   onChange: (condition: string) => void;
+  variableOptions?: VariableOption[];
 }
 
-function ConditionEditor({ condition, onChange }: ConditionEditorProps) {
+function ConditionEditor({ condition, onChange, variableOptions = [] }: ConditionEditorProps) {
   // 尝试从现有表达式解析可视化结构
   const initialVisual = expressionToVisual(condition);
   const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
@@ -191,6 +207,7 @@ function ConditionEditor({ condition, onChange }: ConditionEditorProps) {
             <VisualConditionEditor
               visual={visual}
               onChange={updateVisual}
+              variableOptions={variableOptions}
             />
           ),
         },
@@ -221,9 +238,10 @@ function createEmptyRow(): ConditionRow {
 interface VisualConditionEditorProps {
   visual: VisualCondition;
   onChange: (visual: VisualCondition) => void;
+  variableOptions?: VariableOption[];
 }
 
-function VisualConditionEditor({ visual, onChange }: VisualConditionEditorProps) {
+function VisualConditionEditor({ visual, onChange, variableOptions = [] }: VisualConditionEditorProps) {
   const { rows, combiner } = visual;
 
   const updateRow = (index: number, patch: Partial<ConditionRow>) => {
@@ -256,12 +274,21 @@ function VisualConditionEditor({ visual, onChange }: VisualConditionEditorProps)
             </div>
           )}
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <Input
+            <Select
               size="small"
-              placeholder="字段名"
-              value={row.field}
-              onChange={(e) => updateRow(index, { field: e.target.value })}
-              style={{ flex: 1 }}
+              showSearch
+              placeholder="选择变量"
+              value={row.field || undefined}
+              onChange={(v) => updateRow(index, { field: v })}
+              options={variableOptions.map((opt) => ({
+                label: opt.sourceNode ? `${opt.label} — ${opt.sourceNode}` : opt.label,
+                value: opt.value,
+              }))}
+              filterOption={(input, option) =>
+                (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
+              }
+              style={{ flex: 1, minWidth: 120 }}
+              allowClear
             />
             <Select
               size="small"

@@ -36,20 +36,47 @@
       "types": "./dist/common/index.d.ts",
       "import": "./dist/common/index.js",
       "require": "./dist/common/index.js"
+    },
+    "./stores": {
+      "types": "./dist/stores/index.d.ts",
+      "import": "./dist/stores/index.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
-    "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.6.3"
+    "@types/react": "^18.3.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
   },
   "dependencies": {
     "@flowgram.ai/fixed-drag-plugin": "^1.0.12",
     "@flowgram.ai/fixed-history-plugin": "^1.0.12",
     "@flowgram.ai/fixed-layout-core": "^1.0.12",
     "@flowgram.ai/fixed-layout-editor": "^1.0.12"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "antd": "^5.0.0",
+    "react": "^18.0.0",
+    "zustand": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/react-query": {
+      "optional": false
+    },
+    "antd": {
+      "optional": false
+    },
+    "react": {
+      "optional": false
+    },
+    "zustand": {
+      "optional": false
+    }
   }
 }

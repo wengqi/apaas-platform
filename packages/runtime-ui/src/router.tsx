@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
-import { useAuthStore } from './stores/auth';
+import { useIsAuthenticated } from '@apaas/shared/stores';
 import RuntimeLayout from './layouts/RuntimeLayout';
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -9,7 +9,7 @@ import TaskCenter from './pages/TaskCenter';
 
 /** 路由守卫:未登录重定向到 /login。 */
 function ProtectedRoute() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isAuthenticated = useIsAuthenticated();
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

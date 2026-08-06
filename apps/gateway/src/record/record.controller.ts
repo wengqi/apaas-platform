@@ -10,6 +10,7 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
@@ -21,14 +22,16 @@ import type { RecordQueryParams } from './record.service.js';
  * 记录控制器 — 记录 CRUD（基于 JSONB 宽表）。
  *
  * 路由：
- *   GET    /api/objects/:objectId/records — 查询记录（分页 + 筛选 + 排序）
- *   GET    /api/records/:recordId         — 按 ID 查
- *   POST   /api/objects/:objectId/records — 创建记录
- *   PUT    /api/records/:recordId         — 更新记录
- *   DELETE /api/records/:recordId         — 删除记录
+ *   GET    /api/v1/objects/:objectId/records — 查询记录（分页 + 筛选 + 排序）
+ *   GET    /api/v1/records/:recordId         — 按 ID 查
+ *   POST   /api/v1/objects/:objectId/records — 创建记录
+ *   PUT    /api/v1/records/:recordId         — 更新记录
+ *   DELETE /api/v1/records/:recordId         — 删除记录
  *
  * 所有路由受 JWT 保护，从 req.user 取 { sub, tenantId }。
  */
+@ApiTags('Record')
+@ApiBearerAuth()
 @Controller()
 @UseGuards(PermissionGuard)
 export class RecordController {
@@ -61,10 +64,7 @@ export class RecordController {
 
   @Get('records/:recordId')
   @RequirePermission('RECORD', 'VIEW')
-  async get(
-    @Req() req: AuthenticatedRequest,
-    @Param('recordId') recordId: string,
-  ) {
+  async get(@Req() req: AuthenticatedRequest, @Param('recordId') recordId: string) {
     const record = await this.recordService.get(
       requireTenantId(req),
       recordId,
@@ -107,12 +107,8 @@ export class RecordController {
 
   @Delete('records/:recordId')
   @RequirePermission('RECORD', 'DELETE')
-  async delete(
-    @Req() req: AuthenticatedRequest,
-    @Param('recordId') recordId: string,
-  ) {
+  async delete(@Req() req: AuthenticatedRequest, @Param('recordId') recordId: string) {
     await this.recordService.delete(requireTenantId(req), recordId);
     return { ok: true as const, data: { deleted: true } };
   }
 }
-

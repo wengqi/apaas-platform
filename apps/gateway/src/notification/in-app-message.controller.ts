@@ -8,20 +8,15 @@
  *   PUT    /api/notifications/read-all     — 标记全部已读
  */
 
-import {
-  Controller,
-  Get,
-  Put,
-  Param,
-  Query,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Controller, Get, Put, Param, Query, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
 import { InAppMessageService } from './in-app-message.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
+@ApiTags('Notification')
+@ApiBearerAuth()
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class InAppMessageController {
@@ -34,46 +29,29 @@ export class InAppMessageController {
     @Query('pageSize') pageSize?: string,
     @Query('unreadOnly') unreadOnly?: string,
   ) {
-    const result = await this.inAppMessageService.list(
-      requireTenantId(req),
-      req.user.id,
-      {
-        page: page ? parseInt(page, 10) : undefined,
-        pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-        unreadOnly: unreadOnly === 'true',
-      },
-    );
+    const result = await this.inAppMessageService.list(requireTenantId(req), req.user.id, {
+      page: page ? parseInt(page, 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      unreadOnly: unreadOnly === 'true',
+    });
     return { ok: true as const, data: result };
   }
 
   @Get('unread-count')
   async getUnreadCount(@Req() req: AuthenticatedRequest) {
-    const count = await this.inAppMessageService.getUnreadCount(
-      requireTenantId(req),
-      req.user.id,
-    );
+    const count = await this.inAppMessageService.getUnreadCount(requireTenantId(req), req.user.id);
     return { ok: true as const, data: { count } };
   }
 
   @Put(':id/read')
-  async markAsRead(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
-    await this.inAppMessageService.markAsRead(
-      requireTenantId(req),
-      req.user.id,
-      id,
-    );
+  async markAsRead(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    await this.inAppMessageService.markAsRead(requireTenantId(req), req.user.id, id);
     return { ok: true as const, data: { read: true } };
   }
 
   @Put('read-all')
   async markAllAsRead(@Req() req: AuthenticatedRequest) {
-    const count = await this.inAppMessageService.markAllAsRead(
-      requireTenantId(req),
-      req.user.id,
-    );
+    const count = await this.inAppMessageService.markAllAsRead(requireTenantId(req), req.user.id);
     return { ok: true as const, data: { marked: count } };
   }
 }

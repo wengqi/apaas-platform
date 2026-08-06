@@ -7,12 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import { Collapse, Empty, Input, Row, Col, Typography, Tooltip } from 'antd';
-import {
-  NODE_GROUPS,
-  NODE_META,
-  NODE_COMING_SOON,
-  getNodeMeta,
-} from '../../constants/process.js';
+import { NODE_GROUPS, NODE_COMING_SOON, getNodeMeta } from '../../constants/process.js';
 
 const { Text } = Typography;
 
@@ -230,9 +225,7 @@ function NodeItem({ type, readonly, onCreateNode }: NodeItemProps) {
       >
         <Icon style={{ fontSize: 16 }} />
       </div>
-      <Text style={{ fontSize: 12, marginTop: 4 }}>
-        {meta.label}
-      </Text>
+      <Text style={{ fontSize: 12, marginTop: 4 }}>{meta.label}</Text>
     </div>
   );
 }

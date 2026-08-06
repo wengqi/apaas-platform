@@ -15,7 +15,6 @@ import {
   ColorPicker,
   Dropdown,
   Avatar,
-  Popconfirm,
   message,
 } from 'antd';
 import {
@@ -35,7 +34,7 @@ import {
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthStore } from '../stores/auth.js';
+import { useAuthStore } from '@apaas/shared/stores';
 import { appsApi, type AppSummary, type CreateAppRequest } from '../api/apps.js';
 
 const { Title, Paragraph, Text } = Typography;
@@ -94,9 +93,7 @@ export default function AppList() {
         response?: { data?: { error?: { message?: string } }; message?: string };
         message?: string;
       };
-      message.error(
-        axErr.response?.data?.error?.message ?? axErr.message ?? '创建失败，请重试',
-      );
+      message.error(axErr.response?.data?.error?.message ?? axErr.message ?? '创建失败，请重试');
     },
   });
 
@@ -112,7 +109,11 @@ export default function AppList() {
         response?: { data?: { message?: string; error?: { message?: string } } };
         message?: string;
       };
-      const errMsg = axErr.response?.data?.message ?? axErr.response?.data?.error?.message ?? axErr.message ?? '删除失败，请重试';
+      const errMsg =
+        axErr.response?.data?.message ??
+        axErr.response?.data?.error?.message ??
+        axErr.message ??
+        '删除失败，请重试';
       message.error(errMsg, 5);
     },
   });
@@ -129,7 +130,11 @@ export default function AppList() {
         response?: { data?: { message?: string; error?: { message?: string } } };
         message?: string;
       };
-      const errMsg = axErr.response?.data?.message ?? axErr.response?.data?.error?.message ?? axErr.message ?? '归档失败，请重试';
+      const errMsg =
+        axErr.response?.data?.message ??
+        axErr.response?.data?.error?.message ??
+        axErr.message ??
+        '归档失败，请重试';
       message.error(errMsg, 5);
     },
   });
@@ -160,9 +165,10 @@ export default function AppList() {
     if (info.key === 'delete') {
       Modal.confirm({
         title: '删除应用',
-        content: app.status === 'ARCHIVED'
-          ? `确定要彻底删除已归档应用「${app.name}」吗？删除后不可恢复，应用下的所有数据将一并删除。`
-          : `确定要删除应用「${app.name}」吗？删除后不可恢复，应用下的所有对象、页面、流程数据将一并删除。`,
+        content:
+          app.status === 'ARCHIVED'
+            ? `确定要彻底删除已归档应用「${app.name}」吗？删除后不可恢复，应用下的所有数据将一并删除。`
+            : `确定要删除应用「${app.name}」吗？删除后不可恢复，应用下的所有对象、页面、流程数据将一并删除。`,
         okText: '确认删除',
         okType: 'danger',
         cancelText: '取消',
@@ -204,18 +210,30 @@ export default function AppList() {
   const userMenuItems: MenuProps['items'] = [
     // 平台超管显示租户管理
     ...(user?.isPlatformAdmin
-      ? [{
-          key: 'tenants',
-          icon: <GlobalOutlined />,
-          label: '租户管理',
-          onClick: () => navigate('/platform/tenants'),
-        }]
+      ? [
+          {
+            key: 'tenants',
+            icon: <GlobalOutlined />,
+            label: '租户管理',
+            onClick: () => navigate('/platform/tenants'),
+          },
+        ]
       : []),
     // 租户管理员显示用户管理/组织架构
     ...(user?.roles?.some((r) => r.code === 'TENANT_ADMIN')
       ? [
-          { key: 'users', icon: <UserOutlined />, label: '用户管理', onClick: () => navigate('/platform/users') },
-          { key: 'orgs', icon: <ApartmentOutlined />, label: '组织架构', onClick: () => navigate('/platform/orgs') },
+          {
+            key: 'users',
+            icon: <UserOutlined />,
+            label: '用户管理',
+            onClick: () => navigate('/platform/users'),
+          },
+          {
+            key: 'orgs',
+            icon: <ApartmentOutlined />,
+            label: '组织架构',
+            onClick: () => navigate('/platform/orgs'),
+          },
         ]
       : []),
     { type: 'divider' as const },
@@ -261,17 +279,29 @@ export default function AppList() {
               menu={{
                 items: [
                   ...(user?.isPlatformAdmin
-                    ? [{
-                        key: 'tenants',
-                        icon: <GlobalOutlined />,
-                        label: '租户管理',
-                        onClick: () => navigate('/platform/tenants'),
-                      }]
+                    ? [
+                        {
+                          key: 'tenants',
+                          icon: <GlobalOutlined />,
+                          label: '租户管理',
+                          onClick: () => navigate('/platform/tenants'),
+                        },
+                      ]
                     : []),
                   ...(user?.roles?.some((r) => r.code === 'TENANT_ADMIN')
                     ? [
-                        { key: 'users', icon: <UserOutlined />, label: '用户管理', onClick: () => navigate('/platform/users') },
-                        { key: 'orgs', icon: <ApartmentOutlined />, label: '组织架构', onClick: () => navigate('/platform/orgs') },
+                        {
+                          key: 'users',
+                          icon: <UserOutlined />,
+                          label: '用户管理',
+                          onClick: () => navigate('/platform/users'),
+                        },
+                        {
+                          key: 'orgs',
+                          icon: <ApartmentOutlined />,
+                          label: '组织架构',
+                          onClick: () => navigate('/platform/orgs'),
+                        },
                       ]
                     : []),
                 ],
@@ -286,14 +316,8 @@ export default function AppList() {
         </Space>
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
           <Space style={{ cursor: 'pointer' }}>
-            <Avatar
-              size="small"
-              icon={<UserOutlined />}
-              src={user?.avatar ?? undefined}
-            />
-            <Text style={{ fontSize: 14 }}>
-              {user?.name ?? user?.email ?? '用户'}
-            </Text>
+            <Avatar size="small" icon={<UserOutlined />} src={user?.avatar ?? undefined} />
+            <Text style={{ fontSize: 14 }}>{user?.name ?? user?.email ?? '用户'}</Text>
           </Space>
         </Dropdown>
       </div>
@@ -357,10 +381,7 @@ export default function AppList() {
               background: '#fff',
             }}
           >
-            <Empty
-              description="还没有应用"
-              style={{ padding: '60px 0' }}
-            >
+            <Empty description="还没有应用" style={{ padding: '60px 0' }}>
               <Button
                 type="primary"
                 size="large"
@@ -403,17 +424,13 @@ export default function AppList() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0,
-                        boxShadow: `0 4px 12px ${(app.color ?? '#1677ff')}40`,
+                        boxShadow: `0 4px 12px ${app.color ?? '#1677ff'}40`,
                       }}
                     >
                       {app.icon ?? '📦'}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <Text
-                        strong
-                        style={{ fontSize: 16, display: 'block' }}
-                        ellipsis
-                      >
+                      <Text strong style={{ fontSize: 16, display: 'block' }} ellipsis>
                         {app.name}
                       </Text>
                       <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
@@ -482,10 +499,7 @@ export default function AppList() {
                       borderTop: '1px solid #f0f2f5',
                     }}
                   >
-                    <Space
-                      size="middle"
-                      style={{ fontSize: 12, color: '#8c8c8c' }}
-                    >
+                    <Space size="middle" style={{ fontSize: 12, color: '#8c8c8c' }}>
                       <Space size={4}>
                         <DatabaseOutlined style={{ color: '#1677ff' }} />
                         <span>{app.stats.objects} 对象</span>

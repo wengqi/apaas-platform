@@ -18,7 +18,7 @@ import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
 import TenantManagement from './pages/TenantManagement.js';
 import TenantDetail from './pages/TenantDetail.js';
-import { useAuthStore } from './stores/auth.js';
+import { useAuthStore } from '@apaas/shared/stores';
 
 /**
  * 路由守卫：未登录(无 token)时重定向到 /login。
@@ -58,7 +58,8 @@ function TenantAdminRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
   // 平台超管 或 TENANT_ADMIN 角色
-  const isTenantAdmin = user?.isPlatformAdmin || user?.roles?.some((r) => r.code === 'TENANT_ADMIN');
+  const isTenantAdmin =
+    user?.isPlatformAdmin || user?.roles?.some((r) => r.code === 'TENANT_ADMIN');
   if (!isTenantAdmin) {
     return <Navigate to="/apps" replace />;
   }

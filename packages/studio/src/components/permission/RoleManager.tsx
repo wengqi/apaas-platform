@@ -5,11 +5,20 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Button, Card, Empty, Input, List, Modal, Space, Tag, Typography, message, Popconfirm, Form, Select,
+  Button,
+  Card,
+  Empty,
+  Input,
+  List,
+  Modal,
+  Space,
+  Tag,
+  Typography,
+  message,
+  Popconfirm,
+  Form,
 } from 'antd';
-import {
-  PlusOutlined, DeleteOutlined, EditOutlined, ReloadOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { rolesApi, type Role, type CreateRoleRequest } from '../../api/permissions.js';
 
 const { Text, Title } = Typography;
@@ -51,16 +60,44 @@ export default function RoleManager() {
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, padding: 16, gap: 16 }}>
       {/* 左栏:角色列表 */}
-      <div style={{ width: 300, flexShrink: 0, background: '#fff', borderRadius: 12, border: '1px solid #eef0f4', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef0f4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={5} style={{ margin: 0 }}>角色</Title>
-          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+      <div
+        style={{
+          width: 300,
+          flexShrink: 0,
+          background: '#fff',
+          borderRadius: 12,
+          border: '1px solid #eef0f4',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid #eef0f4',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Title level={5} style={{ margin: 0 }}>
+            角色
+          </Title>
+          <Button
+            type="primary"
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+          >
             新建
           </Button>
         </div>
         <div style={{ flex: 1, overflow: 'auto' }}>
           {isLoading ? (
-            <div style={{ padding: 16 }}><Text type="secondary">加载中...</Text></div>
+            <div style={{ padding: 16 }}>
+              <Text type="secondary">加载中...</Text>
+            </div>
           ) : !roles || roles.length === 0 ? (
             <Empty style={{ marginTop: 40 }} description="暂无角色" />
           ) : (
@@ -72,16 +109,29 @@ export default function RoleManager() {
                     padding: '10px 16px',
                     cursor: 'pointer',
                     background: selectedRole?.id === role.id ? '#f0f5ff' : 'transparent',
-                    borderLeft: selectedRole?.id === role.id ? '3px solid #1677ff' : '3px solid transparent',
+                    borderLeft:
+                      selectedRole?.id === role.id ? '3px solid #1677ff' : '3px solid transparent',
                   }}
                   onClick={() => setSelectedRoleId(role.id)}
                 >
                   <div style={{ width: '100%' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
                       <Text strong>{role.name}</Text>
-                      {role.isBuiltIn && <Tag color="blue" style={{ fontSize: 11 }}>内置</Tag>}
+                      {role.isBuiltIn && (
+                        <Tag color="blue" style={{ fontSize: 11 }}>
+                          内置
+                        </Tag>
+                      )}
                     </div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>{role.code}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {role.code}
+                    </Text>
                   </div>
                 </List.Item>
               )}
@@ -95,7 +145,14 @@ export default function RoleManager() {
         {selectedRole ? (
           <RoleDetail role={selectedRole} onDelete={() => deleteMutation.mutate(selectedRole.id)} />
         ) : (
-          <Card style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Card
+            style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <Empty description="选择一个角色查看详情" />
           </Card>
         )}
@@ -109,15 +166,19 @@ export default function RoleManager() {
         onOk={() => form.submit()}
         confirmLoading={createMutation.isPending}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(data) => createMutation.mutate(data)}
-        >
-          <Form.Item name="name" label="角色名称" rules={[{ required: true, message: '请输入角色名称' }]}>
+        <Form form={form} layout="vertical" onFinish={(data) => createMutation.mutate(data)}>
+          <Form.Item
+            name="name"
+            label="角色名称"
+            rules={[{ required: true, message: '请输入角色名称' }]}
+          >
             <Input placeholder="如:审批人" />
           </Form.Item>
-          <Form.Item name="code" label="角色编码" rules={[{ required: true, message: '请输入角色编码' }]}>
+          <Form.Item
+            name="code"
+            label="角色编码"
+            rules={[{ required: true, message: '请输入角色编码' }]}
+          >
             <Input placeholder="如:APPROVER (大写字母+下划线)" />
           </Form.Item>
           <Form.Item name="description" label="描述">
@@ -134,7 +195,6 @@ export default function RoleManager() {
 // ---------------------------------------------------------------------------
 
 function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
-  const queryClient = useQueryClient();
   const { data: users } = useQuery({
     queryKey: ['role-users', role.id],
     queryFn: () => rolesApi.getUsers(role.id),
@@ -159,7 +219,9 @@ function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
       extra={
         !role.isBuiltIn && (
           <Popconfirm title="确定删除此角色?" onConfirm={onDelete}>
-            <Button danger size="small" icon={<DeleteOutlined />}>删除</Button>
+            <Button danger size="small" icon={<DeleteOutlined />}>
+              删除
+            </Button>
           </Popconfirm>
         )
       }
@@ -191,7 +253,9 @@ function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
                   <Tag color={rule.effect === 'DENY' ? 'red' : 'green'}>{rule.effect}</Tag>
                   <Tag color="purple">{rule.type}</Tag>
                   <Tag>{rule.action}</Tag>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{rule.targetId}</Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {rule.targetId}
+                  </Text>
                 </Space>
               </List.Item>
             )}

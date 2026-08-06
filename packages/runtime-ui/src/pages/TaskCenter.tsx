@@ -17,7 +17,7 @@ import {
   Spin,
   message,
 } from 'antd';
-import { CheckSquareOutlined, CheckOutlined, CloseOutlined, NodeIndexOutlined } from '@ant-design/icons';
+import { CheckSquareOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, type ProcessTask } from '../api/tasks';
 import TraceViewer from '../components/TraceViewer';
@@ -104,14 +104,10 @@ export default function TaskCenter() {
   const variables = taskDetail?.instance?.variables;
   const triggerContext = taskDetail?.instance?.triggerContext;
   const formData = variables
-    ? Object.entries(variables).filter(
-        ([key]) => key !== 'global' && !key.startsWith('_'),
-      )
+    ? Object.entries(variables).filter(([key]) => key !== 'global' && !key.startsWith('_'))
     : [];
   const triggerData = triggerContext
-    ? Object.entries(triggerContext).filter(
-        ([key]) => key !== 'global' && !key.startsWith('_'),
-      )
+    ? Object.entries(triggerContext).filter(([key]) => key !== 'global' && !key.startsWith('_'))
     : [];
 
   const columns = [
@@ -120,7 +116,8 @@ export default function TaskCenter() {
       key: 'processName',
       width: 180,
       render: (_: unknown, record: ProcessTask) =>
-        (record as { instance?: { processDef?: { name: string } } }).instance?.processDef?.name ?? '—',
+        (record as { instance?: { processDef?: { name: string } } }).instance?.processDef?.name ??
+        '—',
     },
     {
       title: '任务',
@@ -135,9 +132,7 @@ export default function TaskCenter() {
       key: 'status',
       width: 100,
       render: (status: string) => (
-        <Tag color={STATUS_COLORS[status] ?? 'default'}>
-          {STATUS_LABELS[status] ?? status}
-        </Tag>
+        <Tag color={STATUS_COLORS[status] ?? 'default'}>{STATUS_LABELS[status] ?? status}</Tag>
       ),
     },
     ...(activeTab === 'completed'
@@ -204,7 +199,8 @@ export default function TaskCenter() {
   // API 返回 data 为数组（非分页对象），统一转为 items 数组
   const normalizeItems = (data: unknown): ProcessTask[] => {
     if (Array.isArray(data)) return data as ProcessTask[];
-    if (data && typeof data === 'object' && 'items' in data) return (data as { items: ProcessTask[] }).items;
+    if (data && typeof data === 'object' && 'items' in data)
+      return (data as { items: ProcessTask[] }).items;
     return [];
   };
   const pendingItems = normalizeItems(pendingData);
@@ -218,9 +214,7 @@ export default function TaskCenter() {
         <Title level={4}>
           <CheckSquareOutlined /> 任务中心
         </Title>
-        <Paragraph type="secondary">
-          流程待办任务 — 当前用户的待审批/已处理任务列表
-        </Paragraph>
+        <Paragraph type="secondary">流程待办任务 — 当前用户的待审批/已处理任务列表</Paragraph>
       </Card>
 
       <Card>
@@ -261,11 +255,7 @@ export default function TaskCenter() {
       </Card>
 
       <Modal
-        title={
-          activeTab === 'pending'
-            ? '处理审批任务'
-            : '任务详情'
-        }
+        title={activeTab === 'pending' ? '处理审批任务' : '任务详情'}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         width={640}
@@ -299,7 +289,8 @@ export default function TaskCenter() {
             <Spin />
           </div>
         ) : (
-          selectedTask && taskDetail && (
+          selectedTask &&
+          taskDetail && (
             <Tabs
               defaultActiveKey="detail"
               items={[
@@ -308,18 +299,11 @@ export default function TaskCenter() {
                   label: '任务详情',
                   children: (
                     <div>
-                      <Descriptions
-                        column={2}
-                        size="small"
-                        bordered
-                        style={{ marginBottom: 16 }}
-                      >
+                      <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
                         <Descriptions.Item label="流程名称" span={2}>
                           {taskDetail.instance?.processDef?.name ?? '—'}
                         </Descriptions.Item>
-                        <Descriptions.Item label="任务 ID">
-                          {taskDetail.id}
-                        </Descriptions.Item>
+                        <Descriptions.Item label="任务 ID">{taskDetail.id}</Descriptions.Item>
                         <Descriptions.Item label="状态">
                           <Tag color={STATUS_COLORS[taskDetail.status] ?? 'default'}>
                             {STATUS_LABELS[taskDetail.status] ?? taskDetail.status}
@@ -349,11 +333,15 @@ export default function TaskCenter() {
 
                       {triggerData.length > 0 && (
                         <div style={{ marginBottom: 16 }}>
-                          <Text strong style={{ display: 'block', marginBottom: 8 }}>申请内容</Text>
+                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                            申请内容
+                          </Text>
                           <Descriptions column={1} size="small" bordered>
                             {triggerData.map(([key, value]) => (
                               <Descriptions.Item key={key} label={key}>
-                                {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '—')}
+                                {typeof value === 'object'
+                                  ? JSON.stringify(value, null, 2)
+                                  : String(value ?? '—')}
                               </Descriptions.Item>
                             ))}
                           </Descriptions>
@@ -362,11 +350,15 @@ export default function TaskCenter() {
 
                       {formData.length > 0 && (
                         <div style={{ marginBottom: 16 }}>
-                          <Text strong style={{ display: 'block', marginBottom: 8 }}>流程变量</Text>
+                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                            流程变量
+                          </Text>
                           <Descriptions column={1} size="small" bordered>
                             {formData.map(([key, value]) => (
                               <Descriptions.Item key={key} label={key}>
-                                {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value ?? '—')}
+                                {typeof value === 'object'
+                                  ? JSON.stringify(value, null, 2)
+                                  : String(value ?? '—')}
                               </Descriptions.Item>
                             ))}
                           </Descriptions>
@@ -375,7 +367,9 @@ export default function TaskCenter() {
 
                       {activeTab === 'pending' && (
                         <div>
-                          <Text strong style={{ display: 'block', marginBottom: 8 }}>审批意见</Text>
+                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                            审批意见
+                          </Text>
                           <Input.TextArea
                             placeholder="请输入审批意见（可选）"
                             rows={3}

@@ -1,11 +1,12 @@
-import {
-  Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import { OrgService } from './org.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
+@ApiTags('Organization')
+@ApiBearerAuth()
 @Controller('permissions/orgs')
 @UseGuards(TenantAdminGuard)
 export class OrgController {
@@ -22,9 +23,17 @@ export class OrgController {
   }
 
   @Post()
-  async create(@Req() req: AuthenticatedRequest, @Body() body: {
-    parentId?: string; name: string; code: string; nodeType?: string; sort?: number;
-  }) {
+  async create(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    body: {
+      parentId?: string;
+      name: string;
+      code: string;
+      nodeType?: string;
+      sort?: number;
+    },
+  ) {
     return { ok: true, data: await this.orgService.create(requireTenantId(req), body) };
   }
 
@@ -49,7 +58,10 @@ export class OrgController {
     @Param('id') id: string,
     @Body() body: { parentId: string },
   ) {
-    return { ok: true, data: await this.orgService.moveNode(requireTenantId(req), id, body.parentId) };
+    return {
+      ok: true,
+      data: await this.orgService.moveNode(requireTenantId(req), id, body.parentId),
+    };
   }
 
   @Get(':id/members')

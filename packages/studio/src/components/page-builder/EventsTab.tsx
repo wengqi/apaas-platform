@@ -113,13 +113,15 @@ function ActionParamsEditor({
   onChange: (params: Record<string, unknown>) => void;
   appId?: string;
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [processes, setProcesses] = useState<ProcessDef[]>([]);
 
   // trigger_process 需要加载流程列表
   useEffect(() => {
     if (action.type === 'trigger_process' && appId) {
-      processesApi.list(appId).then(setProcesses).catch(() => {});
+      processesApi
+        .list(appId)
+        .then(setProcesses)
+        .catch(() => {});
     }
   }, [action.type, appId]);
 
@@ -129,7 +131,9 @@ function ActionParamsEditor({
     case 'trigger_process':
       return (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary" style={{ fontSize: 12 }}>选择流程</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            选择流程
+          </Text>
           <Select
             style={{ width: '100%' }}
             placeholder="选择要触发的流程"
@@ -149,7 +153,9 @@ function ActionParamsEditor({
     case 'navigate':
       return (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary" style={{ fontSize: 12 }}>跳转路径</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            跳转路径
+          </Text>
           <Input
             placeholder="/app/xxx/page-slug 或 https://..."
             value={(params.path as string) ?? ''}
@@ -161,7 +167,9 @@ function ActionParamsEditor({
     case 'toast':
       return (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary" style={{ fontSize: 12 }}>提示消息</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            提示消息
+          </Text>
           <Input
             placeholder="显示给用户的消息"
             value={(params.message as string) ?? ''}
@@ -185,7 +193,9 @@ function ActionParamsEditor({
     case 'confirm':
       return (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary" style={{ fontSize: 12 }}>确认提示</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            确认提示
+          </Text>
           <Input
             placeholder="确定要执行此操作吗？"
             value={(params.message as string) ?? ''}
@@ -197,13 +207,17 @@ function ActionParamsEditor({
     case 'set_variable':
       return (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary" style={{ fontSize: 12 }}>变量路径</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            变量路径
+          </Text>
           <Input
             placeholder="vm.fieldName 或 vm.list.0.name"
             value={(params.variable as string) ?? ''}
             onChange={(e) => onChange({ ...params, variable: e.target.value })}
           />
-          <Text type="secondary" style={{ fontSize: 12 }}>值</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            值
+          </Text>
           <Input
             placeholder="要设置的值"
             value={(params.value as string) ?? ''}
@@ -215,7 +229,9 @@ function ActionParamsEditor({
     case 'open_modal':
       return (
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary" style={{ fontSize: 12 }}>弹窗组件 ID</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            弹窗组件 ID
+          </Text>
           <Input
             placeholder="输入弹窗组件的节点 ID"
             value={(params.modalId as string) ?? ''}
@@ -326,12 +342,7 @@ function EventEditor({
         </Space>
       }
       extra={
-        <Button
-          type="link"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={addAction}
-        >
+        <Button type="link" size="small" icon={<PlusOutlined />} onClick={addAction}>
           添加动作
         </Button>
       }
@@ -354,9 +365,7 @@ function EventEditor({
                     size="small"
                     style={{ width: 140 }}
                     value={action.type}
-                    onChange={(v: ActionType) =>
-                      updateAction(index, { type: v, params: {} })
-                    }
+                    onChange={(v: ActionType) => updateAction(index, { type: v, params: {} })}
                     options={ACTION_TYPE_OPTIONS.map((o) => ({
                       value: o.value,
                       label: o.label,
@@ -380,10 +389,7 @@ function EventEditor({
                     disabled={index === actions.length - 1}
                     onClick={() => moveAction(index, 'down')}
                   />
-                  <Popconfirm
-                    title="确定删除此动作？"
-                    onConfirm={() => removeAction(index)}
-                  >
+                  <Popconfirm title="确定删除此动作？" onConfirm={() => removeAction(index)}>
                     <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                   </Popconfirm>
                 </Space>
@@ -392,7 +398,12 @@ function EventEditor({
               <ActionParamsEditor
                 action={action}
                 appId={appId}
-                onChange={(params) => updateAction(index, { type: action.type, params: params as Record<string, never> })}
+                onChange={(params) =>
+                  updateAction(index, {
+                    type: action.type,
+                    params: params as Record<string, never>,
+                  })
+                }
               />
             </Card>
           ))}

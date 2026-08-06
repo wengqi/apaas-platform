@@ -39,8 +39,8 @@ import type {
   ViewModel,
 } from '../api/pages.js';
 import type { Dayjs } from 'dayjs';
-import { resolvePropValue, getByPath } from './expression-engine.js';
-import { useRuntimeCtx, type RuntimeContext } from './RuntimeStore.js';
+import { resolvePropValue, getByPath } from '@apaas/shared/stores';
+import { useRuntimeCtx, type RuntimeState } from './RuntimeStore.js';
 
 const { Text, Title } = Typography;
 
@@ -57,7 +57,7 @@ export interface RenderContext {
   /** 事件回调：节点事件 → 提取动作链 → 执行。 */
   onAction: (nodeId: string, eventName: string) => void;
   /** 运行时上下文（数据/事件）。 */
-  runtime: RuntimeContext;
+  runtime: RuntimeState;
   /** 运行时 vm 值。 */
   vm: Record<string, unknown>;
 }
@@ -122,8 +122,18 @@ interface ComponentRendererProps {
 }
 
 /** 组件节点递归渲染器（运行时）。 */
-export default function ComponentRenderer({ node, root, isRoot }: ComponentRendererProps) {
-  const runtime = useRuntimeCtx();
+export default function ComponentRenderer({ node, root, isRoot: _isRoot }: ComponentRendererProps) {
+  const vm = useRuntimeCtx((s) => s.vm);
+  const setVariable = useRuntimeCtx((s) => s.setVariable);
+  const executeActions = useRuntimeCtx((s) => s.executeActions);
+
+  const runtime: RuntimeState = {
+    vm,
+    setVariable,
+    executeActions,
+    queryData: useRuntimeCtx((s) => s.queryData),
+    executeAction: useRuntimeCtx((s) => s.executeAction),
+  };
 
   const ctx: RenderContext = {
     viewModel: { variables: {} },
@@ -136,16 +146,19 @@ export default function ComponentRenderer({ node, root, isRoot }: ComponentRende
       const propValue = target.props[eventName];
       const actions = extractActions(propValue);
       if (actions.length > 0) {
-        void runtime.executeActions(actions);
+        void executeActions(actions);
       } else {
-        console.warn(`[onAction] No actions found for event ${eventName} on node ${nodeId}`, propValue);
+        console.warn(
+          `[onAction] No actions found for event ${eventName} on node ${nodeId}`,
+          propValue,
+        );
       }
     },
     runtime,
-    vm: runtime.vm,
+    vm,
   };
 
-  if (shouldHide(node, runtime.vm)) {
+  if (shouldHide(node, vm)) {
     return null;
   }
 
@@ -201,7 +214,10 @@ function getFieldBindPath(node: ComponentNode): string | null {
   return typeof apiName === 'string' ? `vm.record.${apiName}` : null;
 }
 
-function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
+function getFieldBinding(
+  node: ComponentNode,
+  ctx: RenderContext,
+): {
   value: unknown;
   setValue: (v: unknown) => void;
 } {
@@ -217,7 +233,14 @@ function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
 }
 
 function asPropObject(value: PropValue | undefined): Record<string, PropValue> | null {
-  if (value && typeof value === 'object' && !Array.isArray(value) && !('__bind' in value) && !('__expr' in value) && !('__action' in value)) {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    !('__bind' in value) &&
+    !('__expr' in value) &&
+    !('__action' in value)
+  ) {
     return value as Record<string, PropValue>;
   }
   return null;
@@ -243,7 +266,7 @@ function extractTableColumns(node: ComponentNode): TableProps<TableRow>['columns
 function extractDetailFields(
   node: ComponentNode,
   record: Record<string, unknown>,
-  ctx: RenderContext,
+  _ctx: RenderContext,
 ): DescriptionsProps['items'] {
   const raw = node.props.fields;
   if (!Array.isArray(raw)) return [];
@@ -274,11 +297,7 @@ function extractSelectOptions(node: ComponentNode): { label: string; value: stri
     if (!obj) return { label: '', value: '' };
     const label = typeof obj.label === 'string' ? obj.label : '';
     const value =
-      typeof obj.value === 'string'
-        ? obj.value
-        : typeof obj.id === 'string'
-          ? obj.id
-          : '';
+      typeof obj.value === 'string' ? obj.value : typeof obj.id === 'string' ? obj.id : '';
     return { label, value };
   });
 }
@@ -300,11 +319,7 @@ function FormFieldItem({
   const required = getPropAsBool(node, 'required', ctx);
   const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
   return (
-    <Form.Item
-      label={label || undefined}
-      required={required}
-      style={{ marginBottom: 16 }}
-    >
+    <Form.Item label={label || undefined} required={required} style={{ marginBottom: 16 }}>
       <div style={{ pointerEvents: disabled ? 'none' : 'auto', opacity: disabled ? 0.6 : 1 }}>
         {children}
       </div>
@@ -351,31 +366,45 @@ const RENDERERS: Record<ComponentType, RendererFn> = {
 // 容器类渲染器
 // ---------------------------------------------------------------------------
 
-function renderPage(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
-  useEffect(() => {
-    ctx.onAction(node.id, 'onLoad');
-  }, [ctx, node.id]);
+function renderPage(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   return (
     <div style={{ minHeight: 60, padding: 8 }}>
+      <PageLoadEffect node={node} ctx={ctx} />
       {(node.children ?? []).map(renderChild)}
     </div>
   );
 }
 
-function renderSection(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+/** 页面加载副作用 — 提取为独立组件以满足 React Hooks 规则。 */
+function PageLoadEffect({ node, ctx }: { node: ComponentNode; ctx: RenderContext }) {
+  useEffect(() => {
+    ctx.onAction(node.id, 'onLoad');
+  }, [ctx, node.id]);
+  return null;
+}
+
+function renderSection(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx);
   return (
-    <Card
-      size="small"
-      title={title || undefined}
-      styles={{ body: { padding: 12 } }}
-    >
+    <Card size="small" title={title || undefined} styles={{ body: { padding: 12 } }}>
       {(node.children ?? []).map(renderChild)}
     </Card>
   );
 }
 
-function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderTabs(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const children = node.children ?? [];
   const items = children.map((child, i) => ({
     key: child.id,
@@ -385,20 +414,32 @@ function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: Render
   return <Tabs items={items} size="small" />;
 }
 
-function renderGrid(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderGrid(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const gutter = getPropAsNumber(node, 'gutter', ctx) || 8;
   const children = node.children ?? [];
   return (
     <Row gutter={gutter}>
       {children.map((child) => {
         const span = getPropAsNumber(child, 'span', ctx) || 12;
-        return <Col key={child.id} span={span}>{renderChild(child)}</Col>;
+        return (
+          <Col key={child.id} span={span}>
+            {renderChild(child)}
+          </Col>
+        );
       })}
     </Row>
   );
 }
 
-function renderGridColumn(node: ComponentNode, _ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderGridColumn(
+  node: ComponentNode,
+  _ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   return <>{(node.children ?? []).map(renderChild)}</>;
 }
 
@@ -415,7 +456,11 @@ function renderDataTable(node: ComponentNode, ctx: RenderContext): React.ReactNo
   const data = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
   if (Array.isArray(data)) {
     dataSource = data as TableRow[];
-  } else if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).records)) {
+  } else if (
+    data &&
+    typeof data === 'object' &&
+    Array.isArray((data as Record<string, unknown>).records)
+  ) {
     dataSource = (data as Record<string, unknown>).records as TableRow[];
   }
 
@@ -427,17 +472,20 @@ function renderDataTable(node: ComponentNode, ctx: RenderContext): React.ReactNo
       rowKey="id"
       pagination={pagination ? { pageSize, showSizeChanger: false } : false}
       locale={{ emptyText: '暂无数据' }}
-      onRow={(record) => ({
-        onClick: () => ctx.onAction(node.id, 'onRowClick'),
-        ...record,
-      } as never)}
+      onRow={(record) =>
+        ({
+          onClick: () => ctx.onAction(node.id, 'onRowClick'),
+          ...record,
+        }) as never
+      }
     />
   );
 }
 
 function renderDetailCard(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const record =
-    (resolvePropValue(node.props.record ?? null, { vm: ctx.vm }) as Record<string, unknown> | undefined) ?? {};
+    (resolvePropValue(node.props.record ?? null, { vm: ctx.vm }) as
+      Record<string, unknown> | undefined) ?? {};
   const items = extractDetailFields(node, record, ctx);
   const columns = getPropAsNumber(node, 'columns', ctx) || 2;
   return <Descriptions size="small" column={columns} bordered items={items} />;
@@ -469,7 +517,11 @@ function renderList(node: ComponentNode, ctx: RenderContext): React.ReactNode {
 // 表单类渲染器
 // ---------------------------------------------------------------------------
 
-function renderForm(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderForm(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const layout = getPropAsString(node, 'layout', ctx) || 'vertical';
   return (
     <Form layout={layout as 'vertical' | 'horizontal'} component={false}>
@@ -621,10 +673,7 @@ function renderCheckbox(node: ComponentNode, ctx: RenderContext): React.ReactNod
   const { value, setValue } = getFieldBinding(node, ctx);
   return (
     <FormFieldItem node={node} ctx={ctx}>
-      <Checkbox
-        checked={!!value}
-        onChange={(e) => setValue(e.target.checked)}
-      >
+      <Checkbox checked={!!value} onChange={(e) => setValue(e.target.checked)}>
         {label}
       </Checkbox>
     </FormFieldItem>
@@ -636,10 +685,7 @@ function renderSwitch(node: ComponentNode, ctx: RenderContext): React.ReactNode 
   const { value, setValue } = getFieldBinding(node, ctx);
   return (
     <FormFieldItem node={node} ctx={ctx}>
-      <Switch
-        checked={!!value}
-        onChange={(checked) => setValue(checked)}
-      />
+      <Switch checked={!!value} onChange={(checked) => setValue(checked)} />
       {label ? <Text style={{ marginLeft: 8, fontSize: 13 }}>{label}</Text> : null}
     </FormFieldItem>
   );
@@ -753,7 +799,7 @@ function renderStatistic(node: ComponentNode, ctx: RenderContext): React.ReactNo
  */
 function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx) || '图表';
-  // eslint-disable-next-line no-console
+
   console.warn('[ComponentRenderer] 图表组件尚未实现，渲染占位 UI');
   return (
     <div

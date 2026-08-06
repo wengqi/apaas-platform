@@ -2,7 +2,7 @@
  * 通知节点配置表单 —— 对齐 DESIGN-process.md §6.5。
  */
 
-import { Divider, Form, Input, Select, Space } from 'antd';
+import { Divider, Form, Input, Select } from 'antd';
 import { NOTIFICATION_CHANNEL_OPTIONS } from '../../../constants/process.js';
 
 export interface NotificationConfigData {
@@ -27,8 +27,7 @@ export default function NotificationConfigForm({
   disabled = false,
   templateOptions = [],
 }: NotificationConfigFormProps) {
-  const update = (patch: Partial<NotificationConfigData>) =>
-    onChange({ ...data, ...patch });
+  const update = (patch: Partial<NotificationConfigData>) => onChange({ ...data, ...patch });
 
   const recipientsStr = (data.recipients ?? []).join(', ');
 

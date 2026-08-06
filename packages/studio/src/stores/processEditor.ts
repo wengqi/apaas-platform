@@ -7,11 +7,7 @@
  */
 
 import { create } from 'zustand';
-import type {
-  ProcessDef,
-  WorkflowSchema,
-  WorkflowNode,
-} from '@apaas/shared';
+import type { ProcessDef, WorkflowSchema, WorkflowNode } from '@apaas/shared';
 
 /** 深拷贝(支持嵌套对象/数组,JSON-safe 场景足够)。 */
 function deepClone<T>(value: T): T {
@@ -69,7 +65,7 @@ const initialState = {
   dirty: false,
 };
 
-export const useProcessEditorStore = create<ProcessEditorState>((set, get) => ({
+export const useProcessEditorStore = create<ProcessEditorState>((set, _get) => ({
   ...initialState,
 
   loadProcess: (def) =>

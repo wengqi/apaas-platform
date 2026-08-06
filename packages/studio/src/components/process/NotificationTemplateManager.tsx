@@ -7,7 +7,7 @@
  *  - 模版预览(填入示例值→渲染预览)
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -17,7 +17,6 @@ import {
   Empty,
   Form,
   Input,
-  List,
   Row,
   Select,
   Space,
@@ -25,7 +24,6 @@ import {
   Tag,
   Typography,
   message,
-  Popconfirm,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
@@ -128,9 +126,7 @@ export default function NotificationTemplateManager() {
         channel: values.channel as NotificationChannel,
         titleTemplate: values.titleTemplate as string,
         contentTemplate: values.contentTemplate as string,
-        variables: (values.variables as NotificationTemplateVariable[]).filter(
-          (v) => v.name,
-        ),
+        variables: (values.variables as NotificationTemplateVariable[]).filter((v) => v.name),
       };
       if (editingTemplate) {
         updateMutation.mutate({ id: editingTemplate.id, data: payload });
@@ -229,7 +225,11 @@ export default function NotificationTemplateManager() {
         extra={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>取消</Button>
-            <Button type="primary" onClick={handleSave} loading={createMutation.isPending || updateMutation.isPending}>
+            <Button
+              type="primary"
+              onClick={handleSave}
+              loading={createMutation.isPending || updateMutation.isPending}
+            >
               保存
             </Button>
           </Space>
@@ -284,7 +284,11 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
 
   return (
     <Form form={form} layout="vertical">
-      <Form.Item label="模版名称" name="name" rules={[{ required: true, message: '请输入模版名称' }]}>
+      <Form.Item
+        label="模版名称"
+        name="name"
+        rules={[{ required: true, message: '请输入模版名称' }]}
+      >
         <Input placeholder="审批结果通知" />
       </Form.Item>
       <Form.Item label="渠道" name="channel" rules={[{ required: true }]}>

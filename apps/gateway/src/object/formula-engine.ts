@@ -36,24 +36,16 @@ parser.functions.ABS = (num: number): number => Math.abs(num);
 parser.functions.LEN = (s: unknown): number => String(s ?? '').length;
 parser.functions.UPPER = (s: unknown): string => String(s ?? '').toUpperCase();
 parser.functions.LOWER = (s: unknown): string => String(s ?? '').toLowerCase();
-parser.functions.CONCAT = (...args: unknown[]): string =>
-  args.map((a) => String(a ?? '')).join('');
+parser.functions.CONCAT = (...args: unknown[]): string => args.map((a) => String(a ?? '')).join('');
 // IF：等价于三元表达式，但更贴近公式作者的书写习惯
 parser.functions.IF = (cond: unknown, truthy: unknown, falsy: unknown): unknown =>
   cond ? truthy : falsy;
 parser.functions.NOW = (): string => new Date().toISOString();
 parser.functions.TODAY = (): string => new Date().toISOString().slice(0, 10);
 
-/** 匹配双引号字符串字面量（含转义），用于分段保留字符串内容不被替换。 */
-const STRING_LITERAL = /"(?:[^"\\]|\\.)*"/;
-
 /** 判断值是否为原始类型（变量替换时仅处理原始类型）。 */
 function isPrimitive(value: unknown): value is string | number | boolean {
-  return (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  );
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 }
 
 /** 转义字符串用于构建正则。 */
@@ -86,13 +78,8 @@ function preprocess(formula: string, data: Record<string, unknown>): string {
       .filter((k) => isPrimitive(data[k]) && data[k] !== null)
       .sort((a, b) => b.length - a.length);
     if (varNames.length > 0) {
-      const pattern = new RegExp(
-        `\\b(${varNames.map(escapeRegExp).join('|')})(?!\\s*\\()`,
-        'g',
-      );
-      segment = segment.replace(pattern, (_, name: string) =>
-        JSON.stringify(data[name]),
-      );
+      const pattern = new RegExp(`\\b(${varNames.map(escapeRegExp).join('|')})(?!\\s*\\()`, 'g');
+      segment = segment.replace(pattern, (_, name: string) => JSON.stringify(data[name]));
     }
 
     // 4. 逻辑操作符改写
@@ -154,10 +141,7 @@ export class FormulaEngine {
    * @param data   记录当前字段值（会被复制，不修改入参）
    * @returns 公式字段 apiName -> 计算结果 的映射
    */
-  computeRecordFields(
-    fields: Field[],
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
+  computeRecordFields(fields: Field[], data: Record<string, unknown>): Record<string, unknown> {
     const merged: Record<string, unknown> = { ...data };
     const results: Record<string, unknown> = {};
 

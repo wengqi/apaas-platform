@@ -143,7 +143,9 @@ interface PageBuilderState {
   /** 获取当前 Schema(命令式,用于保存) */
   getSchema: () => PageSchema | null;
   /** 更新页面元数据(名称/apiName/类型等) */
-  updatePageMeta: (updates: Partial<Pick<PageMeta, 'name' | 'apiName' | 'type' | 'objectId' | 'published'>>) => void;
+  updatePageMeta: (
+    updates: Partial<Pick<PageMeta, 'name' | 'apiName' | 'type' | 'objectId' | 'published'>>,
+  ) => void;
 
   // —— 组件树动作 ——
   /** 添加组件到指定父节点的 children */
@@ -240,7 +242,6 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     if (!parent) return null;
 
     // 非容器组件不可添加子节点
-    const meta = COMPONENT_META[type];
     if (!parent.children && !COMPONENT_META[parent.type]?.isContainer) return null;
 
     const newNode = createComponentNode(type);

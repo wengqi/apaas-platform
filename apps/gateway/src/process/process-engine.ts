@@ -16,16 +16,9 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { prisma, Prisma } from '@apaas/db';
-import type {
-  WorkflowSchema,
-  WorkflowNode,
-  WorkflowEdge,
-} from '@apaas/shared';
+import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
-import {
-  resolveInputs,
-  writeNodeOutput,
-} from './process-utils.js';
+import { resolveInputs, writeNodeOutput } from './process-utils.js';
 import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
@@ -150,9 +143,7 @@ export class ProcessEngine {
     });
     if (!instance) throw new NotFoundException('流程实例不存在');
     if (instance.status !== 'RUNNING') {
-      this.logger.debug(
-        `实例 ${instanceId} 状态为 ${instance.status}，跳过执行`,
-      );
+      this.logger.debug(`实例 ${instanceId} 状态为 ${instance.status}，跳过执行`);
       return;
     }
 
@@ -231,8 +222,7 @@ export class ProcessEngine {
       variables,
       tenantId: instance.tenantId,
       appId: instance.processDef.appId,
-      startSubProcess: (defId, trigCtx) =>
-        this.startProcess(instance.tenantId, defId, trigCtx),
+      startSubProcess: (defId, trigCtx) => this.startProcess(instance.tenantId, defId, trigCtx),
       scheduleDelay: (instanceId, nodeId, delayMs) =>
         this.scheduleDelay(instanceId, nodeId, delayMs),
     };
@@ -265,9 +255,7 @@ export class ProcessEngine {
           where: { id: instance.id },
           data: { status: 'WAITING_USER_TASK' },
         });
-        this.logger.log(
-          `实例 ${instance.id} 在节点 ${node.id} 暂停，等待人工任务`,
-        );
+        this.logger.log(`实例 ${instance.id} 在节点 ${node.id} 暂停，等待人工任务`);
         return { result, completed: false };
       }
 
@@ -275,9 +263,7 @@ export class ProcessEngine {
     } catch (err) {
       // 节点执行失败，标记 FAILED
       const errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `实例 ${instance.id} 节点 ${node.id} 执行失败: ${errorMsg}`,
-      );
+      this.logger.error(`实例 ${instance.id} 节点 ${node.id} 执行失败: ${errorMsg}`);
       await prisma.$transaction([
         prisma.nodeExecution.update({
           where: { id: nodeExecution.id },
@@ -332,9 +318,7 @@ export class ProcessEngine {
     // 兼容 "approve"/"approved" 两种写法
     const isApproved = decisionUpper === 'APPROVED' || decisionUpper === 'APPROVE';
     const isRejected = decisionUpper === 'REJECTED' || decisionUpper === 'REJECT';
-    const taskStatus =
-      isApproved ? 'APPROVED' :
-      isRejected ? 'REJECTED' : 'DELEGATED';
+    const taskStatus = isApproved ? 'APPROVED' : isRejected ? 'REJECTED' : 'DELEGATED';
 
     // 更新任务
     await prisma.processTask.update({
@@ -349,8 +333,7 @@ export class ProcessEngine {
     });
 
     // 写入任务决策到节点输出变量，供下游节点引用
-    const variables =
-      (task.instance.variables as Record<string, unknown>) ?? {};
+    const variables = (task.instance.variables as Record<string, unknown>) ?? {};
     writeNodeOutput(variables, task.nodeId, {
       decision: decisionUpper,
       comment,
@@ -371,9 +354,7 @@ export class ProcessEngine {
       if (rejectToNodeId) {
         // 驳回：跳回指定节点
         nextNodeIds = [rejectToNodeId];
-        this.logger.log(
-          `任务 ${taskId} 驳回，实例 ${task.instance.id} 跳回节点 ${rejectToNodeId}`,
-        );
+        this.logger.log(`任务 ${taskId} 驳回，实例 ${task.instance.id} 跳回节点 ${rejectToNodeId}`);
       } else {
         // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
         const outgoing = this.getOutgoingEdges(schema, task.nodeId);
@@ -386,10 +367,7 @@ export class ProcessEngine {
     }
 
     const updatedActive = [
-      ...new Set([
-      ...currentActive.filter((id) => id !== task.nodeId),
-      ...nextNodeIds,
-      ]),
+      ...new Set([...currentActive.filter((id) => id !== task.nodeId), ...nextNodeIds]),
     ];
 
     // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
@@ -408,9 +386,7 @@ export class ProcessEngine {
       }),
     ]);
 
-    this.logger.log(
-      `任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`,
-    );
+    this.logger.log(`任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`);
 
     // --- 抄送逻辑 ---
     await this.sendCcNotification(
@@ -479,9 +455,7 @@ export class ProcessEngine {
     // 延时节点恢复时，实例状态应为 WAITING_USER_TASK（delay executor 返回 wait: true 导致）
     // 也可能是 RUNNING（其他场景），两者都允许恢复
     if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
-      this.logger.debug(
-        `实例 ${instanceId} 状态为 ${instance.status}，延时恢复跳过`,
-      );
+      this.logger.debug(`实例 ${instanceId} 状态为 ${instance.status}，延时恢复跳过`);
       return;
     }
 
@@ -501,11 +475,15 @@ export class ProcessEngine {
 
     // 推进令牌：移除当前延时节点的令牌，添加下游节点令牌
     const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
-    const node = this.findNode(schema, nodeId);
     const outgoing = this.getOutgoingEdges(schema, nodeId);
     const nextNodeIds = outgoing.map((e) => e.targetNodeID);
 
-    await this.advanceTokens(instance, nodeId, nextNodeIds, (instance.variables as Record<string, unknown>) ?? {});
+    await this.advanceTokens(
+      instance,
+      nodeId,
+      nextNodeIds,
+      (instance.variables as Record<string, unknown>) ?? {},
+    );
 
     this.logger.log(
       `实例 ${instanceId} 延时节点 ${nodeId} 已恢复，令牌推进到下游: ${nextNodeIds.join(', ')}`,
@@ -524,11 +502,7 @@ export class ProcessEngine {
    * @param nodeId 延时节点 ID
    * @param delayMs 延时毫秒数
    */
-  async scheduleDelay(
-    instanceId: string,
-    nodeId: string,
-    delayMs: number,
-  ): Promise<void> {
+  async scheduleDelay(instanceId: string, nodeId: string, delayMs: number): Promise<void> {
     // 标记 NodeExecution 为 WAITING
     await prisma.nodeExecution.updateMany({
       where: { instanceId, nodeId, status: 'RUNNING' },
@@ -536,11 +510,7 @@ export class ProcessEngine {
     });
 
     // 添加 delayed job
-    await this.delayQueue.add(
-      'resume',
-      { instanceId, nodeId },
-      { delay: delayMs },
-    );
+    await this.delayQueue.add('resume', { instanceId, nodeId }, { delay: delayMs });
 
     this.logger.log(
       `实例 ${instanceId} 节点 ${nodeId} 延时 ${delayMs}ms，已调度 BullMQ delayed job`,
@@ -610,10 +580,7 @@ export class ProcessEngine {
   }
 
   /** 从活跃令牌列表移除指定节点。 */
-  private async removeActiveNode(
-    instance: InstanceRow,
-    nodeId: string,
-  ): Promise<InstanceRow> {
+  private async removeActiveNode(instance: InstanceRow, nodeId: string): Promise<InstanceRow> {
     const updated = instance.activeNodeIds.filter((id) => id !== nodeId);
     return prisma.processInstance.update({
       where: { id: instance.id },
@@ -708,9 +675,7 @@ export class ProcessEngine {
         body: `流程「${processName}」的审批节点「${taskName}」已由审批人${decisionText}。${comment ? '备注：' + comment : ''}`,
       });
 
-      this.logger.log(
-        `抄送通知已发送：实例节点 ${nodeId}，收件人 ${userIds.length} 人`,
-      );
+      this.logger.log(`抄送通知已发送：实例节点 ${nodeId}，收件人 ${userIds.length} 人`);
     } catch (err) {
       // 通知发送失败不阻塞流程
       const errorMsg = err instanceof Error ? err.message : String(err);

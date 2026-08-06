@@ -1,5 +1,16 @@
-import { useMemo, useState, useCallback } from 'react';
-import { Layout, Menu, theme, Dropdown, Space, Avatar, Button, Skeleton, Typography, Drawer } from 'antd';
+import { useMemo, useState } from 'react';
+import {
+  Layout,
+  Menu,
+  theme,
+  Dropdown,
+  Space,
+  Avatar,
+  Button,
+  Skeleton,
+  Typography,
+  Drawer,
+} from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -18,7 +29,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '../stores/auth.js';
+import { useAuthStore } from '@apaas/shared/stores';
 import { appsApi } from '../api/apps.js';
 import CheckPanel from '../components/publish/CheckPanel.js';
 
@@ -84,20 +95,21 @@ export default function StudioLayout() {
     const segments = location.pathname.split('/');
     // segments[0]='' segments[1]='app' segments[2]=appId segments[3]=模块 segments[4]=子路径
     return (
-      (segments[3] === 'pages' && !!segments[4]) ||
-      (segments[3] === 'processes' && !!segments[4])
+      (segments[3] === 'pages' && !!segments[4]) || (segments[3] === 'processes' && !!segments[4])
     );
   }, [location.pathname]);
 
   const userMenuItems: MenuProps['items'] = [
     // 平台超管显示返回租户管理
     ...(user?.isPlatformAdmin
-      ? [{
-          key: 'tenants',
-          icon: <GlobalOutlined />,
-          label: '租户管理',
-          onClick: () => navigate('/platform/tenants'),
-        }]
+      ? [
+          {
+            key: 'tenants',
+            icon: <GlobalOutlined />,
+            label: '租户管理',
+            onClick: () => navigate('/platform/tenants'),
+          },
+        ]
       : []),
     {
       key: 'logout',
@@ -215,16 +227,10 @@ export default function StudioLayout() {
             返回应用列表
           </Button>
           <Space>
-            <Button
-              icon={<CheckCircleOutlined />}
-              onClick={() => setCheckDrawerOpen(true)}
-            >
+            <Button icon={<CheckCircleOutlined />} onClick={() => setCheckDrawerOpen(true)}>
               检查
             </Button>
-            <Button
-              icon={<HistoryOutlined />}
-              onClick={() => navigate(`/app/${appId}/versions`)}
-            >
+            <Button icon={<HistoryOutlined />} onClick={() => navigate(`/app/${appId}/versions`)}>
               发布历史
             </Button>
             <Button
@@ -235,17 +241,11 @@ export default function StudioLayout() {
               发布
             </Button>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
-              <Avatar
-                size="small"
-                icon={<UserOutlined />}
-                src={user?.avatar ?? undefined}
-              />
-              <Text style={{ fontSize: 14 }}>
-                {user?.name ?? user?.email ?? '未登录'}
-              </Text>
-            </Space>
-          </Dropdown>
+              <Space style={{ cursor: 'pointer' }}>
+                <Avatar size="small" icon={<UserOutlined />} src={user?.avatar ?? undefined} />
+                <Text style={{ fontSize: 14 }}>{user?.name ?? user?.email ?? '未登录'}</Text>
+              </Space>
+            </Dropdown>
           </Space>
         </Header>
         <Content

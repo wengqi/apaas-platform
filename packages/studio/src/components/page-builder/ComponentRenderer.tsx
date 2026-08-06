@@ -36,8 +36,8 @@ import type {
   ViewModel,
 } from '../../api/pages.js';
 import type { Dayjs } from 'dayjs';
-import { resolvePropValue, getByPath } from './expression-engine.js';
-import { useRuntimeCtx, type RuntimeContext } from './RuntimeStore.js';
+import { resolvePropValue, getByPath } from '@apaas/shared/stores';
+import { useRuntimeCtx, type RuntimeState } from './RuntimeStore.js';
 
 const { Text, Title } = Typography;
 
@@ -62,7 +62,7 @@ export interface RenderContext {
   onSelect: (id: string) => void;
   onAction: (nodeId: string, eventName: string) => void;
   /** 运行时上下文(预览模式数据/事件;编辑模式为 no-op)。 */
-  runtime: RuntimeContext;
+  runtime: RuntimeState;
   /** 运行时 vm 值(预览模式;编辑模式为空对象)。 */
   vm: Record<string, unknown>;
 }
@@ -135,7 +135,17 @@ export default function ComponentRenderer({ node, isRoot }: ComponentRendererPro
   const schema = usePageBuilderStore((s) => s.schema);
   const selectedNodeId = usePageBuilderStore((s) => s.selectedNodeId);
   const selectNode = usePageBuilderStore((s) => s.selectNode);
-  const runtime = useRuntimeCtx();
+  const vm = useRuntimeCtx((s) => s.vm);
+  const setVariable = useRuntimeCtx((s) => s.setVariable);
+  const executeActions = useRuntimeCtx((s) => s.executeActions);
+
+  const runtime: RuntimeState = {
+    vm,
+    setVariable,
+    executeActions,
+    queryData: useRuntimeCtx((s) => s.queryData),
+    executeAction: useRuntimeCtx((s) => s.executeAction),
+  };
 
   const ctx: RenderContext = {
     mode,
@@ -150,7 +160,7 @@ export default function ComponentRenderer({ node, isRoot }: ComponentRendererPro
       if (!target) return;
       const actions = extractActions(target.props[eventName]);
       if (actions.length > 0) {
-        void runtime.executeActions(actions);
+        void executeActions(actions);
       }
     },
     runtime,
@@ -203,9 +213,7 @@ function EditNode({ node, isRoot, ctx }: NodeProps) {
     borderColor = '#91caff';
   }
 
-  const renderChild: RenderChild = (child) => (
-    <ComponentRenderer key={child.id} node={child} />
-  );
+  const renderChild: RenderChild = (child) => <ComponentRenderer key={child.id} node={child} />;
 
   const content = RENDERERS[node.type](node, ctx, renderChild);
 
@@ -241,9 +249,7 @@ function EditNode({ node, isRoot, ctx }: NodeProps) {
             whiteSpace: 'nowrap',
           }}
         >
-          <Text style={{ color: '#fff', fontSize: 12 }}>
-            {node.name || meta.label}
-          </Text>
+          <Text style={{ color: '#fff', fontSize: 12 }}>{node.name || meta.label}</Text>
           <Button
             type="text"
             size="small"
@@ -288,9 +294,7 @@ function EditNode({ node, isRoot, ctx }: NodeProps) {
 
 /** 预览模式:纯渲染。 */
 function PreviewNode({ node, ctx }: NodeProps) {
-  const renderChild: RenderChild = (child) => (
-    <ComponentRenderer key={child.id} node={child} />
-  );
+  const renderChild: RenderChild = (child) => <ComponentRenderer key={child.id} node={child} />;
   return RENDERERS[node.type](node, ctx, renderChild);
 }
 
@@ -400,7 +404,10 @@ function getFieldBindPath(node: ComponentNode): string | null {
 }
 
 /** 表单字段双向绑定:读取 value + 构造 onChange 写回 vm。 */
-function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
+function getFieldBinding(
+  node: ComponentNode,
+  ctx: RenderContext,
+): {
   isPreview: boolean;
   value: unknown;
   setValue: (v: unknown) => void;
@@ -408,7 +415,9 @@ function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
   const isPreview = ctx.mode === 'preview';
   const bindPath = isPreview ? getFieldBindPath(node) : null;
   const value = isPreview
-    ? (bindPath ? getByPath(ctx.vm, bindPath.startsWith('vm.') ? bindPath.slice(3) : bindPath) : getProp(node, 'value', ctx))
+    ? bindPath
+      ? getByPath(ctx.vm, bindPath.startsWith('vm.') ? bindPath.slice(3) : bindPath)
+      : getProp(node, 'value', ctx)
     : undefined;
   const setValue = (v: unknown) => {
     if (bindPath) ctx.runtime.setVariable(bindPath, v);
@@ -418,7 +427,14 @@ function getFieldBinding(node: ComponentNode, ctx: RenderContext): {
 
 /** 将 PropValue 对象提取为 Record。 */
 function asPropObject(value: PropValue | undefined): Record<string, PropValue> | null {
-  if (value && typeof value === 'object' && !Array.isArray(value) && !('__bind' in value) && !('__expr' in value) && !('__action' in value)) {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    !('__bind' in value) &&
+    !('__expr' in value) &&
+    !('__action' in value)
+  ) {
     return value as Record<string, PropValue>;
   }
   return null;
@@ -480,11 +496,7 @@ function extractSelectOptions(node: ComponentNode): { label: string; value: stri
     if (!obj) return { label: '', value: '' };
     const label = typeof obj.label === 'string' ? obj.label : '';
     const value =
-      typeof obj.value === 'string'
-        ? obj.value
-        : typeof obj.id === 'string'
-          ? obj.id
-          : '';
+      typeof obj.value === 'string' ? obj.value : typeof obj.id === 'string' ? obj.id : '';
     return { label, value };
   });
 }
@@ -523,11 +535,7 @@ function FormFieldItem({
   const required = getPropAsBool(node, 'required', ctx);
   const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
   return (
-    <Form.Item
-      label={label || undefined}
-      required={required}
-      style={{ marginBottom: 16 }}
-    >
+    <Form.Item label={label || undefined} required={required} style={{ marginBottom: 16 }}>
       <div style={{ pointerEvents: disabled ? 'none' : 'auto', opacity: disabled ? 0.6 : 1 }}>
         {children}
       </div>
@@ -581,19 +589,32 @@ const RENDERERS: Record<ComponentType, RendererFn> = {
 // 容器类渲染器
 // ---------------------------------------------------------------------------
 
-function renderPage(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
-  // 预览模式触发 onLoad 事件动作(页面加载完成)
-  useEffect(() => {
-    if (ctx.mode === 'preview') ctx.onAction(node.id, 'onLoad');
-  }, [ctx, node.id]);
+function renderPage(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   return (
     <div style={{ minHeight: 60, padding: 8 }}>
+      <PageLoadEffect node={node} ctx={ctx} />
       {renderContainerChildren(node, ctx, renderChild)}
     </div>
   );
 }
 
-function renderSection(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+/** 页面加载副作用 — 提取为独立组件以满足 React Hooks 规则。 */
+function PageLoadEffect({ node, ctx }: { node: ComponentNode; ctx: RenderContext }) {
+  useEffect(() => {
+    if (ctx.mode === 'preview') ctx.onAction(node.id, 'onLoad');
+  }, [ctx, node.id]);
+  return null;
+}
+
+function renderSection(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx);
   return (
     <Card
@@ -607,7 +628,11 @@ function renderSection(node: ComponentNode, ctx: RenderContext, renderChild: Ren
   );
 }
 
-function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderTabs(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const children = node.children ?? [];
   const items = children.map((child, i) => ({
     key: child.id,
@@ -625,7 +650,11 @@ function renderTabs(node: ComponentNode, ctx: RenderContext, renderChild: Render
   return tabs;
 }
 
-function renderGrid(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderGrid(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const gutter = getPropAsNumber(node, 'gutter', ctx) || 8;
   const children = node.children ?? [];
   const cols = children.map((child) => {
@@ -647,7 +676,11 @@ function renderGrid(node: ComponentNode, ctx: RenderContext, renderChild: Render
   return row;
 }
 
-function renderGridColumn(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderGridColumn(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   return renderContainerChildren(node, ctx, renderChild);
 }
 
@@ -665,7 +698,11 @@ function renderDataTable(node: ComponentNode, ctx: RenderContext): React.ReactNo
     const data = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
     if (Array.isArray(data)) {
       dataSource = data as TableRow[];
-    } else if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).records)) {
+    } else if (
+      data &&
+      typeof data === 'object' &&
+      Array.isArray((data as Record<string, unknown>).records)
+    ) {
       dataSource = (data as Record<string, unknown>).records as TableRow[];
     }
   }
@@ -676,9 +713,7 @@ function renderDataTable(node: ComponentNode, ctx: RenderContext): React.ReactNo
       columns={columns}
       dataSource={dataSource}
       rowKey="id"
-      pagination={
-        pagination ? { pageSize, showSizeChanger: false } : false
-      }
+      pagination={pagination ? { pageSize, showSizeChanger: false } : false}
       locale={{ emptyText: ctx.mode === 'edit' ? '暂无数据(编辑模式不加载)' : '暂无数据' }}
       onRow={(record) => ({
         onClick: () => {
@@ -693,18 +728,12 @@ function renderDataTable(node: ComponentNode, ctx: RenderContext): React.ReactNo
 function renderDetailCard(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const record =
     ctx.mode === 'preview'
-      ? (resolvePropValue(node.props.record ?? null, { vm: ctx.vm }) as Record<string, unknown> | undefined)
+      ? (resolvePropValue(node.props.record ?? null, { vm: ctx.vm }) as
+          Record<string, unknown> | undefined)
       : undefined;
   const items = extractDetailFields(node, record ?? {}, ctx);
   const columns = getPropAsNumber(node, 'columns', ctx) || 2;
-  return (
-    <Descriptions
-      size="small"
-      column={columns}
-      bordered
-      items={items}
-    />
-  );
+  return <Descriptions size="small" column={columns} bordered items={items} />;
 }
 
 function renderList(node: ComponentNode, ctx: RenderContext): React.ReactNode {
@@ -737,7 +766,11 @@ function renderList(node: ComponentNode, ctx: RenderContext): React.ReactNode {
 // 表单类渲染器
 // ---------------------------------------------------------------------------
 
-function renderForm(node: ComponentNode, ctx: RenderContext, renderChild: RenderChild): React.ReactNode {
+function renderForm(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): React.ReactNode {
   const layout = getPropAsString(node, 'layout') || 'vertical';
   return (
     <Form layout={layout as 'vertical' | 'horizontal'} component={false}>
@@ -852,8 +885,7 @@ function renderDatePicker(node: ComponentNode, ctx: RenderContext): React.ReactN
   const showTime = getPropAsBool(node, 'showTime', ctx);
   const format = getPropAsString(node, 'format', ctx) || undefined;
   const { isPreview, value, setValue } = getFieldBinding(node, ctx);
-  const dayjsVal =
-    isPreview && value ? dayjs(value as string | number | Date) : undefined;
+  const dayjsVal = isPreview && value ? dayjs(value as string | number | Date) : undefined;
   return (
     <FormFieldItem node={node} ctx={ctx}>
       <DatePicker
@@ -905,10 +937,7 @@ function renderSwitch(node: ComponentNode, ctx: RenderContext): React.ReactNode 
   const { isPreview, value, setValue } = getFieldBinding(node, ctx);
   return (
     <FormFieldItem node={node} ctx={ctx}>
-      <Switch
-        checked={isPreview ? !!value : undefined}
-        onChange={(checked) => setValue(checked)}
-      />
+      <Switch checked={isPreview ? !!value : undefined} onChange={(checked) => setValue(checked)} />
       {label ? <Text style={{ marginLeft: 8, fontSize: 13 }}>{label}</Text> : null}
     </FormFieldItem>
   );
@@ -993,8 +1022,7 @@ function renderUserPicker(node: ComponentNode, ctx: RenderContext): React.ReactN
 // ---------------------------------------------------------------------------
 
 function renderButton(node: ComponentNode, ctx: RenderContext): React.ReactNode {
-  const text =
-    getPropAsString(node, 'text', ctx) || getPropAsString(node, 'label', ctx) || '按钮';
+  const text = getPropAsString(node, 'text', ctx) || getPropAsString(node, 'label', ctx) || '按钮';
   const type = getPropAsString(node, 'type', ctx) || 'default';
   const danger = getPropAsBool(node, 'danger', ctx);
   return (

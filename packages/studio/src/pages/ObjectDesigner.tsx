@@ -1,4 +1,4 @@
-import { Empty, Typography } from 'antd';
+import { Typography } from 'antd';
 import { DatabaseOutlined } from '@ant-design/icons';
 import { Outlet, useParams } from 'react-router-dom';
 import ObjectListPanel from '../components/object/ObjectListPanel.js';
@@ -72,9 +72,7 @@ export function ObjectEmptyState() {
       <Typography.Title level={4} style={{ margin: 0 }}>
         选择一个对象开始
       </Typography.Title>
-      <Typography.Text type="secondary">
-        从左侧选择对象,或新建对象来定义业务实体
-      </Typography.Text>
+      <Typography.Text type="secondary">从左侧选择对象,或新建对象来定义业务实体</Typography.Text>
     </div>
   );
 }

@@ -44,6 +44,7 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
@@ -57,6 +58,8 @@ import type {
   UpdateTemplateRequest,
 } from './process.service.js';
 
+@ApiTags('Process')
+@ApiBearerAuth()
 @Controller()
 @UseGuards(PermissionGuard)
 export class ProcessController {
@@ -67,10 +70,7 @@ export class ProcessController {
   // ===========================================================================
 
   @Get('apps/:appId/processes')
-  async listProcesses(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-  ) {
+  async listProcesses(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const data = await this.processService.listProcesses(requireTenantId(req), appId);
     return { ok: true as const, data };
   }
@@ -92,10 +92,7 @@ export class ProcessController {
   }
 
   @Get('processes/:processId')
-  async getProcess(
-    @Req() req: AuthenticatedRequest,
-    @Param('processId') processId: string,
-  ) {
+  async getProcess(@Req() req: AuthenticatedRequest, @Param('processId') processId: string) {
     const data = await this.processService.getProcess(requireTenantId(req), processId);
     return { ok: true as const, data };
   }
@@ -118,10 +115,7 @@ export class ProcessController {
 
   @Delete('processes/:processId')
   @RequirePermission('PROCESS', 'DELETE', 'processId')
-  async deleteProcess(
-    @Req() req: AuthenticatedRequest,
-    @Param('processId') processId: string,
-  ) {
+  async deleteProcess(@Req() req: AuthenticatedRequest, @Param('processId') processId: string) {
     const data = await this.processService.deleteProcess(
       requireTenantId(req),
       processId,
@@ -132,14 +126,8 @@ export class ProcessController {
 
   @Post('processes/:processId/publish')
   @RequirePermission('PROCESS', 'EDIT', 'processId')
-  async publishProcess(
-    @Req() req: AuthenticatedRequest,
-    @Param('processId') processId: string,
-  ) {
-    const data = await this.processService.publishProcess(
-      requireTenantId(req),
-      processId,
-    );
+  async publishProcess(@Req() req: AuthenticatedRequest, @Param('processId') processId: string) {
+    const data = await this.processService.publishProcess(requireTenantId(req), processId);
     return { ok: true as const, data };
   }
 
@@ -154,11 +142,7 @@ export class ProcessController {
     @Param('processId') processId: string,
     @Body() body: StartInstanceRequest,
   ) {
-    const data = await this.processService.startInstance(
-      requireTenantId(req),
-      processId,
-      body,
-    );
+    const data = await this.processService.startInstance(requireTenantId(req), processId, body);
     return { ok: true as const, data };
   }
 
@@ -182,39 +166,21 @@ export class ProcessController {
   }
 
   @Get('instances/:instanceId')
-  async getInstance(
-    @Req() req: AuthenticatedRequest,
-    @Param('instanceId') instanceId: string,
-  ) {
-    const data = await this.processService.getInstance(
-      requireTenantId(req),
-      instanceId,
-    );
+  async getInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
+    const data = await this.processService.getInstance(requireTenantId(req), instanceId);
     return { ok: true as const, data };
   }
 
   @Get('instances/:instanceId/trace')
-  async getTrace(
-    @Req() req: AuthenticatedRequest,
-    @Param('instanceId') instanceId: string,
-  ) {
-    const data = await this.processService.getTrace(
-      requireTenantId(req),
-      instanceId,
-    );
+  async getTrace(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
+    const data = await this.processService.getTrace(requireTenantId(req), instanceId);
     return { ok: true as const, data };
   }
 
   @Post('instances/:instanceId/cancel')
   @RequirePermission('PROCESS', 'EXECUTE')
-  async cancelInstance(
-    @Req() req: AuthenticatedRequest,
-    @Param('instanceId') instanceId: string,
-  ) {
-    const data = await this.processService.cancelInstance(
-      requireTenantId(req),
-      instanceId,
-    );
+  async cancelInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
+    const data = await this.processService.cancelInstance(requireTenantId(req), instanceId);
     return { ok: true as const, data };
   }
 
@@ -241,10 +207,7 @@ export class ProcessController {
   }
 
   @Get('tasks/:taskId')
-  async getTask(
-    @Req() req: AuthenticatedRequest,
-    @Param('taskId') taskId: string,
-  ) {
+  async getTask(@Req() req: AuthenticatedRequest, @Param('taskId') taskId: string) {
     const data = await this.processService.getTask(requireTenantId(req), taskId);
     return { ok: true as const, data };
   }
@@ -286,14 +249,8 @@ export class ProcessController {
   // ===========================================================================
 
   @Get('apps/:appId/notification-templates')
-  async listTemplates(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-  ) {
-    const data = await this.processService.listTemplates(
-      requireTenantId(req),
-      appId,
-    );
+  async listTemplates(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
+    const data = await this.processService.listTemplates(requireTenantId(req), appId);
     return { ok: true as const, data };
   }
 
@@ -303,11 +260,7 @@ export class ProcessController {
     @Param('appId') appId: string,
     @Body() body: CreateTemplateRequest,
   ) {
-    const data = await this.processService.createTemplate(
-      requireTenantId(req),
-      appId,
-      body,
-    );
+    const data = await this.processService.createTemplate(requireTenantId(req), appId, body);
     return { ok: true as const, data };
   }
 
@@ -317,24 +270,13 @@ export class ProcessController {
     @Param('templateId') templateId: string,
     @Body() body: UpdateTemplateRequest,
   ) {
-    const data = await this.processService.updateTemplate(
-      requireTenantId(req),
-      templateId,
-      body,
-    );
+    const data = await this.processService.updateTemplate(requireTenantId(req), templateId, body);
     return { ok: true as const, data };
   }
 
   @Delete('notification-templates/:templateId')
-  async deleteTemplate(
-    @Req() req: AuthenticatedRequest,
-    @Param('templateId') templateId: string,
-  ) {
-    const data = await this.processService.deleteTemplate(
-      requireTenantId(req),
-      templateId,
-    );
+  async deleteTemplate(@Req() req: AuthenticatedRequest, @Param('templateId') templateId: string) {
+    const data = await this.processService.deleteTemplate(requireTenantId(req), templateId);
     return { ok: true as const, data };
   }
 }
-

@@ -5,12 +5,30 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Button, Card, Empty, Input, Modal, Space, Table, Tag, Typography, message, Form, Select, Popconfirm,
+  Button,
+  Card,
+  Empty,
+  Input,
+  Modal,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+  Form,
+  Select,
+  Popconfirm,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
-import { usersApi, rolesApi, orgsApi, type UserInfo, type CreateUserRequest } from '../../api/permissions.js';
+import {
+  usersApi,
+  rolesApi,
+  orgsApi,
+  type UserInfo,
+  type CreateUserRequest,
+} from '../../api/permissions.js';
 
-const { Text, Title } = Typography;
+const { Text, Title: _Title } = Typography;
 
 export default function UserManager() {
   const queryClient = useQueryClient();
@@ -61,7 +79,9 @@ export default function UserManager() {
       render: (_: unknown, record: UserInfo) => (
         <Space wrap>
           {record.roles?.map((r) => (
-            <Tag key={r.id} color="blue">{r.name}</Tag>
+            <Tag key={r.id} color="blue">
+              {r.name}
+            </Tag>
           )) || <Text type="secondary">无</Text>}
         </Space>
       ),
@@ -92,7 +112,9 @@ export default function UserManager() {
       key: 'action',
       render: (_: unknown, record: UserInfo) => (
         <Popconfirm title="确定删除此用户?" onConfirm={() => deleteMutation.mutate(record.id)}>
-          <Button danger size="small" icon={<DeleteOutlined />}>删除</Button>
+          <Button danger size="small" icon={<DeleteOutlined />}>
+            删除
+          </Button>
         </Popconfirm>
       ),
     },
@@ -147,7 +169,11 @@ export default function UserManager() {
 // ---------------------------------------------------------------------------
 
 function CreateUserModal({
-  open, onCancel, form, onSubmit, loading,
+  open,
+  onCancel,
+  form,
+  onSubmit,
+  loading,
 }: {
   open: boolean;
   onCancel: () => void;
@@ -155,8 +181,14 @@ function CreateUserModal({
   onSubmit: (data: CreateUserRequest) => void;
   loading: boolean;
 }) {
-  const { data: roles } = useQuery({ queryKey: ['permission-roles'], queryFn: () => rolesApi.list() });
-  const { data: orgTree } = useQuery({ queryKey: ['permission-orgs'], queryFn: () => orgsApi.getTree() });
+  const { data: roles } = useQuery({
+    queryKey: ['permission-roles'],
+    queryFn: () => rolesApi.list(),
+  });
+  const { data: orgTree } = useQuery({
+    queryKey: ['permission-orgs'],
+    queryFn: () => orgsApi.getTree(),
+  });
 
   // 扁平化组织树
   const orgOptions: { label: string; value: string }[] = [];
@@ -180,10 +212,24 @@ function CreateUserModal({
         <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
           <Input placeholder="如:张三" />
         </Form.Item>
-        <Form.Item name="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}>
+        <Form.Item
+          name="email"
+          label="邮箱"
+          rules={[
+            { required: true, message: '请输入邮箱' },
+            { type: 'email', message: '邮箱格式不正确' },
+          ]}
+        >
           <Input placeholder="如:zhangsan@example.com" />
         </Form.Item>
-        <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }, { min: 6, message: '密码至少6位' }]}>
+        <Form.Item
+          name="password"
+          label="密码"
+          rules={[
+            { required: true, message: '请输入密码' },
+            { min: 6, message: '密码至少6位' },
+          ]}
+        >
           <Input.Password placeholder="至少6位" />
         </Form.Item>
         <Form.Item name="roleIds" label="角色">
@@ -194,11 +240,7 @@ function CreateUserModal({
           />
         </Form.Item>
         <Form.Item name="orgIds" label="组织">
-          <Select
-            mode="multiple"
-            placeholder="选择组织"
-            options={orgOptions}
-          />
+          <Select mode="multiple" placeholder="选择组织" options={orgOptions} />
         </Form.Item>
       </Form>
     </Modal>

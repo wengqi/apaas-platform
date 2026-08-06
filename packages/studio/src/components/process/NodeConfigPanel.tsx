@@ -10,7 +10,6 @@ import { Button, Divider, Empty, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { WorkflowNode, WorkflowSchema } from '@apaas/shared';
 import { getNodeMeta } from '../../constants/process.js';
-import { useProcessEditorStore } from '../../stores/processEditor.js';
 
 import TriggerConfigForm from './configs/TriggerConfigForm.js';
 import ObjectOperationConfigForm from './configs/ObjectOperationConfigForm.js';
@@ -22,7 +21,7 @@ import AssignConfigForm from './configs/AssignConfigForm.js';
 import DelayConfigForm from './configs/DelayConfigForm.js';
 import EndConfigForm from './configs/EndConfigForm.js';
 
-const { Text, Title } = Typography;
+const { Text: _Text, Title } = Typography;
 
 export interface NodeConfigPanelProps {
   /** 选中节点(由父组件传入;若为 null 显示空状态) */
@@ -56,18 +55,12 @@ export default function NodeConfigPanel({
   onNodeDataChange,
   onDeleteNode,
 }: NodeConfigPanelProps) {
-  const meta = useMemo(
-    () => (node ? getNodeMeta(node.type) : null),
-    [node],
-  );
+  const meta = useMemo(() => (node ? getNodeMeta(node.type) : null), [node]);
 
   if (!node || !meta) {
     return (
       <div style={{ padding: '8px 16px' }}>
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="选中一个节点以配置"
-        />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选中一个节点以配置" />
       </div>
     );
   }
@@ -226,27 +219,15 @@ function renderConfigForm(
       );
     case 'assign':
       return (
-        <AssignConfigForm
-          data={data as never}
-          onChange={onChange as never}
-          disabled={readonly}
-        />
+        <AssignConfigForm data={data as never} onChange={onChange as never} disabled={readonly} />
       );
     case 'delay':
       return (
-        <DelayConfigForm
-          data={data as never}
-          onChange={onChange as never}
-          disabled={readonly}
-        />
+        <DelayConfigForm data={data as never} onChange={onChange as never} disabled={readonly} />
       );
     case 'end':
       return (
-        <EndConfigForm
-          data={data as never}
-          onChange={onChange as never}
-          disabled={readonly}
-        />
+        <EndConfigForm data={data as never} onChange={onChange as never} disabled={readonly} />
       );
     case 'start':
       return (

@@ -16,10 +16,7 @@ const parser = new Parser();
  * 沿路径数组导航变量对象。
  * ['trigger_0', 'output', 'recordId'] → variables.trigger_0.output.recordId
  */
-function resolveRefPath(
-  path: string[],
-  variables: Record<string, unknown>,
-): unknown {
+function resolveRefPath(path: string[], variables: Record<string, unknown>): unknown {
   let current: unknown = variables;
   for (const segment of path) {
     if (current === null || current === undefined) return undefined;
@@ -33,10 +30,7 @@ function resolveRefPath(
  * 沿点分路径导航变量对象。
  * 'trigger_0.output.orderNo' → variables.trigger_0.output.orderNo
  */
-function resolveDottedPath(
-  path: string,
-  variables: Record<string, unknown>,
-): unknown {
+function resolveDottedPath(path: string, variables: Record<string, unknown>): unknown {
   return resolveRefPath(path.split('.'), variables);
 }
 
@@ -45,10 +39,7 @@ function resolveDottedPath(
  * 用于节点内联模版（template 四态值）：
  *   `订单 {{trigger_0.output.orderNo}} 已通过审批`
  */
-export function renderTemplateDotted(
-  template: string,
-  variables: Record<string, unknown>,
-): string {
+export function renderTemplateDotted(template: string, variables: Record<string, unknown>): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (_, expr: string) => {
     const trimmed = expr.trim();
     const value = resolveDottedPath(trimmed, variables);
@@ -62,9 +53,7 @@ export function renderTemplateDotted(
  * 以全局变量为基础，合并触发器/开始节点的输出字段（扁平化），
  * 使条件表达式能直接用变量名引用（如 `amount > 1000`）。
  */
-function buildEvalScope(
-  variables: Record<string, unknown>,
-): Record<string, unknown> {
+function buildEvalScope(variables: Record<string, unknown>): Record<string, unknown> {
   const scope: Record<string, unknown> = {};
   // 全局变量
   const globalVars = variables['global'];
@@ -109,7 +98,7 @@ export function evaluateCondition(
 
   // 向后兼容：字符串格式用 expr-eval 求值
   if (typeof rule === 'string') {
-    let expr = rule.replace(/\{\{/g, '').replace(/\}\}/g, '').trim();
+    const expr = rule.replace(/\{\{/g, '').replace(/\}\}/g, '').trim();
     if (!expr) return true;
     try {
       const scope = buildEvalScope(variables);
@@ -152,7 +141,8 @@ export function resolveFlowValue(
       if (!expr) return undefined;
       try {
         const scope = buildEvalScope(variables);
-        return parser.parse(expr.replace(/\{\{/g, '').replace(/\}\}/g, '').trim())
+        return parser
+          .parse(expr.replace(/\{\{/g, '').replace(/\}\}/g, '').trim())
           .evaluate(scope as never);
       } catch {
         return undefined;

@@ -1,34 +1,64 @@
 /**
- * 事件动作执行器(运行时 MVP)。
+ * 事件动作执行器（运行时 MVP）— 跨 studio / runtime-ui 共享。
  *
- * 实现 PRD §6.2 的 12 种 ActionType,以及 §6.4 的动作链串行执行
- * (含 condition 条件跳过与 confirm 取消中断)。动作参数中的
- * `{ __bind }` / `{ __expr }` 在执行时实时求值(§6.4 规则 5)。
+ * 实现 PRD §6.2 的 12 种 ActionType，以及 §6.4 的动作链串行执行
+ *（含 condition 条件跳过与 confirm 取消中断）。动作参数中的
+ * `{ __bind }` / `{ __expr }` 在执行时实时求值（§6.4 规则 5）。
  *
- * 数据动作调用 objectsApi(records.list/create/update/delete);
- * UI 动作调用前端路由 / AntD 弹窗;`set_variable` 更新视图模型。
+ * 通过 RuntimeStoreAdapter 注入 API 调用，使核心逻辑与具体 HTTP 客户端解耦。
+ * studio 注入 objectsApi/processesApi adapter，runtime-ui 注入 apiClient adapter。
  */
 
 import { Modal, message } from 'antd';
-import { objectsApi } from '../../api/objects.js';
-import { processesApi } from '../../api/processes.js';
-import type { ActionConfig, ActionType, PropValue } from '../../api/pages.js';
+import type { ActionConfig, ActionType, PropValue } from './types.js';
 import { evalExpr, resolvePropValue } from './expression-engine.js';
 import type { EvalContext } from './expression-engine.js';
 
 // ---------------------------------------------------------------------------
-// 上下文
+// Adapter 接口（由各前端包实现并注入）
 // ---------------------------------------------------------------------------
 
-/** 动作执行上下文:视图模型状态 + 变量写入 + 跳转 + 关联对象。 */
-export interface ActionContext {
-  /** 视图模型变量值(运行时)。 */
-  vm: Record<string, unknown>;
-  /** 设置视图模型变量(支持 'vm.x.y' / 'x.y' 路径)。 */
-  setVariable: (path: string, value: unknown) => void;
-  /** 页面跳转(接收最终路径)。 */
+/** 记录列表查询结果。 */
+export interface RecordListResult {
+  items: Array<{ id: string; data: Record<string, unknown> }>;
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * 运行时 Store Adapter — 由 studio / runtime-ui 各自实现。
+ * 将 API 调用与核心动作逻辑解耦。
+ */
+export interface RuntimeStoreAdapter {
+  /** 查询记录列表。 */
+  queryRecords: (
+    objectId: string,
+    params: { page: number; pageSize: number },
+  ) => Promise<RecordListResult>;
+  /** 创建记录。 */
+  createRecord: (objectId: string, data: Record<string, unknown>) => Promise<unknown>;
+  /** 更新记录。 */
+  updateRecord: (recordId: string, data: Record<string, unknown>) => Promise<unknown>;
+  /** 删除记录。 */
+  deleteRecord: (recordId: string) => Promise<unknown>;
+  /** 启动流程。 */
+  startProcess: (processId: string, variables: Record<string, unknown>) => Promise<unknown>;
+  /** 页面跳转。 */
   navigate: (path: string) => void;
-  /** 当前关联对象 ID(动作参数未指定 objectId 时回退)。 */
+}
+
+// ---------------------------------------------------------------------------
+// 动作执行上下文
+// ---------------------------------------------------------------------------
+
+/** 动作执行上下文：视图模型状态 + 变量写入 + 关联对象。 */
+export interface ActionContext {
+  /** 视图模型变量值（运行时）。 */
+  vm: Record<string, unknown>;
+  /** 设置视图模型变量（支持 'vm.x.y' / 'x.y' 路径）。 */
+  setVariable: (path: string, value: unknown) => void;
+  /** 当前关联对象 ID（动作参数未指定 objectId 时回退）。 */
   objectId?: string;
 }
 
@@ -36,7 +66,7 @@ export interface ActionContext {
 // 动作链中断信号
 // ---------------------------------------------------------------------------
 
-/** confirm 取消时抛出,用于中断动作链(不作为错误提示)。 */
+/** confirm 取消时抛出，用于中断动作链（不作为错误提示）。 */
 export class ActionChainInterrupt extends Error {
   constructor() {
     super('ActionChainInterrupt');
@@ -45,19 +75,10 @@ export class ActionChainInterrupt extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// 动作条件(扩展字段,PRD §6.3)
-// ---------------------------------------------------------------------------
-
-/** 带条件的动作(ActionConfig 类型未含 condition,这里宽松扩展)。 */
-type ChainAction = ActionConfig & {
-  condition?: { __expr?: string };
-};
-
-// ---------------------------------------------------------------------------
 // 参数解析
 // ---------------------------------------------------------------------------
 
-/** 解析单个动作参数(字面量 / 绑定 / 表达式 → 实际值)。 */
+/** 解析单个动作参数（字面量 / 绑定 / 表达式 → 实际值）。 */
 function resolveParam(
   params: Record<string, PropValue> | undefined,
   key: string,
@@ -97,7 +118,7 @@ function paramAsObject(
 // 记录扁平化
 // ---------------------------------------------------------------------------
 
-/** 将 RecordItem({ id, data }) 扁平化为 { id, ...data },便于表格 / 表单直接取值。 */
+/** 将 RecordItem({ id, data }) 扁平化为 { id, ...data }，便于表格 / 表单直接取值。 */
 function flattenRecord(item: {
   id: string;
   data: Record<string, unknown>;
@@ -112,12 +133,17 @@ function flattenRecord(item: {
 /**
  * 执行单个动作。
  *
- * - `confirm` 用户取消时抛出 `ActionChainInterrupt`(供动作链捕获)。
- * - 其他失败抛出原始错误(供动作链捕获并提示)。
+ * - `confirm` 用户取消时抛出 `ActionChainInterrupt`（供动作链捕获）。
+ * - 其他失败抛出原始错误（供动作链捕获并提示）。
+ *
+ * @param action 动作配置
+ * @param context 动作上下文（vm + setVariable + objectId）
+ * @param adapter API 适配器（queryRecords / createRecord / startProcess / navigate 等）
  */
 export async function executeAction(
   action: ActionConfig,
   context: ActionContext,
+  adapter: RuntimeStoreAdapter,
 ): Promise<void> {
   const params = action.params;
   const type = action.type as ActionType;
@@ -143,7 +169,7 @@ export async function executeAction(
         message.warning('query_records 缺少 objectId');
         return;
       }
-      const res = await objectsApi.records.list(objectId, { page, pageSize });
+      const res = await adapter.queryRecords(objectId, { page, pageSize });
       const records = res.items.map(flattenRecord);
       const target = targetVariable || 'vm.list';
       context.setVariable(target, {
@@ -162,7 +188,7 @@ export async function executeAction(
         message.warning('create_record 缺少 objectId');
         return;
       }
-      await objectsApi.records.create(objectId, data);
+      await adapter.createRecord(objectId, data);
       return;
     }
 
@@ -173,7 +199,7 @@ export async function executeAction(
         message.warning('update_record 缺少 recordId');
         return;
       }
-      await objectsApi.records.update(recordId, data);
+      await adapter.updateRecord(recordId, data);
       return;
     }
 
@@ -183,7 +209,7 @@ export async function executeAction(
         message.warning('delete_record 缺少 recordId');
         return;
       }
-      await objectsApi.records.delete(recordId);
+      await adapter.deleteRecord(recordId);
       return;
     }
 
@@ -193,7 +219,7 @@ export async function executeAction(
       const path = paramAsString(params, 'path', context);
       const url = paramAsString(params, 'url', context);
       const target = slug || path || url;
-      if (target) context.navigate(target);
+      if (target) adapter.navigate(target);
       return;
     }
 
@@ -247,7 +273,9 @@ export async function executeAction(
       }
       await fetch(url, {
         method,
-        headers: Object.keys(headers).length ? { 'Content-Type': 'application/json', ...headers } : undefined,
+        headers: Object.keys(headers).length
+          ? { 'Content-Type': 'application/json', ...headers }
+          : undefined,
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
       return;
@@ -261,10 +289,7 @@ export async function executeAction(
         return;
       }
       try {
-        await processesApi.start(processId, {
-          processKey: processId,
-          variables: { ...context.vm },
-        });
+        await adapter.startProcess(processId, { ...context.vm });
       } catch {
         message.error('流程启动失败');
       }
@@ -280,7 +305,6 @@ export async function executeAction(
     }
 
     default: {
-      // eslint-disable-next-line no-console
       console.warn('[action-executor] 未知动作类型:', type);
     }
   }
@@ -290,43 +314,37 @@ export async function executeAction(
 // 动作链执行
 // ---------------------------------------------------------------------------
 
-/** 错误提示(动作链失败时统一 toast)。 */
+/** 错误提示（动作链失败时统一 toast）。 */
 function toastError(err: unknown): void {
-  const msg =
-    err instanceof Error
-      ? err.message
-      : typeof err === 'string'
-        ? err
-        : '动作执行失败';
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '动作执行失败';
   message.error(msg);
 }
 
 /**
- * 串行执行动作链(§6.4 / §8.5)。
+ * 串行执行动作链（§6.4 / §8.5）。
  *
- * 规则:
+ * 规则：
  * 1. 按数组顺序串行执行。
- * 2. 每个动作执行前检查 `condition`,为 false 则跳过。
- * 3. `confirm` 取消(抛 ActionChainInterrupt)→ 中断链,不提示错误。
+ * 2. 每个动作执行前检查 `condition`，为 false 则跳过。
+ * 3. `confirm` 取消（抛 ActionChainInterrupt）→ 中断链，不提示错误。
  * 4. 其他失败 → toast 错误并中断。
  */
 export async function executeActionChain(
   actions: ActionConfig[],
   context: ActionContext,
+  adapter: RuntimeStoreAdapter,
 ): Promise<void> {
   for (const action of actions) {
-    const chainAction = action as ChainAction;
-
     // 条件判断
-    if (chainAction.condition?.__expr) {
-      const ok = evalExpr(chainAction.condition.__expr, { vm: context.vm });
+    if (action.condition?.__expr) {
+      const ok = evalExpr(action.condition.__expr, { vm: context.vm });
       if (!ok) continue;
     }
 
     try {
-      await executeAction(action, context);
+      await executeAction(action, context, adapter);
     } catch (err) {
-      if (err instanceof ActionChainInterrupt) break; // confirm 取消,静默中断
+      if (err instanceof ActionChainInterrupt) break; // confirm 取消，静默中断
       toastError(err);
       break; // 失败中断
     }

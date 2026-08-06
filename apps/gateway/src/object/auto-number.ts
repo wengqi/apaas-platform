@@ -22,7 +22,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { prisma, Prisma } from '@apaas/db';
+import { prisma } from '@apaas/db';
 
 /** 占位符正则：{name} 或 {name:spec}。 */
 const PLACEHOLDER = /\{(\w+)(?::([^}]+))?\}/g;
@@ -119,11 +119,7 @@ export class AutoNumberGenerator {
    * 这里采用扫描全部记录、在应用层匹配前缀的方式。对象记录量在 Phase 1
    * 规模下可接受；后续可结合字段元数据优化为 JSONB path 查询。
    */
-  private async nextSeq(
-    format: string,
-    objectId: string,
-    now: Date,
-  ): Promise<number> {
+  private async nextSeq(format: string, objectId: string, now: Date): Promise<number> {
     const prefix = resolvePrefixBeforeSeq(format, now);
 
     // 若格式不含序号占位符，直接返回 0（渲染时不会有 seq）

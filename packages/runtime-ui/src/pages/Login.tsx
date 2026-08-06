@@ -3,7 +3,7 @@ import { LockOutlined, MailOutlined, GlobalOutlined } from '@ant-design/icons';
 import { App as AntApp, Button, Card, Form, Input, Typography } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../api/client';
-import { useAuthStore, type LoginResponse } from '../stores/auth';
+import { useAuthStore, type LoginResponse } from '@apaas/shared/stores';
 
 const { Title, Text } = Typography;
 
@@ -39,6 +39,9 @@ export default function Login() {
         name: user.name,
         email: user.email,
         tenantId: user.tenantId ?? null,
+        avatar: user.avatar ?? null,
+        isPlatformAdmin: user.isPlatformAdmin ?? false,
+        roles: user.roles ?? [],
       });
       message.success('登录成功');
       navigate('/home', { replace: true });

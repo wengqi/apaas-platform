@@ -1,12 +1,21 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, VersioningType } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   // 全局前缀
   app.setGlobalPrefix('api');
+
+  // API 版本控制（URI 版本，路由变为 /api/v1/...）
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: '1',
+  });
 
   // 全局校验管道
   app.useGlobalPipes(
@@ -16,6 +25,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // 全局异常过滤器（Prisma 异常转译优先，兜底所有未捕获异常）
+  app.useGlobalFilters(new AllExceptionsFilter(), new PrismaExceptionFilter());
 
   // CORS（前端 Studio/Runtime UI 跨域）
   // Docker 部署通过 nginx 同源代理，不触发 CORS；此处保留 dev 模式默认值
@@ -27,9 +39,19 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Swagger API 文档
+  const config = new DocumentBuilder()
+    .setTitle('aPaaS Gateway API')
+    .setDescription('飞书 aPaaS 低代码平台 API 文档')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
+
   const port = process.env.GATEWAY_PORT ?? '3000';
   await app.listen(port);
-  Logger.log(`🚀 API Gateway running on http://localhost:${port}`, 'Bootstrap');
+  Logger.log(`🚀 API Gateway running on http://localhost:${port} (docs: /api/docs)`, 'Bootstrap');
 }
 
 void bootstrap();

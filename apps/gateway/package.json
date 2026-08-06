@@ -7,8 +7,9 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "lint": "eslint src --ext .ts",
-    "test": "vitest run"
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "dependencies": {
     "@apaas/db": "workspace:*",
@@ -19,6 +20,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.6",
+    "@nestjs/swagger": "^7.4.0",
     "@types/nodemailer": "^8.0.1",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.15.0",
@@ -26,6 +28,7 @@
     "class-validator": "^0.15.1",
     "expr-eval": "^2.0.2",
     "ioredis": "^5.4.1",
+    "joi": "^17.13.0",
     "json-logic-js": "^2.0.0",
     "nodemailer": "^9.0.3",
     "passport": "^0.7.0",
@@ -36,6 +39,7 @@
   "devDependencies": {
     "@nestjs/cli": "^10.4.8",
     "@nestjs/schematics": "^10.2.3",
+    "@nestjs/testing": "^10.4.6",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.0",
     "@types/node": "^22.9.0",

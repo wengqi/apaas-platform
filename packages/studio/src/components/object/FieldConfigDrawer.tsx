@@ -16,7 +16,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, CheckOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   objectsApi,
@@ -248,7 +248,11 @@ export default function FieldConfigDrawer({
             },
           ]}
         >
-          <Input placeholder="customer_name" style={{ fontFamily: 'monospace' }} disabled={isEdit} />
+          <Input
+            placeholder="customer_name"
+            style={{ fontFamily: 'monospace' }}
+            disabled={isEdit}
+          />
         </Form.Item>
 
         <Form.Item label="描述" name="description">
@@ -257,13 +261,23 @@ export default function FieldConfigDrawer({
 
         {/* 通用开关 */}
         <Space size={24} style={{ marginBottom: 8 }}>
-          <Form.Item name="required" valuePropName="checked" label="必填" style={{ marginBottom: 0 }}>
+          <Form.Item
+            name="required"
+            valuePropName="checked"
+            label="必填"
+            style={{ marginBottom: 0 }}
+          >
             <Switch size="small" disabled={isSystem} />
           </Form.Item>
           <Form.Item name="unique" valuePropName="checked" label="唯一" style={{ marginBottom: 0 }}>
             <Switch size="small" disabled={isSystem} />
           </Form.Item>
-          <Form.Item name="searchable" valuePropName="checked" label="可搜索" style={{ marginBottom: 0 }}>
+          <Form.Item
+            name="searchable"
+            valuePropName="checked"
+            label="可搜索"
+            style={{ marginBottom: 0 }}
+          >
             <Switch size="small" />
           </Form.Item>
         </Space>
@@ -299,7 +313,7 @@ interface TypeSpecificConfigProps {
 /** 按字段类型渲染专属配置区块。 */
 function TypeSpecificConfig({
   type,
-  form,
+  form: _form,
   options,
   setOptions,
   objectList,
@@ -425,7 +439,11 @@ function TypeSpecificConfig({
               <Radio value="many_to_many">多对多</Radio>
             </Radio.Group>
           </Form.Item>
-          <Form.Item label="反向字段名" name="inverseFieldName" tooltip="在目标对象上显示的引用字段名(可选)">
+          <Form.Item
+            label="反向字段名"
+            name="inverseFieldName"
+            tooltip="在目标对象上显示的引用字段名(可选)"
+          >
             <Input placeholder="如:所属客户" />
           </Form.Item>
         </>
@@ -532,7 +550,12 @@ function OptionManager({
   const addOption = () => {
     setOptions((prev) => [
       ...prev,
-      { id: genId(), label: '', color: PRESET_COLORS[prev.length % PRESET_COLORS.length], isDefault: false },
+      {
+        id: genId(),
+        label: '',
+        color: PRESET_COLORS[prev.length % PRESET_COLORS.length],
+        isDefault: false,
+      },
     ]);
   };
 
@@ -542,7 +565,9 @@ function OptionManager({
       updateOption(id, { isDefault: checked });
     } else {
       // 单选:仅一项可为默认
-      setOptions((prev) => prev.map((o) => (o.id === id ? { ...o, isDefault: checked } : { ...o, isDefault: false })));
+      setOptions((prev) =>
+        prev.map((o) => (o.id === id ? { ...o, isDefault: checked } : { ...o, isDefault: false })),
+      );
     }
   };
 
@@ -710,11 +735,7 @@ function computeInitialValues(type: FieldType, field?: Field): FieldFormValues {
 }
 
 /** 根据表单值构建 FieldConfig。 */
-function buildConfig(
-  type: FieldType,
-  v: FieldFormValues,
-  options: SelectOption[],
-): FieldConfig {
+function buildConfig(type: FieldType, v: FieldFormValues, options: SelectOption[]): FieldConfig {
   const config: FieldConfig = { type };
   switch (type) {
     case 'text':

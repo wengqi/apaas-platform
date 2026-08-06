@@ -1,17 +1,31 @@
 import { useState } from 'react';
 import {
-  Card, Tabs, Table, Button, Modal, Form, Input, message, Tag, Space,
-  Typography, Descriptions, App,
+  Card,
+  Tabs,
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Tag,
+  Space,
+  Typography,
+  Descriptions,
+  App,
 } from 'antd';
 import {
-  ArrowLeftOutlined, ThunderboltFilled, GlobalOutlined,
-  UserAddOutlined, UserOutlined, AppstoreOutlined,
+  ArrowLeftOutlined,
+  ThunderboltFilled,
+  GlobalOutlined,
+  UserAddOutlined,
+  UserOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { tenantsApi, type TenantUser, type TenantApp } from '../api/tenants.js';
+import { tenantsApi } from '../api/tenants.js';
 
-const { Title, Text } = Typography;
+const { Title: _Title, Text } = Typography;
 
 /**
  * 租户详情页 — 平台超管查看租户信息、用户列表、应用列表，分配管理员。
@@ -105,13 +119,19 @@ export default function TenantDetail() {
       dataIndex: 'roles',
       key: 'roles',
       render: (roles: { code: string; name: string }[]) =>
-        roles?.map((r) => <Tag key={r.code} color="blue">{r.name}</Tag>) ?? '—',
+        roles?.map((r) => (
+          <Tag key={r.code} color="blue">
+            {r.name}
+          </Tag>
+        )) ?? '—',
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (s: string) => <Tag color={s === 'ACTIVE' ? 'green' : 'red'}>{s === 'ACTIVE' ? '启用' : '禁用'}</Tag>,
+      render: (s: string) => (
+        <Tag color={s === 'ACTIVE' ? 'green' : 'red'}>{s === 'ACTIVE' ? '启用' : '禁用'}</Tag>
+      ),
     },
     {
       title: '创建时间',
@@ -175,7 +195,9 @@ export default function TenantDetail() {
           </Button>
           <Space size={8}>
             <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
-            <Text strong style={{ fontSize: 16 }}>租户详情</Text>
+            <Text strong style={{ fontSize: 16 }}>
+              租户详情
+            </Text>
           </Space>
         </Space>
       </div>
@@ -201,10 +223,16 @@ export default function TenantDetail() {
                 {new Date(tenant.createdAt).toLocaleString('zh-CN')}
               </Descriptions.Item>
               <Descriptions.Item label="用户数">
-                <Space><UserOutlined />{tenant.userCount}</Space>
+                <Space>
+                  <UserOutlined />
+                  {tenant.userCount}
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="应用数">
-                <Space><AppstoreOutlined />{tenant.appCount}</Space>
+                <Space>
+                  <AppstoreOutlined />
+                  {tenant.appCount}
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="角色数">{tenant.roleCount}</Descriptions.Item>
             </Descriptions>
@@ -286,11 +314,7 @@ export default function TenantDetail() {
         ]}
       >
         <Form form={adminForm} layout="vertical" preserve={false}>
-          <Form.Item
-            label="姓名"
-            name="name"
-            rules={[{ required: true, message: '请输入姓名' }]}
-          >
+          <Form.Item label="姓名" name="name" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input placeholder="如：张三" />
           </Form.Item>
           <Form.Item

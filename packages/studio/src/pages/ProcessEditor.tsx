@@ -19,11 +19,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  processesApi,
-  type ProcessDef,
-  type WorkflowSchema,
-} from '../api/processes.js';
+import { processesApi, type ProcessDef, type WorkflowSchema } from '../api/processes.js';
 import { objectsApi } from '../api/objects.js';
 import { pagesApi } from '../api/pages.js';
 import { useProcessEditorStore } from '../stores/processEditor.js';
@@ -118,7 +114,7 @@ export default function ProcessEditor() {
     if (!storeLoaded) return;
     // FlowGram 导出可能丢失 edges，如果新 schema edges 为空但当前有 edges，保留原 edges
     let finalSchema = schema;
-    if ((!schema.edges || schema.edges.length === 0)) {
+    if (!schema.edges || schema.edges.length === 0) {
       const currentSchema = store.schema ?? processDef?.workflowSchema;
       if (currentSchema?.edges && currentSchema.edges.length > 0) {
         finalSchema = { ...schema, edges: currentSchema.edges };
@@ -176,8 +172,6 @@ export default function ProcessEditor() {
       </div>
     );
   }
-
-  const statusMeta = getProcessStatusMeta(processDef.status);
 
   return (
     <div
@@ -322,12 +316,7 @@ function ProcessEditorToolbar({
           预览
         </Button>
         {!readonly && (
-          <Button
-            icon={<SaveOutlined />}
-            size="small"
-            loading={saving}
-            onClick={onSave}
-          >
+          <Button icon={<SaveOutlined />} size="small" loading={saving} onClick={onSave}>
             保存
           </Button>
         )}
@@ -380,14 +369,28 @@ export class EditorErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
     if (this.state.hasError) {
       return (
         this.props.fallback ?? (
-          <div style={{ padding: 48, textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+          <div
+            style={{
+              padding: 48,
+              textAlign: 'center',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
             <Typography.Title level={5} type="danger">
               编辑器渲染失败
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ maxWidth: 400 }}>
               {this.state.error?.message ?? '未知错误'}
             </Typography.Paragraph>
-            <Button type="primary" size="small" onClick={() => this.setState({ hasError: false, error: undefined })}>
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => this.setState({ hasError: false, error: undefined })}
+            >
               重试
             </Button>
           </div>

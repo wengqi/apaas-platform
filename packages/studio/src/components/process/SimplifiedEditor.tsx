@@ -11,7 +11,7 @@
  *  - 选中节点时显示浮动配置侧边栏
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FixedLayoutEditorProvider,
   EditorRenderer,
@@ -38,11 +38,7 @@ import {
   type FlowDocumentJSON,
   type FlowNodeJSON,
 } from '../../../features/process/simplified/src/index.js';
-import {
-  NODE_GROUPS,
-  NODE_META,
-  getNodeMeta,
-} from '../../constants/process.js';
+import { NODE_GROUPS, NODE_META, getNodeMeta } from '../../constants/process.js';
 
 import '@flowgram.ai/fixed-layout-editor/index.css';
 import NodeConfigPanel from './NodeConfigPanel.js';
@@ -57,7 +53,12 @@ export interface SimplifiedEditorProps {
   objectOptions?: { label: string; value: string }[];
   formOptions?: { label: string; value: string }[];
   templateOptions?: { label: string; value: string }[];
-  onHistoryReady?: (api: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) => void;
+  onHistoryReady?: (api: {
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+  }) => void;
 }
 
 export default function SimplifiedEditor({
@@ -111,7 +112,13 @@ export default function SimplifiedEditor({
 
   // 存储选项到 window 供 ConfigSidebar 使用
   useEffect(() => {
-    const w = window as unknown as { __apaasConfigOptions?: { objectOptions: typeof objectOptions; formOptions: typeof formOptions; templateOptions: typeof templateOptions } };
+    const w = window as unknown as {
+      __apaasConfigOptions?: {
+        objectOptions: typeof objectOptions;
+        formOptions: typeof formOptions;
+        templateOptions: typeof templateOptions;
+      };
+    };
     w.__apaasConfigOptions = { objectOptions, formOptions, templateOptions };
   }, [objectOptions, formOptions, templateOptions]);
 
@@ -119,10 +126,7 @@ export default function SimplifiedEditor({
     <div style={{ flex: 1, display: 'flex', minHeight: 0, background: '#f5f7fa' }}>
       <FixedLayoutEditorProvider {...editorProps}>
         <HistoryBridge onHistoryReady={onHistoryReady} />
-        <CanvasColumn
-          readonly={readonly}
-          onSchemaChange={onSchemaChange}
-        />
+        <CanvasColumn readonly={readonly} onSchemaChange={onSchemaChange} />
       </FixedLayoutEditorProvider>
     </div>
   );
@@ -136,30 +140,61 @@ export default function SimplifiedEditor({
  * 分支标签组件 — 订阅 store 中 condition 节点的数据变化。
  */
 function BlockOrderIconLabel({
-  label, isElse, condition, conditionNodeId,
+  label,
+  isElse,
+  condition,
+  conditionNodeId,
 }: {
-  label: string; isElse: boolean; condition: string; conditionNodeId?: string;
+  label: string;
+  isElse: boolean;
+  condition: string;
+  conditionNodeId?: string;
 }) {
   const conditionData = useProcessEditorStore((s) => {
     if (!s.schema || !conditionNodeId) return null;
     const findNode = (nodes: WorkflowNode[]): WorkflowNode | null => {
       for (const n of nodes) {
         if (n.id === conditionNodeId) return n;
-        if (n.blocks) { const f = findNode(n.blocks); if (f) return f; }
+        if (n.blocks) {
+          const f = findNode(n.blocks);
+          if (f) return f;
+        }
       }
       return null;
     };
     return findNode(s.schema.nodes)?.data ?? null;
   });
-  const conditions = (conditionData?.conditions as Array<{ label?: string; condition?: string }>) || [];
+  const conditions =
+    (conditionData?.conditions as Array<{ label?: string; condition?: string }>) || [];
   const latestCondition = conditions.find((c) => c.label === label)?.condition ?? condition;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 12px', borderRadius: 6, background: '#fafbfc', border: '1px solid #e8eaed', minWidth: 120, maxWidth: 200, userSelect: 'none' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        padding: '6px 12px',
+        borderRadius: 6,
+        background: '#fafbfc',
+        border: '1px solid #e8eaed',
+        minWidth: 120,
+        maxWidth: 200,
+        userSelect: 'none',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(0,0,0,0.65)' }}>{label}</span>
-        {!isElse && !latestCondition && <Text style={{ fontSize: 11, color: '#ff4d4f' }}>(未配置)</Text>}
-        {!isElse && latestCondition && <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>{latestCondition.length > 20 ? latestCondition.substring(0, 20) + '...' : latestCondition}</Text>}
+        {!isElse && !latestCondition && (
+          <Text style={{ fontSize: 11, color: '#ff4d4f' }}>(未配置)</Text>
+        )}
+        {!isElse && latestCondition && (
+          <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>
+            {latestCondition.length > 20
+              ? latestCondition.substring(0, 20) + '...'
+              : latestCondition}
+          </Text>
+        )}
       </div>
     </div>
   );
@@ -172,8 +207,20 @@ function BlockOrderIconLabel({
  * 点击节点时显示配置侧边栏。
  * 固定宽度 240px(对齐官方 simple demo)。
  */
-function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string; getExtInfo?: () => Record<string, unknown> } }) {
-  const { startDrag, dragging, activated, onMouseEnter, onMouseLeave, isBlockIcon, isBlockOrderIcon } = useNodeRender();
+function ApaasNodeRenderer({
+  node,
+}: {
+  node: { id: string; flowNodeType?: string; getExtInfo?: () => Record<string, unknown> };
+}) {
+  const {
+    startDrag,
+    dragging,
+    activated,
+    onMouseEnter,
+    onMouseLeave,
+    isBlockIcon: _isBlockIcon,
+    isBlockOrderIcon: _isBlockOrderIcon,
+  } = useNodeRender();
   const ctx = useClientContext();
 
   const type = node?.flowNodeType ?? 'unknown';
@@ -183,10 +230,19 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
   // blockIcon: 条件分支的菱形图标
   // blockOrderIcon: 分支标签(条件成立/否则)
   // inlineBlocks/block/root: 隐藏的布局容器
-  if (type === 'inlineBlocks' || type === 'block' || type === 'root' ||
-      type === 'mainInlineBlocks' || type === 'catchInlineBlocks' ||
-      type === 'trySlot' || type === 'tryBlock' || type === 'catchBlock' ||
-      type === 'dynamicSplit' || type === 'staticSplit' || type === 'simpleSplit') {
+  if (
+    type === 'inlineBlocks' ||
+    type === 'block' ||
+    type === 'root' ||
+    type === 'mainInlineBlocks' ||
+    type === 'catchInlineBlocks' ||
+    type === 'trySlot' ||
+    type === 'tryBlock' ||
+    type === 'catchBlock' ||
+    type === 'dynamicSplit' ||
+    type === 'staticSplit' ||
+    type === 'simpleSplit'
+  ) {
     return null;
   }
 
@@ -205,9 +261,25 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
     return (
       <div
         onClick={handleBlockIconClick}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, cursor: 'pointer' }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 40,
+          height: 40,
+          cursor: 'pointer',
+        }}
       >
-        <div style={{ width: 24, height: 24, transform: 'rotate(45deg)', background: '#fff', border: '2px solid #1677ff', borderRadius: 4 }} />
+        <div
+          style={{
+            width: 24,
+            height: 24,
+            transform: 'rotate(45deg)',
+            background: '#fff',
+            border: '2px solid #1677ff',
+            borderRadius: 4,
+          }}
+        />
       </div>
     );
   }
@@ -229,15 +301,59 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
       }
     }
     const conditionExtInfo = conditionNode?.getExtInfo?.() ?? {};
-    const conditions = (conditionExtInfo.conditions as Array<{ label?: string; condition?: string }>) || [];
+    const conditions =
+      (conditionExtInfo.conditions as Array<{ label?: string; condition?: string }>) || [];
     const branchData = blockIndex >= 0 ? conditions[blockIndex] : undefined;
-    const isElse = blockIndex === (conditions.length - 1) || !!(extInfo.isElse as boolean);
+    const isElse = blockIndex === conditions.length - 1 || !!(extInfo.isElse as boolean);
     const blockTitle = branchData?.label || (extInfo.title as string) || '';
     const condition = branchData?.condition || '';
     const label = blockTitle || (isElse ? '否则' : '条件成立');
 
-    return <BlockOrderIconLabel label={label} isElse={isElse} condition={condition} conditionNodeId={conditionNode?.id} />;
+    return (
+      <BlockOrderIconLabel
+        label={label}
+        isElse={isElse}
+        condition={condition}
+        conditionNodeId={conditionNode?.id}
+      />
+    );
   }
+
+  return (
+    <BusinessNodeRenderer
+      node={node}
+      ctx={ctx}
+      startDrag={startDrag}
+      dragging={dragging}
+      activated={activated}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    />
+  );
+}
+
+/**
+ * 业务节点渲染器 — 提取为独立组件以满足 React Hooks 规则(避免在条件返回后调用 hooks)。
+ */
+interface BusinessNodeRendererProps extends Pick<
+  ReturnType<typeof useNodeRender>,
+  'startDrag' | 'dragging' | 'activated' | 'onMouseEnter' | 'onMouseLeave'
+> {
+  node: { id: string; flowNodeType?: string; getExtInfo?: () => Record<string, unknown> };
+  ctx: ReturnType<typeof useClientContext>;
+}
+
+function BusinessNodeRenderer({
+  node,
+  ctx,
+  startDrag,
+  dragging,
+  activated,
+  onMouseEnter,
+  onMouseLeave,
+}: BusinessNodeRendererProps) {
+  const type = node?.flowNodeType ?? 'unknown';
+  const extInfo = node?.getExtInfo?.() ?? {};
 
   const meta = getNodeMeta(type);
   const Icon = meta.icon;
@@ -264,11 +380,7 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
     if (flowNode) ctx.selection.selection = [flowNode];
   };
 
-  const borderColor = isSelected
-    ? '#1677ff'
-    : activated
-      ? '#91caff'
-      : '#e8eaed';
+  const borderColor = isSelected ? '#1677ff' : activated ? '#91caff' : '#e8eaed';
 
   return (
     <div
@@ -282,9 +394,7 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
         borderRadius: 10,
         background: '#fff',
         border: `2px solid ${borderColor}`,
-        boxShadow: isSelected
-          ? '0 2px 12px rgba(22,119,255,0.15)'
-          : '0 1px 4px rgba(0,0,0,0.06)',
+        boxShadow: isSelected ? '0 2px 12px rgba(22,119,255,0.15)' : '0 1px 4px rgba(0,0,0,0.06)',
         cursor: 'grab',
         width: 240,
         opacity: dragging ? 0.5 : 1,
@@ -294,7 +404,15 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
       }}
     >
       {/* 节点头:图标 + 标题 + 警告 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', flexShrink: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 16px',
+          flexShrink: 0,
+        }}
+      >
         <div
           style={{
             width: 32,
@@ -311,12 +429,8 @@ function ApaasNodeRenderer({ node }: { node: { id: string; flowNodeType?: string
         >
           <Icon style={{ fontSize: 18 }} />
         </div>
-        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', flex: 1 }}>
-          {title}
-        </span>
-        {isIncomplete && (
-          <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />
-        )}
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', flex: 1 }}>{title}</span>
+        {isIncomplete && <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />}
       </div>
 
       {/* 摘要 */}
@@ -361,47 +475,66 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
     const findNode = (nodes: WorkflowNode[]): WorkflowNode | null => {
       for (const n of nodes) {
         if (n.id === selectedNodeId) return n;
-        if (n.blocks) { const f = findNode(n.blocks); if (f) return f; }
+        if (n.blocks) {
+          const f = findNode(n.blocks);
+          if (f) return f;
+        }
       }
       return null;
     };
     return findNode(schema.nodes);
   }, [schema, selectedNodeId]);
 
-  const handleNodeDataChange = useCallback((id: string, data: Record<string, unknown>) => {
-    const flowNode = ctx.document.getNode(id);
-    if (flowNode) {
-      flowNode.updateExtInfo(data);
-      // 条件分支节点:同步 conditions 到子 blockOrderIcon 节点
-      if (flowNode.flowNodeType === 'condition' && Array.isArray(data.conditions)) {
-        const blocks = flowNode.blocks || [];
-        for (let i = 0; i < blocks.length; i++) {
-          const block = blocks[i];
-          if (!block) continue;
-          const blockOrderIcon = block.blocks?.[0];
-          if (blockOrderIcon) {
-            const cond = data.conditions[i];
-            blockOrderIcon.updateExtInfo({
-              title: cond?.label || (i === blocks.length - 1 ? '否则' : `分支 ${i + 1}`),
-              condition: cond?.condition || '',
-              isElse: i === blocks.length - 1,
-            });
+  const handleNodeDataChange = useCallback(
+    (id: string, data: Record<string, unknown>) => {
+      const flowNode = ctx.document.getNode(id);
+      if (flowNode) {
+        flowNode.updateExtInfo(data);
+        // 条件分支节点:同步 conditions 到子 blockOrderIcon 节点
+        if (flowNode.flowNodeType === 'condition' && Array.isArray(data.conditions)) {
+          const blocks = flowNode.blocks || [];
+          for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            if (!block) continue;
+            const blockOrderIcon = block.blocks?.[0];
+            if (blockOrderIcon) {
+              const cond = data.conditions[i];
+              blockOrderIcon.updateExtInfo({
+                title: cond?.label || (i === blocks.length - 1 ? '否则' : `分支 ${i + 1}`),
+                condition: cond?.condition || '',
+                isElse: i === blocks.length - 1,
+              });
+            }
           }
         }
       }
-    }
-    updateNodeData(id, data);
-  }, [ctx.document, updateNodeData]);
+      updateNodeData(id, data);
+    },
+    [ctx.document, updateNodeData],
+  );
 
-  const handleDeleteNode = useCallback((id: string) => {
-    ctx.operation.deleteNode(id);
-    deleteNodeStore(id);
-  }, [ctx.operation, deleteNodeStore]);
+  const handleDeleteNode = useCallback(
+    (id: string) => {
+      ctx.operation.deleteNode(id);
+      deleteNodeStore(id);
+    },
+    [ctx.operation, deleteNodeStore],
+  );
 
   if (!selectedNode || readonly) return null;
 
-  const w = window as unknown as { __apaasConfigOptions?: { objectOptions: { label: string; value: string }[]; formOptions: { label: string; value: string }[]; templateOptions: { label: string; value: string }[] } };
-  const options = w.__apaasConfigOptions ?? { objectOptions: [], formOptions: [], templateOptions: [] };
+  const w = window as unknown as {
+    __apaasConfigOptions?: {
+      objectOptions: { label: string; value: string }[];
+      formOptions: { label: string; value: string }[];
+      templateOptions: { label: string; value: string }[];
+    };
+  };
+  const options = w.__apaasConfigOptions ?? {
+    objectOptions: [],
+    formOptions: [],
+    templateOptions: [],
+  };
 
   // 从 schema 构建节点候选列表（用于驳回目标选择）
   const nodeOptions = (schema?.nodes ?? []).map((n) => ({
@@ -410,18 +543,44 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
   }));
 
   return (
-    <div style={{
-      position: 'absolute', top: 0, right: 0, bottom: 0, width: 400,
-      background: '#fff', borderLeft: '1px solid #eef0f4',
-      boxShadow: '-4px 0 12px rgba(0,0,0,0.06)', zIndex: 100,
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '12px 16px', borderBottom: '1px solid #eef0f4',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
-      }}>
-        <Text strong style={{ fontSize: 14 }}>节点配置</Text>
-        <Button type="text" size="small" onClick={() => { ctx.selection.selection = []; }}>✕</Button>
+    <div
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 400,
+        background: '#fff',
+        borderLeft: '1px solid #eef0f4',
+        boxShadow: '-4px 0 12px rgba(0,0,0,0.06)',
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid #eef0f4',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+        }}
+      >
+        <Text strong style={{ fontSize: 14 }}>
+          节点配置
+        </Text>
+        <Button
+          type="text"
+          size="small"
+          onClick={() => {
+            ctx.selection.selection = [];
+          }}
+        >
+          ✕
+        </Button>
       </div>
       <div style={{ flex: 1, overflow: 'auto' }}>
         <NodeConfigPanel
@@ -446,28 +605,75 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
 
 function checkNodeIncomplete(type: string, data: Record<string, unknown>): boolean {
   switch (type) {
-    case 'trigger': return !data.triggerType;
-    case 'userTask': return !data.assigneeId || !data.approvalMode;
-    case 'notification': return !data.channel || !data.recipient;
-    case 'objectOperation': return !data.operation || !data.objectId;
-    case 'httpRequest': return !data.method || !data.url;
-    case 'delay': return !data.duration;
-    case 'start': case 'end': case 'assign': return false;
-    default: return false;
+    case 'trigger':
+      return !data.triggerType;
+    case 'userTask':
+      return !data.assigneeId || !data.approvalMode;
+    case 'notification':
+      return !data.channel || !data.recipient;
+    case 'objectOperation':
+      return !data.operation || !data.objectId;
+    case 'httpRequest':
+      return !data.method || !data.url;
+    case 'delay':
+      return !data.duration;
+    case 'start':
+    case 'end':
+    case 'assign':
+      return false;
+    default:
+      return false;
   }
 }
 
 function getNodeSummary(type: string, data: Record<string, unknown>): string {
   switch (type) {
-    case 'trigger': { const t = data.triggerType as string; return t ? `触发: ${t}` : ''; }
-    case 'userTask': { const a = data.assigneeId as string; const m = data.approvalMode as string; const p: string[] = []; if (a) p.push(`审批人: ${a}`); if (m) p.push(m); return p.join(' · '); }
-    case 'notification': { const c = data.channel as string; const r = data.recipient as string; const p: string[] = []; if (c) p.push(`渠道: ${c}`); if (r) p.push(`接收人: ${r}`); return p.join(' · '); }
-    case 'objectOperation': { const o = data.operation as string; const obj = data.objectId as string; const p: string[] = []; if (o) p.push(o); if (obj) p.push(obj); return p.join(' · '); }
-    case 'httpRequest': { const m = data.method as string; const u = data.url as string; if (m && u) return `${m} ${u}`; return m ?? ''; }
-    case 'delay': { const d = data.duration as string | number; const u = data.unit as string; if (d) return `等待 ${d}${u ?? ''}`; return ''; }
-    case 'condition': return '条件分支';
-    case 'assign': return '变量赋值';
-    default: return '';
+    case 'trigger': {
+      const t = data.triggerType as string;
+      return t ? `触发: ${t}` : '';
+    }
+    case 'userTask': {
+      const a = data.assigneeId as string;
+      const m = data.approvalMode as string;
+      const p: string[] = [];
+      if (a) p.push(`审批人: ${a}`);
+      if (m) p.push(m);
+      return p.join(' · ');
+    }
+    case 'notification': {
+      const c = data.channel as string;
+      const r = data.recipient as string;
+      const p: string[] = [];
+      if (c) p.push(`渠道: ${c}`);
+      if (r) p.push(`接收人: ${r}`);
+      return p.join(' · ');
+    }
+    case 'objectOperation': {
+      const o = data.operation as string;
+      const obj = data.objectId as string;
+      const p: string[] = [];
+      if (o) p.push(o);
+      if (obj) p.push(obj);
+      return p.join(' · ');
+    }
+    case 'httpRequest': {
+      const m = data.method as string;
+      const u = data.url as string;
+      if (m && u) return `${m} ${u}`;
+      return m ?? '';
+    }
+    case 'delay': {
+      const d = data.duration as string | number;
+      const u = data.unit as string;
+      if (d) return `等待 ${d}${u ?? ''}`;
+      return '';
+    }
+    case 'condition':
+      return '条件分支';
+    case 'assign':
+      return '变量赋值';
+    default:
+      return '';
   }
 }
 
@@ -503,10 +709,13 @@ function ApaasAdder(props: {
         { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
         { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
       ];
-      nodeJSON.data = { title: meta.label, conditions: [
-        { label: '条件成立', condition: '' },
-        { label: '否则', condition: '' },
-      ] };
+      nodeJSON.data = {
+        title: meta.label,
+        conditions: [
+          { label: '条件成立', condition: '' },
+          { label: '否则', condition: '' },
+        ],
+      };
     }
 
     const fromNode = ctx.document.getNode(props.from.id);
@@ -518,7 +727,10 @@ function ApaasAdder(props: {
     <div style={{ width: 320, maxHeight: 400, overflow: 'auto' }}>
       {NODE_GROUPS.map((group) => (
         <div key={group.category} style={{ marginBottom: 8 }}>
-          <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 4, color: 'rgba(0,0,0,0.45)' }}>
+          <Text
+            strong
+            style={{ fontSize: 12, display: 'block', marginBottom: 4, color: 'rgba(0,0,0,0.45)' }}
+          >
             {group.title}
           </Text>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
@@ -531,16 +743,30 @@ function ApaasAdder(props: {
                   key={type}
                   onClick={() => handleSelect(type)}
                   style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                    padding: '6px 2px', borderRadius: 6, border: '1px solid #eef0f4',
-                    background: '#fff', cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 2,
+                    padding: '6px 2px',
+                    borderRadius: 6,
+                    border: '1px solid #eef0f4',
+                    background: '#fff',
+                    cursor: 'pointer',
                   }}
                 >
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 4,
-                    background: `linear-gradient(135deg, ${meta.color}, ${meta.color}dd)`,
-                    color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 4,
+                      background: `linear-gradient(135deg, ${meta.color}, ${meta.color}dd)`,
+                      color: '#fff',
+                      fontSize: 11,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
                     <Icon style={{ fontSize: 11 }} />
                   </div>
                   <Text style={{ fontSize: 10, textAlign: 'center' }}>{meta.label}</Text>
@@ -569,8 +795,12 @@ function ApaasAdder(props: {
           borderRadius: '50%',
           background: props.hoverActivated ? '#fff' : '#d9d9d9',
           border: props.hoverActivated ? '2px solid #1677ff' : 'none',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', margin: '4px auto', transition: 'all 0.15s ease',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          margin: '4px auto',
+          transition: 'all 0.15s ease',
         }}
       >
         {props.hoverActivated && <PlusOutlined style={{ fontSize: 10, color: '#1677ff' }} />}
@@ -587,36 +817,48 @@ const NODE_TYPE_MIME = 'application/x-apaas-node-type';
 
 function useCreateNode() {
   const ctx = useClientContext();
-  return useCallback((type: string, fromId?: string) => {
-    const meta = getNodeMeta(type);
-    const nodeId = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const nodeJSON: FlowNodeJSON = { id: nodeId, type, data: { title: meta.label } };
+  return useCallback(
+    (type: string, fromId?: string) => {
+      const meta = getNodeMeta(type);
+      const nodeId = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const nodeJSON: FlowNodeJSON = { id: nodeId, type, data: { title: meta.label } };
 
-    // 条件分支节点:提供初始 blocks 数据,让 DynamicSplitRegistry.onCreate 创建分支
-    if (type === 'condition') {
-      nodeJSON.blocks = [
-        { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
-        { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
-      ];
-      nodeJSON.data = { title: meta.label, conditions: [
-        { label: '条件成立', condition: '' },
-        { label: '否则', condition: '' },
-      ] };
-    }
+      // 条件分支节点:提供初始 blocks 数据,让 DynamicSplitRegistry.onCreate 创建分支
+      if (type === 'condition') {
+        nodeJSON.blocks = [
+          { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
+          { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
+        ];
+        nodeJSON.data = {
+          title: meta.label,
+          conditions: [
+            { label: '条件成立', condition: '' },
+            { label: '否则', condition: '' },
+          ],
+        };
+      }
 
-    if (fromId) {
-      const fromNode = ctx.document.getNode(fromId);
-      if (fromNode) { ctx.operation.addFromNode(fromNode, nodeJSON); return; }
-    }
-    const allNodes = ctx.document.getAllNodes();
-    let anchorNode = undefined;
-    for (let i = allNodes.length - 1; i >= 0; i--) {
-      const n = allNodes[i];
-      if (n && n.flowNodeType !== 'end') { anchorNode = n; break; }
-    }
-    if (anchorNode) ctx.operation.addFromNode(anchorNode, nodeJSON);
-    else ctx.operation.addNode(nodeJSON);
-  }, [ctx]);
+      if (fromId) {
+        const fromNode = ctx.document.getNode(fromId);
+        if (fromNode) {
+          ctx.operation.addFromNode(fromNode, nodeJSON);
+          return;
+        }
+      }
+      const allNodes = ctx.document.getAllNodes();
+      let anchorNode = undefined;
+      for (let i = allNodes.length - 1; i >= 0; i--) {
+        const n = allNodes[i];
+        if (n && n.flowNodeType !== 'end') {
+          anchorNode = n;
+          break;
+        }
+      }
+      if (anchorNode) ctx.operation.addFromNode(anchorNode, nodeJSON);
+      else ctx.operation.addNode(nodeJSON);
+    },
+    [ctx],
+  );
 }
 
 /**
@@ -628,55 +870,77 @@ function useCreateNode() {
  */
 function useFindDropAnchor() {
   const ctx = useClientContext();
-  return useCallback((e: React.DragEvent): string | undefined => {
-    const allNodes = ctx.document.getAllNodes();
-    // 过滤出业务节点（排除系统节点和 end 节点）
-    const businessNodes = allNodes.filter((n) => {
-      const type = n.flowNodeType as string;
-      return type && !['block', 'inlineBlocks', 'blockIcon', 'blockOrderIcon', 'dynamicSplit', 'end'].includes(type);
-    });
-    if (businessNodes.length === 0) return undefined;
+  return useCallback(
+    (e: React.DragEvent): string | undefined => {
+      const allNodes = ctx.document.getAllNodes();
+      // 过滤出业务节点（排除系统节点和 end 节点）
+      const businessNodes = allNodes.filter((n) => {
+        const type = n.flowNodeType as string;
+        return (
+          type &&
+          !['block', 'inlineBlocks', 'blockIcon', 'blockOrderIcon', 'dynamicSplit', 'end'].includes(
+            type,
+          )
+        );
+      });
+      if (businessNodes.length === 0) return undefined;
 
-    // 使用 flowgram 的坐标转换：将鼠标事件转为画布坐标
-    const playground = ctx.playground as unknown as {
-      getRelativePos?: (event: { clientX: number; clientY: number }) => { x: number; y: number };
-    };
+      // 使用 flowgram 的坐标转换：将鼠标事件转为画布坐标
+      const playground = ctx.playground as unknown as {
+        getRelativePos?: (event: { clientX: number; clientY: number }) => { x: number; y: number };
+      };
 
-    if (!playground?.getRelativePos) {
-      // 回退：返回最后一个业务节点（追加到末尾）
-      return businessNodes[businessNodes.length - 1]?.id;
-    }
-
-    const pos = playground.getRelativePos({ clientX: e.clientX, clientY: e.clientY });
-    const canvasY = pos.y;
-
-    // 找到中心 Y 最接近 canvasY 的节点
-    let closest: typeof businessNodes[0] | undefined;
-    let minDist = Infinity;
-    for (const n of businessNodes) {
-      const bounds = n.bounds;
-      if (!bounds) continue;
-      const centerY = bounds.center.y;
-      const dist = Math.abs(centerY - canvasY);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = n;
+      if (!playground?.getRelativePos) {
+        // 回退：返回最后一个业务节点（追加到末尾）
+        return businessNodes[businessNodes.length - 1]?.id;
       }
-    }
-    return closest?.id ?? businessNodes[businessNodes.length - 1]?.id;
-  }, [ctx]);
+
+      const pos = playground.getRelativePos({ clientX: e.clientX, clientY: e.clientY });
+      const canvasY = pos.y;
+
+      // 找到中心 Y 最接近 canvasY 的节点
+      let closest: (typeof businessNodes)[0] | undefined;
+      let minDist = Infinity;
+      for (const n of businessNodes) {
+        const bounds = n.bounds;
+        if (!bounds) continue;
+        const centerY = bounds.center.y;
+        const dist = Math.abs(centerY - canvasY);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = n;
+        }
+      }
+      return closest?.id ?? businessNodes[businessNodes.length - 1]?.id;
+    },
+    [ctx],
+  );
 }
 
 // ---------------------------------------------------------------------------
 // 撤销/重做桥接
 // ---------------------------------------------------------------------------
 
-function HistoryBridge({ onHistoryReady }: { onHistoryReady?: (api: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) => void }) {
+function HistoryBridge({
+  onHistoryReady,
+}: {
+  onHistoryReady?: (api: {
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+  }) => void;
+}) {
   const tools = usePlaygroundTools();
   const onReadyRef = useRef(onHistoryReady);
   onReadyRef.current = onHistoryReady;
   useEffect(() => {
-    onReadyRef.current?.({ undo: () => tools.undo(), redo: () => tools.redo(), canUndo: tools.canUndo, canRedo: tools.canRedo });
+    onReadyRef.current?.({
+      undo: () => tools.undo(),
+      redo: () => tools.redo(),
+      canUndo: tools.canUndo,
+      canRedo: tools.canRedo,
+    });
   }, [tools.canUndo, tools.canRedo, tools]);
   return null;
 }
@@ -697,11 +961,20 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
 
   return (
     <div
-      onDragOver={(e) => { if (!readonly) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!isDragOver) setIsDragOver(true); } }}
-      onDragLeave={(e) => { if (e.currentTarget === e.target) setIsDragOver(false); }}
+      onDragOver={(e) => {
+        if (!readonly) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+          if (!isDragOver) setIsDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setIsDragOver(false);
+      }}
       onDrop={(e) => {
         if (readonly) return;
-        e.preventDefault(); setIsDragOver(false);
+        e.preventDefault();
+        setIsDragOver(false);
         const type = e.dataTransfer.getData(NODE_TYPE_MIME);
         if (type) {
           // 根据拖放位置找到最近的节点作为锚点，实现位置感知插入
@@ -710,10 +983,14 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
         }
       }}
       style={{
-        flex: 1, position: 'relative', minHeight: 0,
+        flex: 1,
+        position: 'relative',
+        minHeight: 0,
         background: isDragOver ? '#e6f4ff' : '#f5f7fa',
-        outline: isDragOver ? '2px dashed #1677ff' : 'none', outlineOffset: -2,
-        overflow: 'hidden', transition: 'background 0.15s ease',
+        outline: isDragOver ? '2px dashed #1677ff' : 'none',
+        outlineOffset: -2,
+        overflow: 'hidden',
+        transition: 'background 0.15s ease',
       }}
     >
       {/* CSS 覆盖:禁用 flowgram 选择框/连线层的 pointer-events */}
@@ -739,12 +1016,35 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
 function ZoomToolbar() {
   const tools = usePlaygroundTools();
   return (
-    <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', padding: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
+    <div
+      style={{
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        zIndex: 10,
+        background: '#fff',
+        borderRadius: 8,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        padding: 4,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
       <Space size={2}>
         <Button size="small" type="text" icon={<MinusOutlined />} onClick={() => tools.zoomout()} />
-        <span style={{ fontSize: 12, minWidth: 36, textAlign: 'center', color: 'rgba(0,0,0,0.65)' }}>{Math.round(tools.zoom * 100)}%</span>
+        <span
+          style={{ fontSize: 12, minWidth: 36, textAlign: 'center', color: 'rgba(0,0,0,0.65)' }}
+        >
+          {Math.round(tools.zoom * 100)}%
+        </span>
         <Button size="small" type="text" icon={<PlusOutlined />} onClick={() => tools.zoomin()} />
-        <Button size="small" type="text" icon={<CompressOutlined />} onClick={() => void tools.fitView()} />
+        <Button
+          size="small"
+          type="text"
+          icon={<CompressOutlined />}
+          onClick={() => void tools.fitView()}
+        />
         <Button
           size="small"
           type="text"
@@ -757,7 +1057,11 @@ function ZoomToolbar() {
   );
 }
 
-function SelectionBridge({ onSchemaChange }: { onSchemaChange?: (schema: WorkflowSchema) => void }) {
+function SelectionBridge({
+  onSchemaChange,
+}: {
+  onSchemaChange?: (schema: WorkflowSchema) => void;
+}) {
   const ctx = useClientContext();
   const setSelectedNode = useProcessEditorStore((s) => s.setSelectedNode);
   const onSchemaChangeRef = useRef(onSchemaChange);
@@ -778,12 +1082,17 @@ function SelectionBridge({ onSchemaChange }: { onSchemaChange?: (schema: Workflo
       if (onSchemaChangeRef.current) {
         const schema = exportSchema();
         const sig = JSON.stringify(schema);
-        if (sig !== lastDocSig) { lastDocSig = sig; onSchemaChangeRef.current(schema); }
+        if (sig !== lastDocSig) {
+          lastDocSig = sig;
+          onSchemaChangeRef.current(schema);
+        }
       }
     }, 300);
     return () => clearInterval(interval);
   }, [ctx.selection, ctx.document, exportSchema]);
 
-  useEffect(() => { setSelectedNode(selectedId); }, [selectedId, setSelectedNode]);
+  useEffect(() => {
+    setSelectedNode(selectedId);
+  }, [selectedId, setSelectedNode]);
   return null;
 }

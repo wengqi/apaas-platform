@@ -10,10 +10,14 @@ import { PermissionModule } from './permission/permission.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { TenantModule } from './tenant/tenant.module.js';
 import { HealthController } from './health.controller.js';
+import { envValidation } from './config/env.validation.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: envValidation,
+    }),
     AuthModule,
     TenantModule,
     ApplicationModule,

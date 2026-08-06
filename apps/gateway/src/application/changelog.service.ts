@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@apaas/db';
-import { asAppId, type ChangeSet } from '@apaas/shared';
-import { Prisma } from '@apaas/db';
+import { type ChangeSet } from '@apaas/shared';
 
 /**
  * 变更追踪服务 — 记录开发态操作，生成变更清单。
@@ -52,10 +51,7 @@ export class ChangeLogService {
    * 获取自上次发布以来的变更清单。
    * 聚合 ChangeLog 记录，按模块分组。
    */
-  async getChangeSet(
-    tenantId: string,
-    appId: string,
-  ): Promise<ChangeSet> {
+  async getChangeSet(tenantId: string, appId: string): Promise<ChangeSet> {
     // 1. 获取最近一次 PUBLISHED 的 AppVersion
     const lastVersion = await prisma.appVersion.findFirst({
       where: { tenantId, appId, status: 'PUBLISHED' },
@@ -79,10 +75,7 @@ export class ChangeLogService {
     });
 
     // 3. 按模块分组
-    const moduleMap = new Map<
-      string,
-      ChangeSet['modules'][number]['changes']
-    >();
+    const moduleMap = new Map<string, ChangeSet['modules'][number]['changes']>();
 
     for (const log of logs) {
       const module = log.module;

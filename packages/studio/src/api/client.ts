@@ -1,5 +1,5 @@
 import axios, { type AxiosError, type AxiosResponse } from 'axios';
-import { TOKEN_KEY, USER_KEY } from '../stores/auth';
+import { useAuthStore } from '@apaas/shared/stores';
 
 /**
  * Axios 实例。
@@ -22,9 +22,9 @@ export interface ApiResponse<T> {
   error?: { code: string; message: string; fieldErrors?: Record<string, string> };
 }
 
-/** 请求拦截器:从 localStorage 取 token 加到 Authorization header。 */
+/** 请求拦截器:从 auth store 取 token 加到 Authorization header。 */
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = useAuthStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -36,8 +36,7 @@ client.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
+      useAuthStore.getState().logout();
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

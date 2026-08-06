@@ -18,7 +18,7 @@ export class PermissionService {
   /**
    * 获取用户的所有角色 ID（直接角色 + 组织授权角色）。
    */
-  async getUserRoleIds(userId: string, tenantId: string): Promise<string[]> {
+  async getUserRoleIds(userId: string, _tenantId: string): Promise<string[]> {
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({
         where: { userId },

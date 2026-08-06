@@ -18,7 +18,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { publishApi } from '../api/publish.js';
 import type { ChangeSet } from '@apaas/shared';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text, Paragraph: _Paragraph } = Typography;
 const { TextArea } = Input;
 
 /**
@@ -44,8 +44,7 @@ export default function PublishWizard() {
 
   /** 发布 mutation */
   const publishMutation = useMutation({
-    mutationFn: () =>
-      publishApi.publish(appId!, { version, description }),
+    mutationFn: () => publishApi.publish(appId!, { version, description }),
     onSuccess: () => {
       message.success('发布成功');
       navigate(`/app/${appId}/versions`);
@@ -57,7 +56,8 @@ export default function PublishWizard() {
   });
 
   /** 步骤是否可前进 */
-  const canProceed = version.trim() !== '' && description.trim() !== '' && /^\d+\.\d+\.\d+$/.test(version);
+  const canProceed =
+    version.trim() !== '' && description.trim() !== '' && /^\d+\.\d+\.\d+$/.test(version);
 
   const steps = [
     {
@@ -97,9 +97,7 @@ export default function PublishWizard() {
         <Descriptions column={1} bordered style={{ maxWidth: 500 }}>
           <Descriptions.Item label="版本号">{version}</Descriptions.Item>
           <Descriptions.Item label="更新说明">{description}</Descriptions.Item>
-          <Descriptions.Item label="变更模块数">
-            {changeSet?.modules.length ?? 0}
-          </Descriptions.Item>
+          <Descriptions.Item label="变更模块数">{changeSet?.modules.length ?? 0}</Descriptions.Item>
           <Descriptions.Item label="变更总数">
             {changeSet?.modules.reduce((sum, m) => sum + m.changes.length, 0) ?? 0}
           </Descriptions.Item>
@@ -110,8 +108,17 @@ export default function PublishWizard() {
 
   return (
     <Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={4} style={{ margin: 0 }}>发布新版本</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 24,
+        }}
+      >
+        <Title level={4} style={{ margin: 0 }}>
+          发布新版本
+        </Title>
         <Button onClick={() => navigate(-1)}>返回</Button>
       </div>
 
@@ -125,15 +132,9 @@ export default function PublishWizard() {
 
       <div style={{ marginTop: 24, textAlign: 'right' }}>
         <Space>
-          {current > 0 && (
-            <Button onClick={() => setCurrent(current - 1)}>上一步</Button>
-          )}
+          {current > 0 && <Button onClick={() => setCurrent(current - 1)}>上一步</Button>}
           {current < steps.length - 1 ? (
-            <Button
-              type="primary"
-              disabled={!canProceed}
-              onClick={() => setCurrent(current + 1)}
-            >
+            <Button type="primary" disabled={!canProceed} onClick={() => setCurrent(current + 1)}>
               下一步
             </Button>
           ) : (

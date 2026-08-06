@@ -8,7 +8,6 @@ import {
   Select,
   Skeleton,
   Space,
-  Switch,
   Table,
   Tag,
   Tooltip,
@@ -33,7 +32,7 @@ import {
   type RecordFilterCondition,
   type RecordItem,
 } from '../../api/objects.js';
-import { getFieldTypeMeta, type FieldType } from '../../constants/fieldTypes.js';
+import { type FieldType } from '../../constants/fieldTypes.js';
 import RecordFormDrawer from './RecordFormDrawer.js';
 
 const { Text } = Typography;
@@ -172,13 +171,21 @@ export default function RecordList({ object }: RecordListProps) {
       key: 'createdAt',
       title: '创建时间',
       width: 160,
-      render: (r) => <Text type="secondary" style={{ fontSize: 12 }}>{formatDateTime(r.createdAt)}</Text>,
+      render: (r) => (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {formatDateTime(r.createdAt)}
+        </Text>
+      ),
     },
     {
       key: 'updatedAt',
       title: '更新时间',
       width: 160,
-      render: (r) => <Text type="secondary" style={{ fontSize: 12 }}>{formatDateTime(r.updatedAt)}</Text>,
+      render: (r) => (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {formatDateTime(r.updatedAt)}
+        </Text>
+      ),
     },
     {
       key: 'createdBy',
@@ -199,11 +206,7 @@ export default function RecordList({ object }: RecordListProps) {
     width: 160,
     sorter: true,
     sortOrder:
-      sort?.field === field.apiName
-        ? sort.order === 'asc'
-          ? 'ascend'
-          : 'descend'
-        : undefined,
+      sort?.field === field.apiName ? (sort.order === 'asc' ? 'ascend' : 'descend') : undefined,
     render: (_: unknown, record: RecordItem) => (
       <RecordCellValue field={field} value={record.data[field.apiName]} />
     ),
@@ -245,19 +248,27 @@ export default function RecordList({ object }: RecordListProps) {
     ),
   };
 
-  const columns: ColumnsType<RecordItem> = [...businessColumns, ...systemColumns.map((c) => ({
-    title: c.title,
-    key: c.key,
-    width: c.width,
-    render: (_: unknown, record: RecordItem) => c.render(record),
-  })), actionColumn];
+  const columns: ColumnsType<RecordItem> = [
+    ...businessColumns,
+    ...systemColumns.map((c) => ({
+      title: c.title,
+      key: c.key,
+      width: c.width,
+      render: (_: unknown, record: RecordItem) => c.render(record),
+    })),
+    actionColumn,
+  ];
 
   // -------------------------------------------------------------------------
   // 事件处理
   // -------------------------------------------------------------------------
 
   /** 点击列标题排序(三态:asc → desc → 取消)。 */
-  const handleTableChange = (pagination: TablePaginationConfig, _filters: unknown, sorter: unknown) => {
+  const handleTableChange = (
+    pagination: TablePaginationConfig,
+    _filters: unknown,
+    sorter: unknown,
+  ) => {
     const s = sorter as { field?: string; columnKey?: string; order?: 'ascend' | 'descend' };
     const colKey = s.columnKey as string | undefined;
     if (colKey && s.order) {
@@ -365,7 +376,9 @@ export default function RecordList({ object }: RecordListProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filterRows.map((row, index) => {
             const field = object.fields.find((f) => f.apiName === row.field);
-            const operators: FilterOperator[] = field ? getOperatorsForType(field.type) : ['eq', 'ne'];
+            const operators: FilterOperator[] = field
+              ? getOperatorsForType(field.type)
+              : ['eq', 'ne'];
             const needValue = !NO_VALUE_OPERATORS.includes(row.operator);
             return (
               <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -423,7 +436,12 @@ export default function RecordList({ object }: RecordListProps) {
             <Button size="small" icon={<ReloadOutlined />} onClick={handleResetFilter}>
               重置
             </Button>
-            <Button type="primary" size="small" icon={<FilterOutlined />} onClick={handleApplyFilter}>
+            <Button
+              type="primary"
+              size="small"
+              icon={<FilterOutlined />}
+              onClick={handleApplyFilter}
+            >
               筛选
             </Button>
           </Space>
@@ -434,7 +452,10 @@ export default function RecordList({ object }: RecordListProps) {
       {isLoading ? (
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : records.length === 0 ? (
-        <Empty description={filterStr ? '未找到匹配记录' : '还没有记录'} style={{ padding: '60px 0' }}>
+        <Empty
+          description={filterStr ? '未找到匹配记录' : '还没有记录'}
+          style={{ padding: '60px 0' }}
+        >
           {!filterStr && (
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
               新增第一条记录
@@ -506,11 +527,7 @@ function RecordCellValue({ field, value }: { field: Field; value: unknown }) {
     );
   }
   if (type === 'checkbox') {
-    return value === true || value === 'true' ? (
-      <Tag color="green">是</Tag>
-    ) : (
-      <Tag>否</Tag>
-    );
+    return value === true || value === 'true' ? <Tag color="green">是</Tag> : <Tag>否</Tag>;
   }
   if (type === 'date') {
     return <Text style={{ fontSize: 13 }}>{formatDate(String(value))}</Text>;
@@ -520,7 +537,11 @@ function RecordCellValue({ field, value }: { field: Field; value: unknown }) {
   }
   if (type === 'currency') {
     const code = field.config.currency?.code ?? '';
-    return <Text style={{ fontSize: 13 }}>{code} {String(value)}</Text>;
+    return (
+      <Text style={{ fontSize: 13 }}>
+        {code} {String(value)}
+      </Text>
+    );
   }
   if (type === 'percent') {
     return <Text style={{ fontSize: 13 }}>{String(value)}%</Text>;
@@ -612,7 +633,16 @@ function getOperatorsForType(type: FieldType): FilterOperator[] {
     case 'long_text':
     case 'rich_text':
     case 'auto_number':
-      return ['eq', 'ne', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+      return [
+        'eq',
+        'ne',
+        'contains',
+        'not_contains',
+        'starts_with',
+        'ends_with',
+        'is_empty',
+        'is_not_empty',
+      ];
     case 'number':
     case 'currency':
     case 'percent':

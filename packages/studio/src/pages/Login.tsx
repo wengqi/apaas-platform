@@ -3,13 +3,13 @@ import { Form, Input, Button, message, Typography, Space } from 'antd';
 import { LockOutlined, MailOutlined, ThunderboltFilled, GlobalOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import client, { type ApiResponse } from '../api/client.js';
-import { useAuthStore, type User } from '../stores/auth.js';
+import { useAuthStore, type AuthUser } from '@apaas/shared/stores';
 
 const { Title, Text } = Typography;
 
 interface LoginPayload {
   accessToken: string;
-  user: User;
+  user: AuthUser;
 }
 
 interface LoginForm {

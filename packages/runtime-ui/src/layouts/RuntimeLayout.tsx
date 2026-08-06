@@ -1,7 +1,7 @@
-import { Avatar, Dropdown, Layout, Space, Typography, Button, Badge } from 'antd';
+import { Avatar, Dropdown, Layout, Space, Typography, Button } from 'antd';
 import { LogoutOutlined, UserOutlined, HomeOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../stores/auth';
+import { useAuthStore } from '@apaas/shared/stores';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -21,7 +21,10 @@ export default function RuntimeLayout() {
   };
 
   const navBtnStyle = (path: string): React.CSSProperties => ({
-    color: location.pathname === path || (path === '/home' && location.pathname === '/home') ? '#fff' : 'rgba(255,255,255,0.65)',
+    color:
+      location.pathname === path || (path === '/home' && location.pathname === '/home')
+        ? '#fff'
+        : 'rgba(255,255,255,0.65)',
     background: location.pathname.startsWith(path) ? 'rgba(255,255,255,0.15)' : 'transparent',
     border: 'none',
   });

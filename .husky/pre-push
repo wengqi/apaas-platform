@@ -1,0 +1,4 @@
+echo "📋 Running typecheck and tests before push..."
+pnpm typecheck || (echo "❌ Type check failed. Fix errors before pushing." && exit 1)
+pnpm test || (echo "❌ Tests failed. Fix failures before pushing." && exit 1)
+echo "✅ All checks passed. Pushing..."

@@ -11,20 +11,16 @@
  *   后端 → jsonLogic.apply(rule, data) → boolean
  */
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Divider, Form, Input, Space, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
-import { Query, Builder, Utils as QbUtils } from '@react-awesome-query-builder/antd';
-import type { ImmutableTree, BuilderProps, Config } from '@react-awesome-query-builder/antd';
+import { Query, Builder } from '@react-awesome-query-builder/antd';
+import type { ImmutableTree, BuilderProps } from '@react-awesome-query-builder/antd';
 import '@react-awesome-query-builder/antd/css/styles.css';
 
 import { resolveVariables, type VariableOption } from './variable-resolver.js';
-import {
-  buildQbConfig,
-  loadFromJsonLogic,
-  exportToJsonLogic,
-} from './query-builder-config.js';
+import { buildQbConfig, loadFromJsonLogic, exportToJsonLogic } from './query-builder-config.js';
 import {
   expressionToJsonLogic,
   jsonLogicToExpression,
@@ -83,23 +79,16 @@ export default function ConditionConfigForm({
   );
 
   /** RAQB 配置（从变量列表构建） */
-  const qbConfig = useMemo(
-    () => buildQbConfig(variableOptions),
-    [variableOptions],
-  );
+  const qbConfig = useMemo(() => buildQbConfig(variableOptions), [variableOptions]);
 
-  const update = (next: ConditionBranchItem[]) =>
-    onChange({ ...data, conditions: next });
+  const update = (next: ConditionBranchItem[]) => onChange({ ...data, conditions: next });
 
   const updateBranch = (index: number, patch: Partial<ConditionBranchItem>) => {
     update(branches.map((b, i) => (i === index ? { ...b, ...patch } : b)));
   };
 
   const addBranch = () => {
-    update([
-      ...branches,
-      { label: `分支 ${branches.length + 1}`, condition: null },
-    ]);
+    update([...branches, { label: `分支 ${branches.length + 1}`, condition: null }]);
   };
 
   const removeBranch = (index: number) => {
@@ -153,13 +142,7 @@ export default function ConditionConfigForm({
             )}
           </div>
         ))}
-        <Button
-          size="small"
-          type="dashed"
-          icon={<PlusOutlined />}
-          onClick={addBranch}
-          block
-        >
+        <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={addBranch} block>
           添加分支
         </Button>
       </Space>
@@ -219,7 +202,7 @@ function ConditionEditor({
       treeRef.current = immutableTree;
       const logic = exportToJsonLogic(immutableTree, qbConfig);
       onChange(logic);
-      forceUpdate(n => n + 1);
+      forceUpdate((n) => n + 1);
     },
     [qbConfig, onChange],
   );
@@ -237,7 +220,7 @@ function ConditionEditor({
   const handleTabChange = (key: string) => {
     if (key === 'visual') {
       treeRef.current = loadFromJsonLogic(normalizedCondition, qbConfig);
-      forceUpdate(n => n + 1);
+      forceUpdate((n) => n + 1);
       setActiveTab('visual');
     } else {
       setExprText(jsonLogicToExpression(normalizedCondition));
@@ -245,7 +228,7 @@ function ConditionEditor({
     }
   };
 
-  const validation = validateExpression(exprText);
+  const _validation = validateExpression(exprText);
 
   return (
     <>

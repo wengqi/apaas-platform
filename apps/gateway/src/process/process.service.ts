@@ -243,21 +243,13 @@ export class ProcessService {
   // ===========================================================================
 
   /** 启动流程实例。 */
-  async startInstance(
-    tenantId: string,
-    processId: string,
-    req: StartInstanceRequest,
-  ) {
+  async startInstance(tenantId: string, processId: string, req: StartInstanceRequest) {
     const triggerContext: Record<string, unknown> = {
       triggerType: 'MANUAL',
       triggeredByUser: req.triggeredByUser ?? null,
       inputs: req.variables ?? {},
     };
-    const instanceId = await this.engine.startProcess(
-      tenantId,
-      processId,
-      triggerContext,
-    );
+    const instanceId = await this.engine.startProcess(tenantId, processId, triggerContext);
     return this.getInstance(tenantId, instanceId);
   }
 
@@ -304,12 +296,15 @@ export class ProcessService {
     const activeNodeIds = (instance.activeNodeIds as string[]) ?? [];
 
     // 构建节点状态映射
-    const nodeStatusMap: Record<string, {
-      status: string;
-      startedAt?: string;
-      finishedAt?: string;
-      error?: string;
-    }> = {};
+    const nodeStatusMap: Record<
+      string,
+      {
+        status: string;
+        startedAt?: string;
+        finishedAt?: string;
+        error?: string;
+      }
+    > = {};
 
     // 从 NodeExecution 记录构建状态
     for (const exec of instance.nodeExecutions) {
@@ -428,13 +423,7 @@ export class ProcessService {
   // ===========================================================================
 
   /** 列出我的待办任务。 */
-  async listTasks(
-    tenantId: string,
-    userId: string,
-    status?: string,
-    page = 1,
-    pageSize = 20,
-  ) {
+  async listTasks(tenantId: string, userId: string, status?: string, page = 1, pageSize = 20) {
     const where: Prisma.ProcessTaskWhereInput = { tenantId };
     // 我的待办：assignee = userId 或候选组匹配（candidateGroups 存角色ID，需用用户角色匹配）
     const [userRoles, orgMembers] = await Promise.all([
@@ -538,7 +527,8 @@ export class ProcessService {
       where: { id: userId },
       select: { email: true },
     });
-    const isAssignee = task.assignee === userId || (user?.email != null && task.assignee === user.email);
+    const isAssignee =
+      task.assignee === userId || (user?.email != null && task.assignee === user.email);
     // 查询用户角色（直接 + 组织授权）
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({ where: { userId }, select: { roleId: true } }),
@@ -565,12 +555,7 @@ export class ProcessService {
   }
 
   /** 转办任务给他人。 */
-  async delegateTask(
-    tenantId: string,
-    taskId: string,
-    userId: string,
-    delegatedTo: string,
-  ) {
+  async delegateTask(tenantId: string, taskId: string, userId: string, delegatedTo: string) {
     const task = await prisma.processTask.findFirst({
       where: { id: taskId, tenantId },
     });
@@ -631,11 +616,7 @@ export class ProcessService {
   }
 
   /** 创建模版。 */
-  async createTemplate(
-    tenantId: string,
-    appId: string,
-    req: CreateTemplateRequest,
-  ) {
+  async createTemplate(tenantId: string, appId: string, req: CreateTemplateRequest) {
     const existing = await prisma.notificationTemplate.findFirst({
       where: { tenantId, appId, name: req.name },
     });
@@ -661,11 +642,7 @@ export class ProcessService {
   }
 
   /** 更新模版。 */
-  async updateTemplate(
-    tenantId: string,
-    templateId: string,
-    req: UpdateTemplateRequest,
-  ) {
+  async updateTemplate(tenantId: string, templateId: string, req: UpdateTemplateRequest) {
     const existing = await prisma.notificationTemplate.findFirst({
       where: { id: templateId, tenantId },
     });
@@ -701,7 +678,7 @@ export class ProcessService {
   // DTO 映射
   // ===========================================================================
 
-  private toProcessDefDto(d: Prisma.ProcessDefGetPayload<{}>) {
+  private toProcessDefDto(d: Prisma.ProcessDefGetPayload<Record<string, unknown>>) {
     return {
       id: d.id,
       tenantId: d.tenantId,
@@ -748,8 +725,10 @@ export class ProcessService {
       endTime: i.finishedAt?.toISOString(),
       finishedAt: i.finishedAt?.toISOString(),
       error: i.error ?? undefined,
-      triggeredBy: (i.triggerContext as Record<string, unknown> | null)?.['triggeredBy'] as string | undefined,
-      triggeredByUser: (i.triggerContext as Record<string, unknown> | null)?.['triggeredByUser'] as string | undefined,
+      triggeredBy: (i.triggerContext as Record<string, unknown> | null)?.['triggeredBy'] as
+        string | undefined,
+      triggeredByUser: (i.triggerContext as Record<string, unknown> | null)?.['triggeredByUser'] as
+        string | undefined,
       processDef: 'processDef' in i ? i.processDef : undefined,
       nodeExecutions: 'nodeExecutions' in i ? i.nodeExecutions : undefined,
       tasks: 'tasks' in i ? i.tasks : undefined,
@@ -770,7 +749,7 @@ export class ProcessService {
     return map[status] ?? 'pending';
   }
 
-  private toTemplateDto(t: Prisma.NotificationTemplateGetPayload<{}>) {
+  private toTemplateDto(t: Prisma.NotificationTemplateGetPayload<Record<string, unknown>>) {
     return {
       id: t.id,
       tenantId: t.tenantId,

@@ -1,23 +1,10 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApplicationService } from './application.service.js';
 import { ChangeLogService } from './changelog.service.js';
-import type {
-  CreateAppRequest,
-  UpdateAppRequest,
-  PublishAppRequest,
-} from '@apaas/shared';
+import type { CreateAppRequest, UpdateAppRequest, PublishAppRequest } from '@apaas/shared';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
@@ -26,6 +13,8 @@ import { requireTenantId } from '../auth/tenant-context.js';
  * 所有路由受 PermissionGuard 保护（认证 + 授权），从 token 中提取 tenantId。
  * 查询路由仅认证即可；管理类路由需 MANAGE 权限。
  */
+@ApiTags('Application')
+@ApiBearerAuth()
 @Controller('apps')
 @UseGuards(PermissionGuard)
 export class ApplicationController {
@@ -78,11 +67,7 @@ export class ApplicationController {
   @Post(':appId/archive')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async archive(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const app = await this.appService.archive(
-      requireTenantId(req),
-      appId,
-      req.user.id,
-    );
+    const app = await this.appService.archive(requireTenantId(req), appId, req.user.id);
     return { ok: true as const, data: app };
   }
 
@@ -93,19 +78,12 @@ export class ApplicationController {
   @Post(':appId/check')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async check(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const result = await this.appService.check(
-      requireTenantId(req),
-      appId,
-      req.user.id,
-    );
+    const result = await this.appService.check(requireTenantId(req), appId, req.user.id);
     return { ok: true as const, data: result };
   }
 
   @Get(':appId/checks')
-  async listChecks(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-  ) {
+  async listChecks(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const checks = await this.appService.listChecks(requireTenantId(req), appId);
     return { ok: true as const, data: checks };
   }
@@ -115,14 +93,8 @@ export class ApplicationController {
   // ===========================================================================
 
   @Get(':appId/changes')
-  async getChanges(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-  ) {
-    const changeSet = await this.changeLogService.getChangeSet(
-      requireTenantId(req),
-      appId,
-    );
+  async getChanges(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
+    const changeSet = await this.changeLogService.getChangeSet(requireTenantId(req), appId);
     return { ok: true as const, data: changeSet };
   }
 
@@ -137,24 +109,13 @@ export class ApplicationController {
     @Param('appId') appId: string,
     @Body() body: PublishAppRequest,
   ) {
-    const version = await this.appService.publish(
-      requireTenantId(req),
-      appId,
-      req.user.id,
-      body,
-    );
+    const version = await this.appService.publish(requireTenantId(req), appId, req.user.id, body);
     return { ok: true as const, data: version };
   }
 
   @Get(':appId/versions')
-  async listVersions(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-  ) {
-    const versions = await this.appService.listVersions(
-      requireTenantId(req),
-      appId,
-    );
+  async listVersions(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
+    const versions = await this.appService.listVersions(requireTenantId(req), appId);
     return { ok: true as const, data: versions };
   }
 
@@ -164,11 +125,7 @@ export class ApplicationController {
     @Param('appId') appId: string,
     @Param('versionId') versionId: string,
   ) {
-    const version = await this.appService.getVersion(
-      requireTenantId(req),
-      appId,
-      versionId,
-    );
+    const version = await this.appService.getVersion(requireTenantId(req), appId, versionId);
     return { ok: true as const, data: version };
   }
 

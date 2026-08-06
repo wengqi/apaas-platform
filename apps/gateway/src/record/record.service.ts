@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Inject,
-  forwardRef,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { FieldType } from '@apaas/shared';
 import { FormulaEngine } from '../object/formula-engine.js';
@@ -67,11 +62,6 @@ interface AutoNumberFieldConfig {
   autoNumber?: { format?: string };
 }
 
-/** 公式配置的最小结构。 */
-interface FormulaFieldConfig {
-  formula?: { expression?: string };
-}
-
 /**
  * 记录服务 — 基于 JSONB 宽表的记录 CRUD。
  *
@@ -120,10 +110,9 @@ export class RecordService {
 
     // 注入行级权限条件
     if (permissionContext?.condition) {
-      const conditionWhere = translateCondition(
-        permissionContext.condition,
-        { currentUser: permissionContext.currentUserId },
-      );
+      const conditionWhere = translateCondition(permissionContext.condition, {
+        currentUser: permissionContext.currentUserId,
+      });
       if (conditionWhere) {
         if (where.AND) {
           (where.AND as Prisma.RecordWhereInput[]).push(conditionWhere);
@@ -203,10 +192,7 @@ export class RecordService {
       const format = config?.autoNumber?.format;
       if (!format) continue;
       // 用户即便传了该字段值也以系统生成为准（自动编号由系统掌控）
-      computedData[field.apiName] = await this.autoNumberGenerator.generate(
-        format,
-        objectId,
-      );
+      computedData[field.apiName] = await this.autoNumberGenerator.generate(format, objectId);
     }
 
     // 2. 计算 Formula 字段（基于已含自动编号的 data）
@@ -229,13 +215,10 @@ export class RecordService {
 
     // 触发记录创建事件（非阻塞）
     const result = this.toResult(record);
-    void this.triggerService.onRecordEvent(
-      tenantId,
-      obj.appId,
-      objectId,
-      'created',
-      { id: record.id, ...record.data as Record<string, unknown> },
-    );
+    void this.triggerService.onRecordEvent(tenantId, obj.appId, objectId, 'created', {
+      id: record.id,
+      ...(record.data as Record<string, unknown>),
+    });
 
     return result;
   }
@@ -292,13 +275,10 @@ export class RecordService {
 
     // 触发记录更新事件（非阻塞）
     const result = this.toResult(record);
-    void this.triggerService.onRecordEvent(
-      tenantId,
-      existing.appId,
-      existing.objectId,
-      'updated',
-      { id: record.id, ...mergedData },
-    );
+    void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'updated', {
+      id: record.id,
+      ...mergedData,
+    });
 
     return result;
   }
@@ -320,13 +300,10 @@ export class RecordService {
     if (result.count === 0) throw new NotFoundException('记录不存在');
 
     // 触发记录删除事件（非阻塞）
-    void this.triggerService.onRecordEvent(
-      tenantId,
-      existing.appId,
-      existing.objectId,
-      'deleted',
-      { id: recordId, ...(existing.data as Record<string, unknown>) },
-    );
+    void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'deleted', {
+      id: recordId,
+      ...(existing.data as Record<string, unknown>),
+    });
   }
 
   // ===========================================================================
@@ -347,7 +324,7 @@ export class RecordService {
    * 若提供了 fieldScope，则仅保留白名单内的字段（字段级权限）。
    */
   private toResult(
-    record: Prisma.RecordGetPayload<{}>,
+    record: Prisma.RecordGetPayload<Record<string, unknown>>,
     fieldScope?: string[] | null,
   ): RecordResult {
     const fullData = (record.data as Record<string, unknown>) ?? {};
@@ -355,9 +332,7 @@ export class RecordService {
     // 字段级投影：仅保留 fieldScope 白名单中的字段
     const data =
       fieldScope && fieldScope.length > 0
-        ? Object.fromEntries(
-            Object.entries(fullData).filter(([key]) => fieldScope.includes(key)),
-          )
+        ? Object.fromEntries(Object.entries(fullData).filter(([key]) => fieldScope.includes(key)))
         : fullData;
 
     return {
@@ -485,9 +460,7 @@ export class RecordService {
    * 系统字段（id/createdAt/updatedAt/createdBy/updatedBy）按列排序；
    * 非 JSONB 路径排序将在后续迭代通过 raw query 增强。
    */
-  private buildOrderBy(
-    sort?: string,
-  ): Prisma.RecordOrderByWithRelationInput {
+  private buildOrderBy(sort?: string): Prisma.RecordOrderByWithRelationInput {
     if (!sort) return { createdAt: 'desc' };
 
     const [field, orderStr] = sort.split(':');

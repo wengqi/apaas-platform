@@ -30,6 +30,7 @@ interface RecordFormDrawerProps {
 }
 
 /** 表单值:field apiName → 值(动态键,AntD Form 需宽松索引签名)。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RecordFormValues = Record<string, any>;
 
 /**
@@ -137,9 +138,7 @@ export default function RecordFormDrawer({
         {fields.map((field) => (
           <FieldFormItem key={field.id} field={field} />
         ))}
-        {fields.length === 0 && (
-          <Text type="secondary">该对象暂无字段</Text>
-        )}
+        {fields.length === 0 && <Text type="secondary">该对象暂无字段</Text>}
       </Form>
     </Drawer>
   );
@@ -171,7 +170,9 @@ function FieldFormItem({ field }: { field: Field }) {
     <Form.Item
       label={label}
       name={field.apiName}
-      rules={field.required && !readonly ? [{ required: true, message: `请输入${field.label}` }] : []}
+      rules={
+        field.required && !readonly ? [{ required: true, message: `请输入${field.label}` }] : []
+      }
     >
       <FieldControl field={field} disabled={readonly} />
     </Form.Item>
@@ -179,13 +180,7 @@ function FieldFormItem({ field }: { field: Field }) {
 }
 
 /** 按字段类型渲染表单控件。 */
-function FieldControl({
-  field,
-  disabled,
-}: {
-  field: Field;
-  disabled: boolean;
-}) {
+function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) {
   const type = field.type;
 
   if (disabled) {
@@ -201,7 +196,13 @@ function FieldControl({
     case 'percent':
       return <InputNumber style={{ width: '100%' }} placeholder={`请输入${field.label}`} />;
     case 'currency':
-      return <InputNumber style={{ width: '100%' }} placeholder={`请输入${field.label}`} addonAfter={field.config.currency?.code ?? 'CNY'} />;
+      return (
+        <InputNumber
+          style={{ width: '100%' }}
+          placeholder={`请输入${field.label}`}
+          addonAfter={field.config.currency?.code ?? 'CNY'}
+        />
+      );
     case 'single_select': {
       const options = (field.config.options ?? []).filter((o) => !!o.label);
       return (

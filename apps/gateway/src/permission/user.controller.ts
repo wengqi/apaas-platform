@@ -1,11 +1,23 @@
 import {
-  Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Req,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import { UserService } from './user.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
+@ApiTags('User')
+@ApiBearerAuth()
 @Controller('permissions/users')
 @UseGuards(TenantAdminGuard)
 export class UserController {
@@ -28,9 +40,17 @@ export class UserController {
   }
 
   @Post()
-  async create(@Req() req: AuthenticatedRequest, @Body() body: {
-    email: string; name: string; password: string; roleIds?: string[]; orgIds?: string[];
-  }) {
+  async create(
+    @Req() req: AuthenticatedRequest,
+    @Body()
+    body: {
+      email: string;
+      name: string;
+      password: string;
+      roleIds?: string[];
+      orgIds?: string[];
+    },
+  ) {
     return { ok: true, data: await this.userService.create(requireTenantId(req), body) };
   }
 

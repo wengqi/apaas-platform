@@ -39,7 +39,6 @@ import {
 import {
   getInstanceStateMeta,
   getNodeStateMeta,
-  getNodeMeta,
   INSTANCE_STATE_META,
 } from '../../constants/process.js';
 
@@ -158,9 +157,7 @@ export default function ProcessMonitor() {
       dataIndex: 'state',
       render: (state: string) => {
         const meta = getInstanceStateMeta(state);
-        return (
-          <Badge status={meta.badgeStatus} text={meta.label} />
-        );
+        return <Badge status={meta.badgeStatus} text={meta.label} />;
       },
     },
     { title: '触发者', dataIndex: 'triggeredByUser', render: (v) => v ?? '系统' },
@@ -177,11 +174,7 @@ export default function ProcessMonitor() {
       title: '操作',
       render: (_, r) => (
         <Space>
-          <Button
-            size="small"
-            type="link"
-            onClick={() => setSelectedInstanceId(r.id)}
-          >
+          <Button size="small" type="link" onClick={() => setSelectedInstanceId(r.id)}>
             详情
           </Button>
           {r.state === 'waiting' && (
@@ -273,7 +266,14 @@ export default function ProcessMonitor() {
   ];
 
   return (
-    <div style={{ height: 'calc(100vh - 56px)', display: 'flex', flexDirection: 'column', background: '#f5f7fa' }}>
+    <div
+      style={{
+        height: 'calc(100vh - 56px)',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#f5f7fa',
+      }}
+    >
       <Tabs
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'instances' | 'tasks')}
@@ -291,9 +291,7 @@ export default function ProcessMonitor() {
                 setStateFilter={setStateFilter}
                 processes={processes ?? []}
                 processId={processId}
-                onProcessChange={(v) =>
-                  setSearchParams(v ? { processId: v } : {})
-                }
+                onProcessChange={(v) => setSearchParams(v ? { processId: v } : {})}
               />
             ),
           },
@@ -347,7 +345,10 @@ export default function ProcessMonitor() {
         width={900}
       >
         {instanceReport && (
-          <InstanceDetail report={instanceReport} processName={processNameMap.get(instanceReport.instance.processDefId)} />
+          <InstanceDetail
+            report={instanceReport}
+            processName={processNameMap.get(instanceReport.instance.processDefId)}
+          />
         )}
       </Modal>
 
@@ -460,7 +461,10 @@ function InstanceDetail({
         style={{ marginBottom: 16 }}
         items={[
           { label: '流程', children: processName ?? instance.processKey },
-          { label: '状态', children: <Badge status={stateMeta.badgeStatus} text={stateMeta.label} /> },
+          {
+            label: '状态',
+            children: <Badge status={stateMeta.badgeStatus} text={stateMeta.label} />,
+          },
           { label: '触发者', children: instance.triggeredByUser ?? '系统' },
           { label: '开始时间', children: dayjs(instance.startTime).format('YYYY-MM-DD HH:mm:ss') },
           { label: '耗时', children: formatDuration(instance.startTime, instance.endTime) },
@@ -524,12 +528,7 @@ interface TaskProcessPanelProps {
   onDelegate: (userId: string, comment?: string) => void;
 }
 
-function TaskProcessPanel({
-  task,
-  onClose,
-  onComplete,
-  onDelegate,
-}: TaskProcessPanelProps) {
+function TaskProcessPanel({ task, onClose, onComplete, onDelegate }: TaskProcessPanelProps) {
   const [form] = Form.useForm();
   const [delegateMode, setDelegateMode] = useState(false);
 
@@ -594,13 +593,26 @@ function TaskProcessPanel({
             items={[
               { label: '流程', children: task.processName ?? '—' },
               { label: '发起人', children: task.starter ?? '—' },
-              { label: '到达时间', children: task.arrivedAt ? dayjs(task.arrivedAt).format('MM-DD HH:mm') : '—' },
-              { label: '截止', children: task.dueAt ? dayjs(task.dueAt).format('MM-DD HH:mm') : '—' },
+              {
+                label: '到达时间',
+                children: task.arrivedAt ? dayjs(task.arrivedAt).format('MM-DD HH:mm') : '—',
+              },
+              {
+                label: '截止',
+                children: task.dueAt ? dayjs(task.dueAt).format('MM-DD HH:mm') : '—',
+              },
             ]}
           />
           {task.variables && Object.keys(task.variables).length > 0 && (
             <Card size="small" title="申请内容" style={{ marginBottom: 16 }}>
-              <Descriptions size="small" column={1} items={Object.entries(task.variables).map(([k, v]) => ({ label: k, children: String(v) }))} />
+              <Descriptions
+                size="small"
+                column={1}
+                items={Object.entries(task.variables).map(([k, v]) => ({
+                  label: k,
+                  children: String(v),
+                }))}
+              />
             </Card>
           )}
           <Form.Item label="审批意见" name="comment">

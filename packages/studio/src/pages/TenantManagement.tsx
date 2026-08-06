@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import {
-  Card, Table, Button, Modal, Form, Input, Tag, Space,
-  Typography, Dropdown, App,
+  Card,
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Tag,
+  Space,
+  Typography,
+  Dropdown,
+  App,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  PlusOutlined, ThunderboltFilled, ArrowLeftOutlined, GlobalOutlined,
-  MoreOutlined, UserOutlined, AppstoreOutlined,
+  PlusOutlined,
+  ThunderboltFilled,
+  GlobalOutlined,
+  MoreOutlined,
+  UserOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -143,11 +156,18 @@ export default function TenantManagement() {
       render: (name: string, record: TenantSummary) => (
         <Space>
           <Text strong>{name}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>/ {record.slug}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            / {record.slug}
+          </Text>
         </Space>
       ),
     },
-    { title: '描述', dataIndex: 'description', key: 'description', render: (v: string | null) => v ?? '—' },
+    {
+      title: '描述',
+      dataIndex: 'description',
+      key: 'description',
+      render: (v: string | null) => v ?? '—',
+    },
     {
       title: '状态',
       dataIndex: 'status',
@@ -158,13 +178,23 @@ export default function TenantManagement() {
       title: '用户数',
       dataIndex: 'userCount',
       key: 'userCount',
-      render: (v: number) => <Space><UserOutlined />{v}</Space>,
+      render: (v: number) => (
+        <Space>
+          <UserOutlined />
+          {v}
+        </Space>
+      ),
     },
     {
       title: '应用数',
       dataIndex: 'appCount',
       key: 'appCount',
-      render: (v: number) => <Space><AppstoreOutlined />{v}</Space>,
+      render: (v: number) => (
+        <Space>
+          <AppstoreOutlined />
+          {v}
+        </Space>
+      ),
     },
     {
       title: '创建时间',
@@ -204,7 +234,9 @@ export default function TenantManagement() {
         <Space size={16}>
           <Space size={8}>
             <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
-            <Text strong style={{ fontSize: 16 }}>aPaaS Studio</Text>
+            <Text strong style={{ fontSize: 16 }}>
+              aPaaS Studio
+            </Text>
           </Space>
           <Text type="secondary" style={{ fontSize: 13 }}>
             <GlobalOutlined /> 平台管理
@@ -229,18 +261,17 @@ export default function TenantManagement() {
             <GlobalOutlined /> 租户管理
           </Title>
           <Text type="secondary">
-            管理平台上的所有租户。创建租户时自动初始化内置角色（TENANT_ADMIN / BUILDER / END_USER）及权限规则。
+            管理平台上的所有租户。创建租户时自动初始化内置角色（TENANT_ADMIN / BUILDER /
+            END_USER）及权限规则。
           </Text>
         </Card>
 
         <Card>
           <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-            <Title level={5} style={{ margin: 0 }}>租户列表</Title>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateOpen(true)}
-            >
+            <Title level={5} style={{ margin: 0 }}>
+              租户列表
+            </Title>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
               创建租户
             </Button>
           </div>

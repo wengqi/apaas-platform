@@ -15,6 +15,7 @@
 | [ROADMAP-UPDATE-2026-08-03](./ROADMAP-UPDATE-2026-08-03.md) | 2026-08-03 | 后续推进计划（4 阶段 10 周路线图 + 技术债处理决策） |
 | [PHASE-PROCESS-FEATURES-2026-08-05](./PHASE-PROCESS-FEATURES-2026-08-05.md) | 2026-08-05 | 流程引擎三大功能实现记录（流程监控终止 + 抄送 + 条件表达式混合模式）+ 变量体系调研 + 架构经验总结 |
 | [CONDITION-EXPRESSION-REFACTOR-2026-08-05](./CONDITION-EXPRESSION-REFACTOR-2026-08-05.md) | 2026-08-05 | 条件表达式重构方案（react-awesome-query-builder + JsonLogic + CodeMirror）— 现有问题分析 + RAQB 适配性评估 + JsonLogic 选型 + 架构设计 |
+| [ARCHITECTURE-ANALYSIS-2026-08-06](./ARCHITECTURE-ANALYSIS-2026-08-06.md) | 2026-08-06 | 技术选型架构审阅与演进计划（全栈技术栈审计 + 工程化缺口核查 + 开发阶段优先级校准 + 分阶段演进路线图） |
 
 ## 文档维护规则
 
@@ -38,5 +39,6 @@ docs/
     ├── AUDIT-*.md             # 代码审计报告
     ├── PHASE*-*.md            # 阶段修复/实现记录
     ├── STATUS-MATRIX-*.md     # 功能完成度矩阵
-    └── ROADMAP-UPDATE-*.md    # 路线图更新
+    ├── ROADMAP-UPDATE-*.md    # 路线图更新
+    └── ARCHITECTURE-ANALYSIS-*.md  # 技术选型架构审阅
 ```

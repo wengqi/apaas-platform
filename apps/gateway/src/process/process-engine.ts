@@ -23,6 +23,20 @@ import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 
+/**
+ * 递归在 blocks 数组中查找节点（用于查找嵌套在条件分支内的 block 容器等）。
+ */
+function findNodeInBlocks(blocks: WorkflowNode[], nodeId: string): WorkflowNode | undefined {
+  for (const block of blocks) {
+    if (block.id === nodeId) return block;
+    if (block.blocks) {
+      const found = findNodeInBlocks(block.blocks, nodeId);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
 @Injectable()
 export class ProcessEngine {
   private readonly logger = new Logger(ProcessEngine.name);
@@ -526,9 +540,23 @@ export class ProcessEngine {
     return schema.nodes.find((n) => n.type === 'start');
   }
 
-  /** 按 ID 查找节点。 */
+  /**
+   * 按 ID 查找节点（递归搜索嵌套 blocks）。
+   *
+   * 条件分支节点的分支容器（type='block'）嵌套在 conditionNode.blocks[] 中，
+   * 需要递归查找才能定位。
+   */
   private findNode(schema: WorkflowSchema, nodeId: string): WorkflowNode | undefined {
-    return schema.nodes.find((n) => n.id === nodeId);
+    // 先在顶层节点中查找
+    for (const node of schema.nodes) {
+      if (node.id === nodeId) return node;
+      // 递归搜索嵌套 blocks（条件分支的分支容器等）
+      if (node.blocks) {
+        const found = findNodeInBlocks(node.blocks, nodeId);
+        if (found) return found;
+      }
+    }
+    return undefined;
   }
 
   /** 获取节点的出边列表。 */

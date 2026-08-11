@@ -51,6 +51,7 @@ export function renderTemplateDotted(template: string, variables: Record<string,
  * 构建表达式求值的扁平作用域。
  *
  * 以全局变量为基础，合并触发器/开始节点的输出字段（扁平化），
+ * 以及流程启动时的顶层输入变量，
  * 使条件表达式能直接用变量名引用（如 `amount > 1000`）。
  */
 function buildEvalScope(variables: Record<string, unknown>): Record<string, unknown> {
@@ -61,6 +62,7 @@ function buildEvalScope(variables: Record<string, unknown>): Record<string, unkn
     Object.assign(scope, globalVars as Record<string, unknown>);
   }
   // 合并各节点输出中顶层为 output 的扁平字段（触发器/开始节点等）
+  // 以及流程启动时的顶层输入变量（标量值，如 amount: 2000）
   for (const [key, value] of Object.entries(variables)) {
     if (key === 'global') continue;
     if (value && typeof value === 'object') {
@@ -75,6 +77,12 @@ function buildEvalScope(variables: Record<string, unknown>): Record<string, unkn
         const g = globalVars as Record<string, unknown> | undefined;
         if (g) Object.assign(scope, g);
       }
+      // 如果是 { output: ... } 结构的节点变量，不将 key 本身加入 scope
+    } else {
+      // 顶层标量值（流程启动时的输入变量），直接加入 scope
+      if (!(key in scope)) {
+        scope[key] = value;
+      }
     }
   }
   return scope;
@@ -83,33 +91,17 @@ function buildEvalScope(variables: Record<string, unknown>): Record<string, unkn
 /**
  * 求值条件表达式。
  *
- * 支持两种格式：
- *   - JsonLogic JSON 对象（新格式）：`{">": [{"var": "amount"}, 1000]}`
- *   - expr-eval 字符串（旧格式，向后兼容）：`amount > 1000`
+ * 使用 JsonLogic JSON 对象格式：`{">": [{"var": "amount"}, 1000]}`
  *
- * 空条件（null/undefined/空字符串）= else/default 分支，返回 true。
+ * 空条件（null/undefined）= else/default 分支，返回 true。
  * 求值失败或结果非布尔时，返回 false（不阻断流程，保守不进入该分支）。
  */
 export function evaluateCondition(
-  rule: object | string | null | undefined,
+  rule: object | null | undefined,
   variables: Record<string, unknown>,
 ): boolean {
   if (!rule) return true; // 空条件 = else/default 分支
 
-  // 向后兼容：字符串格式用 expr-eval 求值
-  if (typeof rule === 'string') {
-    const expr = rule.replace(/\{\{/g, '').replace(/\}\}/g, '').trim();
-    if (!expr) return true;
-    try {
-      const scope = buildEvalScope(variables);
-      const result = parser.parse(expr).evaluate(scope as never);
-      return Boolean(result);
-    } catch {
-      return false;
-    }
-  }
-
-  // JsonLogic JSON 格式求值
   try {
     const scope = buildEvalScope(variables);
     return Boolean(jsonLogic.apply(rule, scope));

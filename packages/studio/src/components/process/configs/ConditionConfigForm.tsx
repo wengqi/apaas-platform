@@ -12,7 +12,7 @@
  */
 
 import { createElement, useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Divider, Form, Input, Space, Typography } from 'antd';
+import { Button, Divider, Form, Input, Popconfirm, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
 import { Query, Builder } from '@react-awesome-query-builder/antd';
@@ -27,6 +27,8 @@ import {
   validateExpression,
 } from './jsonlogic-utils.js';
 import ExpressionCodeEditor from './ExpressionCodeEditor.js';
+import CustomFilterLogic, { type CustomFilterLogicData } from './CustomFilterLogic.js';
+import { parseCustomLogic } from './custom-logic-parser.js';
 
 const { Text } = Typography;
 
@@ -36,8 +38,10 @@ const { Text } = Typography;
 
 export interface ConditionBranchItem {
   label: string;
-  /** JsonLogic JSON 规则（空 = else/default）。向后兼容：也可能是旧格式 expr-eval 字符串 */
-  condition?: object | string | null;
+  /** JsonLogic JSON 规则（空 = else/default） */
+  condition?: object | null;
+  /** 自定义筛选条件逻辑（可选，当分支内有多条运算符条件时） */
+  customLogic?: CustomFilterLogicData;
 }
 
 export interface ConditionConfigData {
@@ -54,10 +58,31 @@ export interface ConditionConfigFormProps {
 }
 
 // ---------------------------------------------------------------------------
-// renderBuilder — 用 createElement 调用 React.memo 包装的 Builder 组件
+// renderBuilder — 用 createElement 调用 Builder 组件
 // ---------------------------------------------------------------------------
 
 const renderBuilder = (props: BuilderProps) => createElement(Builder, props);
+
+/**
+ * 从 JsonLogic 规则中提取各独立条件。
+ *
+ * RAQB 导出的 JsonLogic 格式：
+ *   单个条件 → { ">": [{"var":"amount"}, 1000] }
+ *   多条件（AND） → { "and": [{">":...}, {"==":...}] }
+ *   多条件（OR） → { "or": [{">":...}, {"==":...}] }
+ *
+ * 提取后返回条件数组，供自定义逻辑表达式引用（序号从 1 开始）。
+ */
+function extractRulesFromJsonLogic(logic: object): object[] {
+  const rule = logic as Record<string, unknown>;
+  const op = Object.keys(rule)[0];
+  if (!op) return [];
+  if (op === 'and' || op === 'or') {
+    const args = rule[op];
+    return Array.isArray(args) ? (args as object[]) : [rule];
+  }
+  return [rule];
+}
 
 // ---------------------------------------------------------------------------
 // 主组件
@@ -70,7 +95,16 @@ export default function ConditionConfigForm({
   schema,
   currentNodeId,
 }: ConditionConfigFormProps) {
-  const branches = data.conditions ?? [];
+  const dataBranches = data.conditions ?? [];
+
+  // 使用 ref 跟踪最新的 branches，避免连续操作时 data prop 未更新导致的状态丢失
+  // 只在 data prop 的 branches 数量大于等于 ref 时才同步（外部更新）
+  // 当 ref 更新（内部 addBranch/removeBranch）但 data prop 还没更新时，保留 ref 的值
+  const branchesRef = useRef(dataBranches);
+  if (dataBranches.length >= branchesRef.current.length) {
+    branchesRef.current = dataBranches;
+  }
+  const branches = branchesRef.current;
 
   /** 解析当前节点可用的变量列表 */
   const variableOptions = useMemo(
@@ -78,74 +112,174 @@ export default function ConditionConfigForm({
     [schema, currentNodeId],
   );
 
-  /** RAQB 配置（从变量列表构建） */
-  const qbConfig = useMemo(() => buildQbConfig(variableOptions), [variableOptions]);
+  /** RAQB 配置（从变量列表构建）
+   *  注意：qbConfig 必须保持引用稳定，否则 QueryContainer 会认为 config 变了，
+   *  触发 getMemoizedTree 重新验证 tree，可能清空刚添加的 rule。
+   *  只在首次挂载时创建，后续不更新（变量列表在编辑过程中不会变化）。
+   */
+  const qbConfig = useMemo(() => buildQbConfig(variableOptions), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const update = (next: ConditionBranchItem[]) => onChange({ ...data, conditions: next });
+  const update = (next: ConditionBranchItem[]) => {
+    branchesRef.current = next;
+    onChange({ ...data, conditions: next });
+  };
 
   const updateBranch = (index: number, patch: Partial<ConditionBranchItem>) => {
-    update(branches.map((b, i) => (i === index ? { ...b, ...patch } : b)));
+    const current = branchesRef.current;
+    update(current.map((b, i) => (i === index ? { ...b, ...patch } : b)));
   };
 
   const addBranch = () => {
-    update([...branches, { label: `分支 ${branches.length + 1}`, condition: null }]);
+    // 使用 ref 中的最新 branches，避免连续点击时 data prop 未更新
+    const current = branchesRef.current;
+    // 新分支插入到默认分支（最后一个）之前，保持默认分支始终在末尾
+    const insertIndex = current.length > 0 ? current.length - 1 : 0;
+    const newBranches = [...current];
+    newBranches.splice(insertIndex, 0, { label: `分支 ${current.length}`, condition: null });
+    // 立即更新 ref，确保下次调用时使用最新值
+    branchesRef.current = newBranches;
+    update(newBranches);
   };
 
   const removeBranch = (index: number) => {
-    update(branches.filter((_, i) => i !== index));
+    const current = branchesRef.current;
+    const newBranches = current.filter((_, i) => i !== index);
+    branchesRef.current = newBranches;
+    update(newBranches);
+  };
+
+  /** 判断分支是否为默认分支（最后一个且 condition 为空） */
+  const isDefaultBranch = (index: number): boolean => index === branches.length - 1;
+
+  /** 判断分支条件是否已配置（非空且非空对象） */
+  const isBranchConfigured = (branch: ConditionBranchItem): boolean => {
+    if (!branch.condition) return false;
+    if (typeof branch.condition === 'object' && Object.keys(branch.condition).length === 0)
+      return false;
+    return true;
   };
 
   return (
     <Form layout="vertical" size="small" disabled={disabled} component="div">
-      <Divider orientation="left" plain style={{ marginTop: 0 }}>
+      <Divider orientation="left" plain style={{ marginTop: 0, marginBottom: 12 }}>
         条件分支
       </Divider>
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        {branches.map((branch, index) => (
-          <div
-            key={index}
-            style={{
-              border: '1px solid #eef0f4',
-              borderRadius: 8,
-              padding: 12,
-            }}
-          >
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-              <Input
-                size="small"
-                placeholder="分支名称(如:条件成立)"
-                value={branch.label}
-                onChange={(e) => updateBranch(index, { label: e.target.value })}
-                style={{ flex: 1 }}
-              />
-              <Button
-                size="small"
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => removeBranch(index)}
-                disabled={branches.length <= 1}
-              />
-            </div>
-            {index === branches.length - 1 && !branch.condition ? (
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                空条件 = 否则(default)
-              </Text>
-            ) : (
+      <Space direction="vertical" size={10} style={{ width: '100%' }}>
+        {branches.map((branch, index) => {
+          const isElse = isDefaultBranch(index);
+          const configured = isBranchConfigured(branch);
+          return (
+            <div
+              key={index}
+              style={{
+                border: '1px solid #eef0f4',
+                borderRadius: 8,
+                padding: 10,
+                background: '#fafbfc',
+                transition: 'border-color 0.2s',
+              }}
+            >
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+                {/* 优先级标签 */}
+                <Tag color="blue" style={{ fontSize: 11, margin: 0, flexShrink: 0 }}>
+                  优先级 {index + 1}
+                </Tag>
+                <Input
+                  size="small"
+                  placeholder="分支名称(如:条件成立)"
+                  value={isElse ? '默认分支' : branch.label}
+                  onChange={(e) => updateBranch(index, { label: e.target.value })}
+                  style={{ flex: 1 }}
+                  variant="borderless"
+                  disabled={isElse}
+                />
+                {/* 状态提示 */}
+                {!isElse && !configured && (
+                  <Text type="danger" style={{ fontSize: 11, flexShrink: 0 }}>
+                    未配置
+                  </Text>
+                )}
+                {/* 删除按钮 — 带二次确认，默认分支禁用，至少保留 2 个分支 */}
+                <Popconfirm
+                  title="删除分支"
+                  description="将删除该分支及其全部流程节点，请慎重操作。"
+                  onConfirm={() => removeBranch(index)}
+                  okText="确认删除"
+                  cancelText="取消"
+                  disabled={isElse || branches.length <= 2}
+                >
+                  <Button
+                    size="small"
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    disabled={isElse || branches.length <= 2}
+                  />
+                </Popconfirm>
+              </div>
               <ConditionEditor
                 condition={branch.condition ?? null}
                 onChange={(cond) => updateBranch(index, { condition: cond })}
                 qbConfig={qbConfig}
                 variableOptions={variableOptions}
                 disabled={disabled}
+                isElse={isElse}
+                customLogic={branch.customLogic}
+                onCustomLogicChange={(cl) => updateBranch(index, { customLogic: cl })}
               />
-            )}
-          </div>
-        ))}
-        <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={addBranch} block>
+            </div>
+          );
+        })}
+        <Button
+          size="small"
+          type="dashed"
+          icon={<PlusOutlined />}
+          onClick={addBranch}
+          block
+          disabled={disabled}
+        >
           添加分支
         </Button>
       </Space>
+      {/* RAQB + 自定义规则样式 — 飞书 aPaaS 风格 */}
+      <style>{`
+        /* Group 容器 */
+        .group { background: transparent; border: none; border-radius: 0; }
+        .group--header { padding: 0 0 6px 0; border: none; display: flex; align-items: center; gap: 6px; }
+        .group--children { padding: 0 !important; }
+        /* 连接词按钮（And/Or/Not） */
+        .group--conjunctions .ant-btn-group { display: flex; gap: 2px; }
+        .group--conjunctions .ant-btn { font-size: 12px; height: 20px; line-height: 18px; padding: 0 8px; border-radius: 10px; border: none; }
+        .group--conjunctions .ant-btn-primary { background: #e8f3ff; color: #1677ff; }
+        .group--conjunctions .ant-btn-default { background: #f5f5f5; color: rgba(0,0,0,0.45); }
+        /* 操作按钮（Add rule/group） */
+        .group--actions { margin-left: auto; }
+        .group--actions .ant-btn-group { display: flex; gap: 4px; }
+        .group--actions .ant-btn { font-size: 12px; height: 20px; padding: 0 4px; border: none; background: transparent; box-shadow: none; color: rgba(0,0,0,0.45); }
+        .group--actions .ant-btn:hover { color: #1677ff; background: #f0f5ff; }
+        .group--actions .ant-btn .anticon { font-size: 11px; margin-right: 2px; }
+
+        /* 自定义规则行 — 横向四列栅格 */
+        .custom-rule-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .rule-grid { display: flex; gap: 4px; flex: 1; min-width: 0; }
+        .rule-cell { flex: 1; min-width: 0; }
+        .rule-cell .ant-select { width: 100% !important; }
+        .rule-cell .ant-select-selector { border-radius: 4px !important; font-size: 12px; }
+        .rule-cell .ant-select-selection-item { font-size: 12px; line-height: 20px; }
+        .rule-cell .ant-input { width: 100% !important; font-size: 12px; border-radius: 4px !important; }
+        .rule-cell .ant-input-sm { height: 24px; }
+        /* 字段为空时红框高亮 */
+        .rule-field-empty .rule-cell:first-child .ant-select-selector {
+          border-color: #ff4d4f !important;
+          box-shadow: 0 0 0 2px rgba(255,77,79,0.1);
+        }
+        .rule-error { color: #ff4d4f; font-size: 11px; margin-bottom: 4px; }
+        /* 删除按钮 */
+        .rule-delete { flex-shrink: 0; }
+        .rule-delete.ant-btn { font-size: 12px; height: 24px; width: 24px; min-width: 24px; padding: 0;
+          border: none; background: transparent; box-shadow: none; }
+        .rule-delete.ant-btn:hover { background: #fff1f0; color: #ff4d4f; }
+      `}</style>
     </Form>
   );
 }
@@ -155,11 +289,14 @@ export default function ConditionConfigForm({
 // ---------------------------------------------------------------------------
 
 interface ConditionEditorProps {
-  condition: object | string | null;
+  condition: object | null;
   onChange: (condition: object | null) => void;
   qbConfig: ReturnType<typeof buildQbConfig>;
   variableOptions: VariableOption[];
   disabled?: boolean;
+  isElse?: boolean;
+  customLogic?: CustomFilterLogicData;
+  onCustomLogicChange?: (data: CustomFilterLogicData) => void;
 }
 
 function ConditionEditor({
@@ -168,46 +305,37 @@ function ConditionEditor({
   qbConfig,
   variableOptions,
   disabled = false,
+  isElse = false,
+  customLogic,
+  onCustomLogicChange,
 }: ConditionEditorProps) {
-  // 向后兼容：旧数据可能是 expr-eval 字符串，转换为 JsonLogic
-  const normalizedCondition = useMemo(() => {
-    if (!condition) return null;
-    if (typeof condition === 'string') {
-      const jl = expressionToJsonLogic(condition);
-      return jl;
-    }
-    return condition;
-  }, [condition]);
-
-  // 表达式文本状态
   const [exprText, setExprText] = useState(() => {
     if (!condition) return '';
-    if (typeof condition === 'string') return condition;
     return jsonLogicToExpression(condition);
   });
 
-  const isLegacyString = typeof condition === 'string';
+  const [activeTab, setActiveTab] = useState<'visual' | 'expression'>('visual');
 
-  const [activeTab, setActiveTab] = useState<'visual' | 'expression'>(
-    !condition || typeof condition === 'object' ? 'visual' : 'expression',
-  );
+  const [tree, setTree] = useState<ImmutableTree>(() => loadFromJsonLogic(condition, qbConfig));
 
-  // RAQB 树 — 用 ref 存储避免重渲染循环，用 forceUpdate 触发渲染
-  const treeRef = useRef<ImmutableTree>(loadFromJsonLogic(normalizedCondition, qbConfig));
-  const [, forceUpdate] = useState(0);
-
-  // RAQB onChange — 更新 ref + 导出 JsonLogic + 强制重渲染
   const onQbChange = useCallback(
     (immutableTree: ImmutableTree) => {
-      treeRef.current = immutableTree;
+      setTree(immutableTree);
       const logic = exportToJsonLogic(immutableTree, qbConfig);
+      // 如果启用了自定义逻辑，用自定义表达式重新组合各条件
+      if (customLogic?.enabled && logic) {
+        const rules = extractRulesFromJsonLogic(logic);
+        if (rules.length > 1) {
+          const result = parseCustomLogic(customLogic.expression, rules);
+          onChange(result.logic ?? logic);
+          return;
+        }
+      }
       onChange(logic);
-      forceUpdate((n) => n + 1);
     },
-    [qbConfig, onChange],
+    [qbConfig, onChange, customLogic],
   );
 
-  // 表达式编辑
   const onExprChange = useCallback(
     (text: string) => {
       setExprText(text);
@@ -217,65 +345,112 @@ function ConditionEditor({
     [onChange],
   );
 
+  /** 自定义逻辑变化时，重新组合条件 */
+  const onCustomLogicChangeInternal = useCallback(
+    (data: CustomFilterLogicData) => {
+      onCustomLogicChange?.(data);
+      // 如果开启自定义逻辑，立即重新组合
+      if (data.enabled && condition) {
+        const rules = extractRulesFromJsonLogic(condition);
+        if (rules.length > 1) {
+          const result = parseCustomLogic(data.expression, rules);
+          if (result.logic) onChange(result.logic);
+        }
+      }
+    },
+    [condition, onChange, onCustomLogicChange],
+  );
+
   const handleTabChange = (key: string) => {
     if (key === 'visual') {
-      treeRef.current = loadFromJsonLogic(normalizedCondition, qbConfig);
-      forceUpdate((n) => n + 1);
+      setTree(loadFromJsonLogic(condition, qbConfig));
       setActiveTab('visual');
     } else {
-      setExprText(jsonLogicToExpression(normalizedCondition));
+      setExprText(jsonLogicToExpression(condition));
       setActiveTab('expression');
     }
   };
 
   const _validation = validateExpression(exprText);
 
+  /** 从 RAQB 树中提取规则数量（用于自定义逻辑序号引用） */
+  const ruleCount = useMemo(() => {
+    if (activeTab !== 'visual') return 0;
+    // 从 JsonLogic 规则中计算顶层条件数
+    if (!condition) return 0;
+    const cond = condition as Record<string, unknown>;
+    const op = Object.keys(cond)[0];
+    if (op === 'and' || op === 'or') {
+      const args = cond[op] as unknown[];
+      return Array.isArray(args) ? args.length : 1;
+    }
+    return 1; // 单个条件
+  }, [condition, activeTab]);
+
   return (
     <>
-      {isLegacyString && (
-        <Alert
-          type="info"
-          message="此条件使用旧格式表达式，保存后将自动转换为 JsonLogic 格式。"
-          style={{ marginBottom: 8, padding: '4px 8px', fontSize: 12 }}
-        />
+      {isElse && !condition && (
+        <Text
+          type="secondary"
+          style={{ fontSize: 11, display: 'block', marginBottom: 6, color: 'rgba(0,0,0,0.4)' }}
+        >
+          空条件 = 否则(default)，添加规则后将变为条件分支
+        </Text>
       )}
-      {/* 模式切换按钮 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          marginBottom: 8,
+          background: '#f0f0f0',
+          borderRadius: 6,
+          padding: 2,
+        }}
+      >
         <Button
           size="small"
-          type={activeTab === 'visual' ? 'primary' : 'default'}
+          type={activeTab === 'visual' ? 'primary' : 'text'}
           onClick={() => handleTabChange('visual')}
+          style={{ flex: 1, borderRadius: '4px 0 0 4px' }}
         >
           可视化
         </Button>
         <Button
           size="small"
-          type={activeTab === 'expression' ? 'primary' : 'default'}
+          type={activeTab === 'expression' ? 'primary' : 'text'}
           onClick={() => handleTabChange('expression')}
+          style={{ flex: 1, borderRadius: '0 4px 4px 0' }}
         >
           表达式
         </Button>
       </div>
 
-      {/* 可视化模式 — 条件渲染而非 Tabs，避免 AntD Tabs 对 RAQB 内部 Redux 的影响 */}
       {activeTab === 'visual' && (
         <div style={{ minHeight: 60 }}>
           {createElement(Query, {
             ...qbConfig,
-            value: treeRef.current,
+            value: tree,
             onChange: onQbChange,
             renderBuilder: renderBuilder,
           })}
         </div>
       )}
 
-      {/* 表达式模式 */}
       {activeTab === 'expression' && (
         <ExpressionCodeEditor
           value={exprText}
           onChange={onExprChange}
           variables={variableOptions}
           disabled={disabled}
+        />
+      )}
+
+      {/* 自定义筛选条件逻辑 — 仅可视化模式 + 条件数 > 1 + 非默认分支时显示 */}
+      {activeTab === 'visual' && ruleCount > 1 && !isElse && onCustomLogicChange && (
+        <CustomFilterLogic
+          data={customLogic}
+          conditionCount={ruleCount}
+          onChange={onCustomLogicChangeInternal}
         />
       )}
     </>

@@ -35,6 +35,7 @@ import { UserTaskExecutor } from './node-executors/user-task.executor.js';
 import { NotificationExecutor } from './node-executors/notification.executor.js';
 import { HttpRequestExecutor } from './node-executors/http-request.executor.js';
 import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
+import { BlockExecutor } from './node-executors/block.executor.js';
 import { TriggerService } from './trigger.service.js';
 
 @Module({
@@ -71,6 +72,7 @@ import { TriggerService } from './trigger.service.js';
     NotificationExecutor,
     HttpRequestExecutor,
     SubProcessExecutor,
+    BlockExecutor,
     // JWT 策略
     JwtStrategy,
     // 触发器服务

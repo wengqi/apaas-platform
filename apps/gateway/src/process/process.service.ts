@@ -29,14 +29,12 @@ export interface CreateProcessDefRequest {
   apiName: string;
   name: string;
   workflowSchema: unknown;
-  bpmnXml?: string;
   triggerType?: string;
 }
 
 export interface UpdateProcessDefRequest {
   name?: string;
   workflowSchema?: unknown;
-  bpmnXml?: string;
   triggerType?: string;
 }
 
@@ -115,7 +113,6 @@ export class ProcessService {
         apiName: req.apiName,
         name: req.name,
         workflowSchema: req.workflowSchema as Prisma.InputJsonValue,
-        bpmnXml: req.bpmnXml ?? null,
         version: 1,
         status: 'DRAFT',
         triggerType: req.triggerType ?? 'MANUAL',
@@ -163,7 +160,6 @@ export class ProcessService {
     if (req.workflowSchema !== undefined) {
       data.workflowSchema = req.workflowSchema as Prisma.InputJsonValue;
     }
-    if (req.bpmnXml !== undefined) data.bpmnXml = req.bpmnXml;
     if (req.triggerType !== undefined) data.triggerType = req.triggerType;
 
     await prisma.processDef.update({ where: { id: processId }, data });
@@ -246,6 +242,7 @@ export class ProcessService {
   async startInstance(tenantId: string, processId: string, req: StartInstanceRequest) {
     const triggerContext: Record<string, unknown> = {
       triggerType: 'MANUAL',
+      triggeredBy: 'MANUAL',
       triggeredByUser: req.triggeredByUser ?? null,
       inputs: req.variables ?? {},
     };
@@ -328,13 +325,15 @@ export class ProcessService {
       }
     }
 
-    // 所有 schema 中的节点，未在 nodeStatusMap 中的标记为 PENDING
-    const nodes = (schema.nodes ?? []).map((n) => ({
+    // 所有 schema 中的节点（含嵌套 blocks），未在 nodeStatusMap 中的标记为 PENDING
+    const annotateNode = (n: Record<string, unknown>): Record<string, unknown> => ({
       ...n,
-      traceStatus: nodeStatusMap[n.id]?.status ?? 'PENDING',
-      traceStartedAt: nodeStatusMap[n.id]?.startedAt,
-      traceFinishedAt: nodeStatusMap[n.id]?.finishedAt,
-    }));
+      traceStatus: nodeStatusMap[n.id as string]?.status ?? 'PENDING',
+      traceStartedAt: nodeStatusMap[n.id as string]?.startedAt,
+      traceFinishedAt: nodeStatusMap[n.id as string]?.finishedAt,
+      blocks: Array.isArray(n.blocks) ? n.blocks.map(annotateNode) : n.blocks,
+    });
+    const nodes = (schema.nodes ?? []).map(annotateNode);
 
     return {
       instance: {
@@ -403,9 +402,8 @@ export class ProcessService {
     page?: number,
     pageSize?: number,
   ) {
-    // 前端传入小写状态，需映射为 Prisma 枚举
-    const normalizedStatus = status ? status.toUpperCase() : undefined;
-    return this.listInstances(tenantId, processId, normalizedStatus, page, pageSize);
+    // 前端传入大写状态枚举值（对齐 ProcessInstanceState），直接传给 Prisma 查询
+    return this.listInstances(tenantId, processId, status, page, pageSize);
   }
 
   /** 取消实例。 */
@@ -684,9 +682,10 @@ export class ProcessService {
       tenantId: d.tenantId,
       appId: d.appId,
       apiName: d.apiName,
+      // @deprecated processKey — 兼容前端旧引用，值同 apiName
+      processKey: d.apiName,
       name: d.name,
       workflowSchema: d.workflowSchema,
-      bpmnXml: d.bpmnXml ?? undefined,
       version: d.version,
       status: d.status,
       triggerType: d.triggerType ?? undefined,
@@ -735,18 +734,16 @@ export class ProcessService {
     };
   }
 
-  /** Prisma status → 前端 state 映射。 */
+  /** Prisma status → 前端 state 映射（对齐 ProcessInstanceState 枚举）。 */
   private mapInstanceState(status: string): string {
     const map: Record<string, string> = {
-      PENDING: 'pending',
-      RUNNING: 'running',
-      WAITING_USER_TASK: 'waiting',
-      COMPLETED: 'completed',
-      FAILED: 'failed',
-      TERMINATED: 'terminated',
-      CANCELLED: 'cancelled',
+      RUNNING: 'RUNNING',
+      WAITING_USER_TASK: 'WAITING_USER_TASK',
+      COMPLETED: 'COMPLETED',
+      FAILED: 'FAILED',
+      TERMINATED: 'TERMINATED',
     };
-    return map[status] ?? 'pending';
+    return map[status] ?? 'RUNNING';
   }
 
   private toTemplateDto(t: Prisma.NotificationTemplateGetPayload<Record<string, unknown>>) {

@@ -11,12 +11,7 @@
  * @see docs/prd/PRD-process.md  产品需求
  */
 
-import type {
-  ISODateString,
-  ObjectId,
-  ProcessId,
-  TenantId,
-} from '../common/index.js';
+import type { ISODateString, ObjectId, ProcessId, TenantId } from '../common/index.js';
 
 // ---------------------------------------------------------------------------
 // 流程定义（元数据）
@@ -31,7 +26,11 @@ import type {
 export interface ProcessDef {
   id: ProcessId;
   tenantId: TenantId;
-  /** 流程 Key（租户内唯一） */
+  /** 所属应用 ID */
+  appId: string;
+  /** 流程 API 名称（应用内唯一，与对象/页面命名一致） */
+  apiName: string;
+  /** @deprecated 使用 apiName 替代。保留兼容，DTO 同时输出 processKey = apiName */
   processKey: string;
   name: string;
   /** ⭐ 内部执行格式：WorkflowSchema JSON。自研引擎原生消费。 */
@@ -40,14 +39,16 @@ export interface ProcessDef {
   version: number;
   /** 状态 */
   status: ProcessStatus;
+  /** 触发器类型 */
+  triggerType?: TriggerType;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
 
 export enum ProcessStatus {
-  Draft = 'draft',
-  Published = 'published',
-  Deprecated = 'deprecated',
+  Draft = 'DRAFT',
+  Published = 'PUBLISHED',
+  Archived = 'ARCHIVED',
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ export interface TriggerConfig {
   triggerType: TriggerType;
   objectTrigger?: {
     objectId: ObjectId;
-    event: 'create' | 'update' | 'delete';
+    event: 'CREATE' | 'UPDATE' | 'DELETE';
     /** 触发条件表达式（可选，满足才触发） */
     condition?: string;
   };
@@ -226,10 +227,13 @@ export interface TriggerConfig {
 }
 
 export enum TriggerType {
-  RecordEvent = 'record_event',
-  Schedule = 'schedule',
-  Manual = 'manual',
-  ButtonClick = 'button_click',
+  RecordCreated = 'RECORD_CREATED',
+  RecordUpdated = 'RECORD_UPDATED',
+  RecordDeleted = 'RECORD_DELETED',
+  Scheduled = 'SCHEDULED',
+  Manual = 'MANUAL',
+  Api = 'API',
+  ButtonClick = 'BUTTON_CLICK',
 }
 
 /** 对象操作配置。 */
@@ -245,13 +249,26 @@ export interface ObjectOperationConfig {
 /** 条件分支。 */
 export interface ConditionBranch {
   label: string;
-  /** JsonLogic JSON 规则。空 = else/default。向后兼容：也可能是旧格式 expr-eval 字符串 */
-  condition?: object | string | null;
+  /** JsonLogic JSON 规则。空 = else/default。 */
+  condition?: object | null;
+  /**
+   * 自定义筛选条件逻辑（可选，当分支内有多条运算符条件时）。
+   *
+   * 开启时：condition 存储的是所有条件的 AND 组合（默认逻辑），
+   * customLogic.expression 存储用户自定义的逻辑表达式（如 "1 and (2 or 3)"），
+   * 前端在保存时会将自定义逻辑解析为最终 JsonLogic 存入 condition。
+   * 后端始终只消费 condition 字段，customLogic 仅用于前端编辑器回显。
+   */
+  customLogic?: {
+    enabled: boolean;
+    /** 条件序号引用表达式，如 "1 and (2 or 3)" */
+    expression: string;
+  };
 }
 
 /** 通知配置。 */
 export interface NotificationConfig {
-  channel: 'in_app' | 'email' | 'webhook';
+  channel: 'IN_APP' | 'EMAIL' | 'WEBHOOK';
   recipients: string[];
   title: string;
   content: string;
@@ -299,13 +316,11 @@ export interface HttpConfig {
 
 /** 流程实例状态。 */
 export enum ProcessInstanceState {
-  Pending = 'pending',
-  Running = 'running',
-  Waiting = 'waiting', // 等待条件/人工任务
-  Completed = 'completed',
-  Failed = 'failed',
-  Terminated = 'terminated',
-  Cancelled = 'cancelled',
+  Running = 'RUNNING',
+  WaitingUserTask = 'WAITING_USER_TASK',
+  Completed = 'COMPLETED',
+  Failed = 'FAILED',
+  Terminated = 'TERMINATED',
 }
 
 /** 流程实例。 */
@@ -334,7 +349,7 @@ export interface ProcessInstance {
 /** 节点执行状态（用于流程监控）。 */
 export interface NodeExecutionStatus {
   nodeId: NodeId;
-  state: 'idle' | 'processing' | 'success' | 'fail' | 'waiting' | 'skipped';
+  state: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING' | 'SKIPPED';
   startTime?: ISODateString;
   endTime?: ISODateString;
   error?: string;

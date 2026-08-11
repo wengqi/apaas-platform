@@ -24,7 +24,12 @@ export interface VariableOption {
   sourceNode?: string;
   /** 字段类型 */
   type?: string;
+  /** 变量分组（用于树形选择器分组显示） */
+  group?: VariableGroup;
 }
+
+/** 变量分组 — 对齐飞书 aPaaS 变量选择器的分组方式 */
+export type VariableGroup = 'system' | 'trigger' | 'node_output' | 'process_var';
 
 export interface OutputField {
   /** 字段名 */
@@ -40,9 +45,7 @@ export interface OutputField {
 // ---------------------------------------------------------------------------
 
 export const NODE_OUTPUT_SCHEMA: Record<string, OutputField[]> = {
-  start: [
-    { field: 'recordId', label: '记录ID', type: 'string' },
-  ],
+  start: [{ field: 'recordId', label: '记录ID', type: 'string' }],
   trigger: [
     { field: 'recordId', label: '触发记录ID', type: 'string' },
     { field: 'record', label: '触发记录', type: 'object' },
@@ -73,15 +76,9 @@ export const NODE_OUTPUT_SCHEMA: Record<string, OutputField[]> = {
     { field: 'success', label: '发送成功', type: 'boolean' },
     { field: 'channel', label: '通知渠道', type: 'string' },
   ],
-  delay: [
-    { field: 'delayedMs', label: '延时毫秒', type: 'number' },
-  ],
-  assign: [
-    { field: 'value', label: '赋值结果', type: 'any' },
-  ],
-  sub_process: [
-    { field: 'subInstanceId', label: '子流程实例ID', type: 'string' },
-  ],
+  delay: [{ field: 'delayedMs', label: '延时毫秒', type: 'number' }],
+  assign: [{ field: 'value', label: '赋值结果', type: 'any' }],
+  sub_process: [{ field: 'subInstanceId', label: '子流程实例ID', type: 'string' }],
 };
 
 // ---------------------------------------------------------------------------
@@ -149,10 +146,20 @@ function extractAssignVariables(node: WorkflowNode): string[] {
  */
 function extractQueryVariables(node: WorkflowNode): string[] {
   if (node.type !== 'object_operation' && node.type !== 'objectOperation') return [];
-  const resultVar = (node.data?.['resultVariable'] as string | undefined) ??
+  const resultVar =
+    (node.data?.['resultVariable'] as string | undefined) ??
     (node.data?.['result_variable'] as string | undefined);
   return resultVar ? [resultVar] : [];
 }
+
+/**
+ * 系统默认变量 — 对齐飞书 aPaaS 的系统变量。
+ */
+const SYSTEM_VARIABLES: VariableOption[] = [
+  { value: 'processName', label: '流程名', type: 'string', group: 'system' },
+  { value: 'triggeredBy', label: '操作发起人', type: 'string', group: 'system' },
+  { value: 'executionId', label: '流程执行 ID', type: 'string', group: 'system' },
+];
 
 /**
  * 解析当前节点可用的所有变量，返回扁平化选项列表。
@@ -171,6 +178,14 @@ export function resolveVariables(
   const options: VariableOption[] = [];
   const seenFields = new Set<string>();
 
+  // 0. 系统默认变量
+  for (const sysVar of SYSTEM_VARIABLES) {
+    if (!seenFields.has(sysVar.value)) {
+      seenFields.add(sysVar.value);
+      options.push(sysVar);
+    }
+  }
+
   // 1. 全局变量（从 assign 和 object_operation 节点解析）
   for (const node of upstreamNodes) {
     const assignVars = extractAssignVariables(node);
@@ -183,6 +198,7 @@ export function resolveVariables(
           label: `${varName}`,
           sourceNode: node.data?.['title'] as string | undefined,
           type: 'any',
+          group: 'process_var',
         });
       }
     }
@@ -194,6 +210,7 @@ export function resolveVariables(
     if (!outputFields) continue;
 
     const nodeTitle = (node.data?.['title'] as string | undefined) ?? node.id;
+    const group = node.type === 'trigger' || node.type === 'start' ? 'trigger' : 'node_output';
 
     for (const field of outputFields) {
       if (!seenFields.has(field.field)) {
@@ -203,6 +220,7 @@ export function resolveVariables(
           label: `${field.label} (${field.field})`,
           sourceNode: nodeTitle,
           type: field.type,
+          group,
         });
       }
     }

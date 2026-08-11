@@ -41,6 +41,8 @@ export interface FlowEdgeJSON {
   targetNodeID: string;
   sourcePortID?: string;
   targetPortID?: string;
+  /** 连线标签（条件分支名，用于执行器路由匹配） */
+  label?: string;
 }
 
 export { type WorkflowSchema, type WorkflowNode, type SimplifiedNodeType };

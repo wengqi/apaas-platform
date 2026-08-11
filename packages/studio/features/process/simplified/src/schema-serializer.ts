@@ -19,12 +19,7 @@ import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
  * flowgram 内部系统节点类型 — 这些是布局引擎自动创建的结构性节点,
  * 不应出现在 WorkflowSchema 中(它们由 condition 节点的 onCreate 重建)。
  */
-const SYSTEM_NODE_TYPES = new Set([
-  'blockIcon',
-  'inlineBlocks',
-  'blockOrderIcon',
-  'root',
-]);
+const SYSTEM_NODE_TYPES = new Set(['blockIcon', 'inlineBlocks', 'blockOrderIcon', 'root']);
 
 /**
  * 判断节点是否为系统节点(不应序列化到 WorkflowSchema)。
@@ -46,9 +41,7 @@ function isSystemNode(node: FlowNodeJSON): boolean {
 export function flowToWorkflowSchema(doc: FlowDocumentJSON): WorkflowSchema {
   // 过滤系统节点(blockIcon/inlineBlocks/blockOrderIcon),
   // 只保留业务节点和 block(分支容器,其 data 携带分支元数据)
-  const businessNodes = (doc.nodes || []).filter(
-    (n) => !isSystemNode(n),
-  );
+  const businessNodes = (doc.nodes || []).filter((n) => !isSystemNode(n));
 
   const nodes = businessNodes.map(flowNodeToWorkflowNode);
 
@@ -60,6 +53,7 @@ export function flowToWorkflowSchema(doc: FlowDocumentJSON): WorkflowSchema {
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
+      label: e.label,
     }));
   } else {
     // 兼容:从树结构推导 edges(fixed-layout 场景)
@@ -114,8 +108,12 @@ function generateEdgesFromTree(
       for (const block of nodeBlocks) {
         if (!block) continue;
 
-        // 父节点 → 分支容器
-        edges.push({ sourceNodeID: node.id, targetNodeID: block.id });
+        // 父节点 → 分支容器（条件分支：设置 label 用于执行路由匹配）
+        edges.push({
+          sourceNodeID: node.id,
+          targetNodeID: block.id,
+          label: (block.data?.['label'] as string | undefined) ?? block.id,
+        });
 
         // block 的子节点:递归处理
         // 注意:block 的子节点存储在 block.blocks 中(已过滤系统节点)
@@ -158,7 +156,7 @@ function getLastNodeInBlock(block: FlowNodeJSON): FlowNodeJSON | undefined {
   // 过滤系统节点,只看业务子节点
   const businessChildren = (block.blocks || []).filter((b) => !isSystemNode(b));
   if (businessChildren.length > 0) {
-  const last = businessChildren[businessChildren.length - 1];
+    const last = businessChildren[businessChildren.length - 1];
     if (last) return last;
   }
   return block;
@@ -168,8 +166,7 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
   // 递归过滤子节点中的系统节点,只保留业务节点和 block(分支容器)
   // 注意:flowgram 的 toNodeJSON 已经跳过了以 $ 开头的系统节点,
   // 但 block 节点(分支容器)不应以 $ 开头,否则也会被跳过。
-  const filteredBlocks = (node.blocks ?? [])
-    .filter((b) => b && !isSystemNode(b));
+  const filteredBlocks = (node.blocks ?? []).filter((b) => b && !isSystemNode(b));
 
   return {
     id: node.id,
@@ -185,6 +182,7 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
+      label: e.label,
     })),
   } as WorkflowNode;
 }
@@ -204,6 +202,7 @@ export function workflowToFlowSchema(schema: WorkflowSchema): FlowDocumentJSON {
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
+      label: e.label,
     })),
     groups: schema.groups as unknown[],
   };
@@ -221,6 +220,7 @@ function workflowNodeToFlow(node: WorkflowNode): FlowNodeJSON {
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
+      label: e.label,
     })),
   };
 }

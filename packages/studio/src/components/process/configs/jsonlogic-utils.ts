@@ -11,6 +11,8 @@
  * - 字符串双引号：`status == "urgent"`
  * - 比较运算符：`>` `<` `>=` `<=` `==` `!=`
  * - 包含：`contains(field, "value")` / `notContains(field, "value")`
+ * - 为空：`isEmpty(field)` / 不为空：`isNotEmpty(field)`
+ * - 属于：`in(field, [val1, val2])` / 不属于：`notIn(field, [val1, val2])`
  *
  * 转换规则：
  * | 表达式                        | JsonLogic                                          |
@@ -20,6 +22,10 @@
  * | `a > 1 and b < 2`             | `{"and": [{">": [{"var":"a"}, 1]}, {"<": [{"var":"b"}, 2]}]}` |
  * | `contains(field, "val")`      | `{"in": ["val", {"var": "field"}]}`                 |
  * | `notContains(field, "val")`   | `{"!": {"in": ["val", {"var": "field"}]}}`          |
+ * | `isEmpty(field)`              | `{"!": {"var": "field"}}`                           |
+ * | `isNotEmpty(field)`           | `{"!!": {"var": "field"}}`                          |
+ * | `in(field, ["a","b"])`        | `{"in": [{"var": "field"}, ["a","b"]]}`             |
+ * | `notIn(field, ["a","b"])`     | `{"!": {"in": [{"var": "field"}, ["a","b"]]}}`      |
  */
 
 import { Parser } from 'expr-eval';
@@ -79,13 +85,13 @@ function parseExprToJsonLogic(expr: string): object | null {
   const orParts = splitTopLevel(trimmed, ' or ');
 
   if (andParts.length > 1 && orParts.length === 1) {
-    const parts = andParts.map(p => parseExprToJsonLogic(p));
-    if (parts.some(p => !p)) return null;
+    const parts = andParts.map((p) => parseExprToJsonLogic(p));
+    if (parts.some((p) => !p)) return null;
     return { and: parts };
   }
   if (orParts.length > 1 && andParts.length === 1) {
-    const parts = orParts.map(p => parseExprToJsonLogic(p));
-    if (parts.some(p => !p)) return null;
+    const parts = orParts.map((p) => parseExprToJsonLogic(p));
+    if (parts.some((p) => !p)) return null;
     return { or: parts };
   }
 
@@ -121,19 +127,19 @@ function combineWithPlaceholder(expr: string, placeholder: object): object | nul
   const orParts = splitTopLevel(expr, ' or ');
 
   if (andParts.length > 1) {
-    const parts = andParts.map(p => {
+    const parts = andParts.map((p) => {
       if (p.trim() === '__EXPR_PLACEHOLDER__') return placeholder;
       return parseExprToJsonLogic(p);
     });
-    if (parts.some(p => !p)) return null;
+    if (parts.some((p) => !p)) return null;
     return { and: parts };
   }
   if (orParts.length > 1) {
-    const parts = orParts.map(p => {
+    const parts = orParts.map((p) => {
       if (p.trim() === '__EXPR_PLACEHOLDER__') return placeholder;
       return parseExprToJsonLogic(p);
     });
-    if (parts.some(p => !p)) return null;
+    if (parts.some((p) => !p)) return null;
     return { or: parts };
   }
   return placeholder;
@@ -159,6 +165,34 @@ function parseSingleComparison(str: string): object | null {
     if (val !== undefined) return { '!': { in: [val, { var: field }] } };
   }
 
+  // isEmpty(field) → {"!": {"var": "field"}}
+  const isEmptyMatch = trimmed.match(/^isEmpty\((\w+)\)$/i);
+  if (isEmptyMatch && isEmptyMatch[1]) {
+    return { '!': { var: isEmptyMatch[1] } };
+  }
+
+  // isNotEmpty(field) → {"!!": {"var": "field"}}
+  const isNotEmptyMatch = trimmed.match(/^isNotEmpty\((\w+)\)$/i);
+  if (isNotEmptyMatch && isNotEmptyMatch[1]) {
+    return { '!!': { var: isNotEmptyMatch[1] } };
+  }
+
+  // in(field, [val1, val2]) → {"in": [{"var": "field"}, [val1, val2]]}
+  const inMatch = trimmed.match(/^in\((\w+),\s*\[(.+)\]\)$/i);
+  if (inMatch && inMatch[1] && inMatch[2]) {
+    const field = inMatch[1];
+    const values = parseArrayLiteral(inMatch[2]);
+    if (values) return { in: [{ var: field }, values] };
+  }
+
+  // notIn(field, [val1, val2]) → {"!": {"in": [{"var": "field"}, [val1, val2]]}}
+  const notInMatch = trimmed.match(/^notIn\((\w+),\s*\[(.+)\]\)$/i);
+  if (notInMatch && notInMatch[1] && notInMatch[2]) {
+    const field = notInMatch[1];
+    const values = parseArrayLiteral(notInMatch[2]);
+    if (values) return { '!': { in: [{ var: field }, values] } };
+  }
+
   // 比较运算符
   const match = trimmed.match(/^(\w+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
   if (!match || !match[1] || !match[2] || !match[3]) return null;
@@ -169,7 +203,12 @@ function parseSingleComparison(str: string): object | null {
   if (val === undefined) return null;
 
   const opMap: Record<string, string> = {
-    '>': '>', '<': '<', '>=': '>=', '<=': '<=', '==': '==', '!=': '!=',
+    '>': '>',
+    '<': '<',
+    '>=': '>=',
+    '<=': '<=',
+    '==': '==',
+    '!=': '!=',
   };
   const jsonOp = opMap[op] ?? op;
   return { [jsonOp]: [{ var: field }, val] };
@@ -183,6 +222,41 @@ function parseLiteral(str: string): unknown {
   if (str === 'true') return true;
   if (str === 'false') return false;
   return undefined;
+}
+
+/** 解析数组字面量："val1", "val2", 123 → ["val1", "val2", 123] */
+function parseArrayLiteral(str: string): unknown[] | null {
+  const parts: string[] = [];
+  let current = '';
+  let inQuote: string | null = null;
+  let depth = 0;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (inQuote) {
+      current += ch;
+      if (ch === inQuote) inQuote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === '[' || ch === '{') depth++;
+    if (ch === ']' || ch === '}') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+
+  const values = parts.map((p) => parseLiteral(p));
+  if (values.some((v) => v === undefined)) return null;
+  return values;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,21 +277,77 @@ function formatRule(rule: Record<string, unknown>): string {
   if (keys.length !== 1) return '';
 
   const op = keys[0]!;
-  const args = rule[op] as unknown[];
+  const rawArgs = rule[op];
+
+  // JsonLogic 的值可能是数组（and/or/比较）或单个对象（!）
+  const args = Array.isArray(rawArgs) ? rawArgs : [rawArgs];
 
   switch (op) {
     case 'and':
-      return (args as unknown[]).map(a => formatRule(a as Record<string, unknown>)).join(' and ');
+      return (args as unknown[]).map((a) => formatRule(a as Record<string, unknown>)).join(' and ');
     case 'or':
-      return (args as unknown[]).map(a => formatRule(a as Record<string, unknown>)).join(' or ');
+      return (args as unknown[]).map((a) => formatRule(a as Record<string, unknown>)).join(' or ');
     case '!': {
-      const inner = formatRule(args[0] as Record<string, unknown>);
+      // "!" 可能是：isEmpty（内层是 var）、notContains（内层是 in）、notIn（内层是 in 且格式不同）、not（通用）
+      const innerRule = args[0] as Record<string, unknown>;
+      const innerOp =
+        innerRule && typeof innerRule === 'object' ? Object.keys(innerRule)[0] : undefined;
+
+      // {"!": {"var": "field"}} → isEmpty(field)
+      if (innerOp === 'var') {
+        const fieldName = (innerRule!['var'] as string) ?? 'unknown';
+        return `isEmpty(${fieldName})`;
+      }
+
+      if (innerOp === 'in') {
+        const inArgs = innerRule!['in'] as unknown[];
+        // 判断是 contains 还是 notIn：contains 格式是 ["val", {"var":"field"}]
+        // notIn 格式是 [{"var":"field"}, ["val1","val2"]]
+        const first = inArgs[0];
+        if (first && typeof first === 'object' && 'var' in (first as Record<string, unknown>)) {
+          // 格式：{"!": {"in": [{"var":"field"}, ["val1","val2"]]}} → notIn(field, ["val1","val2"])
+          const fieldVar = first as Record<string, unknown>;
+          const fieldName = (fieldVar['var'] as string) ?? 'unknown';
+          const vals = inArgs[1];
+          return `notIn(${fieldName}, [${formatArrayValue(vals)}])`;
+        }
+        // 格式：{"!": {"in": ["val", {"var":"field"}]}} → notContains(field, "val")
+        const val = formatValue(inArgs[0]);
+        const fieldVar = inArgs[1] as Record<string, unknown>;
+        const fieldName = (fieldVar?.['var'] as string) ?? 'unknown';
+        return `notContains(${fieldName}, ${val})`;
+      }
+
+      // 通用 not(...)
+      const inner = formatRule(innerRule);
       return `not(${inner})`;
     }
+    case '!!': {
+      // {"!!": {"var": "field"}} → isNotEmpty(field)
+      const innerRule = args[0] as Record<string, unknown>;
+      if (innerRule && typeof innerRule === 'object' && 'var' in innerRule) {
+        const fieldName = (innerRule['var'] as string) ?? 'unknown';
+        return `isNotEmpty(${fieldName})`;
+      }
+      return `not(not(${formatRule(innerRule)}))`;
+    }
     case 'in': {
-      // ["val", {"var": "field"}] → contains(field, "val")
-      const val = formatValue(args[0]);
-      const fieldVar = args[1] as Record<string, unknown>;
+      // 两种格式：
+      // 1. ["val", {"var": "field"}] → contains(field, "val")
+      // 2. [{"var": "field"}, ["val1","val2"]] → in(field, ["val1","val2"])
+      const first = args[0];
+      const second = args[1];
+
+      if (first && typeof first === 'object' && 'var' in (first as Record<string, unknown>)) {
+        // 格式 2：in(field, [val1, val2])
+        const fieldVar = first as Record<string, unknown>;
+        const fieldName = (fieldVar['var'] as string) ?? 'unknown';
+        return `in(${fieldName}, [${formatArrayValue(second)}])`;
+      }
+
+      // 格式 1：contains(field, "val")
+      const val = formatValue(first);
+      const fieldVar = second as Record<string, unknown>;
       const fieldName = (fieldVar?.['var'] as string) ?? 'unknown';
       return `contains(${fieldName}, ${val})`;
     }
@@ -245,6 +375,14 @@ function formatValue(val: unknown): string {
   return 'null';
 }
 
+/** 格式化数组值为表达式文本：["a","b"] → `"a", "b"` */
+function formatArrayValue(val: unknown): string {
+  if (Array.isArray(val)) {
+    return val.map((v) => formatValue(v)).join(', ');
+  }
+  return formatValue(val);
+}
+
 // ---------------------------------------------------------------------------
 // JsonLogic 求值（前端预览/校验）
 // ---------------------------------------------------------------------------
@@ -255,10 +393,7 @@ function formatValue(val: unknown): string {
  * @param data 数据作用域（扁平化变量）
  * @returns 求值结果
  */
-export function evaluateJsonLogic(
-  rule: object,
-  data: Record<string, unknown>,
-): boolean {
+export function evaluateJsonLogic(rule: object, data: Record<string, unknown>): boolean {
   try {
     return Boolean(jsonLogic.apply(rule, data));
   } catch {

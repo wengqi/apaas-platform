@@ -97,7 +97,7 @@ export default function NotificationTemplateManager() {
     setEditingTemplate(null);
     form.resetFields();
     form.setFieldsValue({
-      channel: 'email',
+      channel: 'EMAIL',
       variables: [{ name: '', description: '', sampleValue: '' }],
     });
     setDrawerOpen(true);

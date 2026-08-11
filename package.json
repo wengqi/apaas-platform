@@ -2,7 +2,7 @@
   "name": "apaas-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "飞书 aPaaS 级低代码平台 — 对象建模 / 页面搭建器 / 自研流程引擎(双模式同源) / 多租户权限",
+  "description": "飞书 aPaaS 级低代码平台 — 对象建模 / 页面搭建器 / 自研流程引擎(单模式) / 多租户权限",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20.0.0",

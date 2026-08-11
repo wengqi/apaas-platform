@@ -177,7 +177,7 @@ export default function ProcessMonitor() {
           <Button size="small" type="link" onClick={() => setSelectedInstanceId(r.id)}>
             详情
           </Button>
-          {r.state === 'waiting' && (
+          {r.state === 'WAITING_USER_TASK' && (
             <Button
               size="small"
               type="link"
@@ -189,7 +189,7 @@ export default function ProcessMonitor() {
               处理
             </Button>
           )}
-          {(r.state === 'running' || r.state === 'waiting') && (
+          {(r.state === 'RUNNING' || r.state === 'WAITING_USER_TASK') && (
             <Popconfirm
               title="确认终止"
               description="终止后所有待办任务将被取消，不可恢复。"
@@ -491,7 +491,7 @@ function InstanceDetail({
                 border: `1px solid ${meta.color}`,
                 borderLeft: `4px solid ${meta.color}`,
                 borderRadius: 6,
-                background: exec.state === 'idle' ? '#fafbfc' : '#fff',
+                background: exec.state === 'PENDING' ? '#fafbfc' : '#fff',
               }}
             >
               <Badge status={meta.badgeStatus} />

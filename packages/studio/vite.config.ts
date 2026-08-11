@@ -6,11 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: [
-      '@flowgram.ai/fixed-semi-materials',
-      '@douyinfe/semi-ui',
-      '@douyinfe/semi-icons',
-    ],
+    include: ['@flowgram.ai/fixed-semi-materials', '@douyinfe/semi-ui', '@douyinfe/semi-icons'],
   },
   resolve: {
     alias: {
@@ -22,9 +18,20 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_STUDIO_PORT) || 5173,
     proxy: {
+      // /api/v1/ 和 /api/docs 直接透传（Swagger + 已含版本号的请求）
+      '/api/v1': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api/docs': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // /api/xxx 重写为 /api/v1/xxx（后端 URI 版本控制）
       '/api': {
         target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/(?!v1|docs)/, '/api/v1/'),
       },
     },
   },

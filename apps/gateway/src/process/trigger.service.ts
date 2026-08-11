@@ -151,15 +151,11 @@ export class TriggerService implements OnModuleInit {
           objectId,
           recordId: recordData['id'] ?? null,
           record: recordData,
-          triggeredBy: 'record_event',
+          triggeredBy: triggerType,
         };
 
         try {
-          const instanceId = await this.engine.startProcess(
-            tenantId,
-            def.id,
-            triggerContext,
-          );
+          const instanceId = await this.engine.startProcess(tenantId, def.id, triggerContext);
           this.logger.log(
             `记录事件 ${eventType} 触发流程 ${def.apiName}(${def.name}) → 实例 ${instanceId}`,
           );
@@ -172,9 +168,7 @@ export class TriggerService implements OnModuleInit {
       }
     } catch (err) {
       // 触发器整体失败不影响记录操作
-      this.logger.error(
-        `记录事件触发异常: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.error(`记录事件触发异常: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }

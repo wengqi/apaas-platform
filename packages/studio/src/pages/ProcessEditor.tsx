@@ -85,7 +85,7 @@ export default function ProcessEditor() {
   const storeLoaded = store.processDef?.id === processId;
 
   /** 是否只读(已发布)。 */
-  const isReadonly = processDef?.status === 'published';
+  const isReadonly = processDef?.status === 'PUBLISHED';
 
   /** 保存草稿。 */
   const saveMutation = useMutation({

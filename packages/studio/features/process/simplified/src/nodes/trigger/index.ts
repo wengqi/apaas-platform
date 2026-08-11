@@ -3,7 +3,7 @@ import { TriggerFormMeta } from './form-meta.js';
 
 /**
  * 触发器节点 — 定义流程何时自动执行。
- * 类型：RECORD_CREATED / RECORD_UPDATED / SCHEDULED / API / MANUAL
+ * 类型：RECORD_CREATED / RECORD_UPDATED / RECORD_DELETED / SCHEDULED / API / MANUAL / BUTTON_CLICK
  */
 export const TriggerNodeRegistry: FlowNodeRegistry = {
   type: 'trigger',

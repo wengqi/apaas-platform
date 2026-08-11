@@ -763,7 +763,7 @@
 | 流程节点类型（18 种） | D.2 流程节点 | `shared/src/process/index.ts` (SimplifiedNodeType) |
 | WorkflowSchema | D. 流程引擎 | `shared/src/process/index.ts` (WorkflowSchema) |
 | IFlowValue 四态值 | D.5 变量系统 | `shared/src/process/index.ts` (IFlowValue) |
-| BPMN 互转类型 | D. 流程引擎 | `shared/src/process/index.ts` (BpmnToWorkflowResult) |
+| ~~BPMN 互转类型~~ | ~~D. 流程引擎~~ | ~~`shared/src/process/index.ts` (BpmnToWorkflowResult)~~ **已决策不实现（2026-08-06 单模式化）** |
 | 流程实例类型 | D.4 流程运行时 | `shared/src/process/index.ts` (ProcessInstance) |
 | 权限五级类型 | E.1 五级权限 | `shared/src/permission/index.ts` (PermissionType) |
 | 角色与组织类型 | E.3 角色与组织 | `shared/src/permission/index.ts` (Role/OrgNode) |
@@ -793,9 +793,9 @@
 | IFlowValue 四态变量 (constant/ref/expression/template + dotted-path 导航) | D.5 变量系统 | `process-utils.ts` |
 | 通知模版管理 (CRUD + 变量插值 + 3 渠道: in_app/email/webhook) | D.3 通知模版 | `process.controller.ts` + `NotificationTemplate` 模型 |
 | 流程定义 CRUD + 发布 (14 路由) | D. 流程引擎 | `process.controller.ts` |
-| 简化模式编辑器 (FlowGram Fixed Layout + aPaaS 业务节点物料) | D. 流程编排 | `SimplifiedEditor.tsx` + `ApaasNodeRenderer.tsx` |
-| 标准模式编辑器 (bpmn-js Modeler + 调色板 + 属性面板 + XML 视图) | D. 流程编排 | `StandardEditor.tsx` |
-| 双模式同源互转 (workflowToBpmnXml / bpmnXmlToWorkflow + 只读降级) | D. 流程引擎 | `ModeSwitcher.tsx` |
+| 流程编辑器 (FlowGram Fixed Layout + aPaaS 业务节点物料) | D. 流程编排 | `SimplifiedEditor.tsx` + `ApaasNodeRenderer.tsx` |
+| ~~标准模式编辑器 (bpmn-js Modeler + 调色板 + 属性面板 + XML 视图)~~ | ~~D. 流程编排~~ | ~~`StandardEditor.tsx`~~ **已决策不实现（2026-08-06 单模式化）** |
+| ~~双模式同源互转 (workflowToBpmnXml / bpmnXmlToWorkflow + 只读降级)~~ | ~~D. 流程引擎~~ | ~~`ModeSwitcher.tsx`~~ **已决策不实现（2026-08-06 单模式化）** |
 | 流程监控 (运行实例列表 5s 轮询 + 节点执行状态 + 人工任务处理面板) | D.4 流程监控 | `ProcessMonitor.tsx` |
 | 10 节点配置表单 (trigger/start/end/objectOperation/condition/userTask/notification/httpRequest/assign/delay) | D.2 流程节点 | `configs/*ConfigForm.tsx` |
 | FlowValueEditor + VariablePicker + FieldMapper | D.5 变量系统 | `FlowValueEditor.tsx`, `VariablePicker.tsx`, `FieldMapper.tsx` |
@@ -846,7 +846,7 @@
 | **无自动触发器** | D.1 触发器 | 🔴 高 | 仅手动启动，无记录事件/定时/按钮触发 |
 | 7 节点类型未实现 | D.2 流程节点 | 中 | batch_operation/inclusive/loop/wait_for_condition/break/continue/comment |
 | 通知 email/in_app 为日志桩 | D.2 发送通知 | 中 | 无 SMTP/消息表，仅 webhook 可用 |
-| 后端无 BPMN 转换器 | D. 流程引擎 | 低 | 前端已实现互转，后端 bpmnXml 原样存储 |
+| ~~后端无 BPMN 转换器~~ | ~~D. 流程引擎~~ | ~~低~~ | **已决策不实现 BPMN 转换器（2026-08-06 单模式化，bpmnXml 字段已删除）** |
 | 流程 undo/redo 无 handler | — | 低 | 按钮渲染但不可用 |
 | 流程导出菜单无实现 | — | 低 | UI 存在但 onClick 空 |
 | NotificationTemplateManager 孤立 | D.3 通知模版 | 低 | 完整组件未路由 |
@@ -889,7 +889,7 @@
 | 对象与数据建模 | ✅ 已完成：18 字段类型 / CRUD 16 路由 / 公式引擎 / 自动编号 / 6 视图 / 视图配置器 / 记录 JSONB 查询 (12 操作符) | **~85%** | 缺 GIN 索引、软删除、批量操作、导入导出 |
 | 数据集与数据流 | 完全缺失 | **0%** | 需新增整个模块（Phase 6） |
 | 页面与 UI | ✅ 已完成：25 组件 / 三栏搭建器 / 视图模型 / 表达式引擎 / 12 动作事件引擎 / Studio 预览渲染器 / 5 页面类型 | **~65%** | 缺 runtime-ui 独立渲染器、事件配置 UI、图表引擎、JS 扩展、移动端 |
-| 流程引擎 | ✅ 已完成：状态机引擎 / 12 节点执行器 / 双模式编辑器(简化+标准) / 模式互转 / 流程监控 / 人工任务 / IFlowValue 四态 / 通知模版 | **~60%** | 缺 BullMQ 异步队列、自动触发器、7 节点类型、通知 email/in_app 发送、后端 BPMN 转换器 |
+| 流程引擎 | ✅ 已完成：状态机引擎 / 12 节点执行器 / 单模式编辑器(flowgram.ai) / 流程监控 / 人工任务 / IFlowValue 四态 / 通知模版 | **~82%** | 缺 BullMQ 异步队列、自动触发器、7 节点类型、通知 email/in_app 发送（注：双模式/BPMN 互转已决策不实现，2026-08-06 单模式化） |
 | 权限与多租户 | ✅ 已完成：RBAC+ABAC 引擎 / 角色+组织+用户 CRUD / 管理 UI / JWT 增强 / 租户隔离 | **~55%** | 缺权限路由挂载(阻断性)、审计日志、组织继承扩散、规则编辑 UI |
 | 连接器与集成 | 仅 http_request 流程节点 | **~5%** | 需新增连接器实体/管理 API/OpenAPI 凭证（Phase 5） |
 | 云函数与扩展 | 类型预留（代码节点） | **~5%** | 需新增云函数平台/自定义组件/JS 扩展（Phase 8） |

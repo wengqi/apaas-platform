@@ -11,10 +11,10 @@
 import client from './client.js';
 import type { ApiResponse } from './client.js';
 import type {
-  ProcessDef as SharedProcessDef,
   WorkflowSchema,
   ProcessInstance,
   ProcessInstanceReport,
+  ProcessDef,
 } from '@apaas/shared';
 import type {
   ProcessStatus,
@@ -27,9 +27,14 @@ import type {
 // 重新导出 shared 类型(便于上层统一从 api/processes 引入)
 // ---------------------------------------------------------------------------
 
-export type { WorkflowSchema, WorkflowNode, ProcessInstance, ProcessInstanceReport } from '@apaas/shared';
+export type {
+  WorkflowSchema,
+  WorkflowNode,
+  ProcessInstance,
+  ProcessInstanceReport,
+} from '@apaas/shared';
 
-export type { ProcessStatus, TriggerType, NotificationChannel };
+export type { ProcessDef, ProcessStatus, TriggerType, NotificationChannel };
 
 /** 节点执行状态（流程轨迹用）。 */
 export type NodeTraceStatus = 'COMPLETED' | 'RUNNING' | 'WAITING' | 'SKIPPED' | 'PENDING';
@@ -67,19 +72,6 @@ export interface ProcessTraceData {
     createdAt: string;
     completedAt?: string;
   }>;
-}
-
-/**
- * 流程定义(UI 扩展)。
- *
- * 在 shared 的 ProcessDef 基础上补充 UI 层使用的字段(appId / triggerType),
- * 这些字段后端实际返回(shared ProcessDef 未显式声明,但 API 响应包含)。
- */
-export interface ProcessDef extends SharedProcessDef {
-  /** 所属应用 ID(UI 层使用) */
-  appId?: string;
-  /** 触发器类型(UI 层使用,对齐 TriggerType) */
-  triggerType?: TriggerType;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,10 +268,7 @@ export const processesApi = {
   /** 启动流程实例 */
   start: (processId: string, triggerContext: StartProcessRequest) =>
     client
-      .post<ApiResponse<ProcessInstance>>(
-        `/api/processes/${processId}/start`,
-        triggerContext,
-      )
+      .post<ApiResponse<ProcessInstance>>(`/api/processes/${processId}/start`, triggerContext)
       .then((res) => res.data.data as ProcessInstance),
 
   /** 实例列表 */
@@ -348,26 +337,18 @@ export const processesApi = {
   /** 创建模版 */
   createTemplate: (appId: string, data: CreateTemplateRequest) =>
     client
-      .post<ApiResponse<NotificationTemplate>>(
-        `/api/apps/${appId}/notification-templates`,
-        data,
-      )
+      .post<ApiResponse<NotificationTemplate>>(`/api/apps/${appId}/notification-templates`, data)
       .then((res) => res.data.data as NotificationTemplate),
 
   /** 更新模版 */
   updateTemplate: (templateId: string, data: UpdateTemplateRequest) =>
     client
-      .put<ApiResponse<NotificationTemplate>>(
-        `/api/notification-templates/${templateId}`,
-        data,
-      )
+      .put<ApiResponse<NotificationTemplate>>(`/api/notification-templates/${templateId}`, data)
       .then((res) => res.data.data as NotificationTemplate),
 
   /** 删除模版 */
   deleteTemplate: (templateId: string) =>
     client
-      .delete<ApiResponse<{ deleted: boolean }>>(
-        `/api/notification-templates/${templateId}`,
-      )
+      .delete<ApiResponse<{ deleted: boolean }>>(`/api/notification-templates/${templateId}`)
       .then((res) => res.data.data as { deleted: boolean }),
 };

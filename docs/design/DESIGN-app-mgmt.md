@@ -230,7 +230,6 @@ export interface AppSnapshot {
     name: string;
     workflowSchema: Record<string, unknown>;
     triggerType: string;
-    bpmnXml: string | null;
   }>;
   permissions: {
     roles: Array<{
@@ -340,7 +339,7 @@ export class SnapshotService {
     // 1. 查询 Application 基本信息
     // 2. 查询所有 ObjectMeta（含 fields、views）
     // 3. 查询所有 PageMeta（含 schema）
-    // 4. 查询所有 ProcessDef（含 workflowSchema、bpmnXml）
+    // 4. 查询所有 ProcessDef（含 workflowSchema）
     // 5. 查询所有 Role（含 PermissionRule）
     // 6. 组装为 AppSnapshot 结构
     // 7. 返回

@@ -105,7 +105,6 @@ export class SnapshotService {
         name: proc.name,
         workflowSchema: proc.workflowSchema as Record<string, unknown>,
         triggerType: proc.triggerType,
-        bpmnXml: proc.bpmnXml,
       })),
       permissions: {
         roles: [...appRoles, ...tenantRoles].map((role) => ({

@@ -26,34 +26,30 @@ import {
 type IconType = ComponentType<{ style?: React.CSSProperties }>;
 
 // ---------------------------------------------------------------------------
-// 流程状态 / 触发器类型(字符串字面量,对齐 shared 枚举)
+// 流程状态 / 触发器类型(对齐 shared 枚举大写值 + Prisma 枚举)
 // ---------------------------------------------------------------------------
 
-export type ProcessStatus = 'draft' | 'published' | 'deprecated';
+export type ProcessStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
-export type TriggerType = 'record_event' | 'schedule' | 'manual' | 'button_click';
+export type TriggerType =
+  | 'RECORD_CREATED'
+  | 'RECORD_UPDATED'
+  | 'RECORD_DELETED'
+  | 'SCHEDULED'
+  | 'MANUAL'
+  | 'API'
+  | 'BUTTON_CLICK';
 
 /** 流程实例状态(对齐 shared ProcessInstanceState)。 */
 export type ProcessInstanceState =
-  | 'pending'
-  | 'running'
-  | 'waiting'
-  | 'completed'
-  | 'failed'
-  | 'terminated'
-  | 'cancelled';
+  'RUNNING' | 'WAITING_USER_TASK' | 'COMPLETED' | 'FAILED' | 'TERMINATED';
 
-/** 节点执行状态(对齐 shared NodeExecutionStatus.state)。 */
+/** 节点执行状态(对齐 shared NodeExecutionStatus.state / Prisma NodeExecStatus)。 */
 export type NodeExecutionState =
-  | 'idle'
-  | 'processing'
-  | 'success'
-  | 'fail'
-  | 'waiting'
-  | 'skipped';
+  'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING' | 'SKIPPED';
 
 /** 通知渠道。 */
-export type NotificationChannel = 'in_app' | 'email' | 'webhook';
+export type NotificationChannel = 'IN_APP' | 'EMAIL' | 'WEBHOOK';
 
 // ---------------------------------------------------------------------------
 // 节点元数据(10 种 aPaaS 业务节点,对齐 ApaasNodeRegistries)
@@ -217,26 +213,44 @@ export interface TriggerMeta {
 }
 
 export const TRIGGER_META: Record<TriggerType, TriggerMeta> = {
-  record_event: {
-    type: 'record_event',
-    label: '记录事件触发',
+  RECORD_CREATED: {
+    type: 'RECORD_CREATED',
+    label: '记录创建触发',
     icon: DatabaseOutlined,
     color: '#1677ff',
   },
-  schedule: {
-    type: 'schedule',
+  RECORD_UPDATED: {
+    type: 'RECORD_UPDATED',
+    label: '记录更新触发',
+    icon: DatabaseOutlined,
+    color: '#1677ff',
+  },
+  RECORD_DELETED: {
+    type: 'RECORD_DELETED',
+    label: '记录删除触发',
+    icon: DatabaseOutlined,
+    color: '#1677ff',
+  },
+  SCHEDULED: {
+    type: 'SCHEDULED',
     label: '定时触发',
     icon: ClockCircleOutlined,
     color: '#fa8c16',
   },
-  manual: {
-    type: 'manual',
+  MANUAL: {
+    type: 'MANUAL',
     label: '手动触发',
     icon: UserOutlined,
     color: '#52c41a',
   },
-  button_click: {
-    type: 'button_click',
+  API: {
+    type: 'API',
+    label: 'API 触发',
+    icon: ApiOutlined,
+    color: '#2f54eb',
+  },
+  BUTTON_CLICK: {
+    type: 'BUTTON_CLICK',
     label: '按钮点击触发',
     icon: ThunderboltOutlined,
     color: '#722ed1',
@@ -254,7 +268,7 @@ export function getTriggerMeta(type?: string): TriggerMeta {
     return TRIGGER_META[type as TriggerType];
   }
   return {
-    type: 'manual',
+    type: 'MANUAL',
     label: '手动触发',
     icon: UserOutlined,
     color: '#52c41a',
@@ -274,13 +288,13 @@ export interface ProcessStatusMeta {
 }
 
 export const PROCESS_STATUS_META: Record<ProcessStatus, ProcessStatusMeta> = {
-  draft: { label: '草稿', tagColor: 'orange', dotColor: '#fa8c16' },
-  published: { label: '已发布', tagColor: 'green', dotColor: '#52c41a' },
-  deprecated: { label: '已弃用', tagColor: 'default', dotColor: '#8c8c8c' },
+  DRAFT: { label: '草稿', tagColor: 'orange', dotColor: '#fa8c16' },
+  PUBLISHED: { label: '已发布', tagColor: 'green', dotColor: '#52c41a' },
+  ARCHIVED: { label: '已归档', tagColor: 'default', dotColor: '#8c8c8c' },
 };
 
 export function getProcessStatusMeta(status: string): ProcessStatusMeta {
-  return PROCESS_STATUS_META[status as ProcessStatus] ?? PROCESS_STATUS_META.draft;
+  return PROCESS_STATUS_META[status as ProcessStatus] ?? PROCESS_STATUS_META.DRAFT;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,21 +310,15 @@ export interface InstanceStateMeta {
 }
 
 export const INSTANCE_STATE_META: Record<ProcessInstanceState, InstanceStateMeta> = {
-  pending: { label: '等待中', badgeStatus: 'default', color: '#8c8c8c' },
-  running: { label: '运行中', badgeStatus: 'processing', color: '#1677ff' },
-  waiting: { label: '等待中', badgeStatus: 'warning', color: '#fa8c16' },
-  completed: { label: '已完成', badgeStatus: 'success', color: '#52c41a' },
-  failed: { label: '失败', badgeStatus: 'error', color: '#ff4d4f' },
-  terminated: { label: '已终止', badgeStatus: 'default', color: '#8c8c8c' },
-  cancelled: { label: '已取消', badgeStatus: 'default', color: '#8c8c8c' },
+  RUNNING: { label: '运行中', badgeStatus: 'processing', color: '#1677ff' },
+  WAITING_USER_TASK: { label: '等待中', badgeStatus: 'warning', color: '#fa8c16' },
+  COMPLETED: { label: '已完成', badgeStatus: 'success', color: '#52c41a' },
+  FAILED: { label: '失败', badgeStatus: 'error', color: '#ff4d4f' },
+  TERMINATED: { label: '已终止', badgeStatus: 'default', color: '#8c8c8c' },
 };
 
-export function getInstanceStateMeta(
-  state: string,
-): InstanceStateMeta {
-  return (
-    INSTANCE_STATE_META[state as ProcessInstanceState] ?? INSTANCE_STATE_META.pending
-  );
+export function getInstanceStateMeta(state: string): InstanceStateMeta {
+  return INSTANCE_STATE_META[state as ProcessInstanceState] ?? INSTANCE_STATE_META.RUNNING;
 }
 
 /** 节点执行状态色(用于监控节点状态着色)。 */
@@ -322,16 +330,16 @@ export interface NodeStateMeta {
 }
 
 export const NODE_STATE_META: Record<NodeExecutionState, NodeStateMeta> = {
-  success: { label: '已执行', color: '#52c41a', badgeStatus: 'success' },
-  processing: { label: '执行中', color: '#1677ff', badgeStatus: 'processing' },
-  waiting: { label: '等待中', color: '#fa8c16', badgeStatus: 'warning' },
-  idle: { label: '待执行', color: '#d9d9d9', badgeStatus: 'default' },
-  fail: { label: '失败', color: '#ff4d4f', badgeStatus: 'error' },
-  skipped: { label: '跳过', color: '#bfbfbf', badgeStatus: 'default' },
+  COMPLETED: { label: '已执行', color: '#52c41a', badgeStatus: 'success' },
+  RUNNING: { label: '执行中', color: '#1677ff', badgeStatus: 'processing' },
+  WAITING: { label: '等待中', color: '#fa8c16', badgeStatus: 'warning' },
+  PENDING: { label: '待执行', color: '#d9d9d9', badgeStatus: 'default' },
+  FAILED: { label: '失败', color: '#ff4d4f', badgeStatus: 'error' },
+  SKIPPED: { label: '跳过', color: '#bfbfbf', badgeStatus: 'default' },
 };
 
 export function getNodeStateMeta(state: string): NodeStateMeta {
-  return NODE_STATE_META[state as NodeExecutionState] ?? NODE_STATE_META.idle;
+  return NODE_STATE_META[state as NodeExecutionState] ?? NODE_STATE_META.PENDING;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,13 +350,13 @@ export const NOTIFICATION_CHANNEL_META: Record<
   NotificationChannel,
   { label: string; tagColor: string }
 > = {
-  email: { label: '邮件', tagColor: 'blue' },
-  in_app: { label: '站内', tagColor: 'green' },
-  webhook: { label: 'Webhook', tagColor: 'purple' },
+  EMAIL: { label: '邮件', tagColor: 'blue' },
+  IN_APP: { label: '站内', tagColor: 'green' },
+  WEBHOOK: { label: 'Webhook', tagColor: 'purple' },
 };
 
 export const NOTIFICATION_CHANNEL_OPTIONS: { label: string; value: NotificationChannel }[] = [
-  { label: '邮件', value: 'email' },
-  { label: '站内', value: 'in_app' },
-  { label: 'Webhook', value: 'webhook' },
+  { label: '邮件', value: 'EMAIL' },
+  { label: '站内', value: 'IN_APP' },
+  { label: 'Webhook', value: 'WEBHOOK' },
 ];

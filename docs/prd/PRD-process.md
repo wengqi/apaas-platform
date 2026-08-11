@@ -30,7 +30,7 @@
 
 | 角色 | 价值 |
 |---|---|
-| 搭建者 | 像画流程图一样编排业务逻辑（审批/通知/数据流转），双模式适配不同技能层级，无需写代码。 |
+| 搭建者 | 像画流程图一样编排业务逻辑（审批/通知/数据流转），无需写代码。 |
 | 业务用户 | 人工任务自动派发到个人待办，审批/填报在线完成，流程进度可追踪。 |
 | 开发者 | 节点执行器可扩展注册；WorkflowSchema 为 SSOT，前后端同构，无翻译损耗。 |
 | 平台 | 自研引擎 TS 全栈进程内集成，与 aPaaS 零摩擦；BullMQ 保障异步可靠执行。 |
@@ -42,29 +42,25 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 层3 双模式 UI                                                │
-│  简化模式 (flowgram.ai fork · Fixed Layout) ─┐              │
-│  标准模式 (bpmn-js · 完整 BPMN 2.0)        ──┤ 同源互转      │
-└─────────────────────────────────────────────┼──────────────┘
-┌─────────────────────────────────────────────▼──────────────┐
-│ 层2 同源中介                                                  │
-│  WorkflowSchema (SSOT, JSON 节点图) ◀──── bpmn-to-workflow  │
-│      │                              └──── workflow-to-bpmn  │
-│      │ flowToWorkflowSchema (零翻译)                          │
+│ 层3 流程编辑器 UI                                           │
+│ flowgram.ai fork · Fixed Layout                             │
 └──────┼──────────────────────────────────────────────────────┘
 ┌──────▼──────────────────────────────────────────────────────┐
-│ 层1 执行内核 (process-svc · NestJS)                          │
-│  自研状态机引擎 (token 流) + BullMQ 异步队列                  │
-│  NodeExecutor 注册表 · 流程实例生命周期                       │
-└──────────────────────────────────────────────────────────────┘
+│ 层2 同源中介                                                │
+│ WorkflowSchema (SSOT, JSON 节点图)                          │
+│ flowToWorkflowSchema (零翻译)                               │
+└──────┼──────────────────────────────────────────────────────┘
+┌──────▼──────────────────────────────────────────────────────┐
+│ 层1 执行内核 (process-svc · NestJS)                         │
+│ 自研状态机引擎 (token 流) + BullMQ 异步队列                 │
+│ NodeExecutor 注册表 · 流程实例生命周期                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **核心原则**：
 1. **WorkflowSchema 为 SSOT**：内部执行格式统一为 WorkflowSchema JSON，自研引擎原生消费。
-2. **双模式同源互转**：简化模式直接产出/消费 WorkflowSchema（零翻译）；标准模式产出 BPMN XML，经
-   `bpmn-to-workflow` 转换为 WorkflowSchema 执行。
+2. **零翻译**：流程编辑器直接产出/消费 WorkflowSchema。
 3. **类型契约先行**：`packages/shared/src/process/index.ts` 为前后端对接边界（SSOT）。
-4. **BPMN XML 仅供互操作**：导入/导出/查看，非执行格式。
 
 ---
 
@@ -72,16 +68,14 @@
 
 | 概念 | 定义 | 类比 |
 |---|---|---|
-| **WorkflowSchema** | 节点图 JSON（nodes + edges + groups + globalVariable），自研引擎的核心执行格式，简化模式直接产出。 | flowgram.ai 内部格式 / 飞书流程定义 |
-| **BPMN 2.0 XML** | 标准模式产出的互操作格式，仅用于导入/导出/查看，执行前需转回 WorkflowSchema。 | 业界流程标准 |
+| **WorkflowSchema** | 节点图 JSON（nodes + edges + groups + globalVariable），自研引擎的核心执行格式，流程编辑器直接产出。 | flowgram.ai 内部格式 / 飞书流程定义 |
 | **IFlowValue（四态值）** | 节点输入值的四种绑定形态：constant / ref / expression / template，是变量系统与节点数据绑定的桥梁。 | 表达式绑定 |
 | **流程变量作用域链** | 全局变量（流程级）+ 节点变量（局部输出），按节点层级链式查找。 | 作用域链 |
 | **NodeExecutor（节点执行器）** | 每种节点 type 注册一个执行器，实现执行契约（输入→输出），引擎按 type 路由分发。 | 策略模式 |
-| **双模式同源互转** | 简化↔标准切换不丢数据；简化→标准无损，标准→简化按能力分级（可编辑 / 只读占位）。 | — |
 
 ### 2.1 WorkflowSchema（SSOT）
 
-自研引擎的核心执行格式，数据结构与 flowgram.ai 对齐（确保简化模式零翻译）：
+自研引擎的核心执行格式，数据结构与 flowgram.ai 对齐（确保流程编辑器零翻译）：
 
 ```ts
 interface WorkflowSchema {
@@ -104,14 +98,7 @@ interface WorkflowNode {
 > `WorkflowNode.data` 同时承载 `inputsValues`（四态绑定值）、`inputs`/`outputs`（JSON Schema 定义）
 > 及节点类型特定配置字段（如 `triggerType`/`operation` 等）。
 
-### 2.2 BPMN 2.0 XML（互操作格式）
-
-标准模式（bpmn-js）产出的业界标准格式。本平台**不以 BPMN XML 为执行格式**，其角色为：
-- **导入**：外部 BPMN 文件 → `bpmn-to-workflow` → WorkflowSchema 执行。
-- **导出**：WorkflowSchema → `workflow-to-bpmn` → BPMN 文件，供外部系统消费。
-- **查看/编辑**：标准模式编辑器直接读写 BPMN XML。
-
-### 2.3 IFlowValue 四态值
+### 2.2 IFlowValue 四态值
 
 节点输入参数值统一用四态表达，对齐 flowgram.ai，是变量绑定的统一抽象：
 
@@ -124,7 +111,7 @@ interface WorkflowNode {
 
 > 四态统一存于 `WorkflowNodeData.inputsValues[key]`，执行引擎在节点执行前先解析四态为具体值。
 
-### 2.4 流程变量作用域链
+### 2.3 流程变量作用域链
 
 ```
 全局变量 (globalVariable, 流程级)
@@ -139,7 +126,7 @@ interface WorkflowNode {
 - **作用域隔离**：复合节点（循环/条件）内部的 `blocks` 形成私有作用域（`isNodeChildrenPrivate`），内部变量不泄漏到外层。
 - **变量传递**：节点输出 → 经引擎写入变量上下文 → 下一节点的 `inputsValues` 通过 `ref` 路径读取。
 
-### 2.5 节点执行器（NodeExecutor 模式）
+### 2.4 节点执行器（NodeExecutor 模式）
 
 引擎为每种 `type` 注册一个执行器，统一执行契约：
 
@@ -159,14 +146,6 @@ interface NodeExecContext {
 ```
 
 引擎按 `node.type` 从注册表查找执行器并调用；执行器返回输出 + 出边令牌，引擎推进状态机。
-
-### 2.6 双模式同源互转
-
-| 方向 | 机制 | 保真度 |
-|---|---|---|
-| 简化 → 标准 | `workflow-to-bpmn`：WorkflowSchema → BPMN XML | **无损**（WorkflowSchema 表达力 ⊆ BPMN） |
-| 标准 → 简化 | `bpmn-to-workflow` + `capability-check`：解析 XML 判定可编辑性 | **按能力分级**（见 5.3） |
-| 简化 ↔ flowgram 内部 | `flowToWorkflowSchema` / `workflowToFlowSchema`（schema-serializer） | **零翻译**（结构同构） |
 
 ---
 
@@ -274,7 +253,6 @@ Phase 3 MVP 实现 P0 全部 + P1 关键节点。飞书的代码处理节点（�
 
 #### 4.3.2 Switch（多分支选择）`inclusive`
 - **定位**：包容分支/多条件分支，多个条件可同时满足则并行执行（区别于 Condition 的互斥）。
-  - 对应 BPMN Inclusive Gateway（包容网关）。
 - **配置项**：`branches`（`{ label, condition }[]`，满足条件的分支均执行）+ `defaultBranch`（无匹配时）。
 - **输入参数**：条件表达式变量。
 - **输出**：无。
@@ -283,7 +261,6 @@ Phase 3 MVP 实现 P0 全部 + P1 关键节点。飞书的代码处理节点（�
 
 #### 4.3.3 Parallel（并行分支 AND）`parallel`
 - **定位**：所有分支并行执行，汇聚处等待全部完成。
-  - 对应 BPMN Parallel Gateway（并行网关）。
 - **配置项**：`branches`（分支数，无 condition）。
 - **输入参数**：无。
 - **输出**：无。
@@ -349,74 +326,38 @@ Phase 3 MVP 实现 P0 全部 + P1 关键节点。飞书的代码处理节点（�
 
 ### 4.5 节点清单总览
 
-| 节点 | type | 分类 | 优先级 | BPMN 对应 |
-|---|---|---|---|---|
-| 触发器 | `trigger` | 触发起止 | P0 | StartEvent (消息/定时/信号) |
-| 开始 | `start` | 触发起止 | P0 | StartEvent (空) |
-| 结束 | `end` | 触发起止 | P0 | EndEvent |
-| 对象操作 | `object_operation` | 数据操作 | P0 | ScriptTask (服务调用) |
-| 赋值 | `assign` | 数据操作 | P0 | ScriptTask |
-| 条件分支 | `condition` | 流程控制 | P0 | ExclusiveGateway |
-| 多分支选择 | `inclusive` | 流程控制 | P1 | InclusiveGateway |
-| 并行分支 | `parallel` | 流程控制 | P1 | ParallelGateway |
-| 循环 | `loop` | 流程控制 | P1 | — (BPMN 无原生，用多实例+网关模拟) |
-| 延时 | `delay` | 流程控制 | P0 | IntermediateCatchEvent (定时) |
-| 人工任务 | `user_task` | 业务操作 | P0 | UserTask |
-| 通知 | `notification` | 业务操作 | P0 | ServiceTask (发送任务) |
-| HTTP 请求 | `http_request` | 业务操作 | P0 | ServiceTask |
-| 子流程 | `sub_process` | 业务操作 | P1 | CallActivity |
+| 节点 | type | 分类 | 优先级 |
+|---|---|---|---|
+| 触发器 | `trigger` | 触发起止 | P0 |
+| 开始 | `start` | 触发起止 | P0 |
+| 结束 | `end` | 触发起止 | P0 |
+| 对象操作 | `object_operation` | 数据操作 | P0 |
+| 赋值 | `assign` | 数据操作 | P0 |
+| 条件分支 | `condition` | 流程控制 | P0 |
+| 多分支选择 | `inclusive` | 流程控制 | P1 |
+| 并行分支 | `parallel` | 流程控制 | P1 |
+| 循环 | `loop` | 流程控制 | P1 |
+| 延时 | `delay` | 流程控制 | P0 |
+| 人工任务 | `user_task` | 业务操作 | P0 |
+| 通知 | `notification` | 业务操作 | P0 |
+| HTTP 请求 | `http_request` | 业务操作 | P0 |
+| 子流程 | `sub_process` | 业务操作 | P1 |
 
 > 飞书另有：批量操作、等待条件、跳出/继续循环、代码处理（云函数）、注释等。其中等待条件（`wait_for_condition`）、
 > 跳出/继续循环（`break`/`continue`）类型契约已保留，归 P2；代码处理节点归 Phase 8 云函数；注释节点归 P2。
 
 ---
 
-## 5. 双模式设计
+## 5. 流程编辑器
 
-### 5.1 简化模式（flowgram.ai Fixed Layout）
+### 5.1 flowgram.ai Fixed Layout
 
 - **内核**：fork 的 flowgram.ai `@flowgram.ai/fixed-layout-editor`（MIT，已就绪于 `simplified/` 目录）。
 - **形态**：自上而下的固定布局，节点拖入指定位置，飞书风格表单式配置，支持分支/循环复合节点。
 - **产物**：flowgram 内部格式 `FlowDocumentJSON`，经 `flowToWorkflowSchema` 序列化为 WorkflowSchema（零翻译）。
 - **节点物料**：基于 `createInjectMaterial` 自建 aPaaS 业务节点物料（10 个已定义 form-meta），替换 flowgram 默认节点。
-- **适用人群**：业务搭建者，无需理解 BPMN 概念。
-- **能力边界**：仅支持 `SimplifiedNodeType` 集合内的节点（18 种），无法表达 BPMN 高级元素（边界事件/事件子流程/复杂泳道）。
-
-### 5.2 标准模式（bpmn-js）
-
-- **内核**：bpmn-js（业界 BPMN 2.0 建模器）。
-- **形态**：完整 BPMN 2.0 元素——网关（排他/包容/并行/复杂）、边界事件、事件子流程、中间事件、泳道（Pool/Lane）。
-- **产物**：BPMN 2.0 XML，存于 `ProcessDef.bpmnXml`；执行前经 `bpmn-to-workflow` 转为 WorkflowSchema。
-- **适用人群**：有流程建模经验的开发者/架构师。
-- **能力边界**：支持完整 BPMN 2.0 子集，但部分元素自研引擎尚未支持执行（见 5.3 capability-check）。
-
-### 5.3 互转规则与 capability-check
-
-| 方向 | 规则 |
-|---|---|
-| **简化 → 标准**（无损） | `workflow-to-bpmn`：WorkflowSchema 表达力是 BPMN 子集，可无损映射为对应 BPMN 元素（见 4.5 BPMN 对应列）。循环节点用多实例+网关模拟。 |
-| **标准 → 简化**（按能力分级） | `bpmn-to-workflow` 转 WorkflowSchema + `capability-check` 解析 XML 判定可编辑性： |
-
-**capability-check 判定逻辑**（对应 `CapabilityCheckResult`）：
-
-| BPMN 元素 | 简化模式可编辑性 | 处理 |
-|---|---|---|
-| StartEvent/EndEvent/UserTask/ServiceTask/网关（排他/包容/并行）/定时事件 | ✅ 可编辑 | 正常映射为对应简化节点 |
-| 边界事件（BoundaryEvent） | ❌ 只读占位 | 保留为只读占位节点，标注"高级元素" |
-| 事件子流程（EventSubProcess） | ❌ 只读占位 | 同上 |
-| 复杂网关（ComplexGateway） | ❌ 只读占位 | 同上 |
-| 泳道（Pool/Lane） | ❌ 元数据保留 | 转换时保留为 groups，简化模式不显示泳道 |
-| CallActivity（子流程） | ✅ 可编辑 | 映射为 `sub_process` |
-
-- `editable = true`：BPMN XML 全部元素在简化模式能力集内，可切换到简化模式完全编辑。
-- `editable = false`：存在 `unsupportedElements`，切换到简化模式时这些元素以**只读占位**呈现，不可编辑，
-  UI 提示"含高级元素，部分只读；完整编辑请用标准模式"。
-
-### 5.4 模式切换交互
-
-- 流程定义记录用户最后使用的编辑模式（`editorMode`），下次打开默认进入该模式。
-- 一键切换：简化⇄标准。切换前自动触发互转 + capability-check；若降级为只读，弹窗确认。
-- 切换不丢数据：源格式始终保留（WorkflowSchema + BPMN XML 双存），互转为派生而非覆盖。
+- **适用人群**：业务搭建者，无需写代码。
+- **能力边界**：仅支持 `SimplifiedNodeType` 集合内的节点（18 种）。
 
 ---
 
@@ -433,7 +374,7 @@ Phase 3 MVP 实现 P0 全部 + P1 关键节点。飞书的代码处理节点（�
 
 ### 6.2 IFlowValue 四态绑定
 
-节点输入参数（`inputsValues`）统一用四态绑定到变量（见 2.3）。变量引用路径为数组形式：
+节点输入参数（`inputsValues`）统一用四态绑定到变量（见 2.2）。变量引用路径为数组形式：
 
 ```jsonc
 // 引用 trigger_0 节点输出的 recordId
@@ -457,7 +398,7 @@ Phase 3 MVP 实现 P0 全部 + P1 关键节点。飞书的代码处理节点（�
 ```
 
 - **解析时机**：节点执行前，引擎遍历 `inputsValues`，按四态解析为具体值，传入 `NodeExecContext.inputs`。
-- **变量选择器**：简化模式提供可视化变量选择器，列出当前可达变量路径（全局 + 已执行节点输出），避免手写路径出错。
+- **变量选择器**：流程编辑器提供可视化变量选择器，列出当前可达变量路径（全局 + 已执行节点输出），避免手写路径出错。
 - **类型校验**：`ref` 引用的变量类型应与目标输入参数 JSON Schema 匹配，不匹配时编辑器告警。
 
 ---
@@ -607,13 +548,11 @@ function executeNode(node, ctx) {
 | 方法 | 路径 | 说明 | 优先级 |
 |---|---|---|---|
 | GET | `/apps/:appId/processes` | 列出应用下流程定义 | P0 |
-| GET | `/processes/:processDefId` | 获取流程定义（含 workflowSchema + bpmnXml） | P0 |
+| GET | `/processes/:processDefId` | 获取流程定义（含 workflowSchema） | P0 |
 | POST | `/apps/:appId/processes` | 创建流程定义 | P0 |
-| PUT | `/processes/:processDefId` | 更新流程定义（schema/bpmnXml/编辑模式） | P0 |
+| PUT | `/processes/:processDefId` | 更新流程定义（schema） | P0 |
 | DELETE | `/processes/:processDefId` | 删除流程定义（草稿可删，已发布需先归档） | P0 |
 | POST | `/processes/:processDefId/publish` | 发布流程（版本自增，状态→PUBLISHED） | P0 |
-| POST | `/processes/convert/bpmn-to-workflow` | BPMN XML → WorkflowSchema + capability-check | P0 |
-| POST | `/processes/convert/workflow-to-bpmn` | WorkflowSchema → BPMN XML | P0 |
 | POST | `/processes/:processDefId/validate` | 校验流程 Schema（节点/连线/变量引用完整性） | P1 |
 
 **创建流程请求体**：
@@ -622,8 +561,6 @@ function executeNode(node, ctx) {
   "apiName": "leave_approval",
   "name": "请假审批流程",
   "workflowSchema": { "nodes": [], "edges": [] },
-  "bpmnXml": null,
-  "editorMode": "simplified",
   "triggerType": "RECORD_CREATED"
 }
 ```
@@ -695,7 +632,7 @@ function executeNode(node, ctx) {
 
 `schema.prisma` 已定义三个流程模型（Phase 0 基础层），Phase 3 直接复用并补充：
 
-- `ProcessDef`：流程定义（`workflowSchema` JSON + `bpmnXml` + `version` + `status` + `triggerType`）。
+- `ProcessDef`：流程定义（`workflowSchema` JSON + `version` + `status` + `triggerType`）。
 - `ProcessInstance`：流程实例（`triggerContext` + `variables` + `status` + `activeNodeIds`）。
 - `NodeExecution`：节点执行记录（`nodeId` + `nodeType` + `status` + `input`/`output` + `retries`）。
 
@@ -709,10 +646,8 @@ function executeNode(node, ctx) {
 | `tenantId` | `tenantId` | ✅ 一致 | — |
 | `processKey` | `apiName` | ⚠️ 命名不一致 | **统一**：shared 改用 `apiName`（与对象/页面命名一致），或 Prisma 增 `process_key` 别名。建议统一为 `apiName` |
 | `workflowSchema` | `workflowSchema` | ✅ 一致 | — |
-| `bpmnXml` | `bpmnXml` | ✅ 一致 | — |
 | `version` | `version` | ✅ 一致 | — |
 | `status` (`ProcessStatus`) | `status` (`ProcessDefStatus`) | ⚠️ 枚举不一致 | shared 有 `Deprecated`，Prisma 为 `ARCHIVED`。**统一为 `ARCHIVED`** |
-| `editorMode` | ❌ 缺失 | **Phase 3 需补列** `editor_mode`（记录最后使用的编辑模式） |
 | `triggerType` | `triggerType` | ✅ 一致 | 枚举值需对齐（见 3 节） |
 | — | `appId` | ⚠️ shared 缺失 | shared `ProcessDef` 补 `appId`（流程归属应用） |
 | `createdAt/updatedAt` | `createdAt/updatedAt` | ✅ 一致 | — |
@@ -757,7 +692,6 @@ function executeNode(node, ctx) {
 ```prisma
 model ProcessDef {
   // ... 现有字段
-  editorMode String   @default("simplified") @map("editor_mode") // simplified | standard
   // status 枚举值统一：DRAFT | PUBLISHED | ARCHIVED
   // triggerType 枚举值统一：RECORD_CREATED | RECORD_UPDATED | SCHEDULED | MANUAL | API | BUTTON_CLICK
 }
@@ -828,9 +762,8 @@ model NotificationTemplate {
 ### 10.4 schema-serializer 复用
 
 `packages/studio/features/process/simplified/src/schema-serializer.ts` 已实现 flowgram 内部格式 ↔
-WorkflowSchema 双向转换（`flowToWorkflowSchema` / `workflowToFlowSchema`）。Phase 3 实现
-`bpmn-to-workflow` / `workflow-to-bpmn` 时，复用此模块的节点映射逻辑，确保三种格式（flowgram 内部 /
-WorkflowSchema / BPMN XML）同源一致。
+WorkflowSchema 双向转换（`flowToWorkflowSchema` / `workflowToFlowSchema`），确保 flowgram 内部格式与
+WorkflowSchema 同源一致。
 
 ---
 
@@ -841,24 +774,21 @@ WorkflowSchema / BPMN XML）同源一致。
 ### 功能验收（可验证）
 
 1. **自研引擎执行**：能执行基本流程（触发 → 数据操作 → 条件分支 → 结束），状态机正确推进令牌，节点执行状态可查。
-2. **简化模式画流程**：在简化模式（flowgram fork）画出"创建记录触发通知"流程并保存执行；10 个业务节点可配置。
-3. **标准模式画 BPMN**：在标准模式（bpmn-js）画出含网关/人工任务的 BPMN 流程，经 `bpmn-to-workflow` 转换后执行成功。
-4. **双模式同源互转**：简化⇄标准一键切换不丢数据；标准→简化时，简化模式能力集内元素可编辑，高级元素只读占位 + capability-check 提示。
-5. **流程监控**：流程监控仪表盘展示运行实例列表、节点执行状态（PENDING/RUNNING/COMPLETED/FAILED/SKIPPED/WAITING）、变量快照。
-6. **人工任务处理**：UserTask 生成待办，用户在 Tasklist 认领/审批（APPROVED/REJECTED）/转办，审批后流程按决策分支继续。
-7. **通知模版**：能独立创建/管理通知模版，流程通知节点可选模版并渲染变量插值发送。
-8. **变量系统**：节点间变量传递正确；四态值（constant/ref/expression/template）均能解析；变量选择器列出可达变量。
-9. **多租户**：A 租户的流程定义/实例/任务对 B 租户不可见。
-10. **端到端**：完成典型审批流（请假申请 → 主管审批 → 通过则通知申请人 + 更新记录，拒绝则通知申请人）全流程跑通。
+2. **流程编辑器画流程**：在流程编辑器（flowgram fork）画出"创建记录触发通知"流程并保存执行；10 个业务节点可配置。
+3. **流程监控**：流程监控仪表盘展示运行实例列表、节点执行状态（PENDING/RUNNING/COMPLETED/FAILED/SKIPPED/WAITING）、变量快照。
+4. **人工任务处理**：UserTask 生成待办，用户在 Tasklist 认领/审批（APPROVED/REJECTED）/转办，审批后流程按决策分支继续。
+5. **通知模版**：能独立创建/管理通知模版，流程通知节点可选模版并渲染变量插值发送。
+6. **变量系统**：节点间变量传递正确；四态值（constant/ref/expression/template）均能解析；变量选择器列出可达变量。
+7. **多租户**：A 租户的流程定义/实例/任务对 B 租户不可见。
+8. **端到端**：完成典型审批流（请假申请 → 主管审批 → 通过则通知申请人 + 更新记录，拒绝则通知申请人）全流程跑通。
 
 ### 技术验收
 
 11. `packages/shared/src/process/index.ts` 类型在前后端全链路使用，无 `any` 逃逸；第 10.2 节所列枚举/命名差异已修正。
-12. Prisma schema 完成第 10.3 节所列迁移（`ProcessDef.editorMode` + `ProcessTask` + `NotificationTemplate`）。
+12. Prisma schema 完成第 10.3 节所列迁移（`ProcessTask` + `NotificationTemplate`）。
 13. process-svc 提供流程定义/实例/人工任务/通知模版全部 P0 API（9.1–9.4）。
 14. 节点执行器注册表覆盖 14 个 MVP 节点类型（4.5 总览表 P0+P1），按 type 路由分发。
 15. BullMQ 队列提供异步执行/重试/超时/延时调度，实例状态可从持久化恢复。
-16. `bpmn-to-workflow` / `workflow-to-bpmn` 转换器 + `capability-check` 可用，互转一致性测试通过。
 
 ---
 
@@ -868,9 +798,9 @@ WorkflowSchema / BPMN XML）同源一致。
 |---|---|---|
 | 飞书 150+ 全部节点 | MVP 仅实现 14 个核心节点（4.5 总览表 P0+P1），其余节点（等待条件/批量操作/注释等）类型契约保留不实现。 | P2 / 后续 |
 | 补偿事务 / 事务回滚 | 节点失败不自动回滚已执行的副作用（如已创建的记录）。仅提供重试与失败标记。 | 后续 |
-| 事件子流程 (Event SubProcess) | 由事件触发的中断型子流程，BPMN 高级元素，简化模式不支持，标准模式仅只读占位。 | 后续 |
-| 复杂泳道 (Pool/Lane) | 标准模式可显示泳道元数据，但不做泳道级权限/编排；简化模式不显示泳道。 | 后续 |
-| 边界事件 (BoundaryEvent) | 附着在任务边界的事件（超时/错误/取消），简化模式不支持，标准模式仅只读占位。 | 后续 |
+| 事件子流程 (Event SubProcess) | 由事件触发的中断型子流程，流程编辑器暂不支持。 | 后续 |
+| 复杂泳道 (Pool/Lane) | 泳道级权限/编排暂不支持。 | 后续 |
+| 边界事件 (BoundaryEvent) | 附着在任务边界的事件（超时/错误/取消），流程编辑器暂不支持。 | 后续 |
 | 代码处理节点（云函数） | 执行自定义 JS 代码的节点，依赖云函数平台。类型暂不纳入 SimplifiedNodeType。 | Phase 8 |
 | 连接器管理 | HTTP 请求节点可调用外部 API，但连接器管理（封装/复用/凭证）不做。 | Phase 5 |
 | 流程版本迁移 | 已运行的旧版本实例与新版本定义的兼容迁移。 | 后续 |
@@ -910,17 +840,3 @@ WorkflowSchema / BPMN XML）同源一致。
 | NotificationExecutor | `notification` | 通知渠道服务 + 模版渲染 |
 | HttpRequestExecutor | `http_request` | HTTP 客户端 |
 | SubProcessExecutor | `sub_process` | 流程实例服务（递归启动） |
-
-## 附录 B：双模式能力对照
-
-| 维度 | 简化模式 | 标准模式 |
-|---|---|---|
-| 内核 | flowgram.ai Fixed Layout（fork） | bpmn-js |
-| 产物 | WorkflowSchema（零翻译） | BPMN 2.0 XML（转换后执行） |
-| 布局 | 固定布局（自上而下） | 自由布局 |
-| 节点 | 18 种 aPaaS 业务节点 | 完整 BPMN 2.0 元素 |
-| 复合节点 | blocks 嵌套（条件/循环） | 子流程/事件子流程 |
-| 泳道 | 不支持 | 支持（元数据保留） |
-| 边界事件 | 不支持 | 支持（只读占位降级） |
-| 适用人群 | 业务搭建者 | 开发者/架构师 |
-| 互转 | → 标准：无损 | → 简化：按 capability-check 分级 |

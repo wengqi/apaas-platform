@@ -10,9 +10,11 @@ export const TriggerFormMeta = {
         options: [
           { label: '记录创建', value: 'RECORD_CREATED' },
           { label: '记录更新', value: 'RECORD_UPDATED' },
+          { label: '记录删除', value: 'RECORD_DELETED' },
           { label: '定时触发', value: 'SCHEDULED' },
           { label: 'API 触发', value: 'API' },
           { label: '手动触发', value: 'MANUAL' },
+          { label: '按钮点击', value: 'BUTTON_CLICK' },
         ],
       },
       {

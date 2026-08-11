@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-飞书 aPaaS 级低代码平台 — 对象建模 / 页面搭建器 / 自研流程引擎(双模式同源) / 多租户权限。
+飞书 aPaaS 级低代码平台 — 对象建模 / 页面搭建器 / 自研流程引擎(单模式) / 多租户权限。
 pnpm monorepo + Turborepo，React+Vite 前端，NestJS+Prisma 后端，PostgreSQL+Redis+BullMQ。
 
 ## 目录结构
@@ -35,7 +35,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 1. **单体优先**：三个微服务骨架保留但暂不拆分（TD-16），所有业务在 gateway
 2. **JSONB 宽表**：记录存储用通用 records 表 + data JSONB，非每对象建表
-3. **WorkflowSchema SSOT**：流程引擎直接消费 JSON Schema，BPMN XML 仅互操作
+3. **WorkflowSchema SSOT**：流程引擎直接消费 JSON Schema，单模式编辑器（flowgram.ai）零翻译
 4. **类型契约先行**：packages/shared 定义所有跨层 DTO，前后端共享
 5. **行级权限通过条件翻译器**：PermissionService 算出 condition → condition-translator 翻译为 Prisma where → RecordService 注入查询
 
@@ -122,5 +122,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 - ✅ Phase 0-4 + Phase 9 核心功能已实现
 - ✅ 第一阶段阻断性技术债修复已完成（2026-08-03）
-- ⬜ 第二阶段前端功能补全（待开始）
-- ⬜ Phase 5-8 新功能扩展（待开始）
+- ✅ 第二阶段前端功能补全（部分完成 2026-08-04：事件配置 UI + 任务中心 + 租户管理 + 应用删除入口）
+- ✅ 工程化治理已完成（2026-08-06：测试基础设施 + Swagger + ESLint + 环境变量校验 + API 版本控制 + 全局错误处理 + 约束链 + 前端状态管理统一）
+- ⬜ 第二阶段前端补全收尾（待开始：TD-14 权限规则编辑 UI + 站内信 UI + 图表组件 + 应用编辑/归档入口）
+- ⬜ Phase 5-8 新功能扩展（待开始：连接器 / 数据集 / 仪表盘 / 云函数）

@@ -34,16 +34,13 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import {
-  processesApi,
-  createEmptyWorkflowSchema,
-  type ProcessDef,
-} from '../api/processes.js';
+import { processesApi, createEmptyWorkflowSchema, type ProcessDef } from '../api/processes.js';
 import {
   getProcessStatusMeta,
   getTriggerMeta,
   PROCESS_STATUS_META,
   TRIGGER_OPTIONS,
+  type TriggerType,
 } from '../constants/process.js';
 
 const { Text, Title } = Typography;
@@ -75,7 +72,8 @@ export default function ProcessList() {
     if (!processes) return [];
     const kw = keyword.trim().toLowerCase();
     return processes.filter((p) => {
-      const matchKw = !kw || p.name.toLowerCase().includes(kw) || p.processKey.toLowerCase().includes(kw);
+      const matchKw =
+        !kw || p.name.toLowerCase().includes(kw) || p.processKey.toLowerCase().includes(kw);
       const matchStatus = !statusFilter || p.status === statusFilter;
       return matchKw && matchStatus;
     });
@@ -87,7 +85,7 @@ export default function ProcessList() {
       return processesApi.create(appId as string, {
         name: data.name,
         apiName: data.processKey,
-        triggerType: data.triggerType as never,
+        triggerType: data.triggerType as TriggerType | undefined,
         workflowSchema: createEmptyWorkflowSchema(),
       });
     },
@@ -313,7 +311,15 @@ function ProcessCard({
         </div>
 
         {/* 操作行 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f0f2f5', paddingTop: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderTop: '1px solid #f0f2f5',
+            paddingTop: 8,
+          }}
+        >
           <Space size={4}>
             <Button type="text" size="small" icon={<EditOutlined />} onClick={onEdit}>
               编辑
@@ -343,12 +349,7 @@ function ProcessCard({
               },
             }}
           >
-            <Button
-              type="text"
-              size="small"
-              icon={<MoreOutlined />}
-              loading={deleting}
-            />
+            <Button type="text" size="small" icon={<MoreOutlined />} loading={deleting} />
           </Dropdown>
         </div>
       </Space>
@@ -388,11 +389,7 @@ function CreateProcessModal({
       width={520}
       destroyOnHidden
     >
-      <Form<CreateProcessFormValues>
-        form={form}
-        layout="vertical"
-        preserve={false}
-      >
+      <Form<CreateProcessFormValues> form={form} layout="vertical" preserve={false}>
         <Form.Item
           label="流程名称"
           name="name"
@@ -418,11 +415,7 @@ function CreateProcessModal({
           <Input placeholder="customer_approval" style={{ fontFamily: 'monospace' }} />
         </Form.Item>
         <Form.Item label="触发器类型(可选)" name="triggerType">
-          <Select
-            allowClear
-            placeholder="创建后再配置"
-            options={TRIGGER_OPTIONS}
-          />
+          <Select allowClear placeholder="创建后再配置" options={TRIGGER_OPTIONS} />
         </Form.Item>
       </Form>
       {name && (

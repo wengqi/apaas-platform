@@ -8,7 +8,7 @@ import { TRIGGER_OPTIONS } from '../../../constants/process.js';
 export interface TriggerConfigData {
   triggerType?: string;
   objectId?: string;
-  event?: 'create' | 'update' | 'delete';
+  event?: 'CREATE' | 'UPDATE' | 'DELETE';
   cron?: string;
   condition?: string;
   title?: string;
@@ -36,8 +36,11 @@ export default function TriggerConfigForm({
   objectOptions = [],
 }: TriggerConfigFormProps) {
   const update = (patch: Partial<TriggerConfigData>) => onChange({ ...data, ...patch });
-  const isRecordEvent = data.triggerType === 'record_event';
-  const isSchedule = data.triggerType === 'schedule';
+  const isRecordEvent =
+    data.triggerType === 'RECORD_CREATED' ||
+    data.triggerType === 'RECORD_UPDATED' ||
+    data.triggerType === 'RECORD_DELETED';
+  const isSchedule = data.triggerType === 'SCHEDULED';
 
   return (
     <Form layout="vertical" size="small" disabled={disabled} component="div">
@@ -65,12 +68,12 @@ export default function TriggerConfigForm({
           </Form.Item>
           <Form.Item label="触发事件" required>
             <Radio.Group
-              value={data.event || 'create'}
+              value={data.event || 'CREATE'}
               onChange={(e) => update({ event: e.target.value })}
             >
-              <Radio value="create">创建</Radio>
-              <Radio value="update">更新</Radio>
-              <Radio value="delete">删除</Radio>
+              <Radio value="CREATE">创建</Radio>
+              <Radio value="UPDATE">更新</Radio>
+              <Radio value="DELETE">删除</Radio>
             </Radio.Group>
           </Form.Item>
           <Form.Item label="触发条件(可选)">

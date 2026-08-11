@@ -10,7 +10,7 @@
 连接器与集成 / 云函数与扩展 / 仪表盘与报表 / 应用管理 / 数据管理。
 
 流程引擎自研（类飞书思路：状态机 + BullMQ），WorkflowSchema JSON 为 SSOT。
-流程建模双模式（bpmn-js 标准 + flowgram.ai 简化），同源双向互转。
+流程建模单模式（flowgram.ai Fixed Layout + aPaaS 业务节点物料）。
 TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 ## 协调模型
@@ -74,26 +74,21 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 ## Phase 3 — 流程引擎（✅ 已完成，重点）⭐
 | # | 任务 | 状态 |
 |---|------|------|
-| 3.0 | 产品闸门: PRD-process.md (150+节点/触发器/双模式/互转) | ✅ 完成 |
-| 3.1 | 设计闸门: DESIGN-process.md (标准模式调色板/简化模式画布/切换) | ✅ 完成 |
+| 3.0 | 产品闸门: PRD-process.md (150+节点/触发器/单模式编辑器) | ✅ 完成 |
+| 3.1 | 设计闸门: DESIGN-process.md (流程编辑器画布/节点调色板/配置面板) | ✅ 完成 |
 | 3.2 | 后端-执行内核: 自研状态机引擎 + BullMQ异步队列 + NodeExecutor注册 | ⚠️ 部分完成（状态机引擎完整、crash 可恢复；**BullMQ 异步队列未实现，同步执行**） |
 | 3.3 | 后端-节点执行器: 触发器/对象操作/条件/并行/循环/审批/通知/HTTP/赋值/延时/子流程 | ⚠️ 部分完成（12/19 类型已实现；parallel join 简化、delay≤60s、sub_process fire-and-forget；7 类型未实现: batch_operation/inclusive/loop/wait_for_condition/break/continue/comment） |
 | 3.4 | 后端-通知模版管理: NotificationTemplate实体(模版名/渠道/标题/正文/变量) + 模版变量插值 | ⚠️ 部分完成（CRUD + 变量插值完整；**email/in_app 发送为日志桩，无 SMTP/消息表**；webhook 可用） |
-| 3.5 | 后端-BPMN互转: bpmn-to-workflow / workflow-to-bpmn / capability-check | ⚠️ 部分完成（前端 ModeSwitcher 已实现互转 + 只读降级；**后端无转换器，bpmnXml 原样存储**） |
-| 3.6 | 后端-变量系统: 流程变量作用域链 + IFlowValue四态(constant/ref/expression/template) | ✅ 完成 |
-| 3.7 | 前端-标准模式: bpmn-js 完整BPMN2.0建模器(调色板+属性面板+XML) | ✅ 完成（属性面板简化: 仅 ID/类型/名称） |
-| 3.8 | 前端-简化模式: flowgram.ai fork (Fixed Layout + aPaaS业务节点物料) | ✅ 完成 |
-| 3.9 | 前端-模式切换: 一键切换不丢数据 + 只读降级 + 占位提示 | ✅ 完成 |
-| 3.10 | 前端-通知模版管理UI + 流程监控: 运行实例列表 + 节点执行状态 + 人工任务处理(Tasklist) | ⚠️ 部分完成（ProcessMonitor 完整: 实例列表+节点状态+任务审批/委派；**NotificationTemplateManager 组件孤立未路由**） |
-| 3.11 | QA: 双模式互转一致性 + 流程执行端到端 | ⬜ 未做（无测试文件） |
+| 3.5 | 后端-变量系统: 流程变量作用域链 + IFlowValue四态(constant/ref/expression/template) | ✅ 完成 |
+| 3.6 | 前端-流程编辑器: flowgram.ai fork (Fixed Layout + aPaaS业务节点物料) | ✅ 完成 |
+| 3.7 | 前端-通知模版管理UI + 流程监控: 运行实例列表 + 节点执行状态 + 人工任务处理(Tasklist) | ⚠️ 部分完成（ProcessMonitor 完整: 实例列表+节点状态+任务审批/委派；**NotificationTemplateManager 组件孤立未路由**） |
+| 3.8 | QA: 流程执行端到端 | ⬜ 未做（无测试文件） |
 
-> **完成度**: ~60%。状态机引擎、双模式编辑器、模式互转、流程监控、人工任务均完整。关键缺口：无 BullMQ（同步执行无崩溃恢复）、无自动触发器（仅手动启动）、7 节点类型未实现、通知 email/in_app 为桩、后端无 BPMN 转换器。另：流程 undo/redo 按钮无 handler、导出菜单 onClick 空。
+> **完成度**: ~60%。状态机引擎、流程编辑器、流程监控、人工任务均完整。关键缺口：无 BullMQ（同步执行无崩溃恢复）、无自动触发器（仅手动启动）、7 节点类型未实现、通知 email/in_app 为桩。另：流程 undo/redo 按钮无 handler、导出菜单 onClick 空。
 
 **验收标准**：
 - 自研引擎执行基本流程(触发→节点→分支→结束) — ✅
-- 简化模式画"创建记录触发通知"并执行 — ✅（通知仅 webhook 实际发送）
-- 标准模式画 BPMN 流程并执行(通过 bpmn-to-workflow 转换) — ✅（转换在前端完成）
-- 双模式同源互转(简化↔标准切换) — ✅
+- 流程编辑器画"创建记录触发通知"并执行 — ✅（通知仅 webhook 实际发送）
 - 流程监控仪表盘 + 人工任务处理 — ✅
 
 ---
@@ -141,7 +136,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | TD-9 | 图表组件占位 | 页面搭建器有 chart 组件类型但渲染器为占位文本 | 接入图表库（如 ECharts/G2），实现图表渲染（依赖 Phase 7 仪表盘） |
 | TD-10 | trigger_process 动作未对接 | 页面事件 trigger_process 仅 console.log，未调用流程引擎 API | 对接 `/api/processes/:id/start` 接口 |
 | TD-11 | 流程 undo/redo 无 handler | ProcessEditor 的 undo/redo 按钮渲染但 onClick 为空 | 实现撤销/重做栈（参考页面搭建器的实现） |
-| TD-12 | 流程导出菜单无实现 | ProcessList 的"导出 Schema"/"导出 BPMN"下拉项 onClick 仅处理 delete | 实现导出逻辑（下载 JSON / XML 文件） |
+| TD-12 | 流程导出菜单无实现 | ProcessList 的"导出 Schema"下拉项 onClick 仅处理 delete | 实现导出 WorkflowSchema JSON 逻辑（下载 JSON 文件） |
 | TD-13 | NotificationTemplateManager 孤立 | 完整的通知模板 CRUD 组件已实现但未在路由中挂载 | 在 ProcessEditor 或独立路由中挂载该组件 |
 | TD-14 | 权限规则编辑 UI 只读 | RoleManager 显示权限规则但无创建/编辑入口，setRules API 未被 UI 调用 | 实现权限规则编辑器 UI（选择权限类型/动作/目标/条件/字段范围） |
 | TD-15 | 无 GIN 索引 | records.data JSONB 查询无 GIN 加速，大数据量时全表扫描 | 添加 Prisma migration: `CREATE INDEX ... USING GIN (data)` |
@@ -300,3 +295,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-01：**ROADMAP 重大修正**——根据代码审计，Phase 1-4 全部标记为已完成(含部分完成项)。Phase 1 完成度 ~85%，Phase 2 ~65%，Phase 3 ~60%，Phase 4 ~55%。新增「Phase 1-4 技术债清单」(16项，4项阻断性: 权限未挂载/BullMQ缺失/runtime-ui渲染引擎未实现/无自动触发器)。新增「后续推进建议」——基于 P5/P6/P9 优先级 + 依赖分析的建议执行路线。整体覆盖率约 ~40%。
 - 2026-08-01：**4 项阻断性技术债全部修复**——TD-1 权限强制执行(PermissionGuard 挂载 6 控制器)、TD-2 BullMQ 异步队列(队列模块+Worker+ProcessEngine 异步化+DelayExecutor delayed job)、TD-3 runtime-ui 渲染引擎(移植渲染核心+PageView+getBySlug 路由+TaskCenter)、TD-4 自动触发器(TriggerService+RecordService 事件触发)。所有修改通过 TypeScript 编译验证。
 - 2026-08-01：**飞书 aPaaS 应用生命周期深度调研**——新增 `docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`，完整记录应用创建→发布→管理全流程操作细节。调研发现：飞书核心架构理念为「开发态/运行态分离 + 版本化发布」，我方平台最大缺口为缺少完整发布流程。**ROADMAP 优先级调整**：Phase 9（应用发布与版本管理）从原第四步提升为第二步（P0 最高优先级），Phase 9 任务从 5 项扩展为 12 项（新增预检机制、变更追踪、环境隔离、应用创建完善等任务）。
+- 2026-08-06：**流程引擎模式决策**——统一为单模式（flowgram.ai Fixed Layout + WorkflowSchema SSOT），双模式/BPMN 相关内容已弃用并从文档清除。Phase 3 任务从 12 项精简为 9 项（删除 BPMN 互转、标准模式编辑器、模式切换任务，合并为单模式流程编辑器任务）。

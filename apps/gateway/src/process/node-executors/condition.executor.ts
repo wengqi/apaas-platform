@@ -14,7 +14,7 @@ import { evaluateCondition } from '../process-utils.js';
 /** 条件分支配置。 */
 interface ConditionBranch {
   label: string;
-  condition?: string; // 空 = else/default
+  condition?: object | null; // JsonLogic JSON，空 = else/default
 }
 
 @Injectable()
@@ -24,8 +24,8 @@ export class ConditionExecutor implements NodeExecutor {
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
-    const branches = (data['conditions'] as ConditionBranch[]) ??
-      (data['branches'] as ConditionBranch[]) ?? [];
+    const branches =
+      (data['conditions'] as ConditionBranch[]) ?? (data['branches'] as ConditionBranch[]) ?? [];
 
     // 依次求值，找首个满足的分支
     let chosenLabel: string | undefined;
@@ -54,9 +54,7 @@ export class ConditionExecutor implements NodeExecutor {
     }
 
     // label 未匹配出边：降级取第一条出边
-    this.logger.warn(
-      `条件分支 label="${chosenLabel}" 未匹配到出边，降级取第一条出边`,
-    );
+    this.logger.warn(`条件分支 label="${chosenLabel}" 未匹配到出边，降级取第一条出边`);
     const fallback = ctx.outgoingEdges[0];
     return { nextNodeIds: fallback ? [fallback.targetNodeID] : [] };
   }

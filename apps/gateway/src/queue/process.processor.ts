@@ -8,7 +8,14 @@
  * Worker 使用独立 Redis 连连，与 Queue 连接分离。
  */
 
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
@@ -42,7 +49,7 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
           this.logger.debug(`消费 scheduled trigger job: processDefId=${data.processDefId}`);
           await this.processEngine.startProcessByDefId(data.processDefId, {
             eventType: 'scheduled',
-            triggeredBy: 'scheduled_trigger',
+            triggeredBy: 'SCHEDULED',
           });
           return;
         }

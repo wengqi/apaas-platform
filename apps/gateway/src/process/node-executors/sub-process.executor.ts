@@ -21,9 +21,11 @@ export class SubProcessExecutor implements NodeExecutor {
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
-    const subProcessDefId = (data['subProcessDefId'] as string | undefined) ??
+    const subProcessDefId =
+      (data['subProcessDefId'] as string | undefined) ??
       (data['sub_process_def_id'] as string | undefined);
-    const subProcessKey = (data['subProcessKey'] as string | undefined) ??
+    const subProcessKey =
+      (data['subProcessKey'] as string | undefined) ??
       (data['sub_process_key'] as string | undefined);
 
     let defId = subProcessDefId;
@@ -52,15 +54,13 @@ export class SubProcessExecutor implements NodeExecutor {
     // 构造子流程触发上下文：合并 global 与节点输入作为 inputs
     const globalVars = (ctx.variables['global'] as Record<string, unknown>) ?? {};
     const triggerContext: Record<string, unknown> = {
-      triggerType: 'SUB_PROCESS',
+      triggeredBy: 'SUB_PROCESS',
       inputs: { ...globalVars, ...ctx.inputs },
     };
 
     const subInstanceId = await ctx.startSubProcess(defId, triggerContext);
 
-    this.logger.log(
-      `子流程 ${defId} 已启动，实例 ${subInstanceId}（父实例 ${ctx.instance.id}）`,
-    );
+    this.logger.log(`子流程 ${defId} 已启动，实例 ${subInstanceId}（父实例 ${ctx.instance.id}）`);
 
     return {
       output: { subInstanceId, subProcessDefId: defId },

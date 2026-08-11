@@ -32,13 +32,13 @@ export class NotificationExecutor implements NodeExecutor {
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
-    const channel = (data['channel'] as string) ?? 'in_app';
+    const channel = (data['channel'] as string) ?? 'IN_APP';
     const recipients =
       (data['recipients'] as string[] | undefined) ??
       (ctx.inputs['recipients'] as string[] | undefined) ??
       [];
-    const templateId = (data['templateId'] as string | undefined) ??
-      (data['template_id'] as string | undefined);
+    const templateId =
+      (data['templateId'] as string | undefined) ?? (data['template_id'] as string | undefined);
 
     // 构建渲染作用域：合并 global 到顶层，使 {{applicant}} 与 {{node.output.x}} 均可解析
     const globalVars = (ctx.variables['global'] as Record<string, unknown>) ?? {};
@@ -78,17 +78,17 @@ export class NotificationExecutor implements NodeExecutor {
 
     try {
       switch (channel) {
-        case 'webhook':
+        case 'WEBHOOK':
           success = await this.sendWebhook(recipients, title, body);
           break;
-        case 'email':
+        case 'EMAIL':
           success = await this.mailService.sendMail({
             to: recipients,
             subject: title,
             html: body,
           });
           break;
-        case 'in_app':
+        case 'IN_APP':
         default: {
           const created = await this.inAppMessageService.create({
             tenantId: ctx.tenantId,
@@ -112,11 +112,7 @@ export class NotificationExecutor implements NodeExecutor {
   }
 
   /** Webhook 渠道：HTTP POST 到 recipients[0] 指定的 URL。 */
-  private async sendWebhook(
-    recipients: string[],
-    title: string,
-    body: string,
-  ): Promise<boolean> {
+  private async sendWebhook(recipients: string[], title: string, body: string): Promise<boolean> {
     const url = recipients[0];
     if (!url) return false;
     const resp = await fetch(url, {

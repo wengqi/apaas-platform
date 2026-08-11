@@ -5,7 +5,7 @@
 //  1. 元数据驱动：objects/fields/views/pages/processes 存元数据 JSON
 //  2. JSONB 宽表：所有业务记录统一存 records 表，object_id + data JSONB + GIN
 //  3. 多租户：tenant_id 行级隔离（生产期叠加 PostgreSQL RLS）
-//  4. 流程引擎：process_definitions 存 WorkflowSchema JSON（SSOT），bpmn_xml 仅供互操作
+//  4. 流程引擎：process_definitions 存 WorkflowSchema JSON（SSOT），自研引擎直接消费
 // ============================================================================
 
 generator client {
@@ -392,11 +392,9 @@ model ProcessDef {
   name      String
   // ★ 核心：WorkflowSchema JSON（节点图 + 边），自研引擎直接消费
   workflowSchema Json @map("workflow_schema")
-  // BPMN 2.0 XML，仅供标准模式互操作（导入/导出/查看），非执行格式
-  bpmnXml   String?  @map("bpmn_xml")
   version   Int      @default(1)
   status    ProcessDefStatus @default(DRAFT)
-  triggerType String? @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | SCHEDULED | MANUAL | API
+  triggerType String? @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | RECORD_DELETED | SCHEDULED | MANUAL | API | BUTTON_CLICK
   cron        String? // Cron 表达式（仅 triggerType=SCHEDULED 时使用）
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -525,7 +523,7 @@ model NotificationTemplate {
   tenantId      String   @map("tenant_id")
   appId         String   @map("app_id")
   name          String
-  channel       String // in_app / email / webhook
+  channel       String // IN_APP / EMAIL / WEBHOOK
   titleTemplate String   @map("title_template")
   bodyTemplate  String   @map("body_template")
   variables     Json     @default("[]") // 变量定义数组

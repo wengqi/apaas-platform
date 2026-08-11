@@ -2,7 +2,7 @@
   "name": "@apaas/process-svc",
   "version": "0.1.0",
   "private": true,
-  "description": "流程服务 — 自研执行引擎(状态机+BullMQ) + BPMN互转器",
+  "description": "流程服务 — 自研执行引擎(状态机+BullMQ)",
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",

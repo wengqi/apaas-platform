@@ -185,7 +185,6 @@ interface AppSnapshot {
     name: string;
     workflowSchema: Record<string, unknown>;
     triggerType: string;
-    bpmnXml?: string;
   }>;
   /** 权限定义 */
   permissions: {

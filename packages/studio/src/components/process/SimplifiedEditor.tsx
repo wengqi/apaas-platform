@@ -408,8 +408,11 @@ function ApaasNodeRenderer({
     //   （因为 conditions 数组中非 else 分支在前，else 在末尾）
     let displayIndex;
     if (isElse) {
-      // else 分支始终是最低优先级（conditions 数组末尾）
-      displayIndex = conditions.length - 1;
+      // else 分支始终是最低优先级 = 总分支数 - 1
+      // 用 branchBlocks 物理数量计算，而非 conditions 数组长度（可能未及时更新）
+      const inlineBlocksElse = blockNode?.parent;
+      const totalBlocks = inlineBlocksElse?.blocks?.length ?? conditions.length;
+      displayIndex = totalBlocks - 1;
     } else {
       // 计算 inlineBlocks 中此 block 之前的非 else block 数量
       const inlineBlocks = blockNode?.parent;

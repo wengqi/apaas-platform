@@ -181,48 +181,80 @@ export default function SimplifiedEditor({
 // ---------------------------------------------------------------------------
 
 /**
- * 分支标签组件 — 订阅 store 中 condition 节点的数据变化。
+ * 分支标签组件 — 从 flowgram extInfo 和块树实时读取数据。
+ *
+ * 关键设计：conditions 数组、isElse 标志、nonElseIndex 全部在渲染时
+ * 从 flowgram document 实时读取，确保与 handleNodeDataChange 的
+ * updateExtInfo 同步（extInfo 是同一对象，不存在序列化延迟）。
+ * 同时订阅 store 以在 store 更新时触发重新渲染。
  */
 function BlockOrderIconLabel({
-  label,
-  isElse,
-  condition,
+  blockId,
   conditionNodeId,
-  blockIndex,
+  fallbackLabel,
+  fallbackIsElse,
 }: {
-  label: string;
-  isElse: boolean;
-  condition: object | null;
+  /** 当前 block 节点 ID */
+  blockId?: string;
   conditionNodeId?: string;
-  blockIndex: number;
+  /** 从 block extInfo 读取的兜底标签 */
+  fallbackLabel: string;
+  /** 从 block extInfo 读取的兜底 isElse 标志 */
+  fallbackIsElse: boolean;
 }) {
-  const conditionData = useProcessEditorStore((s) => {
-    if (!s.schema || !conditionNodeId) return null;
-    const findNode = (nodes: WorkflowNode[]): WorkflowNode | null => {
-      for (const n of nodes) {
-        if (n.id === conditionNodeId) return n;
-        if (n.blocks) {
-          const f = findNode(n.blocks);
-          if (f) return f;
+  // 订阅 store 仅用于触发重新渲染（不直接读取 store 中的 conditions，
+  // 因为 exportSchema() 的 toJSON() 可能不含最新的 extInfo 数据）
+  const _storeVersion = useProcessEditorStore((s) => s.schema);
+
+  const ctx = useClientContext();
+  let isElse = fallbackIsElse;
+  let nonElseIndex = 0;
+  let conditions: Array<{ label?: string; condition?: object | null }> = [];
+  if (blockId && conditionNodeId) {
+    const conditionFlowNode = ctx.document.getNode(conditionNodeId);
+    if (conditionFlowNode) {
+      // 从 extInfo 读取 conditions 数组（与 updateExtInfo 写入的是同一对象）
+      const condExtInfo = conditionFlowNode.getExtInfo?.() ?? {};
+      conditions =
+        (condExtInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+      const branchBlocks = getBranchBlocks(conditionFlowNode);
+      const blockNode = branchBlocks.find((b) => b.id === blockId);
+      if (blockNode) {
+        const blockInfo = blockNode.getExtInfo?.() ?? {};
+        isElse = !!(blockInfo.isElse as boolean) || (blockNode.id?.includes('elseBlock') ?? false);
+        // 计算 nonElseIndex
+        let counter = 0;
+        for (const sibling of branchBlocks) {
+          if (sibling.id === blockId) {
+            nonElseIndex = counter;
+            break;
+          }
+          const sibInfo = sibling.getExtInfo?.() ?? {};
+          const sibIsElse =
+            !!(sibInfo.isElse as boolean) || (sibling.id?.includes('elseBlock') ?? false);
+          if (!sibIsElse) counter++;
         }
       }
-      return null;
-    };
-    return findNode(s.schema.nodes)?.data ?? null;
-  });
-  const conditions =
-    (conditionData?.conditions as Array<{ label?: string; condition?: object | null }>) || [];
-  const latestCondition = conditions.find((c) => c.label === label)?.condition ?? condition;
+    }
+  }
+
+  // 从 conditions 数组中按位置匹配当前分支
+  // conditions 数组顺序：非 else 分支在前，else 分支在末尾
+  const branchData = isElse ? conditions[conditions.length - 1] : conditions[nonElseIndex];
+  const label = branchData?.label || fallbackLabel;
+  const condition = branchData?.condition ?? null;
+  // 优先级 = 在 conditions 数组中的位置（else 始终是最后一个 = 总数 - 1）
+  const displayIndex = isElse ? conditions.length - 1 : nonElseIndex;
 
   // JsonLogic 对象 → 可读表达式字符串（异常时降级为 JSON 摘要，避免页面崩溃）
   const conditionText = useMemo(() => {
-    if (!latestCondition) return '';
+    if (!condition) return '';
     try {
-      return jsonLogicToExpression(latestCondition);
+      return jsonLogicToExpression(condition);
     } catch {
-      return JSON.stringify(latestCondition).substring(0, 30) + '...';
+      return JSON.stringify(condition).substring(0, 30) + '...';
     }
-  }, [latestCondition]);
+  }, [condition]);
 
   return (
     <div
@@ -249,7 +281,7 @@ function BlockOrderIconLabel({
         }}
       >
         <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', flexShrink: 0 }}>
-          优先级 {blockIndex + 1}
+          优先级 {displayIndex + 1}
         </span>
         <span
           style={{
@@ -371,60 +403,39 @@ function ApaasNodeRenderer({
 
   // blockOrderIcon: 渲染分支标签
   if (type === 'blockOrderIcon') {
-    // 从父级链中找到 condition 节点,读取其 conditions 数组
+    // 从父级链中找到 condition 节点 ID 和 block ID
     const flowNode = ctx.document.getNode(node.id);
-    let conditionNode = null;
-    let blockIndex = -1;
+    let conditionNodeId: string | undefined;
+    let blockId: string | undefined;
+    let fallbackIsElse = false;
+    let fallbackLabel = '';
     if (flowNode) {
       const blockNode = flowNode.parent;
       if (blockNode) {
+        blockId = blockNode.id;
         const inlineBlocksNode = blockNode.parent;
         if (inlineBlocksNode) {
-          blockIndex = (inlineBlocksNode.blocks || []).indexOf(blockNode);
-          conditionNode = inlineBlocksNode.parent;
+          conditionNodeId = inlineBlocksNode.parent?.id;
         }
+        // 判断是否为 else 分支：通过 block 自身标记（isElse 或 ID 含 elseBlock）
+        const blockExtInfo = blockNode.getExtInfo?.() ?? {};
+        fallbackIsElse =
+          !!(blockExtInfo.isElse as boolean) ||
+          !!(extInfo.isElse as boolean) ||
+          (blockNode.id?.includes('elseBlock') ?? false);
+        fallbackLabel =
+          (blockExtInfo.title as string) ||
+          (extInfo.title as string) ||
+          (fallbackIsElse ? '默认分支' : '条件成立');
       }
-    }
-    const conditionExtInfo = conditionNode?.getExtInfo?.() ?? {};
-    const conditions =
-      (conditionExtInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
-    // 读取 block 节点的 extInfo（blockOrderIcon 的父级）
-    const blockNode = flowNode?.parent;
-    const blockExtInfo = blockNode?.getExtInfo?.() ?? {};
-    // 判断是否为 else 分支：通过 block 自身标记（isElse 或 ID 含 elseBlock）
-    const isElse =
-      !!(blockExtInfo.isElse as boolean) ||
-      !!(extInfo.isElse as boolean) ||
-      (blockNode?.id?.includes('elseBlock') ?? false);
-    // 从 conditions 数组中查找匹配当前 block 的条件
-    const blockTitle = (blockExtInfo.title as string) || (extInfo.title as string) || '';
-    const branchData = conditions.find((c) => c.label === blockTitle) ?? conditions[blockIndex];
-    // 标签优先从 conditions 数组取，其次从 block extInfo 取
-    const label = branchData?.label || blockTitle || (isElse ? '默认分支' : '条件成立');
-    const condition = branchData?.condition ?? null;
-    // 优先级编号计算：
-    // 直接从 store schema 的 conditions 数组中查找该 block 的位置
-    // conditions 数组顺序就是优先级顺序（非 else 在前，else 在末尾）
-    // 用 label 匹配查找；找不到时用物理位置兜底
-    let displayIndex;
-    if (isElse) {
-      // else 分支始终是最低优先级 = 总分支数 - 1
-      const inlineBlocksElse = blockNode?.parent;
-      const totalBlocks = inlineBlocksElse?.blocks?.length ?? conditions.length;
-      displayIndex = totalBlocks - 1;
-    } else {
-      // 从 conditions 数组中按 label 查找位置
-      const condIdx = conditions.findIndex((c) => c.label === label);
-      displayIndex = condIdx >= 0 ? condIdx : blockIndex;
     }
 
     return (
       <BlockOrderIconLabel
-        label={label}
-        isElse={isElse}
-        condition={condition}
-        conditionNodeId={conditionNode?.id}
-        blockIndex={displayIndex}
+        blockId={blockId}
+        conditionNodeId={conditionNodeId}
+        fallbackLabel={fallbackLabel}
+        fallbackIsElse={fallbackIsElse}
       />
     );
   }
@@ -600,8 +611,7 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
       const flowNode = ctx.document.getNode(id);
       if (flowNode) {
         flowNode.updateExtInfo(data);
-        // 先同步到 Zustand store，确保配置面板立即反映 conditions 变化
-        // （在 block 创建之前，避免 SelectionBridge 轮询覆盖 conditions）
+        // 同步到 Zustand store，确保配置面板立即反映 conditions 变化
         updateNodeData(id, data);
         // 条件分支节点:同步 conditions 到 block 节点 + blockOrderIcon 节点
         if (flowNode.flowNodeType === 'condition' && Array.isArray(data.conditions)) {
@@ -692,45 +702,52 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
           }
 
           // conditions 数组变短 → 删除多余的 block 节点
-          // 不能简单按索引倒序删除，因为 block 物理顺序可能与 conditions 数组顺序不一致
-          // 需要找出哪些 block 在新 conditions 数组中没有对应的 condition（通过 title 匹配）
+          // 使用位置匹配（非 else 序号）而非标签匹配，避免标题不同步导致删错块
           if (conditions.length < branchBlocks.length) {
-            const newLabels = new Set(conditions.map((c) => c.label));
+            const conditionsNonElse = conditions.filter(
+              (_, i) => !(i === conditions.length - 1 && !conditions[i]?.condition),
+            );
             const conditionsHasElse =
               conditions.length > 0 && !conditions[conditions.length - 1]?.condition;
-            let deleted = 0;
-            const toDelete = branchBlocks.length - conditions.length;
-            for (let i = branchBlocks.length - 1; i >= 0 && deleted < toDelete; i--) {
-              const block = branchBlocks[i];
+
+            // 分类现有 block：非 else 和 else
+            const nonElseBlocks = branchBlocks.filter((b) => {
+              const bi = b.getExtInfo?.() ?? {};
+              return !((bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false));
+            });
+            const elseBlocks = branchBlocks.filter((b) => {
+              const bi = b.getExtInfo?.() ?? {};
+              return (bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false);
+            });
+
+            // 需要删除的非 else 块：倒序删除多余的
+            const nonElseToDelete = Math.max(0, nonElseBlocks.length - conditionsNonElse.length);
+            for (let i = 0; i < nonElseToDelete; i++) {
+              const block = nonElseBlocks[nonElseBlocks.length - 1 - i];
               if (!block) continue;
-              const blockInfo = block.getExtInfo?.() ?? {};
-              const blockTitle = blockInfo.title as string;
-              const isElseBlock =
-                (blockInfo.isElse as boolean) || (block.id?.includes('elseBlock') ?? false);
-              if (isElseBlock && conditionsHasElse) continue;
-              if (!newLabels.has(blockTitle)) {
-                try {
-                  ctx.operation.deleteNode(block.id);
-                  deleted++;
-                } catch (e) {
-                  console.error('[handleNodeDataChange] deleteBlock failed', e);
-                }
+              try {
+                ctx.operation.deleteNode(block.id);
+              } catch (e) {
+                console.error('[handleNodeDataChange] deleteBlock failed', e);
               }
             }
-            if (deleted < toDelete) {
-              const remaining = getBranchBlocks(flowNode);
-              for (let i = remaining.length - 1; i >= 0 && deleted < toDelete; i--) {
-                const block = remaining[i];
-                if (!block) continue;
-                const blockInfo = block.getExtInfo?.() ?? {};
-                const isElseBlock =
-                  (blockInfo.isElse as boolean) || (block.id?.includes('elseBlock') ?? false);
-                if (isElseBlock && conditionsHasElse) continue;
+
+            // 需要删除的 else 块：如果 conditions 没有 else 但 block 有 else
+            if (!conditionsHasElse && elseBlocks.length > 0) {
+              for (const block of elseBlocks) {
                 try {
                   ctx.operation.deleteNode(block.id);
-                  deleted++;
                 } catch (e) {
-                  console.error('[handleNodeDataChange] deleteBlock fallback failed', e);
+                  console.error('[handleNodeDataChange] deleteElseBlock failed', e);
+                }
+              }
+            } else if (conditionsHasElse && elseBlocks.length > 1) {
+              // 只保留一个 else 块，删除多余的
+              for (let i = 1; i < elseBlocks.length; i++) {
+                try {
+                  ctx.operation.deleteNode(elseBlocks[i]!.id);
+                } catch (e) {
+                  console.error('[handleNodeDataChange] deleteDuplicateElseBlock failed', e);
                 }
               }
             }
@@ -773,6 +790,45 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
               title,
               isElse: isElseBlock,
             });
+          }
+
+          // 物理重排：确保 else block 始终在 inlineBlocks 的末尾（最右侧）
+          // 从配置面板添加/删除分支后，else block 的物理位置可能不在末尾
+          const finalBranchBlocks = getBranchBlocks(flowNode);
+          if (finalBranchBlocks.length > 1) {
+            const lastBlock = finalBranchBlocks[finalBranchBlocks.length - 1];
+            const lastIsElse = lastBlock
+              ? (() => {
+                  const bi = lastBlock.getExtInfo?.() ?? {};
+                  return (bi.isElse as boolean) || (lastBlock.id?.includes('elseBlock') ?? false);
+                })()
+              : false;
+            if (!lastIsElse) {
+              const elseBlock = finalBranchBlocks.find((b) => {
+                const bi = b.getExtInfo?.() ?? {};
+                return (bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false);
+              });
+              if (elseBlock) {
+                const inlineBlocksId = `$inlineBlocks$${id}`;
+                try {
+                  (
+                    ctx.document as unknown as {
+                      moveChildNodes: (opts: {
+                        toParentId: string;
+                        toIndex: number;
+                        nodeIds: string[];
+                      }) => void;
+                    }
+                  ).moveChildNodes({
+                    toParentId: inlineBlocksId,
+                    toIndex: finalBranchBlocks.length - 1,
+                    nodeIds: [elseBlock.id],
+                  });
+                } catch {
+                  // moveChildNodes 可能失败（节点已在正确位置等），忽略错误
+                }
+              }
+            }
           }
         }
       }
@@ -1332,7 +1388,6 @@ function SelectionBridge({
   const ctx = useClientContext();
   const setSelectedNode = useProcessEditorStore((s) => s.setSelectedNode);
   const updateNodeData = useProcessEditorStore((s) => s.updateNodeData);
-  const storeSchema = useProcessEditorStore((s) => s.schema);
   const onSchemaChangeRef = useRef(onSchemaChange);
   onSchemaChangeRef.current = onSchemaChange;
 
@@ -1379,25 +1434,12 @@ function SelectionBridge({
                 );
               })()
             : false;
-          // 也检查 store schema 中的 conditions 是否与 branchBlocks 数量一致
-          // 重载后 store schema 从流程定义加载，可能与 flowgram extInfo 不一致
-          let storeConditionsCount = -1;
-          if (storeSchema) {
-            const findInStore = (nodes: WorkflowNode[]): void => {
-              for (const sn of nodes) {
-                if (sn.id === n.id) {
-                  const sc = (sn.data?.conditions as unknown[]) ?? [];
-                  storeConditionsCount = sc.length;
-                  return;
-                }
-                if (sn.blocks) findInStore(sn.blocks);
-              }
-            };
-            findInStore(storeSchema.nodes);
-          }
+          // SelectionBridge 只处理画布原生添加/删除分支的情况（branchBlocks > conditions）
+          // 配置面板触发的变更由 handleNodeDataChange 处理，不在此重建
+          // 也处理重载后 extInfo.conditions 为空但 block 已存在的情况
           const needsRebuild =
             branchBlocks.length > conditions.length ||
-            (storeConditionsCount >= 0 && storeConditionsCount !== branchBlocks.length) ||
+            (conditions.length === 0 && branchBlocks.length > 0) ||
             (conditions.length === branchBlocks.length &&
               conditions.length > 1 &&
               (() => {
@@ -1529,17 +1571,62 @@ function SelectionBridge({
         }
       }
 
-      if (!skipSchemaExport && onSchemaChangeRef.current) {
-        const schema = exportSchema();
-        const sig = JSON.stringify(schema);
-        if (sig !== lastDocSig) {
-          lastDocSig = sig;
-          onSchemaChangeRef.current(schema);
+      if (!skipSchemaExport) {
+        // 即使不需要 rebuild，也要将 extInfo 中的 conditions 同步到 store
+        // 因为 exportSchema() 使用 toJSON() 读取 data（不是 extInfo），
+        // 而 conditions 存在 extInfo 中，导致 store 中的 conditions 过时
+        let conditionsSynced = false;
+        for (const n of allNodes) {
+          if (n.flowNodeType === 'condition') {
+            const extInfo = n.getExtInfo?.() ?? {};
+            const extConditions =
+              (extInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+            const branchBlocks = getBranchBlocks(n);
+            // 如果 extInfo 中的 conditions 数量与 branchBlocks 一致，
+            // 但 store 中的 conditions 可能不同步，同步到 store
+            if (extConditions.length === branchBlocks.length && extConditions.length > 0) {
+              updateNodeData(n.id, { conditions: extConditions });
+              conditionsSynced = true;
+            }
+          }
+        }
+
+        if (onSchemaChangeRef.current) {
+          const schema = exportSchema();
+          // 如果同步了 conditions，用 extInfo 中的 conditions 覆盖 schema 中的
+          if (conditionsSynced) {
+            for (const n of allNodes) {
+              if (n.flowNodeType === 'condition') {
+                const extInfo = n.getExtInfo?.() ?? {};
+                const extConditions = extInfo.conditions;
+                if (extConditions) {
+                  const syncNode = (nodes: WorkflowNode[]): boolean => {
+                    for (const sn of nodes) {
+                      if (sn.id === n.id) {
+                        sn.data = { ...sn.data, conditions: extConditions };
+                        return true;
+                      }
+                      if (sn.blocks) {
+                        if (syncNode(sn.blocks)) return true;
+                      }
+                    }
+                    return false;
+                  };
+                  syncNode(schema.nodes);
+                }
+              }
+            }
+          }
+          const sig = JSON.stringify(schema);
+          if (sig !== lastDocSig) {
+            lastDocSig = sig;
+            onSchemaChangeRef.current(schema);
+          }
         }
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [ctx.selection, ctx.document, exportSchema, updateNodeData, storeSchema]);
+  }, [ctx.selection, ctx.document, exportSchema, updateNodeData]);
 
   useEffect(() => {
     setSelectedNode(selectedId);

@@ -74,6 +74,15 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - TypeScript strict 模式全开，`noUncheckedIndexedAccess` 已启用
 - `.editorconfig` 统一跨编辑器基础风格（space 缩进、lf 换行、utf-8）
 
+### 实时性与事件驱动（禁止定时器轮询）
+
+- **禁止**使用定时器轮询（`setInterval`、`setTimeout` 递归自调用循环）作为状态同步、数据刷新或事件监听的实现方式
+- **必须**使用事件驱动架构替代：框架原生事件 API（flowgram `onSelectionChanged` / `onNodeCreate` / `onNodeDispose` / `onExtInfoChange`）、Pub/Sub、WebSocket、React Query 事件订阅等
+- 原因：定时器轮询存在持续 CPU 开销、轮询间隔内状态不一致窗口、调试困难、且违反事件驱动架构原则
+- 前车之鉴：流程引擎条件分支 300ms `setInterval` 轮询（画布↔配置面板同步）→ 重构为 `EventBridge` 事件驱动，消除轮询间隔与全量扫描开销
+- **允许的例外**：`setTimeout` 用于 debounce/defer（防抖导出、表单 reset 延迟等单次延迟调用）；React Query `refetchInterval` 需在 PR 中说明必要性
+- ESLint 已用 `no-restricted-syntax` 拦截 `setInterval` 调用（`error` 级），详见 `docs/knowledge-base/CODING-PRINCIPLE-NO-POLLING-2026-08-16.md`
+
 ### 提交规范
 
 - Commit message 必须符合 Conventional Commits：`type(scope): subject`

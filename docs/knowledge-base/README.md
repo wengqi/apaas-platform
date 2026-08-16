@@ -18,6 +18,7 @@
 | [ARCHITECTURE-ANALYSIS-2026-08-06](./ARCHITECTURE-ANALYSIS-2026-08-06.md) | 2026-08-06 | 技术选型架构审阅与演进计划（全栈技术栈审计 + 工程化缺口核查 + 开发阶段优先级校准 + 分阶段演进路线图） |
 | [STATUS-MATRIX-2026-08-06](./STATUS-MATRIX-2026-08-06.md) | 2026-08-06 | 功能完成度矩阵（18 模块逐项评估 + 工程化治理新增模块 + 飞书对齐度 ~80%） |
 | [ROADMAP-UPDATE-2026-08-06](./ROADMAP-UPDATE-2026-08-06.md) | 2026-08-06 | 后续推进计划更新（工程化治理已完成 + 技术债 28 项决策表 + Phase 5-8 路线图） |
+| [CODING-PRINCIPLE-NO-POLLING-2026-08-16](./CODING-PRINCIPLE-NO-POLLING-2026-08-16.md) | 2026-08-16 | 编码原则：禁止定时器轮询（setInterval）→ 事件驱动架构替代 + ESLint 拦截规则 |
 
 ## 文档维护规则
 
@@ -42,5 +43,6 @@ docs/
     ├── PHASE*-*.md            # 阶段修复/实现记录
     ├── STATUS-MATRIX-*.md     # 功能完成度矩阵
     ├── ROADMAP-UPDATE-*.md    # 路线图更新
-    └── ARCHITECTURE-ANALYSIS-*.md  # 技术选型架构审阅
+    ├── ARCHITECTURE-ANALYSIS-*.md  # 技术选型架构审阅
+    └── CODING-PRINCIPLE-*.md  # 编码原则记录（约束链强制执行）
 ```

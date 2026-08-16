@@ -43,6 +43,28 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       // 空对象类型暂降为 warn（存量代码需逐步清理）
       '@typescript-eslint/no-empty-object-type': 'warn',
+      // 禁止定时器轮询（编码原则：实时性与事件驱动）
+      // 拦截裸 setInterval() 调用
+      // setTimeout 用于 debounce/defer 不受此规则限制
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.name='setInterval']",
+          message:
+            '禁止使用 setInterval 轮询（编码原则：实时性与事件驱动）。' +
+            '必须使用事件驱动架构替代：框架原生事件 API、Pub/Sub、WebSocket、React Query 事件订阅等。' +
+            '详见 docs/knowledge-base/CODING-PRINCIPLE-NO-POLLING-2026-08-16.md。' +
+            '（setTimeout 用于 debounce/defer 不受此规则限制。）',
+        },
+        {
+          selector: "CallExpression[callee.property.name='setInterval']",
+          message:
+            '禁止使用 *.setInterval 轮询（编码原则：实时性与事件驱动）。' +
+            '必须使用事件驱动架构替代：框架原生事件 API、Pub/Sub、WebSocket、React Query 事件订阅等。' +
+            '详见 docs/knowledge-base/CODING-PRINCIPLE-NO-POLLING-2026-08-16.md。' +
+            '（setTimeout 用于 debounce/defer 不受此规则限制。）',
+        },
+      ],
     },
   },
 

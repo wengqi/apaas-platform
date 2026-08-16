@@ -340,9 +340,18 @@ function ConditionEditor({
 
   const [tree, setTree] = useState<ImmutableTree>(() => loadFromJsonLogic(condition, qbConfig));
 
+  // 跟踪内部变更，避免用户输入时 useEffect 覆盖正在编辑的 tree/exprText
+  const internalChangeRef = useRef(false);
+
   // 当 condition prop 外部变化时（如删除分支导致编辑器复用），
-  // 重新同步内部 tree 和 exprText 状态
+  // 重新同步内部 tree 和 exprText 状态。
+  // 使用 internalChangeRef 跳过由用户输入触发的 condition 变化，
+  // 避免输入框被重置（只能输入一个字符的问题）。
   useEffect(() => {
+    if (internalChangeRef.current) {
+      internalChangeRef.current = false;
+      return;
+    }
     setTree(loadFromJsonLogic(condition, qbConfig));
     setExprText(condition ? jsonLogicToExpression(condition) : '');
   }, [condition, qbConfig]);
@@ -351,6 +360,8 @@ function ConditionEditor({
     (immutableTree: ImmutableTree) => {
       setTree(immutableTree);
       const logic = exportToJsonLogic(immutableTree, qbConfig);
+      // 标记为内部变更，避免 useEffect 重新加载 tree 覆盖正在编辑的状态
+      internalChangeRef.current = true;
       // 如果启用了自定义逻辑，用自定义表达式重新组合各条件
       if (customLogic?.enabled && logic) {
         const rules = extractRulesFromJsonLogic(logic);
@@ -369,6 +380,7 @@ function ConditionEditor({
     (text: string) => {
       setExprText(text);
       const logic = expressionToJsonLogic(text);
+      internalChangeRef.current = true;
       onChange(logic);
     },
     [onChange],

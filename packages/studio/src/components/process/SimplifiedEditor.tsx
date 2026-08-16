@@ -19,6 +19,9 @@ import {
   useClientContext,
   useNodeRender,
 } from '@flowgram.ai/fixed-layout-editor';
+import { useListenEvents } from '@flowgram.ai/core';
+import { DisposableCollection } from '@flowgram.ai/utils';
+import type { FlowDocument, FlowNodeEntity } from '@flowgram.ai/document';
 import { FlowRendererKey } from '@flowgram.ai/renderer';
 import { defaultFixedSemiMaterials } from '@flowgram.ai/fixed-semi-materials';
 import { Button, Popover, Space, Typography } from 'antd';
@@ -88,6 +91,171 @@ function getBranchBlocks(conditionNode: any): any[] {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (b: any) => b.flowNodeType === 'block',
   );
+}
+
+/**
+ * 判断 block 是否为 else 分支。
+ */
+function isElseBlock(block: FlowNodeEntity): boolean {
+  const bi = block.getExtInfo?.() ?? {};
+  return !!(bi.isElse as boolean) || (block.id?.includes('elseBlock') ?? false);
+}
+
+/**
+ * 将 extInfo 中的 conditions 合并到 schema 中对应节点的 data。
+ *
+ * flowgram 的 toJSON() 不输出 extInfo，而 conditions 存在 extInfo 中，
+ * 因此导出 schema 后需要手动合并 conditions，保证 store 中的数据不过时。
+ */
+function mergeConditionsIntoSchema(
+  nodes: WorkflowNode[],
+  conditionNodeId: string,
+  conditions: unknown,
+): void {
+  for (const n of nodes) {
+    if (n.id === conditionNodeId) {
+      n.data = { ...n.data, conditions };
+      return;
+    }
+    if (n.blocks) mergeConditionsIntoSchema(n.blocks, conditionNodeId, conditions);
+  }
+}
+
+/**
+ * 条件分支重建 — 当画布原生添加/删除分支时，同步 conditions 数组。
+ *
+ * 从 flowgram document 的 branchBlocks 重建 conditions 数组（非 else 在前、
+ * else 在末尾），同步 extInfo 到各 block/blockOrderIcon，调用 updateNodeData
+ * 同步到 Zustand store，并物理重排 else block 到末尾。
+ *
+ * @returns true 如果执行了重建（调用方据此决定是否跳过 schema 导出）
+ */
+function reconcileConditionBranches(
+  conditionNode: FlowNodeEntity,
+  document: FlowDocument,
+  updateNodeData: (nodeId: string, data: Record<string, unknown>) => void,
+): boolean {
+  const extInfo = conditionNode.getExtInfo?.() ?? {};
+  const conditions =
+    (extInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+  const branchBlocks = getBranchBlocks(conditionNode);
+
+  const branchBlockElseCount = branchBlocks.filter((b) => isElseBlock(b)).length;
+  const lastBranchBlock = branchBlocks[branchBlocks.length - 1];
+  const lastBranchBlockIsElse = lastBranchBlock ? isElseBlock(lastBranchBlock) : false;
+
+  const needsRebuild =
+    branchBlocks.length > conditions.length ||
+    (conditions.length === 0 && branchBlocks.length > 0) ||
+    (conditions.length === branchBlocks.length &&
+      conditions.length > 1 &&
+      (() => {
+        const lastCond = conditions[conditions.length - 1];
+        const lastIsElse = !lastCond?.condition;
+        return !lastIsElse || branchBlockElseCount > 1;
+      })()) ||
+    (branchBlockElseCount > 0 && !lastBranchBlockIsElse);
+
+  // 物理重排：将 else block 移动到 $inlineBlocks$ 的末尾（最右侧）
+  // flowgram 的 BranchAdder 追加新 block 到末尾，导致 else block 不在最后
+  // 此检查独立于 needsRebuild：即使 conditions 数组已正确，
+  // 物理位置仍可能错位（如页面加载时 block 顺序与 conditions 不一致）
+  const ensureElseBlockLast = () => {
+    const currentBranchBlocks = getBranchBlocks(conditionNode);
+    if (currentBranchBlocks.length <= 1) return;
+    const lastBlock = currentBranchBlocks[currentBranchBlocks.length - 1];
+    const lastIsElse = lastBlock ? isElseBlock(lastBlock) : false;
+    if (!lastIsElse) {
+      const elseBlock = currentBranchBlocks.find((b) => isElseBlock(b));
+      if (elseBlock) {
+        const inlineBlocksId = `$inlineBlocks$${conditionNode.id}`;
+        try {
+          document.moveChildNodes({
+            toParentId: inlineBlocksId,
+            toIndex: currentBranchBlocks.length - 1,
+            nodeIds: [elseBlock.id],
+          });
+        } catch {
+          // moveChildNodes 可能失败（节点已在正确位置等），忽略错误
+        }
+      }
+    }
+  };
+
+  if (!needsRebuild) {
+    ensureElseBlockLast();
+    return false;
+  }
+
+  const rawConditions = branchBlocks.map((block) => {
+    const blockInfo = block.getExtInfo?.() ?? {};
+    const isElse = isElseBlock(block);
+    const blockTitle = blockInfo.title as string;
+    const existing = conditions.find((c) => c.label === blockTitle);
+    return {
+      isElse,
+      label: existing?.label || blockTitle || '',
+      condition: existing?.condition ?? null,
+    };
+  });
+
+  const nonElse = rawConditions.filter((c) => !c.isElse);
+  const elseBranches = rawConditions.filter((c) => c.isElse);
+  const elseBranch = elseBranches.length > 0 ? elseBranches[0] : null;
+
+  const newConditions = [
+    ...nonElse.map((c, i) => ({
+      label: c.label || `分支 ${i + 1}`,
+      condition: c.condition,
+    })),
+    ...(elseBranch
+      ? [
+          {
+            label: elseBranch.label || '默认分支',
+            condition: null as object | null,
+          },
+        ]
+      : []),
+  ];
+
+  // fullUpdate: true 确保 onExtInfoChange 触发（绕过 flowgram Compare.isChanged depth=1 浅比较）
+  conditionNode.updateExtInfo({ conditions: newConditions }, true);
+
+  branchBlocks.forEach((block, i) => {
+    const rawCond = rawConditions[i];
+    const isElseBlockFlag = rawCond?.isElse ?? false;
+    let matched;
+    if (isElseBlockFlag) {
+      matched = newConditions[newConditions.length - 1];
+    } else {
+      const nonElseIdx = rawConditions.slice(0, i).filter((c) => !c.isElse).length;
+      matched = newConditions[nonElseIdx];
+    }
+    const newTitle =
+      matched?.label ||
+      (isElseBlockFlag
+        ? '默认分支'
+        : `分支 ${rawConditions.slice(0, i).filter((c) => !c.isElse).length + 1}`);
+    block.updateExtInfo({
+      title: newTitle,
+      isElse: isElseBlockFlag,
+      condition: matched?.condition ?? null,
+    });
+    const blockOrderIcon = block.blocks?.[0];
+    if (blockOrderIcon) {
+      blockOrderIcon.updateExtInfo({
+        title: newTitle,
+        isElse: isElseBlockFlag,
+        condition: matched?.condition ?? null,
+      });
+    }
+  });
+
+  updateNodeData(conditionNode.id, { conditions: newConditions });
+
+  ensureElseBlockLast();
+
+  return true;
 }
 
 export interface SimplifiedEditorProps {
@@ -186,7 +354,8 @@ export default function SimplifiedEditor({
  * 关键设计：conditions 数组、isElse 标志、nonElseIndex 全部在渲染时
  * 从 flowgram document 实时读取，确保与 handleNodeDataChange 的
  * updateExtInfo 同步（extInfo 是同一对象，不存在序列化延迟）。
- * 同时订阅 store 以在 store 更新时触发重新渲染。
+ * 通过 useListenEvents 订阅 condition 节点的 onExtInfoChange 事件，
+ * 在 extInfo 变更时立即触发重渲染（替代之前的 store 订阅间接方式）。
  */
 function BlockOrderIconLabel({
   blockId,
@@ -202,38 +371,35 @@ function BlockOrderIconLabel({
   /** 从 block extInfo 读取的兜底 isElse 标志 */
   fallbackIsElse: boolean;
 }) {
-  // 订阅 store 仅用于触发重新渲染（不直接读取 store 中的 conditions，
-  // 因为 exportSchema() 的 toJSON() 可能不含最新的 extInfo 数据）
+  const ctx = useClientContext();
+  const conditionNode = conditionNodeId ? ctx.document.getNode(conditionNodeId) : undefined;
+  // 订阅 condition 节点的 extInfo 变更事件，数据变化时立即重渲染
+  useListenEvents(...(conditionNode?.onExtInfoChange ? [conditionNode.onExtInfoChange] : []));
+  // 兜底：store 变更也触发重渲染（handleNodeDataChange → updateNodeData 路径，
+  // 以及 block/blockOrderIcon 节点 extInfo 变更时 condition 节点事件可能不触发）
+  // BlockOrderIconLabel 始终从 flowgram extInfo 读数据，store 仅作渲染触发器
   const _storeVersion = useProcessEditorStore((s) => s.schema);
 
-  const ctx = useClientContext();
   let isElse = fallbackIsElse;
   let nonElseIndex = 0;
   let conditions: Array<{ label?: string; condition?: object | null }> = [];
-  if (blockId && conditionNodeId) {
-    const conditionFlowNode = ctx.document.getNode(conditionNodeId);
-    if (conditionFlowNode) {
-      // 从 extInfo 读取 conditions 数组（与 updateExtInfo 写入的是同一对象）
-      const condExtInfo = conditionFlowNode.getExtInfo?.() ?? {};
-      conditions =
-        (condExtInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
-      const branchBlocks = getBranchBlocks(conditionFlowNode);
-      const blockNode = branchBlocks.find((b) => b.id === blockId);
-      if (blockNode) {
-        const blockInfo = blockNode.getExtInfo?.() ?? {};
-        isElse = !!(blockInfo.isElse as boolean) || (blockNode.id?.includes('elseBlock') ?? false);
-        // 计算 nonElseIndex
-        let counter = 0;
-        for (const sibling of branchBlocks) {
-          if (sibling.id === blockId) {
-            nonElseIndex = counter;
-            break;
-          }
-          const sibInfo = sibling.getExtInfo?.() ?? {};
-          const sibIsElse =
-            !!(sibInfo.isElse as boolean) || (sibling.id?.includes('elseBlock') ?? false);
-          if (!sibIsElse) counter++;
+  if (blockId && conditionNode) {
+    // 从 extInfo 读取 conditions 数组（与 updateExtInfo 写入的是同一对象）
+    const condExtInfo = conditionNode.getExtInfo?.() ?? {};
+    conditions =
+      (condExtInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+    const branchBlocks = getBranchBlocks(conditionNode);
+    const blockNode = branchBlocks.find((b) => b.id === blockId);
+    if (blockNode) {
+      isElse = isElseBlock(blockNode);
+      // 计算 nonElseIndex
+      let counter = 0;
+      for (const sibling of branchBlocks) {
+        if (sibling.id === blockId) {
+          nonElseIndex = counter;
+          break;
         }
+        if (!isElseBlock(sibling)) counter++;
       }
     }
   }
@@ -244,7 +410,12 @@ function BlockOrderIconLabel({
   const label = branchData?.label || fallbackLabel;
   const condition = branchData?.condition ?? null;
   // 优先级 = 在 conditions 数组中的位置（else 始终是最后一个 = 总数 - 1）
-  const displayIndex = isElse ? conditions.length - 1 : nonElseIndex;
+  // 当 conditions 尚未同步到 extInfo（初始渲染时为空数组），
+  // 退回到基于 branchBlocks 计数的方式，避免 else 显示"优先级 0"
+  const branchBlockCount = getBranchBlocks(conditionNode).length;
+  const fallbackDisplayIndex = isElse ? Math.max(branchBlockCount - 1, 0) : nonElseIndex;
+  const displayIndex =
+    conditions.length > 0 ? (isElse ? conditions.length - 1 : nonElseIndex) : fallbackDisplayIndex;
 
   // JsonLogic 对象 → 可读表达式字符串（异常时降级为 JSON 摘要，避免页面崩溃）
   const conditionText = useMemo(() => {
@@ -610,7 +781,8 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
     (id: string, data: Record<string, unknown>) => {
       const flowNode = ctx.document.getNode(id);
       if (flowNode) {
-        flowNode.updateExtInfo(data);
+        // fullUpdate: true 确保 onExtInfoChange 触发（绕过 flowgram Compare.isChanged depth=1 浅比较）
+        flowNode.updateExtInfo(data, true);
         // 同步到 Zustand store，确保配置面板立即反映 conditions 变化
         updateNodeData(id, data);
         // 条件分支节点:同步 conditions 到 block 节点 + blockOrderIcon 节点
@@ -1331,7 +1503,7 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
       <EditorRenderer />
       {!readonly && <ZoomToolbar />}
       <ConfigSidebar readonly={readonly} />
-      <SelectionBridge onSchemaChange={onSchemaChange} />
+      <EventBridge onSchemaChange={onSchemaChange} />
     </div>
   );
 }
@@ -1380,277 +1552,166 @@ function ZoomToolbar() {
   );
 }
 
-function SelectionBridge({
-  onSchemaChange,
-}: {
-  onSchemaChange?: (schema: WorkflowSchema) => void;
-}) {
+/**
+ * 事件驱动桥接器 — 替代 300ms 轮询方案。
+ *
+ * 使用 flowgram 原生事件 API（onSelectionChanged / onNodeCreate /
+ * onNodeDispose / onNodeUpdate / onExtInfoChange）替代 setInterval 轮询，
+ * 在状态变化时立即同步，无需周期性全量扫描。
+ *
+ * - 选中同步：onSelectionChanged → setSelectedNode（立即，无防抖）
+ * - 条件分支重建：onNodeCreate / onNodeDispose → reconcileConditionBranches
+ * - extInfo→store 同步：onExtInfoChange（per condition node，带 JSON.stringify 去重）
+ * - schema 导出：所有事件 → 防抖 50ms 批量处理
+ */
+function EventBridge({ onSchemaChange }: { onSchemaChange?: (schema: WorkflowSchema) => void }) {
   const ctx = useClientContext();
   const setSelectedNode = useProcessEditorStore((s) => s.setSelectedNode);
   const updateNodeData = useProcessEditorStore((s) => s.updateNodeData);
-  const storeSchema = useProcessEditorStore((s) => s.schema);
   const onSchemaChangeRef = useRef(onSchemaChange);
   onSchemaChangeRef.current = onSchemaChange;
 
   const exportSchema = useCallback(() => {
     const doc = ctx.document.toJSON() as FlowDocumentJSON;
-    return flowToWorkflowSchema(doc);
+    const schema = flowToWorkflowSchema(doc);
+    // 合并 extInfo 中的 conditions 到 schema（toJSON 不含 extInfo）
+    for (const node of ctx.document.getAllNodes()) {
+      if (node.flowNodeType === 'condition') {
+        const extInfo = node.getExtInfo?.() ?? {};
+        const conditions = extInfo.conditions;
+        if (conditions) {
+          mergeConditionsIntoSchema(schema.nodes, node.id, conditions);
+        }
+      }
+    }
+    return schema;
   }, [ctx.document]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => {
+    const disposables = new DisposableCollection();
     let lastDocSig = '';
-    const interval = setInterval(() => {
+    let exportTimer: ReturnType<typeof setTimeout> | null = null;
+
+    // --- 防抖导出（50ms 批量处理连续变更） ---
+    const scheduleExport = () => {
+      if (exportTimer) clearTimeout(exportTimer);
+      exportTimer = setTimeout(() => {
+        exportTimer = null;
+        if (!onSchemaChangeRef.current) return;
+        const schema = exportSchema();
+        const sig = JSON.stringify(schema);
+        if (sig !== lastDocSig) {
+          lastDocSig = sig;
+          onSchemaChangeRef.current(schema);
+        }
+      }, 50);
+    };
+
+    // --- 1. 选中同步（立即，无防抖） ---
+    const syncSelection = () => {
       const sel = ctx.selection?.selection;
       const newId = sel && sel.length > 0 ? (sel[0]?.id ?? null) : null;
-      setSelectedId((prev) => (prev !== newId ? newId : prev));
+      setSelectedNode(newId);
+    };
+    syncSelection();
+    disposables.push(ctx.selection?.onSelectionChanged(syncSelection));
 
-      // 同步 condition 节点的 conditions 数组与分支 block 数量
-      // 当 DynamicSplit 在画布上添加/删除分支时，conditions 数组需要同步更新
-      let skipSchemaExport = false;
-      const allNodes = ctx.document.getAllNodes();
-      for (const n of allNodes) {
-        if (n.flowNodeType === 'condition') {
-          const extInfo = n.getExtInfo?.() ?? {};
-          const conditions =
-            (extInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
-          // 获取实际分支 block 列表（不是 n.blocks，那是结构系统节点）
-          const branchBlocks = getBranchBlocks(n);
-          // 检查是否需要重建 conditions 数组：
-          // 1. branchBlocks 比 conditions 多（画布添加了分支）
-          // 2. else 分支不在末尾或有多余的 else block
-          // 3. else block 不在物理末尾（需要 moveChildNodes 重排）
-          // 注意：不处理 conditions > branchBlocks 的情况（由 handleNodeDataChange 处理 block 创建）
-          const branchBlockElseCount = branchBlocks.filter((b) => {
-            const bi = b.getExtInfo?.() ?? {};
-            return (bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false);
-          }).length;
-          // 检查 else block 是否在物理末尾
-          const lastBranchBlock = branchBlocks[branchBlocks.length - 1];
-          const lastBranchBlockIsElse = lastBranchBlock
-            ? (() => {
-                const bi = lastBranchBlock.getExtInfo?.() ?? {};
-                return (
-                  (bi.isElse as boolean) || (lastBranchBlock.id?.includes('elseBlock') ?? false)
-                );
-              })()
-            : false;
-          // SelectionBridge 只处理画布原生添加/删除分支的情况（branchBlocks > conditions）
-          // 配置面板触发的变更由 handleNodeDataChange 处理，不在此重建
-          // 也处理重载后 extInfo.conditions 为空但 block 已存在的情况
-          const needsRebuild =
-            branchBlocks.length > conditions.length ||
-            (conditions.length === 0 && branchBlocks.length > 0) ||
-            (conditions.length === branchBlocks.length &&
-              conditions.length > 1 &&
-              (() => {
-                const lastCond = conditions[conditions.length - 1];
-                const lastIsElse = !lastCond?.condition;
-                return !lastIsElse || branchBlockElseCount > 1;
-              })()) ||
-            (branchBlockElseCount > 0 && !lastBranchBlockIsElse);
-          if (needsRebuild) {
-            // 重建 conditions 数组
-            // 识别 else block：通过 extInfo.isElse 标志或 ID 含 elseBlock
-            // 确保只有一个 else 分支，且放在 conditions 数组末尾
-            const rawConditions = branchBlocks.map((block) => {
-              const blockInfo = block.getExtInfo?.() ?? {};
-              const isElse =
-                !!(blockInfo.isElse as boolean) || (block.id?.includes('elseBlock') ?? false);
-              const blockTitle = blockInfo.title as string;
-              const existing = conditions.find((c) => c.label === blockTitle);
-              return {
-                isElse,
-                label: existing?.label || blockTitle || '',
-                condition: existing?.condition ?? null,
-              };
-            });
-
-            // 非 else 分支在前，else 分支在末尾（只保留一个 else）
-            const nonElse = rawConditions.filter((c) => !c.isElse);
-            // 如果有多个 else block，只保留第一个作为默认分支
-            const elseBranches = rawConditions.filter((c) => c.isElse);
-            const elseBranch = elseBranches.length > 0 ? elseBranches[0] : null;
-
-            // 为非 else 分支分配序号和默认 label
-            const newConditions = [
-              ...nonElse.map((c, i) => ({
-                label: c.label || `分支 ${i + 1}`,
-                condition: c.condition,
-              })),
-              ...(elseBranch
-                ? [
-                    {
-                      label: elseBranch.label || '默认分支',
-                      condition: null as object | null,
-                    },
-                  ]
-                : []),
-            ];
-            n.updateExtInfo({ conditions: newConditions });
-            // 同时同步各 block 的 extInfo（title/isElse），使 blockOrderIcon 渲染正确
-            branchBlocks.forEach((block, i) => {
-              const rawCond = rawConditions[i];
-              const isElseBlock = rawCond?.isElse ?? false;
-              // 在 newConditions 中查找对应的 condition
-              // 非 else 分支按在 nonElse 中的序号匹配；else 分支匹配末尾的 else
-              let matched;
-              if (isElseBlock) {
-                // else 分支 = newConditions 的最后一个
-                matched = newConditions[newConditions.length - 1];
-              } else {
-                const nonElseIdx = rawConditions.slice(0, i).filter((c) => !c.isElse).length;
-                matched = newConditions[nonElseIdx];
-              }
-              const newTitle =
-                matched?.label ||
-                (isElseBlock
-                  ? '默认分支'
-                  : `分支 ${rawConditions.slice(0, i).filter((c) => !c.isElse).length + 1}`);
-              block.updateExtInfo({
-                title: newTitle,
-                isElse: isElseBlock,
-                condition: matched?.condition ?? null,
-              });
-              // 也更新 blockOrderIcon 子节点的 extInfo
-              const blockOrderIcon = block.blocks?.[0];
-              if (blockOrderIcon) {
-                blockOrderIcon.updateExtInfo({
-                  title: newTitle,
-                  isElse: isElseBlock,
-                  condition: matched?.condition ?? null,
-                });
-              }
-            });
-            // 同步到 Zustand store，使配置面板能立即看到画布上的分支变化
-            updateNodeData(n.id, { conditions: newConditions });
-            // 物理重排：将 else block 移动到 $inlineBlocks$ 的末尾
-            // flowgram 的 BranchAdder 追加新 block 到末尾，导致 else block 不在最后
-            // 需要用 moveChildNodes 将 else block 移到末尾，使画布左右排列正确
-            if (elseBranch && branchBlocks.length > 1) {
-              // 重新获取 branchBlocks（extInfo 更新后可能变化）
-              const currentBranchBlocks = getBranchBlocks(n);
-              const lastBlock = currentBranchBlocks[currentBranchBlocks.length - 1];
-              const lastIsElse = lastBlock
-                ? (() => {
-                    const bi = lastBlock.getExtInfo?.() ?? {};
-                    return (bi.isElse as boolean) || (lastBlock.id?.includes('elseBlock') ?? false);
-                  })()
-                : false;
-              if (!lastIsElse) {
-                // 找到 else block 的 ID 和 inlineBlocks 的 ID
-                const elseBlock = currentBranchBlocks.find((b) => {
-                  const bi = b.getExtInfo?.() ?? {};
-                  return (bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false);
-                });
-                if (elseBlock) {
-                  const inlineBlocksId = `$inlineBlocks$${n.id}`;
-                  try {
-                    (
-                      ctx.document as unknown as {
-                        moveChildNodes: (opts: {
-                          toParentId: string;
-                          toIndex: number;
-                          nodeIds: string[];
-                        }) => void;
-                      }
-                    ).moveChildNodes({
-                      toParentId: inlineBlocksId,
-                      toIndex: currentBranchBlocks.length - 1,
-                      nodeIds: [elseBlock.id],
-                    });
-                  } catch {
-                    // moveChildNodes 可能失败（节点已在正确位置等），忽略错误
-                  }
+    // --- 2. 条件节点 extInfo 订阅：同步 conditions 到 store ---
+    const subscribeConditionNode = (node: FlowNodeEntity) => {
+      disposables.push(
+        node.onExtInfoChange(() => {
+          const extInfo = node.getExtInfo?.() ?? {};
+          const extConditions = extInfo.conditions;
+          if (!extConditions) return;
+          // 用 getState() 命令式读取 store，避免依赖 storeSchema 导致重订阅
+          const storeSchema = useProcessEditorStore.getState().schema;
+          if (storeSchema) {
+            let storeConditions: unknown = undefined;
+            const findInStore = (nodes: WorkflowNode[]): void => {
+              for (const sn of nodes) {
+                if (sn.id === node.id) {
+                  storeConditions = sn.data?.conditions;
+                  return;
                 }
+                if (sn.blocks) findInStore(sn.blocks);
+              }
+            };
+            findInStore(storeSchema.nodes);
+            if (JSON.stringify(storeConditions) !== JSON.stringify(extConditions)) {
+              updateNodeData(node.id, { conditions: extConditions });
+            }
+          }
+          scheduleExport();
+        }),
+      );
+    };
+
+    // --- 3. 节点创建：为新 condition 节点订阅 extInfo；block 创建触发重建 ---
+    disposables.push(
+      ctx.document.onNodeCreate(({ node }) => {
+        if (node.flowNodeType === 'condition') {
+          subscribeConditionNode(node);
+        }
+        // block 节点创建 → 父 condition 节点可能需要重建 conditions 数组
+        // 使用 requestAnimationFrame 延迟到下一帧，确保 block 已完全
+        // 集成到 $inlineBlocks$ 树中且 flowgram 已完成内部布局更新
+        const parent = node.parent;
+        if (node.flowNodeType === 'block' && parent?.flowNodeType === 'condition') {
+          requestAnimationFrame(() => {
+            reconcileConditionBranches(parent, ctx.document, updateNodeData);
+          });
+        }
+        scheduleExport();
+      }),
+    );
+
+    // --- 4. 节点删除：block 删除触发父 condition 重建 ---
+    disposables.push(
+      ctx.document.onNodeDispose(({ node }) => {
+        const parent = node.parent;
+        if (node.flowNodeType === 'block' && parent?.flowNodeType === 'condition') {
+          reconcileConditionBranches(parent, ctx.document, updateNodeData);
+        }
+        scheduleExport();
+      }),
+    );
+
+    // --- 5. 节点 data 更变 → 防抖导出 + else block 物理位置检查 ---
+    // onNodeUpdate 在 moveChildNodes / addBlock 等操作后触发，
+    // 利用此事件确保 else block 始终在最右侧（弥补 onNodeCreate 时序不足）
+    // 使用 requestAnimationFrame 避免在 flowgram 事务中嵌套修改操作
+    let rafScheduled = false;
+    disposables.push(
+      ctx.document.onNodeUpdate(() => {
+        if (!rafScheduled) {
+          rafScheduled = true;
+          requestAnimationFrame(() => {
+            rafScheduled = false;
+            for (const node of ctx.document.getAllNodes()) {
+              if (node.flowNodeType === 'condition') {
+                reconcileConditionBranches(node, ctx.document, updateNodeData);
               }
             }
-            // reconciliation 已通过 updateNodeData 更新 store，跳过当轮 onSchemaExport
-            // 避免 exportSchema() 的旧 conditions 覆盖 updateNodeData 写入的新 conditions
-            skipSchemaExport = true;
-          }
+          });
         }
+        scheduleExport();
+      }),
+    );
+
+    // --- 6. 初始：订阅所有已存在的 condition 节点 + 初始重建 + 初始导出 ---
+    for (const node of ctx.document.getAllNodes()) {
+      if (node.flowNodeType === 'condition') {
+        subscribeConditionNode(node);
+        reconcileConditionBranches(node, ctx.document, updateNodeData);
       }
+    }
+    scheduleExport();
 
-      if (!skipSchemaExport) {
-        // 即使不需要 rebuild，也要将 extInfo 中的 conditions 同步到 store
-        // 因为 exportSchema() 使用 toJSON() 读取 data（不是 extInfo），
-        // 而 conditions 存在 extInfo 中，导致 store 中的 conditions 过时
-        let conditionsSynced = false;
-        for (const n of allNodes) {
-          if (n.flowNodeType === 'condition') {
-            const extInfo = n.getExtInfo?.() ?? {};
-            const extConditions =
-              (extInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
-            const branchBlocks = getBranchBlocks(n);
-            // 如果 extInfo 中的 conditions 数量与 branchBlocks 一致，
-            // 但 store 中的 conditions 可能不同步，同步到 store
-            if (extConditions.length === branchBlocks.length && extConditions.length > 0) {
-              // 比较 store 中的 conditions 与 extInfo 中的是否一致，
-              // 避免每次轮询都触发不必要的 updateNodeData（会导致
-              // ConditionEditor 的 useEffect 反复重置 tree 状态）
-              let storeConditions: unknown = undefined;
-              if (storeSchema) {
-                const findInStore = (nodes: WorkflowNode[]): void => {
-                  for (const sn of nodes) {
-                    if (sn.id === n.id) {
-                      storeConditions = sn.data?.conditions;
-                      return;
-                    }
-                    if (sn.blocks) findInStore(sn.blocks);
-                  }
-                };
-                findInStore(storeSchema.nodes);
-              }
-              const storeCondStr = JSON.stringify(storeConditions);
-              const extCondStr = JSON.stringify(extConditions);
-              if (storeCondStr !== extCondStr) {
-                updateNodeData(n.id, { conditions: extConditions });
-                conditionsSynced = true;
-              }
-            }
-          }
-        }
+    return () => {
+      if (exportTimer) clearTimeout(exportTimer);
+      disposables.dispose();
+    };
+  }, [ctx.selection, ctx.document, exportSchema, updateNodeData, setSelectedNode]);
 
-        if (onSchemaChangeRef.current) {
-          const schema = exportSchema();
-          // 如果同步了 conditions，用 extInfo 中的 conditions 覆盖 schema 中的
-          if (conditionsSynced) {
-            for (const n of allNodes) {
-              if (n.flowNodeType === 'condition') {
-                const extInfo = n.getExtInfo?.() ?? {};
-                const extConditions = extInfo.conditions;
-                if (extConditions) {
-                  const syncNode = (nodes: WorkflowNode[]): boolean => {
-                    for (const sn of nodes) {
-                      if (sn.id === n.id) {
-                        sn.data = { ...sn.data, conditions: extConditions };
-                        return true;
-                      }
-                      if (sn.blocks) {
-                        if (syncNode(sn.blocks)) return true;
-                      }
-                    }
-                    return false;
-                  };
-                  syncNode(schema.nodes);
-                }
-              }
-            }
-          }
-          const sig = JSON.stringify(schema);
-          if (sig !== lastDocSig) {
-            lastDocSig = sig;
-            onSchemaChangeRef.current(schema);
-          }
-        }
-      }
-    }, 300);
-    return () => clearInterval(interval);
-  }, [ctx.selection, ctx.document, exportSchema, updateNodeData, storeSchema]);
-
-  useEffect(() => {
-    setSelectedNode(selectedId);
-  }, [selectedId, setSelectedNode]);
   return null;
 }

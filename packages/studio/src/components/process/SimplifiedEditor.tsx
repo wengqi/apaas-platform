@@ -184,6 +184,11 @@ function reconcileConditionBranches(
 
   if (!needsRebuild) {
     ensureElseBlockLast();
+    // 即使不需要重建 conditions 数组，也要确保 extInfo 中的 conditions
+    // 已同步到 Zustand store，保证配置面板与画布数据一致
+    if (conditions.length > 0) {
+      updateNodeData(conditionNode.id, { conditions });
+    }
     return false;
   }
 
@@ -381,10 +386,10 @@ function BlockOrderIconLabel({
   const _storeVersion = useProcessEditorStore((s) => s.schema);
 
   let isElse = fallbackIsElse;
-  let nonElseIndex = 0;
   let conditions: Array<{ label?: string; condition?: object | null }> = [];
+  // displayIndex = 当前 block 在 conditions 数组中的位置（权威排序）
+  let displayIndex = 0;
   if (blockId && conditionNode) {
-    // 从 extInfo 读取 conditions 数组（与 updateExtInfo 写入的是同一对象）
     const condExtInfo = conditionNode.getExtInfo?.() ?? {};
     conditions =
       (condExtInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
@@ -392,30 +397,53 @@ function BlockOrderIconLabel({
     const blockNode = branchBlocks.find((b) => b.id === blockId);
     if (blockNode) {
       isElse = isElseBlock(blockNode);
-      // 计算 nonElseIndex
-      let counter = 0;
-      for (const sibling of branchBlocks) {
-        if (sibling.id === blockId) {
-          nonElseIndex = counter;
-          break;
+    }
+
+    if (conditions.length > 0) {
+      // 从 conditions 数组中按 label 匹配当前 block 的位置
+      // conditions 数组顺序：非 else 分支在前，else 分支在末尾
+      // 这是权威排序，不受物理块位置影响
+      const blockTitle = blockNode?.getExtInfo?.()?.title as string | undefined;
+      if (isElse) {
+        // else 分支始终是 conditions 数组的最后一个
+        displayIndex = conditions.length - 1;
+      } else {
+        // 非 else 分支：通过 label 匹配找到在 conditions 中的位置
+        const matchedIdx = conditions.findIndex(
+          (c) => c.label === blockTitle || c.label === fallbackLabel,
+        );
+        if (matchedIdx >= 0) {
+          displayIndex = matchedIdx;
+        } else {
+          // label 匹配失败时，退回到基于非 else 块的物理计数
+          let counter = 0;
+          for (const sibling of branchBlocks) {
+            if (sibling.id === blockId) break;
+            if (!isElseBlock(sibling)) counter++;
+          }
+          displayIndex = counter;
         }
-        if (!isElseBlock(sibling)) counter++;
+      }
+    } else {
+      // conditions 尚未同步到 extInfo（初始渲染），基于物理块计数
+      const branchBlockCount = branchBlocks.length;
+      if (isElse) {
+        displayIndex = Math.max(branchBlockCount - 1, 0);
+      } else {
+        let counter = 0;
+        for (const sibling of branchBlocks) {
+          if (sibling.id === blockId) break;
+          if (!isElseBlock(sibling)) counter++;
+        }
+        displayIndex = counter;
       }
     }
   }
 
-  // 从 conditions 数组中按位置匹配当前分支
-  // conditions 数组顺序：非 else 分支在前，else 分支在末尾
-  const branchData = isElse ? conditions[conditions.length - 1] : conditions[nonElseIndex];
+  // 从 conditions 数组中取当前分支的数据
+  const branchData = conditions[displayIndex];
   const label = branchData?.label || fallbackLabel;
   const condition = branchData?.condition ?? null;
-  // 优先级 = 在 conditions 数组中的位置（else 始终是最后一个 = 总数 - 1）
-  // 当 conditions 尚未同步到 extInfo（初始渲染时为空数组），
-  // 退回到基于 branchBlocks 计数的方式，避免 else 显示"优先级 0"
-  const branchBlockCount = getBranchBlocks(conditionNode).length;
-  const fallbackDisplayIndex = isElse ? Math.max(branchBlockCount - 1, 0) : nonElseIndex;
-  const displayIndex =
-    conditions.length > 0 ? (isElse ? conditions.length - 1 : nonElseIndex) : fallbackDisplayIndex;
 
   // JsonLogic 对象 → 可读表达式字符串（异常时降级为 JSON 摘要，避免页面崩溃）
   const conditionText = useMemo(() => {

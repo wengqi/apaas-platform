@@ -403,31 +403,19 @@ function ApaasNodeRenderer({
     const label = branchData?.label || blockTitle || (isElse ? '默认分支' : '条件成立');
     const condition = branchData?.condition ?? null;
     // 优先级编号计算：
-    // - else 分支：优先级 = conditions 数组长度（最后一个）
-    // - 非 else 分支：计算此 block 之前的非 else block 数量 + 1
-    //   （因为 conditions 数组中非 else 分支在前，else 在末尾）
+    // 直接从 store schema 的 conditions 数组中查找该 block 的位置
+    // conditions 数组顺序就是优先级顺序（非 else 在前，else 在末尾）
+    // 用 label 匹配查找；找不到时用物理位置兜底
     let displayIndex;
     if (isElse) {
       // else 分支始终是最低优先级 = 总分支数 - 1
-      // 用 branchBlocks 物理数量计算，而非 conditions 数组长度（可能未及时更新）
       const inlineBlocksElse = blockNode?.parent;
       const totalBlocks = inlineBlocksElse?.blocks?.length ?? conditions.length;
       displayIndex = totalBlocks - 1;
     } else {
-      // 计算 inlineBlocks 中此 block 之前的非 else block 数量
-      const inlineBlocks = blockNode?.parent;
-      const siblings = inlineBlocks?.blocks || [];
-      let nonElseBefore = 0;
-      for (let i = 0; i < blockIndex; i++) {
-        const sib = siblings[i];
-        if (sib) {
-          const sibInfo = sib.getExtInfo?.() ?? {};
-          const sibIsElse =
-            !!(sibInfo.isElse as boolean) || (sib.id?.includes('elseBlock') ?? false);
-          if (!sibIsElse) nonElseBefore++;
-        }
-      }
-      displayIndex = nonElseBefore;
+      // 从 conditions 数组中按 label 查找位置
+      const condIdx = conditions.findIndex((c) => c.label === label);
+      displayIndex = condIdx >= 0 ? condIdx : blockIndex;
     }
 
     return (

@@ -11,7 +11,7 @@
  *   后端 → jsonLogic.apply(rule, data) → boolean
  */
 
-import { createElement, useCallback, useMemo, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Divider, Form, Input, Popconfirm, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
@@ -37,6 +37,8 @@ const { Text } = Typography;
 // ---------------------------------------------------------------------------
 
 export interface ConditionBranchItem {
+  /** 分支唯一标识（用于 React key，避免删除/添加时复用错误的编辑器实例） */
+  id?: string;
   label: string;
   /** JsonLogic JSON 规则（空 = else/default） */
   condition?: object | null;
@@ -104,7 +106,16 @@ export default function ConditionConfigForm({
   if (dataBranches.length >= branchesRef.current.length) {
     branchesRef.current = dataBranches;
   }
-  const branches = branchesRef.current;
+
+  // 为缺失 id 的分支自动生成稳定 id（初始加载的分支可能没有 id）
+  // 这确保 React key 在删除/添加分支时不会复用错误的编辑器实例
+  let branches = branchesRef.current;
+  if (branches.some((b) => !b.id)) {
+    branches = branches.map((b) =>
+      b.id ? b : { ...b, id: `branch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
+    );
+    branchesRef.current = branches;
+  }
 
   /** 解析当前节点可用的变量列表 */
   const variableOptions = useMemo(
@@ -142,7 +153,11 @@ export default function ConditionConfigForm({
       branchNum++;
     }
     const newBranches = [...current];
-    newBranches.splice(insertIndex, 0, { label: `分支 ${branchNum}`, condition: null });
+    newBranches.splice(insertIndex, 0, {
+      id: `branch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      label: `分支 ${branchNum}`,
+      condition: null,
+    });
     // 立即更新 ref，确保下次调用时使用最新值
     branchesRef.current = newBranches;
     update(newBranches);
@@ -177,7 +192,7 @@ export default function ConditionConfigForm({
           const configured = isBranchConfigured(branch);
           return (
             <div
-              key={index}
+              key={branch.id ?? `branch-${index}`}
               style={{
                 border: '1px solid #eef0f4',
                 borderRadius: 8,
@@ -324,6 +339,13 @@ function ConditionEditor({
   const [activeTab, setActiveTab] = useState<'visual' | 'expression'>('visual');
 
   const [tree, setTree] = useState<ImmutableTree>(() => loadFromJsonLogic(condition, qbConfig));
+
+  // 当 condition prop 外部变化时（如删除分支导致编辑器复用），
+  // 重新同步内部 tree 和 exprText 状态
+  useEffect(() => {
+    setTree(loadFromJsonLogic(condition, qbConfig));
+    setExprText(condition ? jsonLogicToExpression(condition) : '');
+  }, [condition, qbConfig]);
 
   const onQbChange = useCallback(
     (immutableTree: ImmutableTree) => {

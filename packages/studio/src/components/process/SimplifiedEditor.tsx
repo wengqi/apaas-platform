@@ -239,16 +239,44 @@ function BlockOrderIconLabel({
         userSelect: 'none',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
         <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', flexShrink: 0 }}>
           优先级 {blockIndex + 1}
         </span>
-        <span style={{ fontSize: 12, fontWeight: 500, color: 'rgba(0,0,0,0.65)' }}>{label}</span>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 500,
+            color: 'rgba(0,0,0,0.65)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            flexShrink: 1,
+          }}
+        >
+          {label}
+        </span>
         {!isElse && !conditionText && (
-          <Text style={{ fontSize: 11, color: '#ff4d4f' }}>(未配置)</Text>
+          <Text style={{ fontSize: 11, color: '#ff4d4f', flexShrink: 0 }}>(未配置)</Text>
         )}
         {!isElse && conditionText && (
-          <Text style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>
+          <Text
+            style={{
+              fontSize: 11,
+              color: 'rgba(0,0,0,0.45)',
+              flexShrink: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 80,
+            }}
+          >
             {conditionText.length > 20 ? conditionText.substring(0, 20) + '...' : conditionText}
           </Text>
         )}
@@ -1311,22 +1339,32 @@ function SelectionBridge({
           // 检查是否需要重建 conditions 数组：
           // 1. branchBlocks 比 conditions 多（画布添加了分支）
           // 2. else 分支不在末尾或有多余的 else block
+          // 3. else block 不在物理末尾（需要 moveChildNodes 重排）
           // 注意：不处理 conditions > branchBlocks 的情况（由 handleNodeDataChange 处理 block 创建）
           const branchBlockElseCount = branchBlocks.filter((b) => {
             const bi = b.getExtInfo?.() ?? {};
             return (bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false);
           }).length;
+          // 检查 else block 是否在物理末尾
+          const lastBranchBlock = branchBlocks[branchBlocks.length - 1];
+          const lastBranchBlockIsElse = lastBranchBlock
+            ? (() => {
+                const bi = lastBranchBlock.getExtInfo?.() ?? {};
+                return (
+                  (bi.isElse as boolean) || (lastBranchBlock.id?.includes('elseBlock') ?? false)
+                );
+              })()
+            : false;
           const needsRebuild =
             branchBlocks.length > conditions.length ||
             (conditions.length === branchBlocks.length &&
               conditions.length > 1 &&
               (() => {
-                // 检查最后一个 condition 是否是 else（condition 为空）
                 const lastCond = conditions[conditions.length - 1];
                 const lastIsElse = !lastCond?.condition;
-                // 检查是否有多个 else block
                 return !lastIsElse || branchBlockElseCount > 1;
-              })());
+              })()) ||
+            (branchBlockElseCount > 0 && !lastBranchBlockIsElse);
           if (needsRebuild) {
             // 重建 conditions 数组
             // 识别 else block：通过 extInfo.isElse 标志或 ID 含 elseBlock
@@ -1402,6 +1440,47 @@ function SelectionBridge({
             });
             // 同步到 Zustand store，使配置面板能立即看到画布上的分支变化
             updateNodeData(n.id, { conditions: newConditions });
+            // 物理重排：将 else block 移动到 $inlineBlocks$ 的末尾
+            // flowgram 的 BranchAdder 追加新 block 到末尾，导致 else block 不在最后
+            // 需要用 moveChildNodes 将 else block 移到末尾，使画布左右排列正确
+            if (elseBranch && branchBlocks.length > 1) {
+              // 重新获取 branchBlocks（extInfo 更新后可能变化）
+              const currentBranchBlocks = getBranchBlocks(n);
+              const lastBlock = currentBranchBlocks[currentBranchBlocks.length - 1];
+              const lastIsElse = lastBlock
+                ? (() => {
+                    const bi = lastBlock.getExtInfo?.() ?? {};
+                    return (bi.isElse as boolean) || (lastBlock.id?.includes('elseBlock') ?? false);
+                  })()
+                : false;
+              if (!lastIsElse) {
+                // 找到 else block 的 ID 和 inlineBlocks 的 ID
+                const elseBlock = currentBranchBlocks.find((b) => {
+                  const bi = b.getExtInfo?.() ?? {};
+                  return (bi.isElse as boolean) || (b.id?.includes('elseBlock') ?? false);
+                });
+                if (elseBlock) {
+                  const inlineBlocksId = `$inlineBlocks$${n.id}`;
+                  try {
+                    (
+                      ctx.document as unknown as {
+                        moveChildNodes: (opts: {
+                          toParentId: string;
+                          toIndex: number;
+                          nodeIds: string[];
+                        }) => void;
+                      }
+                    ).moveChildNodes({
+                      toParentId: inlineBlocksId,
+                      toIndex: currentBranchBlocks.length - 1,
+                      nodeIds: [elseBlock.id],
+                    });
+                  } catch {
+                    // moveChildNodes 可能失败（节点已在正确位置等），忽略错误
+                  }
+                }
+              }
+            }
           }
         }
       }

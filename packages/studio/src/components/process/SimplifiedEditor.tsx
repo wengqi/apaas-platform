@@ -1388,6 +1388,7 @@ function SelectionBridge({
   const ctx = useClientContext();
   const setSelectedNode = useProcessEditorStore((s) => s.setSelectedNode);
   const updateNodeData = useProcessEditorStore((s) => s.updateNodeData);
+  const storeSchema = useProcessEditorStore((s) => s.schema);
   const onSchemaChangeRef = useRef(onSchemaChange);
   onSchemaChangeRef.current = onSchemaChange;
 
@@ -1585,8 +1586,28 @@ function SelectionBridge({
             // 如果 extInfo 中的 conditions 数量与 branchBlocks 一致，
             // 但 store 中的 conditions 可能不同步，同步到 store
             if (extConditions.length === branchBlocks.length && extConditions.length > 0) {
-              updateNodeData(n.id, { conditions: extConditions });
-              conditionsSynced = true;
+              // 比较 store 中的 conditions 与 extInfo 中的是否一致，
+              // 避免每次轮询都触发不必要的 updateNodeData（会导致
+              // ConditionEditor 的 useEffect 反复重置 tree 状态）
+              let storeConditions: unknown = undefined;
+              if (storeSchema) {
+                const findInStore = (nodes: WorkflowNode[]): void => {
+                  for (const sn of nodes) {
+                    if (sn.id === n.id) {
+                      storeConditions = sn.data?.conditions;
+                      return;
+                    }
+                    if (sn.blocks) findInStore(sn.blocks);
+                  }
+                };
+                findInStore(storeSchema.nodes);
+              }
+              const storeCondStr = JSON.stringify(storeConditions);
+              const extCondStr = JSON.stringify(extConditions);
+              if (storeCondStr !== extCondStr) {
+                updateNodeData(n.id, { conditions: extConditions });
+                conditionsSynced = true;
+              }
             }
           }
         }
@@ -1626,7 +1647,7 @@ function SelectionBridge({
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [ctx.selection, ctx.document, exportSchema, updateNodeData]);
+  }, [ctx.selection, ctx.document, exportSchema, updateNodeData, storeSchema]);
 
   useEffect(() => {
     setSelectedNode(selectedId);

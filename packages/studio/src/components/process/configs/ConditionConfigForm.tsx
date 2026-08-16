@@ -342,12 +342,18 @@ function ConditionEditor({
 
   // 跟踪内部变更，避免用户输入时 useEffect 覆盖正在编辑的 tree/exprText
   const internalChangeRef = useRef(false);
+  // 缓存上次 condition 的序列化值，用于检测实质变化（而非引用变化）
+  const lastConditionRef = useRef<string>(JSON.stringify(condition ?? null));
 
-  // 当 condition prop 外部变化时（如删除分支导致编辑器复用），
+  // 当 condition prop 实质内容变化时（如删除分支导致编辑器复用），
   // 重新同步内部 tree 和 exprText 状态。
   // 使用 internalChangeRef 跳过由用户输入触发的 condition 变化，
-  // 避免输入框被重置（只能输入一个字符的问题）。
+  // 使用 JSON.stringify 比较跳过仅引用变化（如其他分支变更导致的 re-render）。
   useEffect(() => {
+    const condStr = JSON.stringify(condition ?? null);
+    if (condStr === lastConditionRef.current) return;
+    lastConditionRef.current = condStr;
+
     if (internalChangeRef.current) {
       internalChangeRef.current = false;
       return;
@@ -362,6 +368,7 @@ function ConditionEditor({
       const logic = exportToJsonLogic(immutableTree, qbConfig);
       // 标记为内部变更，避免 useEffect 重新加载 tree 覆盖正在编辑的状态
       internalChangeRef.current = true;
+      lastConditionRef.current = JSON.stringify(logic ?? null);
       // 如果启用了自定义逻辑，用自定义表达式重新组合各条件
       if (customLogic?.enabled && logic) {
         const rules = extractRulesFromJsonLogic(logic);
@@ -381,6 +388,7 @@ function ConditionEditor({
       setExprText(text);
       const logic = expressionToJsonLogic(text);
       internalChangeRef.current = true;
+      lastConditionRef.current = JSON.stringify(logic ?? null);
       onChange(logic);
     },
     [onChange],

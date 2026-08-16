@@ -1310,6 +1310,7 @@ function SelectionBridge({
   const ctx = useClientContext();
   const setSelectedNode = useProcessEditorStore((s) => s.setSelectedNode);
   const updateNodeData = useProcessEditorStore((s) => s.updateNodeData);
+  const storeSchema = useProcessEditorStore((s) => s.schema);
   const onSchemaChangeRef = useRef(onSchemaChange);
   onSchemaChangeRef.current = onSchemaChange;
 
@@ -1328,6 +1329,7 @@ function SelectionBridge({
 
       // 同步 condition 节点的 conditions 数组与分支 block 数量
       // 当 DynamicSplit 在画布上添加/删除分支时，conditions 数组需要同步更新
+      let skipSchemaExport = false;
       const allNodes = ctx.document.getAllNodes();
       for (const n of allNodes) {
         if (n.flowNodeType === 'condition') {
@@ -1355,8 +1357,25 @@ function SelectionBridge({
                 );
               })()
             : false;
+          // 也检查 store schema 中的 conditions 是否与 branchBlocks 数量一致
+          // 重载后 store schema 从流程定义加载，可能与 flowgram extInfo 不一致
+          let storeConditionsCount = -1;
+          if (storeSchema) {
+            const findInStore = (nodes: WorkflowNode[]): void => {
+              for (const sn of nodes) {
+                if (sn.id === n.id) {
+                  const sc = (sn.data?.conditions as unknown[]) ?? [];
+                  storeConditionsCount = sc.length;
+                  return;
+                }
+                if (sn.blocks) findInStore(sn.blocks);
+              }
+            };
+            findInStore(storeSchema.nodes);
+          }
           const needsRebuild =
             branchBlocks.length > conditions.length ||
+            (storeConditionsCount >= 0 && storeConditionsCount !== branchBlocks.length) ||
             (conditions.length === branchBlocks.length &&
               conditions.length > 1 &&
               (() => {
@@ -1481,11 +1500,14 @@ function SelectionBridge({
                 }
               }
             }
+            // reconciliation 已通过 updateNodeData 更新 store，跳过当轮 onSchemaExport
+            // 避免 exportSchema() 的旧 conditions 覆盖 updateNodeData 写入的新 conditions
+            skipSchemaExport = true;
           }
         }
       }
 
-      if (onSchemaChangeRef.current) {
+      if (!skipSchemaExport && onSchemaChangeRef.current) {
         const schema = exportSchema();
         const sig = JSON.stringify(schema);
         if (sig !== lastDocSig) {
@@ -1495,7 +1517,7 @@ function SelectionBridge({
       }
     }, 300);
     return () => clearInterval(interval);
-  }, [ctx.selection, ctx.document, exportSchema, updateNodeData]);
+  }, [ctx.selection, ctx.document, exportSchema, updateNodeData, storeSchema]);
 
   useEffect(() => {
     setSelectedNode(selectedId);

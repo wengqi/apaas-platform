@@ -1,1 +1,1 @@
-修复画布默认分支优先级编号：用 branchBlocks 物理数量替代 conditions 数组长度计算 else 分支的 displayIndex。
+修复删除分支时画布与配置面板不一致：改为通过 label 匹配找到要删除的 block，而非按索引倒序删除。

@@ -703,15 +703,46 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
             branchBlocks = getBranchBlocks(flowNode);
           }
 
-          // conditions 数组变短 → 删除多余 block 节点
+          // conditions 数组变短 → 删除多余的 block 节点
+          // 不能简单按索引倒序删除，因为 block 物理顺序可能与 conditions 数组顺序不一致
+          // 需要找出哪些 block 在新 conditions 数组中没有对应的 condition（通过 title 匹配）
           if (conditions.length < branchBlocks.length) {
-            for (let i = branchBlocks.length - 1; i >= conditions.length; i--) {
+            const newLabels = new Set(conditions.map((c) => c.label));
+            const conditionsHasElse =
+              conditions.length > 0 && !conditions[conditions.length - 1]?.condition;
+            let deleted = 0;
+            const toDelete = branchBlocks.length - conditions.length;
+            for (let i = branchBlocks.length - 1; i >= 0 && deleted < toDelete; i--) {
               const block = branchBlocks[i];
-              if (block) {
+              if (!block) continue;
+              const blockInfo = block.getExtInfo?.() ?? {};
+              const blockTitle = blockInfo.title as string;
+              const isElseBlock =
+                (blockInfo.isElse as boolean) || (block.id?.includes('elseBlock') ?? false);
+              if (isElseBlock && conditionsHasElse) continue;
+              if (!newLabels.has(blockTitle)) {
                 try {
                   ctx.operation.deleteNode(block.id);
+                  deleted++;
                 } catch (e) {
                   console.error('[handleNodeDataChange] deleteBlock failed', e);
+                }
+              }
+            }
+            if (deleted < toDelete) {
+              const remaining = getBranchBlocks(flowNode);
+              for (let i = remaining.length - 1; i >= 0 && deleted < toDelete; i--) {
+                const block = remaining[i];
+                if (!block) continue;
+                const blockInfo = block.getExtInfo?.() ?? {};
+                const isElseBlock =
+                  (blockInfo.isElse as boolean) || (block.id?.includes('elseBlock') ?? false);
+                if (isElseBlock && conditionsHasElse) continue;
+                try {
+                  ctx.operation.deleteNode(block.id);
+                  deleted++;
+                } catch (e) {
+                  console.error('[handleNodeDataChange] deleteBlock fallback failed', e);
                 }
               }
             }

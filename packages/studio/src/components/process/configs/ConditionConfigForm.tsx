@@ -134,8 +134,15 @@ export default function ConditionConfigForm({
     const current = branchesRef.current;
     // 新分支插入到默认分支（最后一个）之前，保持默认分支始终在末尾
     const insertIndex = current.length > 0 ? current.length - 1 : 0;
+    // 生成唯一的分支名称：找到现有分支号中的最大值 + 1
+    // 避免删除后重新添加时出现重复的分支名
+    const existingLabels = new Set(current.map((b) => b.label));
+    let branchNum = current.length;
+    while (existingLabels.has(`分支 ${branchNum}`)) {
+      branchNum++;
+    }
     const newBranches = [...current];
-    newBranches.splice(insertIndex, 0, { label: `分支 ${current.length}`, condition: null });
+    newBranches.splice(insertIndex, 0, { label: `分支 ${branchNum}`, condition: null });
     // 立即更新 ref，确保下次调用时使用最新值
     branchesRef.current = newBranches;
     update(newBranches);

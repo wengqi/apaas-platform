@@ -8,6 +8,7 @@
  */
 
 import { createElement } from 'react';
+import { Popconfirm } from 'antd';
 import { Utils as QbUtils, AntdConfig } from '@react-awesome-query-builder/antd';
 import type { Config, ImmutableTree, JsonTree } from '@react-awesome-query-builder/antd';
 import type { VariableOption } from './variable-resolver.js';
@@ -183,6 +184,39 @@ export function buildQbConfig(variables: VariableOption[]): Config {
   // 注入自定义规则渲染器（飞书 aPaaS 风格横向四列栅格）
   (config.settings as unknown as Record<string, unknown>).renderItem = (props: unknown) =>
     createElement(CustomRule, props as never);
+
+  // 拦截 RAQB 删除类按钮（delGroup/delRuleGroup/delRule），统一加二次确认。
+  // 默认 renderButton 直接渲染 AntD Button，点击即删除；这里屏蔽按钮自身 onClick，
+  // 改为 Popconfirm 确认后再执行删除。其余按钮类型走默认渲染。
+  const settingsRecord = config.settings as unknown as Record<string, unknown>;
+  const origRenderButton = settingsRecord['renderButton'] as
+    ((props: Record<string, unknown>, ctx: unknown) => unknown) | undefined;
+  const deleteConfirmText: Record<string, string> = {
+    delGroup: '组内所有条件将一并删除',
+    delRuleGroup: '该规则组将一并删除',
+    delRule: '',
+  };
+  settingsRecord['renderButton'] = (props: Record<string, unknown>, ctx: unknown) => {
+    const type = props['type'] as string | undefined;
+    if (!origRenderButton) return null;
+    if (type && type in deleteConfirmText) {
+      // 屏蔽按钮自身 onClick，仅用其打开 Popconfirm；确认后才触发删除
+      const safeProps = { ...props, onClick: undefined };
+      return createElement(
+        Popconfirm,
+        {
+          title: '确定删除吗？',
+          description: deleteConfirmText[type] || undefined,
+          onConfirm: props['onClick'] as (() => void) | undefined,
+          okText: '确定删除',
+          cancelText: '取消',
+          placement: 'top',
+        },
+        origRenderButton(safeProps, ctx) as never,
+      );
+    }
+    return origRenderButton(props, ctx);
+  };
 
   // 注册自定义 JsonLogic 导出钩子
   const origJsonLogic = (config as unknown as { jsonLogic?: Record<string, unknown> }).jsonLogic;

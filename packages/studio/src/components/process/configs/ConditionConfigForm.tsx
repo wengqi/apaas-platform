@@ -12,7 +12,7 @@
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Divider, Form, Input, Space, Tag, Typography } from 'antd';
+import { Button, Divider, Form, Input, Popconfirm, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
 import { Query, Builder } from '@react-awesome-query-builder/antd';
@@ -229,16 +229,22 @@ export default function ConditionConfigForm({
                     未配置
                   </Text>
                 )}
-                {/* 删除按钮 — 直接删除,不弹确认框(flowgram 画布 overlay 拦截 DOM 事件,
-                    导致 Popconfirm/Modal.confirm/window.confirm 均无法触发) */}
-                <Button
-                  size="small"
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  disabled={isElse || branches.length <= 2}
-                  onClick={() => removeBranch(index)}
-                />
+                {/* 删除按钮 */}
+                <Popconfirm
+                  title="确定删除此分支？"
+                  onConfirm={() => removeBranch(index)}
+                  okText="确定删除"
+                  cancelText="取消"
+                  placement="top"
+                >
+                  <Button
+                    size="small"
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    disabled={isElse || branches.length <= 2}
+                  />
+                </Popconfirm>
               </div>
               <ConditionEditor
                 condition={branch.condition ?? null}

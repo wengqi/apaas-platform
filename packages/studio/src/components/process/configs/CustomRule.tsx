@@ -15,7 +15,7 @@
  */
 
 import { createElement, memo, useState } from 'react';
-import { Select, Input, Button, Tag } from 'antd';
+import { Select, Input, Button, Tag, Popconfirm } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { ItemBuilderProps } from '@react-awesome-query-builder/antd';
 import type { Config, Field } from '@react-awesome-query-builder/antd';
@@ -310,15 +310,24 @@ function CustomRuleImpl(props: ItemBuilderProps): React.ReactElement | null {
             ]
           : []),
       ),
-      // 删除按钮
-      createElement(Button, {
-        size: 'small',
-        type: 'text',
-        danger: true,
-        icon: createElement(DeleteOutlined),
-        onClick: () => actions.removeRule(path),
-        className: 'rule-delete',
-      }),
+      // 删除按钮（二次确认）
+      createElement(
+        Popconfirm,
+        {
+          title: '确定删除此条件？',
+          onConfirm: () => actions.removeRule(path),
+          okText: '确定删除',
+          cancelText: '取消',
+          placement: 'top',
+        },
+        createElement(Button, {
+          size: 'small',
+          type: 'text',
+          danger: true,
+          icon: createElement(DeleteOutlined),
+          className: 'rule-delete',
+        }),
+      ),
     ),
     // 字段为空时红色提示
     isFieldEmpty && createElement('div', { className: 'rule-error' }, '该字段为必填项'),

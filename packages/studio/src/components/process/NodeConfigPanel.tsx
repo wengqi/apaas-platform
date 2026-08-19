@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { Button, Divider, Empty, Typography } from 'antd';
+import { Button, Divider, Empty, Popconfirm, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { WorkflowNode, WorkflowSchema } from '@apaas/shared';
 import { getNodeMeta } from '../../constants/process.js';
@@ -129,17 +129,18 @@ export default function NodeConfigPanel({
             justifyContent: 'flex-end',
           }}
         >
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            size="small"
-            // 直接删除,不弹确认框(flowgram 画布 overlay 拦截 DOM 事件,
-            // 导致 Popconfirm/Modal.confirm/window.confirm 均无法触发)
-            onClick={() => onDeleteNode?.(node.id)}
+          <Popconfirm
+            title="确定删除此节点？"
+            description="删除后不可恢复"
+            onConfirm={() => onDeleteNode?.(node.id)}
+            okText="确定删除"
+            cancelText="取消"
+            placement="top"
           >
-            删除节点
-          </Button>
+            <Button type="text" danger icon={<DeleteOutlined />} size="small">
+              删除节点
+            </Button>
+          </Popconfirm>
         </div>
       )}
     </div>

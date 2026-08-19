@@ -27,8 +27,6 @@ import {
   validateExpression,
 } from './jsonlogic-utils.js';
 import ExpressionCodeEditor from './ExpressionCodeEditor.js';
-import CustomFilterLogic, { type CustomFilterLogicData } from './CustomFilterLogic.js';
-import { parseCustomLogic } from './custom-logic-parser.js';
 
 const { Text } = Typography;
 
@@ -42,8 +40,6 @@ export interface ConditionBranchItem {
   label: string;
   /** JsonLogic JSON 规则（空 = else/default） */
   condition?: object | null;
-  /** 自定义筛选条件逻辑（可选，当分支内有多条运算符条件时） */
-  customLogic?: CustomFilterLogicData;
 }
 
 export interface ConditionConfigData {
@@ -64,27 +60,6 @@ export interface ConditionConfigFormProps {
 // ---------------------------------------------------------------------------
 
 const renderBuilder = (props: BuilderProps) => createElement(Builder, props);
-
-/**
- * 从 JsonLogic 规则中提取各独立条件。
- *
- * RAQB 导出的 JsonLogic 格式：
- *   单个条件 → { ">": [{"var":"amount"}, 1000] }
- *   多条件（AND） → { "and": [{">":...}, {"==":...}] }
- *   多条件（OR） → { "or": [{">":...}, {"==":...}] }
- *
- * 提取后返回条件数组，供自定义逻辑表达式引用（序号从 1 开始）。
- */
-function extractRulesFromJsonLogic(logic: object): object[] {
-  const rule = logic as Record<string, unknown>;
-  const op = Object.keys(rule)[0];
-  if (!op) return [];
-  if (op === 'and' || op === 'or') {
-    const args = rule[op];
-    return Array.isArray(args) ? (args as object[]) : [rule];
-  }
-  return [rule];
-}
 
 // ---------------------------------------------------------------------------
 // 主组件
@@ -253,8 +228,6 @@ export default function ConditionConfigForm({
                 variableOptions={variableOptions}
                 disabled={disabled}
                 isElse={isElse}
-                customLogic={branch.customLogic}
-                onCustomLogicChange={(cl) => updateBranch(index, { customLogic: cl })}
               />
             </div>
           );
@@ -324,8 +297,6 @@ interface ConditionEditorProps {
   variableOptions: VariableOption[];
   disabled?: boolean;
   isElse?: boolean;
-  customLogic?: CustomFilterLogicData;
-  onCustomLogicChange?: (data: CustomFilterLogicData) => void;
 }
 
 function ConditionEditor({
@@ -335,8 +306,6 @@ function ConditionEditor({
   variableOptions,
   disabled = false,
   isElse = false,
-  customLogic,
-  onCustomLogicChange,
 }: ConditionEditorProps) {
   const [exprText, setExprText] = useState(() => {
     if (!condition) return '';
@@ -376,18 +345,9 @@ function ConditionEditor({
       // 标记为内部变更，避免 useEffect 重新加载 tree 覆盖正在编辑的状态
       internalChangeRef.current = true;
       lastConditionRef.current = JSON.stringify(logic ?? null);
-      // 如果启用了自定义逻辑，用自定义表达式重新组合各条件
-      if (customLogic?.enabled && logic) {
-        const rules = extractRulesFromJsonLogic(logic);
-        if (rules.length > 1) {
-          const result = parseCustomLogic(customLogic.expression, rules);
-          onChange(result.logic ?? logic);
-          return;
-        }
-      }
       onChange(logic);
     },
-    [qbConfig, onChange, customLogic],
+    [qbConfig, onChange],
   );
 
   const onExprChange = useCallback(
@@ -401,22 +361,6 @@ function ConditionEditor({
     [onChange],
   );
 
-  /** 自定义逻辑变化时，重新组合条件 */
-  const onCustomLogicChangeInternal = useCallback(
-    (data: CustomFilterLogicData) => {
-      onCustomLogicChange?.(data);
-      // 如果开启自定义逻辑，立即重新组合
-      if (data.enabled && condition) {
-        const rules = extractRulesFromJsonLogic(condition);
-        if (rules.length > 1) {
-          const result = parseCustomLogic(data.expression, rules);
-          if (result.logic) onChange(result.logic);
-        }
-      }
-    },
-    [condition, onChange, onCustomLogicChange],
-  );
-
   const handleTabChange = (key: string) => {
     if (key === 'visual') {
       setTree(loadFromJsonLogic(condition, qbConfig));
@@ -428,20 +372,6 @@ function ConditionEditor({
   };
 
   const _validation = validateExpression(exprText);
-
-  /** 从 RAQB 树中提取规则数量（用于自定义逻辑序号引用） */
-  const ruleCount = useMemo(() => {
-    if (activeTab !== 'visual') return 0;
-    // 从 JsonLogic 规则中计算顶层条件数
-    if (!condition) return 0;
-    const cond = condition as Record<string, unknown>;
-    const op = Object.keys(cond)[0];
-    if (op === 'and' || op === 'or') {
-      const args = cond[op] as unknown[];
-      return Array.isArray(args) ? args.length : 1;
-    }
-    return 1; // 单个条件
-  }, [condition, activeTab]);
 
   return (
     <>
@@ -498,15 +428,6 @@ function ConditionEditor({
           onChange={onExprChange}
           variables={variableOptions}
           disabled={disabled}
-        />
-      )}
-
-      {/* 自定义筛选条件逻辑 — 仅可视化模式 + 条件数 > 1 + 非默认分支时显示 */}
-      {activeTab === 'visual' && ruleCount > 1 && !isElse && onCustomLogicChange && (
-        <CustomFilterLogic
-          data={customLogic}
-          conditionCount={ruleCount}
-          onChange={onCustomLogicChangeInternal}
         />
       )}
     </>

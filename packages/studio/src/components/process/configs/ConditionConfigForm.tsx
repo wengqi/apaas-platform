@@ -104,7 +104,15 @@ export default function ConditionConfigForm({
   // 当 ref 更新（内部 addBranch/removeBranch）但 data prop 还没更新时，保留 ref 的值
   const branchesRef = useRef(dataBranches);
   if (dataBranches.length >= branchesRef.current.length) {
-    branchesRef.current = dataBranches;
+    // 外部更新：按 label/index 匹配保留 ref 中已有的 id，
+    // 避免 reconcile 去掉 id 后重新生成 → React key 变化 → 分支子树重挂载
+    branchesRef.current = dataBranches.map((b, i) => {
+      const existing = branchesRef.current[i];
+      if (existing && existing.label === b.label && existing.id && !b.id) {
+        return { ...b, id: existing.id };
+      }
+      return b;
+    });
   }
 
   // 为缺失 id 的分支自动生成稳定 id（初始加载的分支可能没有 id）

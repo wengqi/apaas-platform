@@ -145,7 +145,7 @@ function reconcileConditionBranches(
 ): boolean {
   const extInfo = conditionNode.getExtInfo?.() ?? {};
   let conditions =
-    (extInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+    (extInfo.conditions as Array<{ label?: string; condition?: object | null; id?: string }>) || [];
 
   // 初始创建时 conditions 存在 formData 中（condition 节点有 formMeta），
   // 不在 extInfo 中。从 formData 读取并写入 extInfo。
@@ -158,7 +158,11 @@ function reconcileConditionBranches(
         const formJSON = formData.toJSON() as { conditions?: unknown } | undefined;
         const formConditions = formJSON?.conditions;
         if (Array.isArray(formConditions) && formConditions.length > 0) {
-          conditions = formConditions as Array<{ label?: string; condition?: object | null }>;
+          conditions = formConditions as Array<{
+            label?: string;
+            condition?: object | null;
+            id?: string;
+          }>;
           conditionNode.updateExtInfo({ conditions }, true);
         }
       }
@@ -302,15 +306,21 @@ function reconcileConditionBranches(
 
   // 始终从 branchBlocks 重建 conditions 数组（不从 needsRebuild 判断）
   // 这确保画布与配置面板始终同步
-  const rawConditions = branchBlocks.map((block) => {
+  // 关键：保留 existing.id，避免 ConditionConfigForm 因 id 丢失而重新生成 key → 分支子树重挂载
+  const rawConditions = branchBlocks.map((block, idx) => {
     const blockInfo = block.getExtInfo?.() ?? {};
     const isElse = isElseBlock(block);
     const blockTitle = blockInfo.title as string;
-    const existing = conditions.find((c) => c.label === blockTitle);
+    // 先按 label 匹配，再按 index 回退（用户正在编辑 label 时 label 可能临时不匹配）
+    let existing = conditions.find((c) => c.label === blockTitle);
+    if (!existing && idx < conditions.length) {
+      existing = conditions[idx];
+    }
     return {
       isElse,
       label: existing?.label || blockTitle || '',
       condition: existing?.condition ?? null,
+      id: existing?.id,
     };
   });
 
@@ -320,12 +330,14 @@ function reconcileConditionBranches(
 
   const newConditions = [
     ...nonElse.map((c, i) => ({
+      id: c.id,
       label: c.label || `分支 ${i + 1}`,
       condition: c.condition,
     })),
     ...(elseBranch
       ? [
           {
+            id: elseBranch.id,
             label: elseBranch.label || '默认分支',
             condition: null as object | null,
           },
@@ -494,13 +506,17 @@ function BlockOrderIconLabel({
   const _storeVersion = useProcessEditorStore((s) => s.schema);
 
   let isElse = fallbackIsElse;
-  let conditions: Array<{ label?: string; condition?: object | null }> = [];
+  let conditions: Array<{ label?: string; condition?: object | null; id?: string }> = [];
   // displayIndex = 当前 block 在 conditions 数组中的位置（权威排序）
   let displayIndex = 0;
   if (blockId && conditionNode) {
     const condExtInfo = conditionNode.getExtInfo?.() ?? {};
     conditions =
-      (condExtInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+      (condExtInfo.conditions as Array<{
+        label?: string;
+        condition?: object | null;
+        id?: string;
+      }>) || [];
     const branchBlocks = getBranchBlocks(conditionNode);
     const blockNode = branchBlocks.find((b) => b.id === blockId);
     if (blockNode) {
@@ -1132,6 +1148,7 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
             }
             block.updateExtInfo({
               title,
+              condition: cond?.condition ?? null,
               isElse: isElseBlock,
             });
           }

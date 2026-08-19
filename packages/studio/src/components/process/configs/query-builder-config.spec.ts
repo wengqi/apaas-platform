@@ -18,6 +18,7 @@ import {
   exportToJsonLogic,
   newQbId,
 } from './query-builder-config.js';
+import { expressionToJsonLogic } from './jsonlogic-utils.js';
 // Config 类型在 buildQbConfig 等函数中通过类型断言使用，此处不直接引用
 
 // 基础变量列表（各类型）
@@ -306,6 +307,59 @@ describe('exportToJsonLogic', () => {
     const config = buildQbConfig(basicVariables);
     expect(exportToJsonLogic(null, config)).toBeNull();
   });
+});
+
+// 操作符往返测试：expressionToJsonLogic → loadFromJsonLogic → exportToJsonLogic
+// 验证所有操作符在可视化↔表达式切换时不触发 RAQB 加载错误
+describe('操作符往返测试 (expression → RAQB → expression)', () => {
+  // 注册所有需要使用的字段
+  const allFields = [
+    ...basicVariables,
+    { value: 'tags', label: '标签', type: 'string' },
+    { value: 'status', label: '状态', type: 'text' },
+    { value: 'remark', label: '备注', type: 'string' },
+  ];
+  const config = buildQbConfig(allFields);
+
+  const roundTripCases: { label: string; expr: string }[] = [
+    // 简单比较
+    { label: '等于 ==', expr: 'amount > 1000' },
+    { label: '不等于 !=', expr: 'amount != 1000' },
+    { label: '小于 <', expr: 'amount < 1000' },
+    { label: '大于等于 >=', expr: 'amount >= 1000' },
+    { label: '小于等于 <=', expr: 'amount <= 1000' },
+    // 字符串比较
+    { label: '字符串 ==', expr: 'name == "vip"' },
+    { label: '字符串 !=', expr: 'name != "vip"' },
+    // 函数表达式
+    { label: '包含 contains', expr: 'contains(tags, "vip")' },
+    { label: '不包含 notContains', expr: 'notContains(tags, "vip")' },
+    { label: '属于 in', expr: 'in(status, ["new","done"])' },
+    { label: '不属于 notIn', expr: 'notIn(status, ["new","done"])' },
+    { label: '为空 isEmpty', expr: 'isEmpty(remark)' },
+    { label: '不为空 isNotEmpty', expr: 'isNotEmpty(remark)' },
+    // AND 组合
+    { label: '简单 AND', expr: 'amount > 1 and name == "x"' },
+    { label: 'AND+函数', expr: 'amount > 1 and contains(tags, "vip")' },
+    // OR 组合
+    { label: '简单 OR', expr: 'amount > 1 or name == "x"' },
+  ];
+
+  for (const { label, expr } of roundTripCases) {
+    it(label, () => {
+      // 步骤 1: 表达式 → JsonLogic (模拟用户切换到表达式模式后的数据)
+      const logicFromExpr = expressionToJsonLogic(expr);
+      expect(logicFromExpr).not.toBeNull();
+
+      // 步骤 2: JsonLogic → RAQB tree → JsonLogic' (模拟切回可视化模式)
+      const tree = loadFromJsonLogic(logicFromExpr, config);
+      expect(tree).not.toBeNull();
+
+      // 步骤 3: 验证 RAQB 能成功导出（不抛错）
+      const exported = exportToJsonLogic(tree, config);
+      expect(exported).not.toBeNull();
+    });
+  }
 });
 
 describe('newQbId', () => {

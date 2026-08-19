@@ -849,6 +849,11 @@ function BusinessNodeRenderer({
 
   const borderColor = isSelected ? '#1677ff' : activated ? '#91caff' : '#e8eaed';
 
+  // 开始/结束节点内容少(仅图标+2 字),用窄宽度更紧凑美观;
+  // 其他业务节点保留 240px 以容纳摘要/警告文本
+  const isTerminal = type === 'start' || type === 'end';
+  const nodeWidth = isTerminal ? 120 : 240;
+
   return (
     <div
       onMouseDown={startDrag}
@@ -863,7 +868,7 @@ function BusinessNodeRenderer({
         border: `2px solid ${borderColor}`,
         boxShadow: isSelected ? '0 2px 12px rgba(22,119,255,0.15)' : '0 1px 4px rgba(0,0,0,0.06)',
         cursor: 'grab',
-        width: 240,
+        width: nodeWidth,
         opacity: dragging ? 0.5 : 1,
         transition: 'border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease',
         userSelect: 'none',

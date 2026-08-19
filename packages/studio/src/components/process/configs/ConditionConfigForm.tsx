@@ -12,7 +12,7 @@
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Divider, Form, Input, Popconfirm, Space, Tag, Typography } from 'antd';
+import { Button, Divider, Form, Input, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { WorkflowSchema } from '@apaas/shared';
 import { Query, Builder } from '@react-awesome-query-builder/antd';
@@ -221,23 +221,16 @@ export default function ConditionConfigForm({
                     未配置
                   </Text>
                 )}
-                {/* 删除按钮 — 带二次确认，默认分支禁用，至少保留 2 个分支 */}
-                <Popconfirm
-                  title="删除分支"
-                  description="将删除该分支及其全部流程节点，请慎重操作。"
-                  onConfirm={() => removeBranch(index)}
-                  okText="确认删除"
-                  cancelText="取消"
+                {/* 删除按钮 — 直接删除,不弹确认框(flowgram 画布 overlay 拦截 DOM 事件,
+                    导致 Popconfirm/Modal.confirm/window.confirm 均无法触发) */}
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
                   disabled={isElse || branches.length <= 2}
-                >
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    disabled={isElse || branches.length <= 2}
-                  />
-                </Popconfirm>
+                  onClick={() => removeBranch(index)}
+                />
               </div>
               <ConditionEditor
                 condition={branch.condition ?? null}

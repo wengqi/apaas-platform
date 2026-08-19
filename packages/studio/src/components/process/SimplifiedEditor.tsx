@@ -11,6 +11,7 @@
  *  - 选中节点时显示浮动配置侧边栏
  */
 
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FixedLayoutEditorProvider,
@@ -77,13 +78,6 @@ function getBranchBlocks(conditionNode: any): any[] {
       b.flowNodeType === 'catchInlineBlocks',
   );
   if (inlineBlocks?.blocks) {
-    // 检查 DOM 中是否有更多 blockOrderIcon 元素（flowgram BranchAdder 可能
-    // 创建了 DOM 元素但未更新文档树）
-    const domBlockCount = countBlockOrderIconsInDOM(conditionNode.id);
-    if (domBlockCount > inlineBlocks.blocks.length) {
-      // DOM 中有更多分支，但文档树中没有 — 尝试从 DOM 重建
-      return getBranchBlocksFromDOM(conditionNode, inlineBlocks.blocks);
-    }
     return inlineBlocks.blocks;
   }
 
@@ -92,10 +86,6 @@ function getBranchBlocks(conditionNode: any): any[] {
   if (doc) {
     const inlineBlocksById = doc.getNode(`$inlineBlocks$${conditionNode.id}`);
     if (inlineBlocksById?.blocks) {
-      const domBlockCount = countBlockOrderIconsInDOM(conditionNode.id);
-      if (domBlockCount > inlineBlocksById.blocks.length) {
-        return getBranchBlocksFromDOM(conditionNode, inlineBlocksById.blocks);
-      }
       return inlineBlocksById.blocks;
     }
   }
@@ -108,117 +98,15 @@ function getBranchBlocks(conditionNode: any): any[] {
 }
 
 /**
- * 计算 DOM 中属于指定 condition 节点的 blockOrderIcon 元素数量。
- * 用于检测 flowgram BranchAdder 创建了 DOM 元素但未更新文档树的情况。
- */
-function countBlockOrderIconsInDOM(_conditionNodeId: string): number {
-  try {
-    // blockOrderIcon 元素的 ID 格式：$blockOrderIcon$<blockId>
-    // blockId 包含 conditionNodeId（如 ifBlock_condition_123_abc）
-    // 或是随机 ID（flowgram 生成的）
-    // 通过查找 $inlineBlocks$<conditionNodeId> 的子元素来计数
-    const w = window;
-    const allIcons = w.document.querySelectorAll('[id*="blockOrderIcon"]');
-    let count = 0;
-    for (const icon of allIcons) {
-      // 检查这个 blockOrderIcon 是否属于当前 condition 节点
-      // 通过向上查找父链中的 inlineBlocks 节点
-      let el: HTMLElement | null = icon as HTMLElement;
-      for (let i = 0; i < 10; i++) {
-        el = el?.parentElement ?? null;
-        if (!el) break;
-        // 检查是否是 gedit-flow-nodes-layer（blockOrderIcon 的直接父级）
-        if (
-          el.className &&
-          typeof el.className === 'string' &&
-          el.className.includes('gedit-flow-nodes-layer')
-        ) {
-          // 检查这个 layer 是否属于当前 condition 节点
-          // 通过查找同级的 blockIcon 来确认 condition 节点
-          count++;
-          break;
-        }
-      }
-    }
-    return count;
-  } catch {
-    return 0;
-  }
-}
-
-/**
- * 从 DOM 中重建 branchBlocks 列表。
- * 当 flowgram 文档树不包含新创建的 block 时使用。
- * 保留已有的 block 引用，为 DOM 中新增的 block 创建占位对象。
- */
-function getBranchBlocksFromDOM(conditionNode: any, existingBlocks: any[]): any[] {
-  try {
-    const w = window;
-    const allIcons = w.document.querySelectorAll('[id*="blockOrderIcon"]');
-    const domBlockIds: string[] = [];
-    for (const icon of allIcons) {
-      const blockId = icon.id.replace('$blockOrderIcon$', '');
-      // 检查是否属于当前 condition 节点
-      let el: HTMLElement | null = icon as HTMLElement;
-      for (let i = 0; i < 10; i++) {
-        el = el?.parentElement ?? null;
-        if (!el) break;
-        if (
-          el.className &&
-          typeof el.className === 'string' &&
-          el.className.includes('gedit-flow-nodes-layer')
-        ) {
-          domBlockIds.push(blockId);
-          break;
-        }
-      }
-    }
-
-    // 如果 DOM 中的 block 数量不大于已有数量，返回已有列表
-    if (domBlockIds.length <= existingBlocks.length) return existingBlocks;
-
-    // 为 DOM 中存在但文档树中不存在的 block 创建占位对象
-    const result = [...existingBlocks];
-    for (const blockId of domBlockIds) {
-      if (!result.find((b) => b.id === blockId)) {
-        // 从 DOM 读取 blockOrderIcon 的 extInfo 来创建占位 block
-        const iconEl = w.document.getElementById(`$blockOrderIcon$${blockId}`);
-        const text = iconEl?.textContent?.trim() || '';
-        const isElse = text.includes('默认分支');
-        // 创建一个模拟的 block 对象，具有 getExtInfo 方法
-        const mockExtInfo = {
-          title: isElse
-            ? '默认分支'
-            : text
-                .replace(/优先级\s*\d+\s*/, '')
-                .replace(/\(未配置\)/, '')
-                .trim() || '分支',
-          isElse,
-          condition: null,
-        };
-        result.push({
-          id: blockId,
-          flowNodeType: 'block',
-          getExtInfo: () => mockExtInfo,
-          updateExtInfo: () => {},
-          blocks: [],
-        });
-      }
-    }
-    return result;
-  } catch {
-    return existingBlocks;
-  }
-}
-
-/**
  * 判断 block 是否为 else 分支。
- * 仅依赖 extInfo.isElse 标志，不使用 block ID 判断，
- * 因为 extInfo 交换方案需要 isElse 标志可变（ID 不可变）。
+ * 优先依赖 extInfo.isElse 标志（支持 extInfo 交换方案，isElse 可变），
+ * 当 extInfo.isElse 为 undefined（初始创建未初始化）时，回退到 block ID 判断。
  */
 function isElseBlock(block: FlowNodeEntity): boolean {
   const bi = block.getExtInfo?.() ?? {};
-  return !!(bi.isElse as boolean);
+  if (bi.isElse !== undefined) return !!(bi.isElse as boolean);
+  // extInfo.isElse 未初始化时，用 block ID 推导（仅初始创建时触发）
+  return block.id?.includes('elseBlock') ?? false;
 }
 
 /**
@@ -256,9 +144,92 @@ function reconcileConditionBranches(
   updateNodeData: (nodeId: string, data: Record<string, unknown>) => void,
 ): boolean {
   const extInfo = conditionNode.getExtInfo?.() ?? {};
-  const conditions =
+  let conditions =
     (extInfo.conditions as Array<{ label?: string; condition?: object | null }>) || [];
+
+  // 初始创建时 conditions 存在 formData 中（condition 节点有 formMeta），
+  // 不在 extInfo 中。从 formData 读取并写入 extInfo。
+  // 使用类型字符串 'FlowNodeEntityFormData' 查找 formData，避免跨包 import 导致的类标识不一致。
+  if (conditions.length === 0) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const formData = (conditionNode as any).getData?.({ type: 'FlowNodeEntityFormData' });
+      if (formData?.formModel?.initialized) {
+        const formJSON = formData.toJSON() as { conditions?: unknown } | undefined;
+        const formConditions = formJSON?.conditions;
+        if (Array.isArray(formConditions) && formConditions.length > 0) {
+          conditions = formConditions as Array<{ label?: string; condition?: object | null }>;
+          conditionNode.updateExtInfo({ conditions }, true);
+        }
+      }
+    } catch {
+      // formData 不可用时忽略，后续 reconcile 会重试
+    }
+  }
+
   const branchBlocks = getBranchBlocks(conditionNode);
+
+  if (import.meta.env.DEV) {
+    console.debug(
+      '[reconcileConditionBranches]',
+      conditionNode.id,
+      'branchBlocks=',
+      branchBlocks.length,
+      'conditions=',
+      conditions.length,
+      'blockExtInfos=',
+      branchBlocks.map((b) => ({ id: b.id, ext: b.getExtInfo?.() })),
+    );
+  }
+
+  // 初始 block（由 ApaasAdder 创建）的 data.title/data.isElse 存在 formData 中，
+  // 但 block 节点无 formMeta，fromNodeJSON 不会将 data 写入 extInfo。
+  // 因此 extInfo.title 为 undefined 时，从 conditions 数组和 block ID 推导 block 的 label/isElse：
+  //   - block ID 含 'elseBlock' → else 分支（label='默认分支', condition=null）
+  //   - 其他 block → 非 else 分支，label 从 conditions 数组按位置取
+  // 这只在 block 首次被 reconcile 时执行，后续纯走 extInfo（extInfo swap 不受影响）。
+  // 注意：conditions 可能为空（formData 尚未初始化），此时仅用 block ID 初始化 extInfo。
+  {
+    const nonElseConditions = conditions.filter(
+      (_, i) => !(i === conditions.length - 1 && !conditions[i]?.condition),
+    );
+
+    let nonElseIdx = 0;
+    for (let i = 0; i < branchBlocks.length; i++) {
+      const block = branchBlocks[i];
+      const blockExtInfo = block.getExtInfo?.() ?? {};
+      // extInfo.title 为 undefined 时表示 block 尚未被 reconcile 初始化。
+      // 用 isElseBlock(block) 判断是否为 else 分支（已支持 ID 回退）。
+      if (!blockExtInfo.title || blockExtInfo.title === '分支') {
+        const isElse = isElseBlock(block);
+        let title: string;
+        let condition: object | null;
+        if (isElse) {
+          title = '默认分支';
+          condition = null;
+        } else {
+          const cond = nonElseConditions[nonElseIdx];
+          // conditions 为空时（formData 未初始化），用 block ID 中的语义推导初始 label：
+          // ifBlock → '条件成立'，其他 → '分支 N'
+          if (conditions.length === 0) {
+            title = block.id?.includes('ifBlock') ? '条件成立' : `分支 ${nonElseIdx + 1}`;
+          } else {
+            title = cond?.label || `分支 ${nonElseIdx + 1}`;
+          }
+          condition = cond?.condition ?? null;
+        }
+        nonElseIdx++;
+        block.updateExtInfo({ title, isElse, condition }, true);
+        const blockOrderIcon = block.blocks?.[0];
+        if (blockOrderIcon) {
+          blockOrderIcon.updateExtInfo({ title, isElse, condition }, true);
+        }
+      } else {
+        // 已初始化的 block，只递增 nonElseIdx 用于位置计数
+        if (!isElseBlock(block)) nonElseIdx++;
+      }
+    }
+  }
 
   // 物理重排：将 else block 移动到 $inlineBlocks$ 的末尾（最右侧）
   // flowgram 的 BranchAdder 追加新 block 到末尾，导致 else block 不在最后
@@ -534,6 +505,10 @@ function BlockOrderIconLabel({
     const blockNode = branchBlocks.find((b) => b.id === blockId);
     if (blockNode) {
       isElse = isElseBlock(blockNode);
+    } else {
+      // blockNode 未在 branchBlocks 中找到（文档树可能尚未更新），
+      // 用 blockId 推导 isElse 作为兜底
+      isElse = blockId.includes('elseBlock') || fallbackIsElse;
     }
 
     if (conditions.length > 0) {
@@ -546,9 +521,9 @@ function BlockOrderIconLabel({
         displayIndex = conditions.length - 1;
       } else {
         // 非 else 分支：通过 label 匹配找到在 conditions 中的位置
-        const matchedIdx = conditions.findIndex(
-          (c) => c.label === blockTitle || c.label === fallbackLabel,
-        );
+        // 仅用 blockTitle 匹配，不用 fallbackLabel，避免 fallbackLabel 中的
+        // '条件成立' 等回退值误匹配到 conditions[0] 导致优先级重复。
+        const matchedIdx = conditions.findIndex((c) => c.label === blockTitle);
         if (matchedIdx >= 0) {
           displayIndex = matchedIdx;
         } else {
@@ -753,14 +728,19 @@ function ApaasNodeRenderer({
         if (inlineBlocksNode) {
           conditionNodeId = inlineBlocksNode.parent?.id;
         }
-        // 判断是否为 else 分支：仅依赖 extInfo.isElse 标志
-        // 不使用 block ID 判断，因为 extInfo 交换方案需要 isElse 标志可变
+        // 判断是否为 else 分支：优先 extInfo.isElse，回退到 block ID
         const blockExtInfo = blockNode.getExtInfo?.() ?? {};
-        fallbackIsElse = !!(blockExtInfo.isElse as boolean) || !!(extInfo.isElse as boolean);
-        fallbackLabel =
-          (blockExtInfo.title as string) ||
-          (extInfo.title as string) ||
-          (fallbackIsElse ? '默认分支' : '条件成立');
+        fallbackIsElse = isElseBlock(blockNode);
+        // 读取 extInfo title。仅在 title 为空（未初始化）时用 block ID 推导语义化标签。
+        // 不对 '分支 N' 等真实标签做替换，因为面板 addBranch 创建的分支 label 就是 '分支 N'。
+        const rawTitle = (blockExtInfo.title as string) || (extInfo.title as string) || '';
+        fallbackLabel = rawTitle
+          ? rawTitle
+          : fallbackIsElse
+            ? '默认分支'
+            : blockNode.id?.includes('ifBlock')
+              ? '条件成立'
+              : '分支';
       }
     }
 
@@ -948,8 +928,22 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
       if (flowNode) {
         const extInfo = flowNode.getExtInfo?.() ?? {};
         const extConditions = extInfo.conditions;
-        if (extConditions && Array.isArray(extConditions)) {
+        if (extConditions && Array.isArray(extConditions) && extConditions.length > 0) {
           return { ...node, data: { ...node.data, conditions: extConditions } };
+        }
+        // extInfo.conditions 为空时，尝试从 formData 读取（condition 节点有 formMeta）
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const formData = (flowNode as any).getData?.({ type: 'FlowNodeEntityFormData' });
+          if (formData?.formModel?.initialized) {
+            const formJSON = formData.toJSON() as { conditions?: unknown } | undefined;
+            const formConditions = formJSON?.conditions;
+            if (Array.isArray(formConditions) && formConditions.length > 0) {
+              return { ...node, data: { ...node.data, conditions: formConditions } };
+            }
+          }
+        } catch {
+          // formData 不可用时忽略
         }
       }
     }
@@ -1217,6 +1211,10 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
 
   return (
     <div
+      className="apaas-config-sidebar"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
       style={{
         position: 'absolute',
         top: 0,
@@ -1226,7 +1224,7 @@ function ConfigSidebar({ readonly }: { readonly: boolean }) {
         background: '#fff',
         borderLeft: '1px solid #eef0f4',
         boxShadow: '-4px 0 12px rgba(0,0,0,0.06)',
-        zIndex: 100,
+        zIndex: 1000,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -1393,6 +1391,7 @@ function ApaasAdder(props: {
 
     const fromNode = ctx.document.getNode(props.from.id);
     if (fromNode) ctx.operation.addFromNode(fromNode, nodeJSON);
+    syncConditionBlockExtInfo(ctx, type, nodeId);
     setPopoverOpen(false);
   };
 
@@ -1488,6 +1487,50 @@ function ApaasAdder(props: {
 
 const NODE_TYPE_MIME = 'application/x-apaas-node-type';
 
+/**
+ * 条件分支节点创建后，显式将 block data 同步到 extInfo。
+ * fromNodeJSON 不会将 block data 写入 extInfo（block 有 formData 但无 formMeta），
+ * 因此在节点创建后通过 RAF + setTimeout 显式写入，确保 label/isElse 正确显示。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function syncConditionBlockExtInfo(ctx: any, type: string, nodeId: string): void {
+  if (type !== 'condition') return;
+  const ifBlockId = `ifBlock_${nodeId}`;
+  const elseBlockId = `elseBlock_${nodeId}`;
+  const sync = () => {
+    const ifBlock = ctx.document.getNode(ifBlockId);
+    const elseBlock = ctx.document.getNode(elseBlockId);
+    if (ifBlock) {
+      ifBlock.updateExtInfo({ title: '条件成立', isElse: false, condition: null }, true);
+      const ifIcon = ifBlock.blocks?.[0];
+      if (ifIcon) {
+        ifIcon.updateExtInfo({ title: '条件成立', isElse: false, condition: null }, true);
+      }
+    }
+    if (elseBlock) {
+      elseBlock.updateExtInfo({ title: '默认分支', isElse: true, condition: null }, true);
+      const elseIcon = elseBlock.blocks?.[0];
+      if (elseIcon) {
+        elseIcon.updateExtInfo({ title: '默认分支', isElse: true, condition: null }, true);
+      }
+    }
+    const condNode = ctx.document.getNode(nodeId);
+    if (condNode) {
+      condNode.updateExtInfo(
+        {
+          conditions: [
+            { label: '条件成立', condition: null },
+            { label: '默认分支', condition: null },
+          ],
+        },
+        true,
+      );
+    }
+  };
+  requestAnimationFrame(sync);
+  setTimeout(sync, 50);
+}
+
 function useCreateNode() {
   const ctx = useClientContext();
   return useCallback(
@@ -1500,13 +1543,13 @@ function useCreateNode() {
       if (type === 'condition') {
         nodeJSON.blocks = [
           { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
-          { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '否则', isElse: true } },
+          { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '默认分支', isElse: true } },
         ];
         nodeJSON.data = {
           title: meta.label,
           conditions: [
             { label: '条件成立', condition: null },
-            { label: '否则', condition: null },
+            { label: '默认分支', condition: null },
           ],
         };
       }
@@ -1515,6 +1558,7 @@ function useCreateNode() {
         const fromNode = ctx.document.getNode(fromId);
         if (fromNode) {
           ctx.operation.addFromNode(fromNode, nodeJSON);
+          syncConditionBlockExtInfo(ctx, type, nodeId);
           return;
         }
       }
@@ -1529,6 +1573,7 @@ function useCreateNode() {
       }
       if (anchorNode) ctx.operation.addFromNode(anchorNode, nodeJSON);
       else ctx.operation.addNode(nodeJSON);
+      syncConditionBlockExtInfo(ctx, type, nodeId);
     },
     [ctx],
   );
@@ -1666,7 +1711,8 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
         transition: 'background 0.15s ease',
       }}
     >
-      {/* CSS 覆盖:禁用 flowgram 选择框/连线层的 pointer-events */}
+      {/* CSS 覆盖:禁用 flowgram 选择框/连线层的 pointer-events，
+          确保配置面板内的按钮（Add rule/Add group/删除等）可点击 */}
       <style>{`
         .gedit-selector-bounds-foreground,
         .gedit-selector-bounds-background,
@@ -1677,10 +1723,17 @@ function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
         .flow-canvas-adder {
           pointer-events: auto !important;
         }
+        /* 配置面板容器及其所有子元素强制可点击，防止 flowgram overlay 拦截 */
+        .apaas-config-sidebar,
+        .apaas-config-sidebar * {
+          pointer-events: auto !important;
+        }
       `}</style>
       <EditorRenderer />
       {!readonly && <ZoomToolbar />}
-      <ConfigSidebar readonly={readonly} />
+      {/* ConfigSidebar 通过 Portal 渲染到 document.body，避免 flowgram 半屏 UI 组件（Semi UI）
+          的事件委托机制拦截配置面板内 Ant Design 和 RAQB 按钮的点击事件 */}
+      {createPortal(<ConfigSidebar readonly={readonly} />, document.body)}
       <EventBridge onSchemaChange={onSchemaChange} />
     </div>
   );
@@ -1830,19 +1883,37 @@ function EventBridge({ onSchemaChange }: { onSchemaChange?: (schema: WorkflowSch
         if (node.flowNodeType === 'condition') {
           subscribeConditionNode(node);
         }
-        // block 节点创建 → 父 condition 节点可能需要重建 conditions 数组
-        // 使用三重 setTimeout 确保 block 已完全集成到 $inlineBlocks$ 树中：
-        // - setTimeout(0): 首次同步，conditions 重建 + store 同步
-        // - setTimeout(100): 二次同步，确保 flowgram 内部布局完成后再次检查
-        // - setTimeout(300): 三次同步，moveChildNodes 物理重排需要更长延迟
-        // 每次回调前先立即导出 schema（不经防抖），确保 store 中包含最新的
-        // 节点树结构，否则 updateNodeData 找不到 condition 节点导致同步失败
-        const parent = node.parent;
-        if (node.flowNodeType === 'block' && parent?.flowNodeType === 'condition') {
+        // block 节点创建 → 父 condition 节点需要重建 conditions 数组
+        // 关键：使用 originParent（逻辑父 = condition 节点），而非 parent（结构性父 = $inlineBlocks$）。
+        // flowgram 的 addBlock 设置 block.parent = $inlineBlocks$<id>、block.originParent = condition 节点。
+        // 若用 node.parent 则 flowNodeType 永远是 'inlineBlocks'，reconcile 永不触发。
+        const originParent = node.originParent;
+        if (node.flowNodeType === 'block' && originParent?.flowNodeType === 'condition') {
+          // BranchAdder 创建的 block 无 data（裸 block），需初始化 extInfo
+          // 但 ApaasAdder 创建的 block（ID 含 'ifBlock_'/'elseBlock_'）有 data，
+          // 其 extInfo 由 reconcileConditionBranches 中的 data→extInfo 同步处理。
+          // 仅对 BranchAdder 创建的裸 block（ID 不含 ifBlock/elseBlock）初始化 extInfo。
+          const blockExtInfo = node.getExtInfo?.() ?? {};
+          const isApaasAdderBlock =
+            node.id?.includes('ifBlock_') || node.id?.includes('elseBlock_');
+          if (!blockExtInfo.title && blockExtInfo.isElse === undefined && !isApaasAdderBlock) {
+            node.updateExtInfo(
+              { title: '分支', isElse: false, condition: null },
+              true, // fullUpdate 绕过浅比较，确保 onExtInfoChange 触发
+            );
+            const blockOrderIcon = node.blocks?.[0];
+            if (blockOrderIcon) {
+              blockOrderIcon.updateExtInfo({ title: '分支', isElse: false, condition: null }, true);
+            }
+          }
+          // originTree 在 addChild 时同步更新，getBranchBlocks 能立即读到正确计数。
+          // requestAnimationFrame 确保 renderTree.updateRenderStruct 完成（moveChildNodes 依赖渲染树）；
+          // setTimeout(50) 兜底处理 moveChildNodes 在事件回调中静默失败的场景。
           const reconcileWithExport = () => {
-            // 重新获取 condition 节点，确保使用最新的文档树引用
-            const condNode = ctx.document.getNode(parent.id);
+            const condNode = ctx.document.getNode(originParent.id);
             if (!condNode) return;
+            // 同步导出（不经防抖），确保 store schema 含最新节点树，
+            // 否则 updateNodeData 找不到 condition 节点导致同步失败
             const schema = exportSchema();
             const sig = JSON.stringify(schema);
             if (sig !== lastDocSig) {
@@ -1851,11 +1922,8 @@ function EventBridge({ onSchemaChange }: { onSchemaChange?: (schema: WorkflowSch
             }
             reconcileConditionBranches(condNode, ctx.document, updateNodeData);
           };
-          setTimeout(reconcileWithExport, 0);
-          setTimeout(reconcileWithExport, 100);
-          setTimeout(reconcileWithExport, 300);
-          setTimeout(reconcileWithExport, 500);
-          setTimeout(reconcileWithExport, 1000);
+          requestAnimationFrame(reconcileWithExport);
+          setTimeout(reconcileWithExport, 50);
         }
         scheduleExport();
       }),
@@ -1864,9 +1932,10 @@ function EventBridge({ onSchemaChange }: { onSchemaChange?: (schema: WorkflowSch
     // --- 4. 节点删除：block 删除触发父 condition 重建 ---
     disposables.push(
       ctx.document.onNodeDispose(({ node }) => {
-        const parent = node.parent;
-        if (node.flowNodeType === 'block' && parent?.flowNodeType === 'condition') {
-          reconcileConditionBranches(parent, ctx.document, updateNodeData);
+        // 同 onNodeCreate：用 originParent 获取逻辑父（condition 节点）
+        const originParent = node.originParent;
+        if (node.flowNodeType === 'block' && originParent?.flowNodeType === 'condition') {
+          reconcileConditionBranches(originParent, ctx.document, updateNodeData);
         }
         scheduleExport();
       }),

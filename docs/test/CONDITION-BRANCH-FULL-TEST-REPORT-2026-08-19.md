@@ -170,7 +170,7 @@
 
 | 编号 | 用例 | 期望 | 执行方式 | 关联代码 | 状态 |
 |------|------|------|----------|----------|------|
-| **H-1** | **未配置任何条件的条件分支节点应显示警告图标** | **显示红色感叹号** | 🖱️ CUA | `SimplifiedEditor.tsx:checkNodeIncomplete:1310-1339` | 🔴 **#3 已知问题** |
+| H-1 | 未配置任何条件的条件分支节点 — 当前不标记为完整性问题 | 条件分支始终视为已配置（设计决择） | ✅ | `SimplifiedEditor.tsx:checkNodeIncomplete:1310-1339` | ✅ 非问题(用户确认) |
 | H-2 | 人工任务未配置审批人/审批模式时显示警告 | "有未完成的配置" 文字 | ✅ DOM | `checkNodeIncomplete` 现有 case | ✅ M1 已验证 |
 | H-3 | HTTP 请求未配置 method/url 时显示警告 | 同上 | ✅ DOM | 同上 | ✅ M1 已验证 |
 | H-4 | 通知模板未配置 channel/recipient 时显示警告 | 同上 | ✅ DOM | 同上 | ✅ M1 已验证 |
@@ -202,13 +202,7 @@
 
 按修复优先级（M4 → M8）：
 
-### #3 条件分支 isIncomplete 永远 false（M4, 2h）
-
-- **根因**：`SimplifiedEditor.tsx:1310-1339` `checkNodeIncomplete` switch 缺少 `case 'condition'`，导致条件分支节点始终视为已配置
-- **影响**：用户无法通过视觉警告识别未配置的条件分支（H-1 失败）
-- **修复策略**：添加 `case 'condition'`：任一非默认分支 `condition == null` 或空对象 → 触发警告（宽松策略，仅默认分支不报警）
-
-### #1 表达式嵌套括号解析器重写（M5, 6h）
+### #1 表达式嵌套括号解析器重写（M4, 6h）
 
 - **根因**：`jsonlogic-utils.ts:71` 正则 `/\(([^()]+)\)/` 只匹配最内层括号，无法处理多层嵌套；且对函数表达式（`isEmpty(remark)`）的圆括号误解析为子表达式
 - **影响**：D-5/D-6/D-7 三个 GUI 用例失败
@@ -218,13 +212,13 @@
   - 处理嵌套括号（递归调用自身）
   - 支持 not 运算符
 
-### #5 三源数据同步重构（M6, 6h）
+### #5 三源数据同步重构（M7, 6h）
 
 - **根因**：`ConfigSidebar`、`EventBridge`、`reconcileConditionBranches` 各自维护 extInfo/formData/store 数据同步，逻辑冗余且时序不一致
 - **影响**：长期累积的同步风险（异常-1 可能与此相关）
 - **修复策略**：抽离统一 `useConditionsSync` hook，单向数据流 extInfo→store
 
-### #2 relative_date 操作符（M7, 8h）
+### #2 relative_date 操作符（M5, 8h）
 
 - **根因**：`query-builder-config.ts:42-74` + `CustomRule.tsx:39-73` 缺少 `relative_date` 操作符；`mapFieldType` 未注册 date 类型
 - **影响**：G-5/G-6 失败，date 类型字段被错误映射为 text
@@ -234,7 +228,7 @@
   - `mapFieldType` 添加 `date → 'date'` 映射
   - 双源同步：query-builder-config 与 CustomRule 同步注册
 
-### #4 EventBridge 防抖时序风险（M8, 4h）
+### #4 EventBridge 防抖时序风险（M6, 4h）
 
 - **根因**：`onNodeUpdate` 500ms 防抖 + 多处 `setTimeout(50)` 双重延迟
 - **影响**：高频操作下可能丢失中间状态

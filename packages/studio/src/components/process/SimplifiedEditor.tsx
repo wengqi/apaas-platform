@@ -263,39 +263,9 @@ function reconcileConditionBranches(
         lastIsElse = lastBlock ? isElseBlock(lastBlock) : false;
 
         // 兜底：如果 moveChildNodes 未生效（在事件回调中经常静默失败），
-        // 交换 else block 和最后一个非 else block 的 extInfo 数据。
-        // 这样物理上最后位置的 block 变成 "else"（显示"默认分支"），
-        // 而原 else 位置的 block 变成普通分支。
-        if (!lastIsElse && lastBlock) {
-          const elseInfo = elseBlock.getExtInfo?.() ?? {};
-          const lastInfo = lastBlock.getExtInfo?.() ?? {};
-          // 交换 block extInfo
-          elseBlock.updateExtInfo({
-            title: lastInfo.title || '分支',
-            isElse: false,
-            condition: lastInfo.condition ?? null,
-          });
-          lastBlock.updateExtInfo({
-            title: elseInfo.title || '默认分支',
-            isElse: true,
-            condition: null,
-          });
-          // 交换 blockOrderIcon extInfo
-          const elseIcon = elseBlock.blocks?.[0];
-          const lastIcon = lastBlock.blocks?.[0];
-          if (elseIcon && lastIcon) {
-            elseIcon.updateExtInfo({
-              title: lastInfo.title || '分支',
-              isElse: false,
-              condition: lastInfo.condition ?? null,
-            });
-            lastIcon.updateExtInfo({
-              title: elseInfo.title || '默认分支',
-              isElse: true,
-              condition: null,
-            });
-          }
-        }
+        // 不再使用 extInfo swap（swap 会把新分支误标为 else，导致多个"默认分支"）。
+        // BlockOrderIconLabel 通过 conditions 数组位置计算优先级，不依赖物理位置。
+        // else block 的物理位置不影响功能正确性。
       }
     }
   };
@@ -303,6 +273,27 @@ function reconcileConditionBranches(
   // 在任何 conditions 重建之前，先执行 extInfo 交换，
   // 确保后续读取 block extInfo 时 isElse 标志已正确
   ensureElseBlockLast();
+
+  // 确保只有一个 else block：如果有多个 isElse=true 的 block，
+  // 保留第一个（通常是原始 elseBlock_），其余重置为非 else 并恢复 title
+  {
+    const afterBlocks = getBranchBlocks(conditionNode);
+    const elseBlocks = afterBlocks.filter((b) => isElseBlock(b));
+    if (elseBlocks.length > 1) {
+      const keepElse = elseBlocks[0];
+      let nonElseCount = afterBlocks.filter((b) => b !== keepElse && !isElseBlock(b)).length;
+      for (const b of elseBlocks) {
+        if (b !== keepElse) {
+          // 重置为非 else 分支，分配合理的 title
+          nonElseCount++;
+          const title = `分支 ${nonElseCount}`;
+          b.updateExtInfo({ isElse: false, title, condition: null }, true);
+          const icon = b.blocks?.[0];
+          if (icon) icon.updateExtInfo({ isElse: false, title, condition: null }, true);
+        }
+      }
+    }
+  }
 
   // 始终从 branchBlocks 重建 conditions 数组（不从 needsRebuild 判断）
   // 这确保画布与配置面板始终同步
@@ -323,6 +314,31 @@ function reconcileConditionBranches(
       id: existing?.id,
     };
   });
+
+  // 修正 else 识别：优先将 ID 含 'elseBlock' 的 block 作为 else，
+  // 其他 block（包括被错误标记为 else 的裸 block）重置为非 else。
+  // 这修复了 extInfo swap 残留或时序竞争导致的 isElse 错误。
+  {
+    const elseBlockIdx = branchBlocks.findIndex((b) => b.id?.includes('elseBlock'));
+    let nonElseCount = 0;
+    for (let i = 0; i < rawConditions.length; i++) {
+      const rc = rawConditions[i];
+      if (!rc) continue;
+      const shouldBeElse = i === elseBlockIdx;
+      if (rc.isElse !== shouldBeElse) {
+        rc.isElse = shouldBeElse;
+      }
+      // 修正 label：非 else block 如果 label 是"默认分支"（被 swap 残留），改为"分支 N"
+      if (shouldBeElse) {
+        rc.label = '默认分支';
+      } else if (rc.label === '默认分支' || !rc.label) {
+        nonElseCount++;
+        rc.label = branchBlocks[i]?.id?.includes('ifBlock') ? '条件成立' : `分支 ${nonElseCount}`;
+      } else {
+        nonElseCount++;
+      }
+    }
+  }
 
   const nonElse = rawConditions.filter((c) => !c.isElse);
   const elseBranches = rawConditions.filter((c) => c.isElse);
@@ -1913,7 +1929,7 @@ function EventBridge({ onSchemaChange }: { onSchemaChange?: (schema: WorkflowSch
           const blockExtInfo = node.getExtInfo?.() ?? {};
           const isApaasAdderBlock =
             node.id?.includes('ifBlock_') || node.id?.includes('elseBlock_');
-          if (!blockExtInfo.title && blockExtInfo.isElse === undefined && !isApaasAdderBlock) {
+          if (!blockExtInfo.title && !isApaasAdderBlock) {
             node.updateExtInfo(
               { title: '分支', isElse: false, condition: null },
               true, // fullUpdate 绕过浅比较，确保 onExtInfoChange 触发

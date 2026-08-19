@@ -870,14 +870,16 @@ function BusinessNodeRenderer({
         overflow: 'hidden',
       }}
     >
-      {/* 节点头:图标 + 标题 + 警告 */}
+      {/* 节点头:图标 + 标题 + 警告(整体居中) */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: 8,
           padding: '8px 16px',
           flexShrink: 0,
+          position: 'relative',
         }}
       >
         <div
@@ -896,8 +898,19 @@ function BusinessNodeRenderer({
         >
           <Icon style={{ fontSize: 18 }} />
         </div>
-        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a', flex: 1 }}>{title}</span>
-        {isIncomplete && <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />}
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a' }}>{title}</span>
+        {isIncomplete && (
+          <ExclamationCircleOutlined
+            style={{
+              color: '#ff4d4f',
+              fontSize: 14,
+              position: 'absolute',
+              right: 12,
+              top: '50%',
+              transform: 'translateY(-50%)',
+            }}
+          />
+        )}
       </div>
 
       {/* 摘要 */}
@@ -906,7 +919,8 @@ function BusinessNodeRenderer({
           style={{
             fontSize: 12,
             color: 'rgba(0,0,0,0.45)',
-            padding: '0 16px 8px 40px',
+            padding: '0 16px 8px',
+            textAlign: 'center',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -918,7 +932,7 @@ function BusinessNodeRenderer({
 
       {/* 配置不完整警告 */}
       {isIncomplete && (
-        <div style={{ padding: '0 16px 8px 40px' }}>
+        <div style={{ padding: '0 16px 8px', textAlign: 'center' }}>
           <Text style={{ fontSize: 12, color: '#ff4d4f' }}>有未完成的配置</Text>
         </div>
       )}

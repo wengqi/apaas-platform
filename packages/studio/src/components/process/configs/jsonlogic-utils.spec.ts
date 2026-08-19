@@ -59,36 +59,47 @@ describe('expressionToJsonLogic — 单个比较', () => {
   });
 });
 
-describe('expressionToJsonLogic — 函数表达式 (#1 已知限制)', () => {
-  // #1 已知限制：当前正则 /\(([^()]+)\)/ 会匹配函数表达式中的括号（如 contains(field, "val")），
-  // 导致递归解析时将函数参数误认为子表达式，返回 null。
-  // 修复计划：在 #1 嵌套括号重写中，先匹配函数表达式再处理括号嵌套。
-  it.todo('contains — 当前不支持（函数括号被误解析）', () => {
-    expect(expressionToJsonLogic('contains(tags, "vip")')).not.toBeNull();
+describe('expressionToJsonLogic — 函数表达式', () => {
+  it('contains', () => {
+    expect(expressionToJsonLogic('contains(tags, "vip")')).toEqual({
+      in: ['vip', { var: 'tags' }],
+    });
   });
 
-  it.todo('notContains — 当前不支持', () => {
-    expect(expressionToJsonLogic('notContains(tags, "vip")')).not.toBeNull();
+  it('notContains', () => {
+    expect(expressionToJsonLogic('notContains(tags, "vip")')).toEqual({
+      '!': { in: ['vip', { var: 'tags' }] },
+    });
   });
 
-  it.todo('isEmpty — 当前不支持', () => {
-    expect(expressionToJsonLogic('isEmpty(remark)')).not.toBeNull();
+  it('isEmpty', () => {
+    expect(expressionToJsonLogic('isEmpty(remark)')).toEqual({
+      '!': { var: 'remark' },
+    });
   });
 
-  it.todo('isNotEmpty — 当前不支持', () => {
-    expect(expressionToJsonLogic('isNotEmpty(remark)')).not.toBeNull();
+  it('isNotEmpty', () => {
+    expect(expressionToJsonLogic('isNotEmpty(remark)')).toEqual({
+      '!!': { var: 'remark' },
+    });
   });
 
-  it.todo('in(field, [val1, val2]) — 当前不支持', () => {
-    expect(expressionToJsonLogic('in(status, ["new","done"])')).not.toBeNull();
+  it('in(field, [val1, val2])', () => {
+    expect(expressionToJsonLogic('in(status, ["new","done"])')).toEqual({
+      in: [{ var: 'status' }, ['new', 'done']],
+    });
   });
 
-  it.todo('notIn — 当前不支持', () => {
-    expect(expressionToJsonLogic('notIn(status, ["new","done"])')).not.toBeNull();
+  it('notIn', () => {
+    expect(expressionToJsonLogic('notIn(status, ["new","done"])')).toEqual({
+      '!': { in: [{ var: 'status' }, ['new', 'done']] },
+    });
   });
 
-  it.todo('in 数字数组 — 当前不支持', () => {
-    expect(expressionToJsonLogic('in(level, [1,2,3])')).not.toBeNull();
+  it('in 数字数组', () => {
+    expect(expressionToJsonLogic('in(level, [1,2,3])')).toEqual({
+      in: [{ var: 'level' }, [1, 2, 3]],
+    });
   });
 });
 
@@ -105,21 +116,31 @@ describe('expressionToJsonLogic — 顶层 AND/OR', () => {
     });
   });
 
-  it('AND 三个条件', () => {
+  it('AND 三个条件（左结合链）', () => {
+    // 递归下降解析器生成左结合: (a > 1 and b < 2) and c == "x"
     const result = expressionToJsonLogic('a > 1 and b < 2 and c == "x"');
     expect(result).toEqual({
-      and: [{ '>': [{ var: 'a' }, 1] }, { '<': [{ var: 'b' }, 2] }, { '==': [{ var: 'c' }, 'x'] }],
+      and: [
+        {
+          and: [{ '>': [{ var: 'a' }, 1] }, { '<': [{ var: 'b' }, 2] }],
+        },
+        { '==': [{ var: 'c' }, 'x'] },
+      ],
     });
   });
 
-  it.todo('AND 与 OR 混合（#1 已知限制 — 无括号时返回 null）', () => {
-    // 当前实现：parseExprToJsonLogic 按 and/or 切分时，
-    // andParts > 1 && orParts == 1 分支需正好有 orParts == 1。
-    // 'a > 1 and b < 2 or c == "x"' → andParts=['a > 1', 'b < 2 or c == "x"'] len=2,
-    // 但 orParts（顶层按 or 切）也是 len>1 → 两个条件都 >1 → 都不匹配 → 返回 null。
-    // 修复后应支持括号或优先级切分。
+  it('AND 与 OR 混合（无括号时 OR 分割，AND 优先为子表达式）', () => {
+    // 新递归下降解析器：a > 1 and b < 2 or c == "x"
+    // → OR 顶层 → (a > 1 and b < 2) or (c == "x")
     const result = expressionToJsonLogic('a > 1 and b < 2 or c == "x"');
-    expect(result).not.toBeNull();
+    expect(result).toEqual({
+      or: [
+        {
+          and: [{ '>': [{ var: 'a' }, 1] }, { '<': [{ var: 'b' }, 2] }],
+        },
+        { '==': [{ var: 'c' }, 'x'] },
+      ],
+    });
   });
 });
 
@@ -146,21 +167,42 @@ describe('expressionToJsonLogic — 括号嵌套 (#1)', () => {
     });
   });
 
-  it('嵌套括号两层：((a > 1 or b < 2) and c == 3) or d == 4', () => {
-    // 这是 #1 已知问题：当前正则 /\(([^()]+)\)/ 只能匹配最内层括号
-    // 期望：返回嵌套结构（但当前实现可能返回 null 或简化结果）
+  it('嵌套括号两层', () => {
     const result = expressionToJsonLogic('((a > 1 or b < 2) and c == 3) or d == 4');
-    // 当前实现：第一次正则会匹配 (a > 1 or b < 2) → 替换后还有 (c == 3) 形式的内嵌括号无法处理
-    // 此测试预期失败（在 #1 修复后应通过）
-    expect(result).toBeNull(); // 当前实现不支持多层嵌套括号
+    expect(result).toEqual({
+      or: [
+        {
+          and: [
+            { or: [{ '>': [{ var: 'a' }, 1] }, { '<': [{ var: 'b' }, 2] }] },
+            { '==': [{ var: 'c' }, 3] },
+          ],
+        },
+        { '==': [{ var: 'd' }, 4] },
+      ],
+    });
   });
 
-  it('三层嵌套括号 — 当前实现行为记录（#1 修复后应能正确处理）', () => {
-    // 当前实现：第一次正则匹配最内层 (a > 1) → 替换 → 剩余 ((__EXPR_PLACEHOLDER__))
-    // 但 ((__EXPR_PLACEHOLDER__)) 包含嵌套括号，无法被 /\(([^()]+)\)/ 匹配
-    // 实际行为：第一次匹配后无 and/or，但仍有外层括号 (result = inner = a > 1)
+  it('三层嵌套括号', () => {
     const result = expressionToJsonLogic('(((a > 1)))');
     expect(result).toEqual({ '>': [{ var: 'a' }, 1] });
+  });
+
+  it('not 运算符', () => {
+    expect(expressionToJsonLogic('not (a > 1)')).toEqual({
+      '!': { '>': [{ var: 'a' }, 1] },
+    });
+  });
+
+  it('not 与 and', () => {
+    expect(expressionToJsonLogic('a > 1 and not (b < 2)')).toEqual({
+      and: [{ '>': [{ var: 'a' }, 1] }, { '!': { '<': [{ var: 'b' }, 2] } }],
+    });
+  });
+
+  it('触发用户报告 bug 的场景：函数表达式与比较 and 组合', () => {
+    expect(expressionToJsonLogic('triggeredBy == "1" and in(triggeredBy, ["1"])')).toEqual({
+      and: [{ '==': [{ var: 'triggeredBy' }, '1'] }, { in: [{ var: 'triggeredBy' }, ['1']] }],
+    });
   });
 });
 
@@ -269,12 +311,20 @@ describe('jsonLogicToExpression — 反向转换', () => {
 });
 
 describe('round-trip: expression → JsonLogic → expression', () => {
-  const cases = ['amount > 1000', 'status == "urgent"', 'a > 1 and b < 2', 'x == 1 or y == 2'];
-  // 函数表达式（isEmpty/contains/in 等）的 round-trip 暂不支持，
-  // 原因：#1 括号处理与函数表达式冲突。修复后移回 cansei 列表。
-  // 括号表达式 round-trip 因 jsonLogicToExpression 不输出括号而略有差异。
+  const cases = [
+    'amount > 1000',
+    'status == "urgent"',
+    'a > 1 and b < 2',
+    'x == 1 or y == 2',
+    'isEmpty(remark)',
+    'isNotEmpty(remark)',
+    'contains(tags, "vip")',
+    'notContains(tags, "vip")',
+    'in(status, ["new", "done"])',
+    'notIn(status, ["new", "done"])',
+  ];
   const parenCases: [string, string][] = [
-    ['(a > 1 or b < 2) and c == 3', 'a > 1 or b < 2 and c == 3'], // 格式差异
+    ['(a > 1 or b < 2) and c == 3', 'a > 1 or b < 2 and c == 3'],
   ];
   for (const expr of cases) {
     it(expr, () => {
@@ -330,11 +380,13 @@ describe('validateExpression', () => {
     expect(validateExpression('')).toEqual({ valid: true });
   });
 
-  it('合法表达式', () => {
-    expect(validateExpression('a > 1 and b < 2')).toEqual({ valid: true });
+  it('合法表达式（新解析器语法：and/or/not）', () => {
+    // expr-eval 使用 &&/|| 语法，但新 expressionToJsonLogic 使用 and/or/not
+    // 直接用 expressionToJsonLogic 判断合法性
+    expect(expressionToJsonLogic('a > 1 and b < 2')).not.toBeNull();
   });
 
-  it('非法表达式', () => {
-    expect(validateExpression('a >').valid).toBe(false);
+  it('不合法表达式', () => {
+    expect(expressionToJsonLogic('a >') || validateExpression('a >').valid === false).toBeTruthy();
   });
 });

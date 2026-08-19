@@ -1,18 +1,20 @@
 /**
- * JsonLogic 工具函数 —— 表达式文本 ↔ JsonLogic JSON 转换 + 求值/校验。
+ * jsonlogic-utils 工具函数 —— 表达式文本 ↔ JsonLogic JSON 转换 + 求值/校验。
  *
  * JsonLogic 是一种跨语言的逻辑序列化标准（jsonlogic.com）：
  * - 安全：无 eval、无副作用、确定性计算
  * - 可序列化：原生 JSON，可存储到数据库
  * - 跨语言：JS / Python / Java / PHP / Ruby / Go
  *
- * 表达式语法（expr-eval 兼容）：
- * - 逻辑运算符小写 `and` / `or`
- * - 字符串双引号：`status == "urgent"`
+ * 表达式语法：
+ * - 逻辑运算符（小写）：`and` / `or` / `not`
+ * - 字符串双/单引号：`status == "urgent"` / `name == 'alice'`
  * - 比较运算符：`>` `<` `>=` `<=` `==` `!=`
- * - 包含：`contains(field, "value")` / `notContains(field, "value")`
  * - 为空：`isEmpty(field)` / 不为空：`isNotEmpty(field)`
+ * - 包含：`contains(field, "value")` / `notContains(field, "value")`
  * - 属于：`in(field, [val1, val2])` / 不属于：`notIn(field, [val1, val2])`
+ * - 括号嵌套：`(a > 1 or b < 2) and c == 3`、多层 `((a > 1))`
+ * - not 优先级：`not (a > 1 and b < 2)`
  *
  * 转换规则：
  * | 表达式                        | JsonLogic                                          |
@@ -26,355 +28,391 @@
  * | `isNotEmpty(field)`           | `{"!!": {"var": "field"}}`                          |
  * | `in(field, ["a","b"])`        | `{"in": [{"var": "field"}, ["a","b"]]}`             |
  * | `notIn(field, ["a","b"])`     | `{"!": {"in": [{"var": "field"}, ["a","b"]]}}`      |
+ * | `not (a > 1)`                 | `{"!": [{">": [{"var":"a"}, 1]}]}`                  |
  */
 
-import { Parser } from 'expr-eval';
 import jsonLogic from 'json-logic-js';
 
-const parser = new Parser();
+// ---------------------------------------------------------------------------
+// 表达式文本 → JsonLogic（递归下降解析器）
+// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// 表达式文本 → JsonLogic
-// ---------------------------------------------------------------------------
+/** Token 类型 */
+type Token =
+  | { type: 'number'; value: number }
+  | { type: 'string'; value: string }
+  | { type: 'bool'; value: boolean }
+  | { type: 'ident'; value: string }
+  | { type: 'op'; value: '>' | '<' | '>=' | '<=' | '==' | '!=' }
+  | { type: 'kw'; value: 'and' | 'or' | 'not' }
+  | { type: 'lparen' }
+  | { type: 'rparen' }
+  | { type: 'lbracket' }
+  | { type: 'rbracket' }
+  | { type: 'comma' };
+
+/** 词法分析：表达式 → Token 序列 */
+function tokenize(input: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+  const src = input;
+
+  while (i < src.length) {
+    const ch = src[i]!;
+
+    // 跳过空白
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+
+    // 单字符 token
+    if (ch === '(') {
+      tokens.push({ type: 'lparen' });
+      i++;
+      continue;
+    }
+    if (ch === ')') {
+      tokens.push({ type: 'rparen' });
+      i++;
+      continue;
+    }
+    if (ch === '[') {
+      tokens.push({ type: 'lbracket' });
+      i++;
+      continue;
+    }
+    if (ch === ']') {
+      tokens.push({ type: 'rbracket' });
+      i++;
+      continue;
+    }
+    if (ch === ',') {
+      tokens.push({ type: 'comma' });
+      i++;
+      continue;
+    }
+
+    // 双/单引号字符串
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
+      let s = '';
+      i++;
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\' && i + 1 < src.length) {
+          s += src[i + 1];
+          i += 2;
+        } else {
+          s += src[i]!;
+          i++;
+        }
+      }
+      if (i >= src.length) throw new Error('字符串未闭合');
+      i++; // 跳过结束引号
+      tokens.push({ type: 'string', value: s });
+      continue;
+    }
+
+    // 数字（含负数）
+    if (/[0-9]/.test(ch) || (ch === '-' && /[0-9]/.test(src[i + 1] ?? ''))) {
+      let s = '';
+      if (ch === '-') {
+        s += '-';
+        i++;
+      }
+      while (i < src.length && /[0-9.]/.test(src[i]!)) {
+        s += src[i];
+        i++;
+      }
+      const n = parseFloat(s);
+      if (Number.isNaN(n)) throw new Error(`无效数字: ${s}`);
+      tokens.push({ type: 'number', value: n });
+      continue;
+    }
+
+    // 比较运算符（>/</>=/<=/==/!=）
+    if (ch === '>' || ch === '<' || ch === '=' || ch === '!') {
+      let s = ch;
+      const next = src[i + 1];
+      if ((ch === '>' || ch === '<' || ch === '!') && next === '=') {
+        s += '=';
+        i += 2;
+      } else if (ch === '=' && next === '=') {
+        s += '=';
+        i += 2;
+      } else {
+        i++;
+      }
+      if (s === '>' || s === '<' || s === '>=' || s === '<=' || s === '==' || s === '!=') {
+        tokens.push({ type: 'op', value: s as '>' | '<' | '>=' | '<=' | '==' | '!=' });
+        continue;
+      }
+      throw new Error(`无效比较运算符: ${s}`);
+    }
+
+    // 标识符 / 关键字（字母开头可含字母数字下划线）
+    if (/[a-zA-Z_]/.test(ch)) {
+      let s = '';
+      while (i < src.length && /[a-zA-Z0-9_]/.test(src[i]!)) {
+        s += src[i];
+        i++;
+      }
+      const lower = s.toLowerCase();
+      if (lower === 'and') tokens.push({ type: 'kw', value: 'and' });
+      else if (lower === 'or') tokens.push({ type: 'kw', value: 'or' });
+      else if (lower === 'not') tokens.push({ type: 'kw', value: 'not' });
+      else if (lower === 'true') tokens.push({ type: 'bool', value: true });
+      else if (lower === 'false') tokens.push({ type: 'bool', value: false });
+      else tokens.push({ type: 'ident', value: s });
+      continue;
+    }
+
+    throw new Error(`无法识别的字符: ${ch}`);
+  }
+
+  return tokens;
+}
+
+/** 递归下降解析器 */
+class ExprParser {
+  private pos = 0;
+
+  constructor(private readonly tokens: Token[]) {}
+
+  /** 入口：parseExpression */
+  parseExpression(): object | null {
+    const result = this.parseOr();
+    if (!result) return null;
+    // 必须消费完所有 token，否则有多余内容
+    if (this.pos < this.tokens.length) return null;
+    return result;
+  }
+
+  /** orExpr → andExpr ( 'or' andExpr )* */
+  private parseOr(): object | null {
+    let left = this.parseAnd();
+    if (!left) return null;
+    while (this.peekKw('or')) {
+      this.advance();
+      const right = this.parseAnd();
+      if (!right) return null;
+      left = { or: [left, right] };
+    }
+    return left;
+  }
+
+  /** andExpr → notExpr ( 'and' notExpr )* */
+  private parseAnd(): object | null {
+    let left = this.parseNot();
+    if (!left) return null;
+    while (this.peekKw('and')) {
+      this.advance();
+      const right = this.parseNot();
+      if (!right) return null;
+      left = { and: [left, right] };
+    }
+    return left;
+  }
+
+  /** notExpr → 'not' notExpr | primary */
+  private parseNot(): object | null {
+    if (this.peekKw('not')) {
+      this.advance();
+      const inner = this.parseNot();
+      if (!inner) return null;
+      return { '!': inner };
+    }
+    return this.parsePrimary();
+  }
+
+  /** primary → functionCall | comparison | '(' expression ')' */
+  private parsePrimary(): object | null {
+    const tok = this.peek();
+    if (!tok) return null;
+
+    // 函数调用：ident '(' ...
+    if (tok.type === 'ident' && this.peekAt(1)?.type === 'lparen') {
+      return this.parseFunctionCall();
+    }
+
+    // 比较表达式：ident op value
+    if (tok.type === 'ident') {
+      return this.parseComparison();
+    }
+
+    // 括号表达式
+    if (tok.type === 'lparen') {
+      this.advance();
+      const inner = this.parseOr();
+      if (!inner) return null;
+      const close = this.peek();
+      if (close?.type !== 'rparen') return null;
+      this.advance();
+      return inner;
+    }
+
+    return null;
+  }
+
+  /** 函数调用：isEmpty / isNotEmpty / contains / notContains / in / notIn */
+  private parseFunctionCall(): object | null {
+    const nameTok = this.peek();
+    if (nameTok?.type !== 'ident') return null;
+    const name = nameTok.value;
+    this.advance(); // ident
+    if (this.peek()?.type !== 'lparen') return null;
+    this.advance(); // (
+
+    const lower = name.toLowerCase();
+    let result: object | null = null;
+
+    if (lower === 'isempty' || lower === 'isnotempty') {
+      const fieldTok = this.peek();
+      if (fieldTok?.type !== 'ident') return null;
+      const field = fieldTok.value;
+      this.advance();
+      if (this.peek()?.type !== 'rparen') return null;
+      this.advance();
+      result = lower === 'isempty' ? { '!': { var: field } } : { '!!': { var: field } };
+    } else if (lower === 'contains' || lower === 'notcontains') {
+      const fieldTok = this.peek();
+      if (fieldTok?.type !== 'ident') return null;
+      const field = fieldTok.value;
+      this.advance();
+      if (this.peek()?.type !== 'comma') return null;
+      this.advance();
+      const val = this.parseValue();
+      if (val === undefined) return null;
+      if (this.peek()?.type !== 'rparen') return null;
+      this.advance();
+      result =
+        lower === 'contains'
+          ? { in: [val, { var: field }] }
+          : { '!': { in: [val, { var: field }] } };
+    } else if (lower === 'in' || lower === 'notin') {
+      const fieldTok = this.peek();
+      if (fieldTok?.type !== 'ident') return null;
+      const field = fieldTok.value;
+      this.advance();
+      if (this.peek()?.type !== 'comma') return null;
+      this.advance();
+      const arr = this.parseArrayLiteral();
+      if (!arr) return null;
+      if (this.peek()?.type !== 'rparen') return null;
+      this.advance();
+      result =
+        lower === 'in' ? { in: [{ var: field }, arr] } : { '!': { in: [{ var: field }, arr] } };
+    } else {
+      // 未知函数名
+      return null;
+    }
+
+    return result;
+  }
+
+  /** 比较表达式：field op value */
+  private parseComparison(): object | null {
+    const fieldTok = this.peek();
+    if (fieldTok?.type !== 'ident') return null;
+    const field = fieldTok.value;
+    this.advance();
+
+    const opTok = this.peek();
+    if (opTok?.type !== 'op') return null;
+    const op = opTok.value;
+    this.advance();
+
+    const val = this.parseValue();
+    if (val === undefined) return null;
+
+    return { [op]: [{ var: field }, val] };
+  }
+
+  /** 解析字面量值：number / string / bool / array */
+  private parseValue(): unknown {
+    const tok = this.peek();
+    if (!tok) return undefined;
+    if (tok.type === 'number') {
+      this.advance();
+      return tok.value;
+    }
+    if (tok.type === 'string') {
+      this.advance();
+      return tok.value;
+    }
+    if (tok.type === 'bool') {
+      this.advance();
+      return tok.value;
+    }
+    return undefined;
+  }
+
+  /** 解析数组字面量：[v1, v2, ...] */
+  private parseArrayLiteral(): unknown[] | null {
+    if (this.peek()?.type !== 'lbracket') return null;
+    this.advance(); // [
+    const items: unknown[] = [];
+    if (this.peek()?.type === 'rbracket') {
+      this.advance();
+      return items;
+    }
+    while (true) {
+      const v = this.parseValue();
+      if (v === undefined) return null;
+      items.push(v);
+      const next = this.peek();
+      if (next?.type === 'comma') {
+        this.advance();
+        continue;
+      }
+      if (next?.type === 'rbracket') {
+        this.advance();
+        return items;
+      }
+      return null;
+    }
+  }
+
+  private peekKw(kw: 'and' | 'or' | 'not'): boolean {
+    const t = this.peek();
+    return t?.type === 'kw' && t.value === kw;
+  }
+
+  private peek(): Token | undefined {
+    return this.tokens[this.pos];
+  }
+
+  private peekAt(offset: number): Token | undefined {
+    return this.tokens[this.pos + offset];
+  }
+
+  private advance(): void {
+    this.pos++;
+  }
+}
 
 /**
  * 表达式文本 → JsonLogic JSON。
  *
- * 解析策略：
- * 1. 先处理括号嵌套（提取最内层括号表达式，递归解析）
- * 2. 按顶层 ` and ` / ` or ` 分割
- * 3. 解析单个比较表达式（含 contains/notContains 函数）
+ * 使用递归下降解析器，支持：
+ * - 任意深度括号嵌套
+ * - 函数表达式（isEmpty/contains/in 等不再被括号处理误解析）
+ * - not 运算符
+ * - AND/OR 任意混合（按运算符优先级）
  *
  * 解析失败返回 null。
  */
 export function expressionToJsonLogic(expr: string): object | null {
   const trimmed = expr.trim();
   if (!trimmed) return null;
-  return parseExprToJsonLogic(trimmed);
-}
-
-/**
- * 直接解析表达式文本为 JsonLogic（不依赖 expr-eval AST）。
- *
- * 支持的格式：
- * - 单个比较：`amount > 1000`
- * - 扁平 AND：`amount > 1000 and status == "urgent"`
- * - 扁平 OR：`x == 1 or y == 2`
- * - contains/notContains 函数：`contains(field, "value")`
- * - 括号嵌套：`(a > 1 or b < 2) and c == 3`
- */
-function parseExprToJsonLogic(expr: string): object | null {
-  const trimmed = expr.trim();
-  if (!trimmed) return null;
-
-  // 优先匹配整个表达式是单个函数（isEmpty/isNotEmpty/contains/notContains/in/notIn）。
-  // 注意：parseSingleComparison 还包含单比较的逻辑，但函数表达式需要先于复合表达式处理，
-  // 否则函数圆括号会被外层括号嵌套匹配误解析。
-  const asFunc = tryParseFunctionExpression(trimmed);
-  if (asFunc) return asFunc;
-
-  // 先处理括号嵌套 — 提取最内层括号表达式。
-  // 注意：函数表达式（isEmpty/contains/in 等）的括号不应被捕获。
-  // 用 lookbehind 方式检查括号前是否有函数名前缀（如 contains(、in( 等）。
-  const parenMatch = getNonFnParenMatch(trimmed);
-  if (parenMatch) {
-    const inner = parseExprToJsonLogic(parenMatch[1]!);
-    if (!inner) return null;
-    const replaced = trimmed.replace(parenMatch[0], '__EXPR_PLACEHOLDER__');
-    // 如果替换后还有运算符，继续递归处理
-    if (replaced.includes(' and ') || replaced.includes(' or ')) {
-      return combineWithPlaceholder(replaced, inner);
-    }
-    return inner;
-  }
-
-  // 按 ` and ` / ` or ` 分割
-  const andParts = splitTopLevel(trimmed, ' and ');
-  const orParts = splitTopLevel(trimmed, ' or ');
-
-  if (andParts.length > 1 && orParts.length === 1) {
-    const parts = andParts.map((p) => parseExprToJsonLogic(p));
-    if (parts.some((p) => !p)) return null;
-    return { and: parts };
-  }
-  if (orParts.length > 1 && andParts.length === 1) {
-    const parts = orParts.map((p) => parseExprToJsonLogic(p));
-    if (parts.some((p) => !p)) return null;
-    return { or: parts };
-  }
-
-  // 单个条件
-  return parseSingleComparison(trimmed);
-}
-
-/**
- * 仅尝试解析整个表达式是单个函数调用（isEmpty/isNotEmpty/contains/notContains/in/notIn）。
- * 返回 null 表示不是函数表达式，需要走其它分支处理。
- */
-function tryParseFunctionExpression(trimmed: string): object | null {
-  // 函数名 + (参数)
-  const m = trimmed.match(/^(isEmpty|isNotEmpty|contains|notContains|in|notIn)\(([\s\S]+)\)$/i);
-  if (!m) return null;
-  const fn = m[1]!.toLowerCase();
-  const args = m[2]!;
-
-  if (fn === 'isempty' || fn === 'isnotempty') {
-    // 单参数：字段名
-    const fieldMatch = args.match(/^[\s]*([a-zA-Z_][\w]*)[\s]*$/);
-    if (!fieldMatch) return null;
-    const field = fieldMatch[1]!;
-    return fn === 'isempty' ? { '!': { var: field } } : { '!!': { var: field } };
-  }
-
-  if (fn === 'contains' || fn === 'notcontains') {
-    // 参数：field, value
-    const splitIdx = findTopLevelComma(args);
-    if (splitIdx < 0) return null;
-    const field = args.slice(0, splitIdx).trim();
-    const valueStr = args.slice(splitIdx + 1).trim();
-    if (!/^[a-zA-Z_][\w]*$/.test(field)) return null;
-    const value = parseLiteral(valueStr);
-    if (value === undefined) return null;
-    return fn === 'contains'
-      ? { in: [value, { var: field }] }
-      : { '!': { in: [value, { var: field }] } };
-  }
-
-  if (fn === 'in' || fn === 'notin') {
-    // 参数：field, [v1, v2, ...]
-    const splitIdx = findTopLevelComma(args);
-    if (splitIdx < 0) return null;
-    const field = args.slice(0, splitIdx).trim();
-    const arrStr = args.slice(splitIdx + 1).trim();
-    if (!/^[a-zA-Z_][\w]*$/.test(field)) return null;
-    if (!arrStr.startsWith('[') || !arrStr.endsWith(']')) return null;
-    const arrBody = arrStr.slice(1, -1).trim();
-    const values: unknown[] = [];
-    if (arrBody.length === 0) {
-      // 空数组
-    } else {
-      let cursor = 0;
-      while (cursor < arrBody.length) {
-        const c = findTopLevelComma(arrBody, cursor);
-        const end = c < 0 ? arrBody.length : c;
-        const itemStr = arrBody.slice(cursor, end).trim();
-        const v = parseLiteral(itemStr);
-        if (v === undefined) return null;
-        values.push(v);
-        if (c < 0) break;
-        cursor = c + 1;
-      }
-    }
-    return fn === 'in'
-      ? { in: [{ var: field }, values] }
-      : { '!': { in: [{ var: field }, values] } };
-  }
-
-  return null;
-}
-
-/** 查找顶层第一个逗号（忽略括号/方括号/字符串内的逗号）。返回索引，未找到返回 -1。 */
-function findTopLevelComma(str: string, startFrom = 0): number {
-  let depth = 0;
-  let inQuote: string | null = null;
-  for (let i = startFrom; i < str.length; i++) {
-    const ch = str[i]!;
-    if (inQuote) {
-      if (ch === inQuote) inQuote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inQuote = ch;
-      continue;
-    }
-    if (ch === '(' || ch === '[') depth++;
-    else if (ch === ')' || ch === ']') depth--;
-    else if (ch === ',' && depth === 0) return i;
-  }
-  return -1;
-}
-
-/** 函数名集合（忽略大小写） */
-const FUNC_NAMES = new Set(['isempty', 'isnotempty', 'contains', 'notcontains', 'in', 'notin']);
-
-/**
- * 返回非函数括号的最内层匹配。
- * 跳过函数调用形式的括号（如 contains(、in( 等），只匹配纯嵌套括号（如 (a > 1)）。
- */
-function getNonFnParenMatch(str: string): RegExpMatchArray | null {
-  const m = str.match(/\(([^()]+)\)/);
-  if (!m) return null;
-
-  // 检查括号前的 token 是否是函数名
-  const prefixEnd = m.index ?? 0;
-  const before = str.slice(0, prefixEnd).trimEnd();
-  const tokenMatch = before.match(/([a-zA-Z_][\w]*)\s*$/);
-  if (tokenMatch && FUNC_NAMES.has(tokenMatch[1]!.toLowerCase())) {
-    // 这是函数调用的括号 → 跳过，返回 null 让 split 逻辑处理
+  try {
+    const tokens = tokenize(trimmed);
+    if (tokens.length === 0) return null;
+    const parser = new ExprParser(tokens);
+    return parser.parseExpression();
+  } catch {
     return null;
   }
-
-  return m;
-}
-
-/** 按顶层运算符分割（不分割括号内的） */
-function splitTopLevel(str: string, separator: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = '';
-  const lower = str.toLowerCase();
-
-  for (let i = 0; i < str.length; i++) {
-    if (str[i] === '(') depth++;
-    if (str[i] === ')') depth--;
-    if (depth === 0 && lower.substring(i, i + separator.length) === separator) {
-      parts.push(current.trim());
-      current = '';
-      i += separator.length - 1;
-      continue;
-    }
-    current += str[i];
-  }
-  if (current.trim()) parts.push(current.trim());
-  return parts;
-}
-
-/** 组合占位符表达式与已解析的子表达式 */
-function combineWithPlaceholder(expr: string, placeholder: object): object | null {
-  const andParts = splitTopLevel(expr, ' and ');
-  const orParts = splitTopLevel(expr, ' or ');
-
-  if (andParts.length > 1) {
-    const parts = andParts.map((p) => {
-      if (p.trim() === '__EXPR_PLACEHOLDER__') return placeholder;
-      return parseExprToJsonLogic(p);
-    });
-    if (parts.some((p) => !p)) return null;
-    return { and: parts };
-  }
-  if (orParts.length > 1) {
-    const parts = orParts.map((p) => {
-      if (p.trim() === '__EXPR_PLACEHOLDER__') return placeholder;
-      return parseExprToJsonLogic(p);
-    });
-    if (parts.some((p) => !p)) return null;
-    return { or: parts };
-  }
-  return placeholder;
-}
-
-/** 解析单个比较表达式 */
-function parseSingleComparison(str: string): object | null {
-  const trimmed = str.trim();
-
-  // contains(field, "value") → {"in": ["value", {"var": "field"}]}
-  const containsMatch = trimmed.match(/^contains\((\w+),\s*(.+)\)$/i);
-  if (containsMatch && containsMatch[1] && containsMatch[2]) {
-    const field = containsMatch[1];
-    const val = parseLiteral(containsMatch[2].trim());
-    if (val !== undefined) return { in: [val, { var: field }] };
-  }
-
-  // notContains(field, "value") → {"!": {"in": ["val", {"var": "field"}]}}
-  const notContainsMatch = trimmed.match(/^notContains\((\w+),\s*(.+)\)$/i);
-  if (notContainsMatch && notContainsMatch[1] && notContainsMatch[2]) {
-    const field = notContainsMatch[1];
-    const val = parseLiteral(notContainsMatch[2].trim());
-    if (val !== undefined) return { '!': { in: [val, { var: field }] } };
-  }
-
-  // isEmpty(field) → {"!": {"var": "field"}}
-  const isEmptyMatch = trimmed.match(/^isEmpty\((\w+)\)$/i);
-  if (isEmptyMatch && isEmptyMatch[1]) {
-    return { '!': { var: isEmptyMatch[1] } };
-  }
-
-  // isNotEmpty(field) → {"!!": {"var": "field"}}
-  const isNotEmptyMatch = trimmed.match(/^isNotEmpty\((\w+)\)$/i);
-  if (isNotEmptyMatch && isNotEmptyMatch[1]) {
-    return { '!!': { var: isNotEmptyMatch[1] } };
-  }
-
-  // in(field, [val1, val2]) → {"in": [{"var": "field"}, [val1, val2]]}
-  const inMatch = trimmed.match(/^in\((\w+),\s*\[(.+)\]\)$/i);
-  if (inMatch && inMatch[1] && inMatch[2]) {
-    const field = inMatch[1];
-    const values = parseArrayLiteral(inMatch[2]);
-    if (values) return { in: [{ var: field }, values] };
-  }
-
-  // notIn(field, [val1, val2]) → {"!": {"in": [{"var": "field"}, [val1, val2]]}}
-  const notInMatch = trimmed.match(/^notIn\((\w+),\s*\[(.+)\]\)$/i);
-  if (notInMatch && notInMatch[1] && notInMatch[2]) {
-    const field = notInMatch[1];
-    const values = parseArrayLiteral(notInMatch[2]);
-    if (values) return { '!': { in: [{ var: field }, values] } };
-  }
-
-  // 比较运算符
-  const match = trimmed.match(/^(\w+)\s*(>=|<=|==|!=|>|<)\s*(.+)$/);
-  if (!match || !match[1] || !match[2] || !match[3]) return null;
-
-  const field = match[1];
-  const op = match[2];
-  const val = parseLiteral(match[3].trim());
-  if (val === undefined) return null;
-
-  const opMap: Record<string, string> = {
-    '>': '>',
-    '<': '<',
-    '>=': '>=',
-    '<=': '<=',
-    '==': '==',
-    '!=': '!=',
-  };
-  const jsonOp = opMap[op] ?? op;
-  return { [jsonOp]: [{ var: field }, val] };
-}
-
-/** 解析字面量值（数字/双引号字符串/单引号字符串/布尔） */
-function parseLiteral(str: string): unknown {
-  if (str.startsWith('"') && str.endsWith('"')) return str.slice(1, -1);
-  if (str.startsWith("'") && str.endsWith("'")) return str.slice(1, -1);
-  if (/^-?\d+(\.\d+)?$/.test(str)) return parseFloat(str);
-  if (str === 'true') return true;
-  if (str === 'false') return false;
-  return undefined;
-}
-
-/** 解析数组字面量："val1", "val2", 123 → ["val1", "val2", 123] */
-function parseArrayLiteral(str: string): unknown[] | null {
-  const parts: string[] = [];
-  let current = '';
-  let inQuote: string | null = null;
-  let depth = 0;
-
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i]!;
-    if (inQuote) {
-      current += ch;
-      if (ch === inQuote) inQuote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inQuote = ch;
-      current += ch;
-      continue;
-    }
-    if (ch === '[' || ch === '{') depth++;
-    if (ch === ']' || ch === '}') depth--;
-    if (ch === ',' && depth === 0) {
-      parts.push(current.trim());
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-  if (current.trim()) parts.push(current.trim());
-
-  const values = parts.map((p) => parseLiteral(p));
-  if (values.some((v) => v === undefined)) return null;
-  return values;
 }
 
 // ---------------------------------------------------------------------------
@@ -549,10 +587,6 @@ export function validateJsonLogic(rule: unknown): { valid: boolean; error?: stri
 export function validateExpression(expr: string): { valid: boolean; error?: string } {
   const trimmed = expr.trim();
   if (!trimmed) return { valid: true };
-  try {
-    parser.parse(trimmed);
-    return { valid: true };
-  } catch (e) {
-    return { valid: false, error: (e as Error).message };
-  }
+  const result = expressionToJsonLogic(trimmed);
+  return result ? { valid: true } : { valid: false, error: '表达式语法不正确' };
 }

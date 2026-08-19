@@ -265,6 +265,40 @@ describe('loadFromJsonLogic', () => {
     // RAQB loadFromJsonLogic({}) 可能返回 null → 降级为 emptyTree
     expect(tree).not.toBeNull();
   });
+
+  // 修复 BUG：历史数据中 and/or 的值可能不是数组（之前会触发 RAQB 内部 r.join 报错）
+  // normalizeJsonLogic 在 loadFromJsonLogic 入口处包装
+  it('and 节点值是单个对象（历史数据格式）→ 规范化后正常加载', () => {
+    const config = buildQbConfig(basicVariables);
+    const malformed = { and: { '>': [{ var: 'amount' }, 1000] } };
+    const tree = loadFromJsonLogic(malformed, config);
+    expect(tree).not.toBeNull();
+  });
+
+  it('or 节点值是单个对象（历史数据格式）→ 规范化后正常加载', () => {
+    const config = buildQbConfig(basicVariables);
+    const malformed = { or: { '>': [{ var: 'amount' }, 1000] } };
+    const tree = loadFromJsonLogic(malformed, config);
+    expect(tree).not.toBeNull();
+  });
+
+  it('嵌套 and/or 不一致（部分数组部分对象）→ 递归规范化', () => {
+    const config = buildQbConfig(basicVariables);
+    const malformed = {
+      and: [{ '>': [{ var: 'amount' }, 1000] }, { or: { '==': [{ var: 'status' }, 'urgent'] } }],
+    };
+    const tree = loadFromJsonLogic(malformed, config);
+    expect(tree).not.toBeNull();
+  });
+
+  it('完全合法的 and 数组 → 正常加载', () => {
+    const config = buildQbConfig(basicVariables);
+    const valid = {
+      and: [{ '>': [{ var: 'amount' }, 1000] }, { '==': [{ var: 'status' }, 'urgent'] }],
+    };
+    const tree = loadFromJsonLogic(valid, config);
+    expect(tree).not.toBeNull();
+  });
 });
 
 describe('exportToJsonLogic', () => {

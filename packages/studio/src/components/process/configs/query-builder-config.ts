@@ -237,6 +237,35 @@ export function buildQbConfig(variables: VariableOption[]): Config {
 // ---------------------------------------------------------------------------
 
 /**
+ * 规范化 JsonLogic 规则：递归确保 and/or 操作符的值是数组。
+ *
+ * 历史数据中可能出现 `{ and: { ... } }`（单个条件对象）而不是 `{ and: [{...}] }`（数组），
+ * RAQB 6.6 加载时会在 `r.join()` 调用上抛错（"r.join is not a function"）。
+ * 修复策略：发现 and/or 节点的值不是数组时，自动包装为单元素数组。
+ */
+function normalizeJsonLogic(rule: object): object {
+  if (!rule || typeof rule !== 'object') return rule;
+  const keys = Object.keys(rule);
+  if (keys.length !== 1) return rule;
+  const op = keys[0]!;
+  const value = (rule as Record<string, unknown>)[op];
+
+  if (op === 'and' || op === 'or') {
+    const arr = Array.isArray(value) ? value : [value];
+    return { [op]: arr.map((v) => (v && typeof v === 'object' ? normalizeJsonLogic(v) : v)) };
+  }
+
+  // 其他操作符：递归处理子节点（比较/函数调用）
+  if (Array.isArray(value)) {
+    return { [op]: value.map((v) => (v && typeof v === 'object' ? normalizeJsonLogic(v) : v)) };
+  }
+  if (value && typeof value === 'object') {
+    return { [op]: normalizeJsonLogic(value) };
+  }
+  return rule;
+}
+
+/**
  * 从 JsonLogic 规则加载到 RAQB 的 Immutable 树。
  */
 export function loadFromJsonLogic(rule: object | null | undefined, config: Config): ImmutableTree {
@@ -245,7 +274,9 @@ export function loadFromJsonLogic(rule: object | null | undefined, config: Confi
     return emptyTree();
   }
   try {
-    const tree = QbUtils.loadFromJsonLogic(rule, config);
+    // 规范化 rule：确保 and/or 的值始终为数组（修复某些旧数据格式导致 RAQB r.join() 失败）
+    const normalized = normalizeJsonLogic(rule);
+    const tree = QbUtils.loadFromJsonLogic(normalized, config);
     return tree ?? emptyTree();
   } catch {
     return emptyTree();

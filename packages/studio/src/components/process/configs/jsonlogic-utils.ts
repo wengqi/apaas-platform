@@ -67,8 +67,16 @@ function parseExprToJsonLogic(expr: string): object | null {
   const trimmed = expr.trim();
   if (!trimmed) return null;
 
-  // 先处理括号嵌套 — 提取最内层括号表达式
-  const parenMatch = trimmed.match(/\(([^()]+)\)/);
+  // 优先匹配整个表达式是单个函数（isEmpty/isNotEmpty/contains/notContains/in/notIn）。
+  // 注意：parseSingleComparison 还包含单比较的逻辑，但函数表达式需要先于复合表达式处理，
+  // 否则函数圆括号会被外层括号嵌套匹配误解析。
+  const asFunc = tryParseFunctionExpression(trimmed);
+  if (asFunc) return asFunc;
+
+  // 先处理括号嵌套 — 提取最内层括号表达式。
+  // 注意：函数表达式（isEmpty/contains/in 等）的括号不应被捕获。
+  // 用 lookbehind 方式检查括号前是否有函数名前缀（如 contains(、in( 等）。
+  const parenMatch = getNonFnParenMatch(trimmed);
   if (parenMatch) {
     const inner = parseExprToJsonLogic(parenMatch[1]!);
     if (!inner) return null;
@@ -97,6 +105,116 @@ function parseExprToJsonLogic(expr: string): object | null {
 
   // 单个条件
   return parseSingleComparison(trimmed);
+}
+
+/**
+ * 仅尝试解析整个表达式是单个函数调用（isEmpty/isNotEmpty/contains/notContains/in/notIn）。
+ * 返回 null 表示不是函数表达式，需要走其它分支处理。
+ */
+function tryParseFunctionExpression(trimmed: string): object | null {
+  // 函数名 + (参数)
+  const m = trimmed.match(/^(isEmpty|isNotEmpty|contains|notContains|in|notIn)\(([\s\S]+)\)$/i);
+  if (!m) return null;
+  const fn = m[1]!.toLowerCase();
+  const args = m[2]!;
+
+  if (fn === 'isempty' || fn === 'isnotempty') {
+    // 单参数：字段名
+    const fieldMatch = args.match(/^[\s]*([a-zA-Z_][\w]*)[\s]*$/);
+    if (!fieldMatch) return null;
+    const field = fieldMatch[1]!;
+    return fn === 'isempty' ? { '!': { var: field } } : { '!!': { var: field } };
+  }
+
+  if (fn === 'contains' || fn === 'notcontains') {
+    // 参数：field, value
+    const splitIdx = findTopLevelComma(args);
+    if (splitIdx < 0) return null;
+    const field = args.slice(0, splitIdx).trim();
+    const valueStr = args.slice(splitIdx + 1).trim();
+    if (!/^[a-zA-Z_][\w]*$/.test(field)) return null;
+    const value = parseLiteral(valueStr);
+    if (value === undefined) return null;
+    return fn === 'contains'
+      ? { in: [value, { var: field }] }
+      : { '!': { in: [value, { var: field }] } };
+  }
+
+  if (fn === 'in' || fn === 'notin') {
+    // 参数：field, [v1, v2, ...]
+    const splitIdx = findTopLevelComma(args);
+    if (splitIdx < 0) return null;
+    const field = args.slice(0, splitIdx).trim();
+    const arrStr = args.slice(splitIdx + 1).trim();
+    if (!/^[a-zA-Z_][\w]*$/.test(field)) return null;
+    if (!arrStr.startsWith('[') || !arrStr.endsWith(']')) return null;
+    const arrBody = arrStr.slice(1, -1).trim();
+    const values: unknown[] = [];
+    if (arrBody.length === 0) {
+      // 空数组
+    } else {
+      let cursor = 0;
+      while (cursor < arrBody.length) {
+        const c = findTopLevelComma(arrBody, cursor);
+        const end = c < 0 ? arrBody.length : c;
+        const itemStr = arrBody.slice(cursor, end).trim();
+        const v = parseLiteral(itemStr);
+        if (v === undefined) return null;
+        values.push(v);
+        if (c < 0) break;
+        cursor = c + 1;
+      }
+    }
+    return fn === 'in'
+      ? { in: [{ var: field }, values] }
+      : { '!': { in: [{ var: field }, values] } };
+  }
+
+  return null;
+}
+
+/** 查找顶层第一个逗号（忽略括号/方括号/字符串内的逗号）。返回索引，未找到返回 -1。 */
+function findTopLevelComma(str: string, startFrom = 0): number {
+  let depth = 0;
+  let inQuote: string | null = null;
+  for (let i = startFrom; i < str.length; i++) {
+    const ch = str[i]!;
+    if (inQuote) {
+      if (ch === inQuote) inQuote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      continue;
+    }
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) return i;
+  }
+  return -1;
+}
+
+/** 函数名集合（忽略大小写） */
+const FUNC_NAMES = new Set(['isempty', 'isnotempty', 'contains', 'notcontains', 'in', 'notin']);
+
+/**
+ * 返回非函数括号的最内层匹配。
+ * 跳过函数调用形式的括号（如 contains(、in( 等），只匹配纯嵌套括号（如 (a > 1)）。
+ */
+function getNonFnParenMatch(str: string): RegExpMatchArray | null {
+  const m = str.match(/\(([^()]+)\)/);
+  if (!m) return null;
+
+  // 检查括号前的 token 是否是函数名
+  const prefixEnd = m.index ?? 0;
+  const before = str.slice(0, prefixEnd).trimEnd();
+  const tokenMatch = before.match(/([a-zA-Z_][\w]*)\s*$/);
+  if (tokenMatch && FUNC_NAMES.has(tokenMatch[1]!.toLowerCase())) {
+    // 这是函数调用的括号 → 跳过，返回 null 让 split 逻辑处理
+    return null;
+  }
+
+  return m;
 }
 
 /** 按顶层运算符分割（不分割括号内的） */

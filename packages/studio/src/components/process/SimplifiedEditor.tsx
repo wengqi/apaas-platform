@@ -875,16 +875,18 @@ function BusinessNodeRenderer({
         overflow: 'hidden',
       }}
     >
-      {/* 节点头:图标 + 标题 + 警告(整体居中) */}
+      {/* 节点头:图标 + 标题 + 警告
+          start/end 节点内容少,整体居中显示;
+          其他业务节点保持左对齐以便容纳摘要/警告文本 */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: isTerminal ? 'center' : 'flex-start',
           gap: 8,
           padding: '8px 16px',
           flexShrink: 0,
-          position: 'relative',
+          position: isTerminal ? 'relative' : undefined,
         }}
       >
         <div
@@ -903,8 +905,20 @@ function BusinessNodeRenderer({
         >
           <Icon style={{ fontSize: 18 }} />
         </div>
-        <span style={{ fontSize: 14, fontWeight: 500, color: '#1a1a1a' }}>{title}</span>
-        {isIncomplete && (
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: '#1a1a1a',
+            flex: isTerminal ? undefined : 1,
+          }}
+        >
+          {title}
+        </span>
+        {isIncomplete && !isTerminal && (
+          <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />
+        )}
+        {isIncomplete && isTerminal && (
           <ExclamationCircleOutlined
             style={{
               color: '#ff4d4f',
@@ -924,8 +938,8 @@ function BusinessNodeRenderer({
           style={{
             fontSize: 12,
             color: 'rgba(0,0,0,0.45)',
-            padding: '0 16px 8px',
-            textAlign: 'center',
+            padding: isTerminal ? '0 16px 8px' : '0 16px 8px 40px',
+            textAlign: isTerminal ? 'center' : undefined,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -936,8 +950,8 @@ function BusinessNodeRenderer({
       )}
 
       {/* 配置不完整警告 */}
-      {isIncomplete && (
-        <div style={{ padding: '0 16px 8px', textAlign: 'center' }}>
+      {isIncomplete && !isTerminal && (
+        <div style={{ padding: '0 16px 8px 40px' }}>
           <Text style={{ fontSize: 12, color: '#ff4d4f' }}>有未完成的配置</Text>
         </div>
       )}

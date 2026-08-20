@@ -19,14 +19,8 @@ import { Query, Builder } from '@react-awesome-query-builder/antd';
 import type { ImmutableTree, BuilderProps } from '@react-awesome-query-builder/antd';
 import '@react-awesome-query-builder/antd/css/styles.css';
 
-import { resolveVariables, type VariableOption } from './variable-resolver.js';
+import { resolveVariables } from './variable-resolver.js';
 import { buildQbConfig, loadFromJsonLogic, exportToJsonLogic } from './query-builder-config.js';
-import {
-  expressionToJsonLogic,
-  jsonLogicToExpression,
-  validateExpression,
-} from './jsonlogic-utils.js';
-import ExpressionCodeEditor from './ExpressionCodeEditor.js';
 
 const { Text } = Typography;
 
@@ -225,8 +219,6 @@ export default function ConditionConfigForm({
                 condition={branch.condition ?? null}
                 onChange={(cond) => updateBranch(index, { condition: cond })}
                 qbConfig={qbConfig}
-                variableOptions={variableOptions}
-                disabled={disabled}
                 isElse={isElse}
               />
             </div>
@@ -296,44 +288,26 @@ export default function ConditionConfigForm({
 }
 
 // ---------------------------------------------------------------------------
-// 条件编辑器（可视化 / 表达式 双模式切换）
+// 条件编辑器（可视化模式 — 对齐飞书 aPaaS）
 // ---------------------------------------------------------------------------
 
 interface ConditionEditorProps {
   condition: object | null;
   onChange: (condition: object | null) => void;
   qbConfig: ReturnType<typeof buildQbConfig>;
-  variableOptions: VariableOption[];
-  disabled?: boolean;
   isElse?: boolean;
 }
 
-function ConditionEditor({
-  condition,
-  onChange,
-  qbConfig,
-  variableOptions,
-  disabled = false,
-  isElse = false,
-}: ConditionEditorProps) {
-  const [exprText, setExprText] = useState(() => {
-    if (!condition) return '';
-    return jsonLogicToExpression(condition);
-  });
-
-  const [activeTab, setActiveTab] = useState<'visual' | 'expression'>('visual');
-
+function ConditionEditor({ condition, onChange, qbConfig, isElse = false }: ConditionEditorProps) {
   const [tree, setTree] = useState<ImmutableTree>(() => loadFromJsonLogic(condition, qbConfig));
 
-  // 跟踪内部变更，避免用户输入时 useEffect 覆盖正在编辑的 tree/exprText
+  // 跟踪内部变更，避免用户输入时 useEffect 覆盖正在编辑的 tree
   const internalChangeRef = useRef(false);
   // 缓存上次 condition 的序列化值，用于检测实质变化（而非引用变化）
   const lastConditionRef = useRef<string>(JSON.stringify(condition ?? null));
 
   // 当 condition prop 实质内容变化时（如删除分支导致编辑器复用），
-  // 重新同步内部 tree 和 exprText 状态。
-  // 使用 internalChangeRef 跳过由用户输入触发的 condition 变化，
-  // 使用 JSON.stringify 比较跳过仅引用变化（如其他分支变更导致的 re-render）。
+  // 重新同步内部 tree 状态。
   useEffect(() => {
     const condStr = JSON.stringify(condition ?? null);
     if (condStr === lastConditionRef.current) return;
@@ -344,7 +318,6 @@ function ConditionEditor({
       return;
     }
     setTree(loadFromJsonLogic(condition, qbConfig));
-    setExprText(condition ? jsonLogicToExpression(condition) : '');
   }, [condition, qbConfig]);
 
   const onQbChange = useCallback(
@@ -359,29 +332,6 @@ function ConditionEditor({
     [qbConfig, onChange],
   );
 
-  const onExprChange = useCallback(
-    (text: string) => {
-      setExprText(text);
-      const logic = expressionToJsonLogic(text);
-      internalChangeRef.current = true;
-      lastConditionRef.current = JSON.stringify(logic ?? null);
-      onChange(logic);
-    },
-    [onChange],
-  );
-
-  const handleTabChange = (key: string) => {
-    if (key === 'visual') {
-      setTree(loadFromJsonLogic(condition, qbConfig));
-      setActiveTab('visual');
-    } else {
-      setExprText(jsonLogicToExpression(condition));
-      setActiveTab('expression');
-    }
-  };
-
-  const _validation = validateExpression(exprText);
-
   return (
     <>
       {isElse && !condition && (
@@ -392,53 +342,14 @@ function ConditionEditor({
           空条件 = 否则(default)，添加规则后将变为条件分支
         </Text>
       )}
-      <div
-        style={{
-          display: 'flex',
-          gap: 0,
-          marginBottom: 8,
-          background: '#f0f0f0',
-          borderRadius: 6,
-          padding: 2,
-        }}
-      >
-        <Button
-          size="small"
-          type={activeTab === 'visual' ? 'primary' : 'text'}
-          onClick={() => handleTabChange('visual')}
-          style={{ flex: 1, borderRadius: '4px 0 0 4px' }}
-        >
-          可视化
-        </Button>
-        <Button
-          size="small"
-          type={activeTab === 'expression' ? 'primary' : 'text'}
-          onClick={() => handleTabChange('expression')}
-          style={{ flex: 1, borderRadius: '0 4px 4px 0' }}
-        >
-          表达式
-        </Button>
+      <div style={{ minHeight: 60 }}>
+        {createElement(Query, {
+          ...qbConfig,
+          value: tree,
+          onChange: onQbChange,
+          renderBuilder: renderBuilder,
+        })}
       </div>
-
-      {activeTab === 'visual' && (
-        <div style={{ minHeight: 60 }}>
-          {createElement(Query, {
-            ...qbConfig,
-            value: tree,
-            onChange: onQbChange,
-            renderBuilder: renderBuilder,
-          })}
-        </div>
-      )}
-
-      {activeTab === 'expression' && (
-        <ExpressionCodeEditor
-          value={exprText}
-          onChange={onExprChange}
-          variables={variableOptions}
-          disabled={disabled}
-        />
-      )}
     </>
   );
 }

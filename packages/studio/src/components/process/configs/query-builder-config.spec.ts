@@ -18,7 +18,7 @@ import {
   exportToJsonLogic,
   newQbId,
 } from './query-builder-config.js';
-import { expressionToJsonLogic, jsonLogicToExpression } from './jsonlogic-utils.js';
+// Config 类型在 buildQbConfig 等函数中通过类型断言使用，此处不直接引用
 // Config 类型在 buildQbConfig 等函数中通过类型断言使用，此处不直接引用
 
 // 基础变量列表（各类型）
@@ -292,127 +292,6 @@ describe('exportToJsonLogic', () => {
   it('null tree → 返回 null', () => {
     const config = buildQbConfig(basicVariables);
     expect(exportToJsonLogic(null, config)).toBeNull();
-  });
-});
-
-// 操作符往返测试：expressionToJsonLogic → loadFromJsonLogic → exportToJsonLogic
-// 验证所有操作符在可视化↔表达式切换时不触发 RAQB 加载错误
-describe('操作符往返测试 (expression → RAQB → expression)', () => {
-  // 注册所有需要使用的字段
-  const allFields = [
-    ...basicVariables,
-    { value: 'tags', label: '标签', type: 'string' },
-    { value: 'status', label: '状态', type: 'text' },
-    { value: 'remark', label: '备注', type: 'string' },
-  ];
-  const config = buildQbConfig(allFields);
-
-  const roundTripCases: { label: string; expr: string }[] = [
-    // 简单比较
-    { label: '等于 ==', expr: 'amount > 1000' },
-    { label: '不等于 !=', expr: 'amount != 1000' },
-    { label: '小于 <', expr: 'amount < 1000' },
-    { label: '大于等于 >=', expr: 'amount >= 1000' },
-    { label: '小于等于 <=', expr: 'amount <= 1000' },
-    // 字符串比较
-    { label: '字符串 ==', expr: 'name == "vip"' },
-    { label: '字符串 !=', expr: 'name != "vip"' },
-    // 函数表达式
-    { label: '包含 contains', expr: 'contains(tags, "vip")' },
-    { label: '不包含 notContains', expr: 'notContains(tags, "vip")' },
-    { label: '属于 in', expr: 'in(status, ["new","done"])' },
-    { label: '不属于 notIn', expr: 'notIn(status, ["new","done"])' },
-    { label: '为空 isEmpty', expr: 'isEmpty(remark)' },
-    { label: '不为空 isNotEmpty', expr: 'isNotEmpty(remark)' },
-    // AND 组合
-    { label: '简单 AND', expr: 'amount > 1 and name == "x"' },
-    { label: 'AND+函数', expr: 'amount > 1 and contains(tags, "vip")' },
-    // OR 组合
-    { label: '简单 OR', expr: 'amount > 1 or name == "x"' },
-  ];
-
-  for (const { label, expr } of roundTripCases) {
-    it(label, () => {
-      // 步骤 1: 表达式 → JsonLogic (模拟用户切换到表达式模式后的数据)
-      const logicFromExpr = expressionToJsonLogic(expr);
-      expect(logicFromExpr).not.toBeNull();
-
-      // 步骤 2: JsonLogic → RAQB tree → JsonLogic' (模拟切回可视化模式)
-      const tree = loadFromJsonLogic(logicFromExpr, config);
-      expect(tree).not.toBeNull();
-
-      // 步骤 3: 验证 RAQB 能成功导出（不抛错）
-      const exported = exportToJsonLogic(tree, config);
-      expect(exported).not.toBeNull();
-    });
-  }
-
-  // 严格往返断言：确保 contains/notContains/in/notIn 的语义在往返后保持一致
-  // 这是之前 bug 的核心: notContains 被误判为 notIn, 导致 value 结构错误
-  describe('contains/notContains/in/notIn 语义保持', () => {
-    const strictConfig = buildQbConfig([
-      ...basicVariables,
-      { value: 'tags', label: '标签', type: 'string' },
-      { value: 'status', label: '状态', type: 'text' },
-    ]);
-
-    it('contains(tags, "vip") 往返后仍为 contains 语义（标量值）', () => {
-      const expr = 'contains(tags, "vip")';
-      const logic = expressionToJsonLogic(expr);
-      expect(logic).not.toBeNull();
-
-      // 表达式 → RAQB → 导出
-      const tree = loadFromJsonLogic(logic, strictConfig);
-      const exported = exportToJsonLogic(tree, strictConfig);
-      expect(exported).not.toBeNull();
-
-      // 导出后 → 表达式（验证语义没变成 in）
-      const finalExpr = jsonLogicToExpression(exported as object);
-      expect(finalExpr).toBe('contains(tags, "vip")');
-      expect(finalExpr).not.toContain('in(');
-    });
-
-    it('notContains(tags, "vip") 往返后仍为 notContains（不被误判为 notIn）', () => {
-      const expr = 'notContains(tags, "vip")';
-      const logic = expressionToJsonLogic(expr);
-      expect(logic).not.toBeNull();
-
-      const tree = loadFromJsonLogic(logic, strictConfig);
-      const exported = exportToJsonLogic(tree, strictConfig);
-      expect(exported).not.toBeNull();
-
-      const finalExpr = jsonLogicToExpression(exported as object);
-      expect(finalExpr).toBe('notContains(tags, "vip")');
-      expect(finalExpr).not.toContain('notIn(');
-    });
-
-    it('in(status, ["new","done"]) 往返后仍为 in（多值语义）', () => {
-      const expr = 'in(status, ["new", "done"])';
-      const logic = expressionToJsonLogic(expr);
-      expect(logic).not.toBeNull();
-
-      const tree = loadFromJsonLogic(logic, strictConfig);
-      const exported = exportToJsonLogic(tree, strictConfig);
-      expect(exported).not.toBeNull();
-
-      const finalExpr = jsonLogicToExpression(exported as object);
-      expect(finalExpr).toBe('in(status, ["new", "done"])');
-      expect(finalExpr).not.toContain('contains(');
-    });
-
-    it('notIn(status, ["new","done"]) 往返后仍为 notIn', () => {
-      const expr = 'notIn(status, ["new", "done"])';
-      const logic = expressionToJsonLogic(expr);
-      expect(logic).not.toBeNull();
-
-      const tree = loadFromJsonLogic(logic, strictConfig);
-      const exported = exportToJsonLogic(tree, strictConfig);
-      expect(exported).not.toBeNull();
-
-      const finalExpr = jsonLogicToExpression(exported as object);
-      expect(finalExpr).toBe('notIn(status, ["new", "done"])');
-      expect(finalExpr).not.toContain('notContains(');
-    });
   });
 });
 

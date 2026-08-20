@@ -173,8 +173,7 @@ export default function ConditionConfigForm({
               style={{
                 border: '1px solid #eef0f4',
                 borderRadius: 8,
-                padding: 10,
-                background: '#fafbfc',
+                padding: 8,
                 transition: 'border-color 0.2s',
               }}
             >
@@ -304,8 +303,8 @@ export default function ConditionConfigForm({
 
         /* === 嵌套组容器 — 浅色背景卡片区分层级 === */
         .group-or-rule-container.group-container {
-          margin-bottom: 8px;
-          padding: 8px 10px 6px;
+          margin-bottom: 6px;
+          padding: 6px 8px 4px;
           background: #f9fafb;
           border-radius: 6px;
         }

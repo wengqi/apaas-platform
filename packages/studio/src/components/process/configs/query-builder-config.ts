@@ -285,6 +285,64 @@ function normalizeJsonLogic(rule: object): object {
 }
 
 /**
+ * RAQB 内置操作符到本平台操作符的映射。
+ *
+ * RAQB 的 loadFromJsonLogic 可能把 {"!":{"in":["vip",{"var":"tags"}]}} 匹配到
+ * 内置 not_like 操作符（value-first 格式），而非我们自定义的 not_contains。
+ * not_like 没有在本平台 config 中注册 widget，渲染时会崩溃（r.join is not a function）。
+ *
+ * 修复：加载后把 not_like/like 替换回 not_contains/contains。
+ */
+const RAQB_OP_REMAP: Record<string, string> = {
+  not_like: 'not_contains',
+  like: 'contains',
+};
+
+/**
+ * 递归遍历 RAQB tree，把不在本平台白名单内的操作符映射回本平台操作符。
+ */
+function remapTreeOperators(tree: ImmutableTree): ImmutableTree {
+  try {
+    const js = tree.toJS() as unknown as {
+      type: string;
+      children1?: Record<string, unknown>;
+      properties?: { operator?: string };
+    };
+    const remapped = remapNodeOperators(js);
+    if (remapped === js) return tree; // 无变化，返回原 tree
+    // 重新加载为 ImmutableTree
+    return QbUtils.loadTree(remapped as JsonTree);
+  } catch {
+    return tree;
+  }
+}
+
+function remapNodeOperators(node: {
+  type: string;
+  children1?: Record<string, unknown>;
+  properties?: { operator?: string };
+}): unknown {
+  let changed = false;
+  let properties = node.properties;
+  if (properties?.operator && RAQB_OP_REMAP[properties.operator]) {
+    properties = { ...properties, operator: RAQB_OP_REMAP[properties.operator] };
+    changed = true;
+  }
+  let children1 = node.children1;
+  if (children1) {
+    const newChildren: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(children1)) {
+      const remapped = remapNodeOperators(child as never);
+      if (remapped !== child) changed = true;
+      newChildren[key] = remapped;
+    }
+    children1 = newChildren;
+  }
+  if (!changed) return node;
+  return { ...node, properties, children1 };
+}
+
+/**
  * 从 JsonLogic 规则加载到 RAQB 的 Immutable 树。
  */
 export function loadFromJsonLogic(rule: object | null | undefined, config: Config): ImmutableTree {
@@ -296,7 +354,11 @@ export function loadFromJsonLogic(rule: object | null | undefined, config: Confi
     // 规范化 rule：确保 and/or 的值始终为数组（修复某些旧数据格式导致 RAQB r.join() 失败）
     const normalized = normalizeJsonLogic(rule);
     const tree = QbUtils.loadFromJsonLogic(normalized, config);
-    return tree ?? emptyTree();
+    if (!tree) return emptyTree();
+    // RAQB 可能把 {"!":{"in":[...]}} 匹配到内置 not_like/like 操作符，
+    // 这些操作符没有在本平台 config 中注册 widget，渲染时会崩溃。
+    // 把 not_like/like 映射回本平台的 not_contains/contains。
+    return remapTreeOperators(tree);
   } catch {
     return emptyTree();
   }

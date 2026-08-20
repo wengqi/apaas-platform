@@ -312,12 +312,10 @@ export default function ConditionConfigForm({
         .group-or-rule-container.group-container:last-child {
           margin-bottom: 0;
         }
-        /* 顶层组不要背景（与分支卡片背景融合） */
-        .group--children > .group-or-rule-container.group-container {
-          background: #f9fafb;
-        }
-        .group--children > .group-or-rule-container.group-container > .group > .group--children > .group-or-rule-container.group-container {
-          background: #f3f4f6;
+        /* 嵌套组内的子组用白色背景，与父组的灰色形成对比 */
+        .group-or-rule-container.group-container .group-or-rule-container.group-container {
+          background: #ffffff;
+          border: 1px solid #eef0f4;
         }
 
         /* === 自定义规则行 — 横向四列栅格 === */

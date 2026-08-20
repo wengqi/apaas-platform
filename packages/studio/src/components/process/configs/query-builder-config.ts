@@ -38,15 +38,15 @@ function mapFieldType(type?: string): string {
 // 操作符定义 — 按字段类型（与 CustomRule.tsx OPERATORS_BY_TYPE 对齐）
 // ---------------------------------------------------------------------------
 
-/** 各字段类型可用操作符 key 列表 */
+/** 各字段类型可用操作符 key 列表（使用 RAQB 内置操作符 key） */
 const OPERATOR_KEYS_BY_TYPE: Record<string, string[]> = {
   text: [
     'equal',
     'not_equal',
-    'in',
-    'not_in',
-    'contains',
-    'not_contains',
+    'like',
+    'not_like',
+    'select_any_in',
+    'select_not_any_in',
     'is_empty',
     'is_not_empty',
   ],
@@ -128,59 +128,31 @@ export function buildQbConfig(variables: VariableOption[]): Config {
     labelForFormat: '不为空',
   };
 
-  // 注册 RAQB 默认不存在的自定义操作符
-  if (!operators['contains']) {
-    operators['contains'] = {
-      label: '包含',
-      labelForFormat: '包含',
-      reversedOp: 'not_contains',
-      jsonLogic: 'in', // RAQB jsonLogic: in(op, [val, {var: field}])
-    };
-  } else {
-    operators['contains'] = { ...(operators['contains'] as object), label: '包含' };
+  // 使用 RAQB 内置操作符，仅覆盖 label 为中文。
+  // 不再自定义 contains/not_contains/in/not_in，因为它们的 jsonLogic 模板
+  // 与 RAQB 内置 like/not_like/select_any_in 冲突，导致 loadFromJsonLogic
+  // 把 {"!":{"in":[...]}} 匹配到 not_like，而 not_like 没有 formatOp，
+  // getMemoizedTree 渲染时 r.join() 崩溃。
+  // 解决方案：直接用 RAQB 内置操作符，覆盖 label。
+  if (operators['like']) {
+    (operators['like'] as { label: string; labelForFormat: string }).label = '包含';
+    (operators['like'] as { label: string; labelForFormat: string }).labelForFormat = '包含';
   }
-  if (!operators['not_contains']) {
-    operators['not_contains'] = {
-      label: '不包含',
-      labelForFormat: '不包含',
-      reversedOp: 'contains',
-      _jsonLogicIsExclamationOp: true, // 标记 ! 包装的反向操作符，RAQB 在反向导入时能识别 {"!": {"in": [...]}} 格式
-    };
-  } else {
-    operators['not_contains'] = {
-      ...(operators['not_contains'] as object),
-      label: '不包含',
-      _jsonLogicIsExclamationOp: true,
-    };
+  if (operators['not_like']) {
+    (operators['not_like'] as { label: string; labelForFormat: string }).label = '不包含';
+    (operators['not_like'] as { label: string; labelForFormat: string }).labelForFormat = '不包含';
   }
-  if (!operators['not_in']) {
-    operators['not_in'] = {
-      label: '不属于',
-      labelForFormat: '不属于',
-      reversedOp: 'in',
-      _jsonLogicIsExclamationOp: true,
-    };
-  } else {
-    operators['not_in'] = {
-      ...(operators['not_in'] as object),
-      label: '不属于',
-      _jsonLogicIsExclamationOp: true,
-    };
-  }
-  if (!operators['in']) {
-    operators['in'] = {
-      label: '属于',
-      labelForFormat: '属于',
-      reversedOp: 'not_in',
-    };
-  }
-  if (!operators['not_in']) {
-    operators['not_in'] = {
-      label: '不属于',
-      labelForFormat: '不属于',
-      reversedOp: 'in',
-    };
-  }
+  // is_empty / is_not_empty: 覆盖 label 为中文
+  operators['is_empty'] = {
+    ...((operators['is_empty'] as object) ?? {}),
+    label: '为空',
+    labelForFormat: '为空',
+  };
+  operators['is_not_empty'] = {
+    ...((operators['is_not_empty'] as object) ?? {}),
+    label: '不为空',
+    labelForFormat: '不为空',
+  };
 
   // 覆盖 config.types 中每种字段类型的 widget operators 列表
   // RAQB 从 config.types[fieldType].widgets[widgetName].operators 读取可用操作符，
@@ -285,64 +257,6 @@ function normalizeJsonLogic(rule: object): object {
 }
 
 /**
- * RAQB 内置操作符到本平台操作符的映射。
- *
- * RAQB 的 loadFromJsonLogic 可能把 {"!":{"in":["vip",{"var":"tags"}]}} 匹配到
- * 内置 not_like 操作符（value-first 格式），而非我们自定义的 not_contains。
- * not_like 没有在本平台 config 中注册 widget，渲染时会崩溃（r.join is not a function）。
- *
- * 修复：加载后把 not_like/like 替换回 not_contains/contains。
- */
-const RAQB_OP_REMAP: Record<string, string> = {
-  not_like: 'not_contains',
-  like: 'contains',
-};
-
-/**
- * 递归遍历 RAQB tree，把不在本平台白名单内的操作符映射回本平台操作符。
- */
-function remapTreeOperators(tree: ImmutableTree): ImmutableTree {
-  try {
-    const js = tree.toJS() as unknown as {
-      type: string;
-      children1?: Record<string, unknown>;
-      properties?: { operator?: string };
-    };
-    const remapped = remapNodeOperators(js);
-    if (remapped === js) return tree; // 无变化，返回原 tree
-    // 重新加载为 ImmutableTree
-    return QbUtils.loadTree(remapped as JsonTree);
-  } catch {
-    return tree;
-  }
-}
-
-function remapNodeOperators(node: {
-  type: string;
-  children1?: Record<string, unknown>;
-  properties?: { operator?: string };
-}): unknown {
-  let changed = false;
-  let properties = node.properties;
-  if (properties?.operator && RAQB_OP_REMAP[properties.operator]) {
-    properties = { ...properties, operator: RAQB_OP_REMAP[properties.operator] };
-    changed = true;
-  }
-  let children1 = node.children1;
-  if (children1) {
-    const newChildren: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(children1)) {
-      const remapped = remapNodeOperators(child as never);
-      if (remapped !== child) changed = true;
-      newChildren[key] = remapped;
-    }
-    children1 = newChildren;
-  }
-  if (!changed) return node;
-  return { ...node, properties, children1 };
-}
-
-/**
  * 从 JsonLogic 规则加载到 RAQB 的 Immutable 树。
  */
 export function loadFromJsonLogic(rule: object | null | undefined, config: Config): ImmutableTree {
@@ -354,11 +268,7 @@ export function loadFromJsonLogic(rule: object | null | undefined, config: Confi
     // 规范化 rule：确保 and/or 的值始终为数组（修复某些旧数据格式导致 RAQB r.join() 失败）
     const normalized = normalizeJsonLogic(rule);
     const tree = QbUtils.loadFromJsonLogic(normalized, config);
-    if (!tree) return emptyTree();
-    // RAQB 可能把 {"!":{"in":[...]}} 匹配到内置 not_like/like 操作符，
-    // 这些操作符没有在本平台 config 中注册 widget，渲染时会崩溃。
-    // 把 not_like/like 映射回本平台的 not_contains/contains。
-    return remapTreeOperators(tree);
+    return tree ?? emptyTree();
   } catch {
     return emptyTree();
   }

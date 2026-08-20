@@ -102,10 +102,10 @@ describe('buildQbConfig — 操作符注册', () => {
     expect(fields['name']!.operators).toHaveLength(8);
     expect(fields['name']!.operators).toContain('equal');
     expect(fields['name']!.operators).toContain('not_equal');
-    expect(fields['name']!.operators).toContain('contains');
-    expect(fields['name']!.operators).toContain('not_contains');
-    expect(fields['name']!.operators).toContain('in');
-    expect(fields['name']!.operators).toContain('not_in');
+    expect(fields['name']!.operators).toContain('like');
+    expect(fields['name']!.operators).toContain('not_like');
+    expect(fields['name']!.operators).toContain('select_any_in');
+    expect(fields['name']!.operators).toContain('select_not_any_in');
     expect(fields['name']!.operators).toContain('is_empty');
     expect(fields['name']!.operators).toContain('is_not_empty');
   });
@@ -145,32 +145,18 @@ describe('buildQbConfig — 自定义操作符 label', () => {
     expect(operators['is_not_empty']?.label).toBe('不为空');
   });
 
-  it('contains label = "包含"', () => {
+  it('like label = "包含"', () => {
     const config = buildQbConfig(basicVariables);
     const operators = (config as unknown as { operators: Record<string, { label: string }> })
       .operators;
-    expect(operators['contains']?.label).toBe('包含');
+    expect(operators['like']?.label).toBe('包含');
   });
 
-  it('not_contains label = "不包含"', () => {
+  it('not_like label = "不包含"', () => {
     const config = buildQbConfig(basicVariables);
     const operators = (config as unknown as { operators: Record<string, { label: string }> })
       .operators;
-    expect(operators['not_contains']?.label).toBe('不包含');
-  });
-
-  it('in label = "属于"', () => {
-    const config = buildQbConfig(basicVariables);
-    const operators = (config as unknown as { operators: Record<string, { label: string }> })
-      .operators;
-    expect(operators['in']?.label).toBe('属于');
-  });
-
-  it('not_in label = "不属于"', () => {
-    const config = buildQbConfig(basicVariables);
-    const operators = (config as unknown as { operators: Record<string, { label: string }> })
-      .operators;
-    expect(operators['not_in']?.label).toBe('不属于');
+    expect(operators['not_like']?.label).toBe('不包含');
   });
 });
 

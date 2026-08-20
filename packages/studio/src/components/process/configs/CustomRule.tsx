@@ -35,15 +35,15 @@ interface OperatorDef {
   multiValue?: boolean;
 }
 
-/** 按字段类型映射可用操作符 */
+/** 按字段类型映射可用操作符（使用 RAQB 内置操作符 key） */
 const OPERATORS_BY_TYPE: Record<string, OperatorDef[]> = {
   text: [
     { key: 'equal', label: '等于' },
     { key: 'not_equal', label: '不等于' },
-    { key: 'in', label: '属于', multiValue: true },
-    { key: 'not_in', label: '不属于', multiValue: true },
-    { key: 'contains', label: '包含' },
-    { key: 'not_contains', label: '不包含' },
+    { key: 'like', label: '包含' },
+    { key: 'not_like', label: '不包含' },
+    { key: 'select_any_in', label: '属于', multiValue: true },
+    { key: 'select_not_any_in', label: '不属于', multiValue: true },
     { key: 'is_empty', label: '为空', unary: true },
     { key: 'is_not_empty', label: '不为空', unary: true },
   ],

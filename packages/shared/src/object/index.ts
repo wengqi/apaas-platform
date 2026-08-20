@@ -66,13 +66,7 @@ export enum FieldType {
 }
 
 /** 字段类型 → 运行时存储值类型（JSONB 中的实际类型）。 */
-export type FieldValue =
-  | string
-  | number
-  | boolean
-  | null
-  | string[]
-  | Record<string, unknown>;
+export type FieldValue = string | number | boolean | null | string[] | Record<string, unknown>;
 
 /** 单选项定义。 */
 export interface SelectOption {
@@ -171,7 +165,10 @@ export type FieldConfig =
   | { type: FieldType.Lookup; lookup: LookupConfig }
   | { type: FieldType.SubForm; subForm: SubFormConfig }
   | { type: FieldType.Formula; formula: FormulaConfig }
-  | { type: FieldType.Rollup; rollup: { targetFieldId: FieldId; aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max' } };
+  | {
+      type: FieldType.Rollup;
+      rollup: { targetFieldId: FieldId; aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max' };
+    };
 
 // ---------------------------------------------------------------------------
 // 对象
@@ -253,20 +250,6 @@ export enum FilterOperator {
   RelativeDate = 'relative_date',
 }
 
-/** 单个筛选条件。 */
-export interface FilterCondition {
-  fieldId: FieldId;
-  operator: FilterOperator;
-  value?: FieldValue | FieldValue[];
-}
-
-/** 筛选逻辑组合。 */
-export interface FilterGroup {
-  /** 组内条件的逻辑关系 */
-  logic: 'AND' | 'OR';
-  conditions: Array<FilterCondition | FilterGroup>;
-}
-
 /** 视图字段显隐配置。 */
 export interface ViewFieldConfig {
   fieldId: FieldId;
@@ -283,8 +266,8 @@ export interface View {
   tenantId: TenantId;
   name: string;
   type: ViewType;
-  /** 筛选条件 */
-  filters?: FilterGroup;
+  /** 筛选条件（JsonLogic JSON） */
+  filters?: object | null;
   /** 默认排序 */
   sorts?: SortParam[];
   /** 分组字段 ID */

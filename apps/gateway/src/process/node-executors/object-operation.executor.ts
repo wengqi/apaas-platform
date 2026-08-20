@@ -11,13 +11,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../types.js';
-
-/** 简单筛选条件（与 record.service FilterCondition 对齐）。 */
-interface FilterCondition {
-  field: string;
-  operator: string;
-  value?: unknown;
-}
+import { jsonLogicToPrismaWhere } from '../../shared/jsonlogic-to-prisma.js';
 
 @Injectable()
 export class ObjectOperationExecutor implements NodeExecutor {
@@ -48,10 +42,7 @@ export class ObjectOperationExecutor implements NodeExecutor {
   }
 
   /** 创建记录。 */
-  private async create(
-    ctx: ExecutionContext,
-    objectId: string,
-  ): Promise<NodeExecutionResult> {
+  private async create(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
     const obj = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId: ctx.tenantId },
     });
@@ -70,10 +61,7 @@ export class ObjectOperationExecutor implements NodeExecutor {
   }
 
   /** 更新记录。 */
-  private async update(
-    ctx: ExecutionContext,
-    objectId: string,
-  ): Promise<NodeExecutionResult> {
+  private async update(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
     const recordId = (data['recordId'] as string) ?? (ctx.inputs['recordId'] as string);
     if (!recordId) throw new Error('对象更新节点缺少 recordId');
@@ -90,10 +78,7 @@ export class ObjectOperationExecutor implements NodeExecutor {
   }
 
   /** 删除记录。 */
-  private async delete(
-    ctx: ExecutionContext,
-    objectId: string,
-  ): Promise<NodeExecutionResult> {
+  private async delete(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
     const recordId = (data['recordId'] as string) ?? (ctx.inputs['recordId'] as string);
 
@@ -113,10 +98,7 @@ export class ObjectOperationExecutor implements NodeExecutor {
   }
 
   /** 查询记录。 */
-  private async query(
-    ctx: ExecutionContext,
-    objectId: string,
-  ): Promise<NodeExecutionResult> {
+  private async query(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
     const where = this.buildWhere(ctx.tenantId, objectId, data['filter']);
     const records = await prisma.record.findMany({
@@ -132,8 +114,8 @@ export class ObjectOperationExecutor implements NodeExecutor {
     };
 
     // 查询结果映射到全局变量
-    const resultVariable = (data['resultVariable'] as string) ??
-      (data['result_variable'] as string);
+    const resultVariable =
+      (data['resultVariable'] as string) ?? (data['result_variable'] as string);
     if (resultVariable) {
       const global = (ctx.variables['global'] as Record<string, unknown>) ?? {};
       global[resultVariable] = records;
@@ -145,62 +127,20 @@ export class ObjectOperationExecutor implements NodeExecutor {
 
   /**
    * 构建查询 where 子句。
-   * filter 支持 JSON 字符串数组：[{ field, operator, value }]，复用 record.service 的操作符语义。
+   * filter 支持 JsonLogic JSON 字符串，如 {"==": [{"var":"status"}, "active"]}
    */
-  private buildWhere(
-    tenantId: string,
-    objectId: string,
-    filter: unknown,
-  ): Prisma.RecordWhereInput {
+  private buildWhere(tenantId: string, objectId: string, filter: unknown): Prisma.RecordWhereInput {
     const where: Prisma.RecordWhereInput = { tenantId, objectId };
-    const conditions = this.parseFilter(filter);
-    if (conditions.length > 0) {
-      where.AND = conditions.map((f) => this.buildCondition(f));
+    if (!filter) return where;
+    try {
+      const rule = typeof filter === 'string' ? JSON.parse(filter) : filter;
+      const filterWhere = jsonLogicToPrismaWhere(rule);
+      if (filterWhere) {
+        where.AND = [filterWhere];
+      }
+    } catch {
+      // 解析失败，忽略筛选条件
     }
     return where;
-  }
-
-  private parseFilter(filter: unknown): FilterCondition[] {
-    if (!filter) return [];
-    if (typeof filter !== 'string') return [];
-    try {
-      const parsed = JSON.parse(filter);
-      if (!Array.isArray(parsed)) return [];
-      return parsed as FilterCondition[];
-    } catch {
-      return [];
-    }
-  }
-
-  private buildCondition(filter: FilterCondition): Prisma.RecordWhereInput {
-    const path = [filter.field];
-    const value = filter.value;
-    switch (filter.operator) {
-      case 'eq':
-        return { data: { path, equals: value as Prisma.InputJsonValue } };
-      case 'ne':
-        return { NOT: { data: { path, equals: value as Prisma.InputJsonValue } } };
-      case 'contains':
-        return { data: { path, string_contains: String(value) } };
-      case 'gt':
-        return { data: { path, gt: value as Prisma.InputJsonValue } };
-      case 'gte':
-        return { data: { path, gte: value as Prisma.InputJsonValue } };
-      case 'lt':
-        return { data: { path, lt: value as Prisma.InputJsonValue } };
-      case 'lte':
-        return { data: { path, lte: value as Prisma.InputJsonValue } };
-      case 'in': {
-        const values = Array.isArray(value) ? value : [value];
-        return {
-          OR: values.map(
-            (v) =>
-              ({ data: { path, equals: v as Prisma.InputJsonValue } }) as Prisma.RecordWhereInput,
-          ),
-        };
-      }
-      default:
-        return {};
-    }
   }
 }

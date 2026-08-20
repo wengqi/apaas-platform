@@ -131,54 +131,14 @@ export interface PermissionRule {
   targetId: string;
   /** 流程节点 ID（仅 PROCESS:APPROVE 用） */
   targetNodeId?: string;
-  /** 行级条件表达式（仅 RECORD 类型用），null=无条件 */
-  condition?: ConditionExpr | null;
+  /** 行级条件（JsonLogic JSON，仅 RECORD 类型用），null=无条件 */
+  condition?: object | null;
   /** 字段级白名单（仅 DATA_MODEL 类型用），null=全部字段 */
   fieldScope?: string[] | null;
   /** 权限效果 */
   effect: PermissionEffect;
   createdAt: ISODateString;
   updatedAt: ISODateString;
-}
-
-// ---------------------------------------------------------------------------
-// 行级条件表达式（ABAC）
-// ---------------------------------------------------------------------------
-
-/** 条件操作符。 */
-export type ConditionOperator =
-  | 'eq' // 等于
-  | 'neq' // 不等于
-  | 'gt' // 大于
-  | 'gte' // 大于等于
-  | 'lt' // 小于
-  | 'lte' // 小于等于
-  | 'in' // 包含于
-  | 'nin' // 不包含于
-  | 'contains' // 模糊包含
-  | 'startswith' // 前缀匹配
-  | 'endswith' // 后缀匹配
-  | 'isnull' // 为空
-  | 'isnotnull'; // 不为空
-
-/** 条件表达式 — 编译为 Prisma WHERE 子句，注入到记录查询。 */
-export interface ConditionExpr {
-  /** 逻辑组合方式 */
-  logic?: 'AND' | 'OR';
-  /** 条件组（每个条件为字段+操作符+值） */
-  conditions: ConditionItem[];
-  /** 嵌套子条件组 */
-  groups?: ConditionExpr[];
-}
-
-/** 单个条件项。 */
-export interface ConditionItem {
-  /** 字段名（支持 ${currentUser} 等动态变量） */
-  field: string;
-  /** 操作符 */
-  operator: ConditionOperator;
-  /** 比较值（支持 ${currentUser} / ${user.departments} 等变量） */
-  value: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +166,8 @@ export interface CreatePermissionRuleRequest {
   action: PermissionAction;
   targetId: string;
   targetNodeId?: string;
-  condition?: ConditionExpr | null;
+  /** 行级条件（JsonLogic JSON），null=无条件 */
+  condition?: object | null;
   fieldScope?: string[] | null;
   effect?: PermissionEffect;
   appId?: AppId;

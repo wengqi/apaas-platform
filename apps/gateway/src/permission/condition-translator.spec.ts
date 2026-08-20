@@ -12,118 +12,89 @@ describe('condition-translator', () => {
       expect(translateCondition('not-an-object', variables)).toBeNull();
     });
 
-    it('无 conditions 和 groups 返回 null', () => {
+    it('空对象返回 null', () => {
       expect(translateCondition({}, variables)).toBeNull();
     });
   });
 
-  describe('translateCondition — 各 operator', () => {
-    it('eq — 等于', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'status', operator: 'eq', value: 'active' }] },
-        variables,
-      );
-      expect(result).toEqual({
+  describe('translateCondition — 各操作符', () => {
+    it('== 等于', () => {
+      expect(translateCondition({ '==': [{ var: 'status' }, 'active'] }, variables)).toEqual({
         data: { path: ['status'], equals: 'active' },
       });
     });
 
-    it('ne — 不等于', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'status', operator: 'ne', value: 'inactive' }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('!= 不等于', () => {
+      expect(translateCondition({ '!=': [{ var: 'status' }, 'inactive'] }, variables)).toEqual({
         NOT: { data: { path: ['status'], equals: 'inactive' } },
       });
     });
 
-    it('contains — 包含', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'name', operator: 'contains', value: 'john' }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('字符串包含 — {"in": ["needle", {"var":"field"}]}', () => {
+      expect(translateCondition({ in: ['john', { var: 'name' }] }, variables)).toEqual({
         data: { path: ['name'], string_contains: 'john' },
       });
     });
 
-    it('not_contains — 不包含', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'name', operator: 'not_contains', value: 'spam' }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('不包含 — {"!": {"in": ["spam", {"var":"field"}]}}', () => {
+      expect(translateCondition({ '!': { in: ['spam', { var: 'name' }] } }, variables)).toEqual({
         NOT: { data: { path: ['name'], string_contains: 'spam' } },
       });
     });
 
-    it('starts_with — 前缀匹配', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'code', operator: 'starts_with', value: 'PRE' }] },
-        variables,
-      );
-      expect(result).toEqual({
-        data: { path: ['code'], string_starts_with: 'PRE' },
+    it('属于集合 — {"in": [{"var":"field"}, [...] ]}', () => {
+      expect(
+        translateCondition({ in: [{ var: 'status' }, ['active', 'pending']] }, variables),
+      ).toEqual({
+        OR: [
+          { data: { path: ['status'], equals: 'active' } },
+          { data: { path: ['status'], equals: 'pending' } },
+        ],
       });
     });
 
-    it('ends_with — 后缀匹配', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'email', operator: 'ends_with', value: '@test.com' }] },
-        variables,
-      );
-      expect(result).toEqual({
-        data: { path: ['email'], string_ends_with: '@test.com' },
+    it('不属于集合 — {"!": {"in": [{"var":"field"}, [...]]}}', () => {
+      expect(
+        translateCondition(
+          { '!': { in: [{ var: 'status' }, ['deleted', 'archived']] } },
+          variables,
+        ),
+      ).toEqual({
+        NOT: {
+          OR: [
+            { data: { path: ['status'], equals: 'deleted' } },
+            { data: { path: ['status'], equals: 'archived' } },
+          ],
+        },
       });
     });
 
-    it('gt — 大于', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'amount', operator: 'gt', value: 1000 }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('> 大于', () => {
+      expect(translateCondition({ '>': [{ var: 'amount' }, 1000] }, variables)).toEqual({
         data: { path: ['amount'], gt: 1000 },
       });
     });
 
-    it('gte — 大于等于', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'amount', operator: 'gte', value: 1000 }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('>= 大于等于', () => {
+      expect(translateCondition({ '>=': [{ var: 'amount' }, 1000] }, variables)).toEqual({
         data: { path: ['amount'], gte: 1000 },
       });
     });
 
-    it('lt — 小于', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'amount', operator: 'lt', value: 500 }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('< 小于', () => {
+      expect(translateCondition({ '<': [{ var: 'amount' }, 500] }, variables)).toEqual({
         data: { path: ['amount'], lt: 500 },
       });
     });
 
-    it('lte — 小于等于', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'amount', operator: 'lte', value: 500 }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('<= 小于等于', () => {
+      expect(translateCondition({ '<=': [{ var: 'amount' }, 500] }, variables)).toEqual({
         data: { path: ['amount'], lte: 500 },
       });
     });
 
-    it('is_empty — 使用 Prisma.DbNull / JsonNull 哨兵', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'note', operator: 'is_empty' }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('为空 — {"!": {"var":"field"}}', () => {
+      expect(translateCondition({ '!': { var: 'note' } }, variables)).toEqual({
         OR: [
           { data: { path: ['note'], equals: Prisma.DbNull } },
           { data: { path: ['note'], equals: Prisma.JsonNull } },
@@ -131,12 +102,8 @@ describe('condition-translator', () => {
       });
     });
 
-    it('is_not_empty — NOT 取反', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'note', operator: 'is_not_empty' }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('不为空 — {"!!": {"var":"field"}}', () => {
+      expect(translateCondition({ '!!': { var: 'note' } }, variables)).toEqual({
         NOT: {
           OR: [
             { data: { path: ['note'], equals: Prisma.DbNull } },
@@ -145,77 +112,36 @@ describe('condition-translator', () => {
         },
       });
     });
-
-    it('in — 展开为 OR 多个 equals', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'status', operator: 'in', value: ['active', 'pending'] }] },
-        variables,
-      );
-      expect(result).toEqual({
-        OR: [
-          { data: { path: ['status'], equals: 'active' } },
-          { data: { path: ['status'], equals: 'pending' } },
-        ],
-      });
-    });
-
-    it('not_in — 展开为 AND 多个 NOT equals', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'status', operator: 'not_in', value: ['deleted', 'archived'] }] },
-        variables,
-      );
-      expect(result).toEqual({
-        AND: [
-          { NOT: { data: { path: ['status'], equals: 'deleted' } } },
-          { NOT: { data: { path: ['status'], equals: 'archived' } } },
-        ],
-      });
-    });
-
-    it('未知 operator 返回 null', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'x', operator: 'unknown_op', value: 1 }] },
-        variables,
-      );
-      expect(result).toBeNull();
-    });
   });
 
   describe('translateCondition — 变量替换', () => {
-    it('${currentUser} 变量被替换', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'owner_id', operator: 'eq', value: '${currentUser}' }] },
-        variables,
-      );
-      expect(result).toEqual({
+    it('{"var":"__currentUser"} 从 variables 取值', () => {
+      expect(
+        translateCondition({ '==': [{ var: 'owner_id' }, { var: '__currentUser' }] }, variables),
+      ).toEqual({
         data: { path: ['owner_id'], equals: 'user_123' },
       });
     });
 
-    it('未定义的变量替换为空串', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'x', operator: 'eq', value: '${unknownVar}' }] },
-        variables,
-      );
-      expect(result).toEqual({
-        data: { path: ['x'], equals: '' },
+    it('未定义的变量替换为 null', () => {
+      expect(
+        translateCondition({ '==': [{ var: 'owner_id' }, { var: '__unknownVar' }] }, variables),
+      ).toEqual({
+        data: { path: ['owner_id'], equals: null },
       });
     });
   });
 
   describe('translateCondition — 逻辑组合', () => {
-    it('AND 逻辑（默认）', () => {
-      const result = translateCondition(
-        {
-          logic: 'AND',
-          conditions: [
-            { field: 'status', operator: 'eq', value: 'active' },
-            { field: 'amount', operator: 'gt', value: 100 },
-          ],
-        },
-        variables,
-      );
-      expect(result).toEqual({
+    it('AND 逻辑', () => {
+      expect(
+        translateCondition(
+          {
+            and: [{ '==': [{ var: 'status' }, 'active'] }, { '>': [{ var: 'amount' }, 100] }],
+          },
+          variables,
+        ),
+      ).toEqual({
         AND: [
           { data: { path: ['status'], equals: 'active' } },
           { data: { path: ['amount'], gt: 100 } },
@@ -224,17 +150,14 @@ describe('condition-translator', () => {
     });
 
     it('OR 逻辑', () => {
-      const result = translateCondition(
-        {
-          logic: 'OR',
-          conditions: [
-            { field: 'status', operator: 'eq', value: 'urgent' },
-            { field: 'priority', operator: 'eq', value: 'high' },
-          ],
-        },
-        variables,
-      );
-      expect(result).toEqual({
+      expect(
+        translateCondition(
+          {
+            or: [{ '==': [{ var: 'status' }, 'urgent'] }, { '==': [{ var: 'priority' }, 'high'] }],
+          },
+          variables,
+        ),
+      ).toEqual({
         OR: [
           { data: { path: ['status'], equals: 'urgent' } },
           { data: { path: ['priority'], equals: 'high' } },
@@ -243,33 +166,25 @@ describe('condition-translator', () => {
     });
 
     it('单条件不包装 AND/OR', () => {
-      const result = translateCondition(
-        { conditions: [{ field: 'status', operator: 'eq', value: 'active' }] },
-        variables,
-      );
-      expect(result).toEqual({
+      expect(translateCondition({ '==': [{ var: 'status' }, 'active'] }, variables)).toEqual({
         data: { path: ['status'], equals: 'active' },
       });
     });
 
-    it('嵌套 groups 递归翻译', () => {
-      const result = translateCondition(
-        {
-          logic: 'AND',
-          conditions: [{ field: 'a', operator: 'eq', value: 1 }],
-          groups: [
-            {
-              logic: 'OR',
-              conditions: [
-                { field: 'b', operator: 'eq', value: 2 },
-                { field: 'c', operator: 'eq', value: 3 },
-              ],
-            },
-          ],
-        },
-        variables,
-      );
-      expect(result).toEqual({
+    it('嵌套 (A AND (B OR C))', () => {
+      expect(
+        translateCondition(
+          {
+            and: [
+              { '==': [{ var: 'a' }, 1] },
+              {
+                or: [{ '==': [{ var: 'b' }, 2] }, { '==': [{ var: 'c' }, 3] }],
+              },
+            ],
+          },
+          variables,
+        ),
+      ).toEqual({
         AND: [
           { data: { path: ['a'], equals: 1 } },
           {

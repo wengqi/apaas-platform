@@ -125,19 +125,6 @@ export type FilterOperator =
   | 'in'
   | 'not_in';
 
-/** 单个筛选条件(视图配置内用 fieldId)。 */
-export interface ViewFilterCondition {
-  fieldId: string;
-  operator: FilterOperator;
-  value?: unknown;
-}
-
-/** 筛选逻辑组合(AND / OR)。 */
-export interface ViewFilterGroup {
-  logic: 'AND' | 'OR';
-  conditions: ViewFilterCondition[];
-}
-
 /** 视图排序配置(field 为字段 apiName)。 */
 export interface ViewSortConfig {
   field: string;
@@ -153,7 +140,8 @@ export interface ViewFieldConfig {
 
 /** 视图配置(存于 View.config JSON 字段)。 */
 export interface ViewConfig {
-  filters?: ViewFilterGroup;
+  /** JsonLogic JSON 规则（如 {"and": [{"==": [{"var":"status"}, "active"]}]}） */
+  filters?: object | null;
   sorts?: ViewSortConfig[];
   fields?: ViewFieldConfig[];
 }
@@ -262,15 +250,8 @@ export interface QueryRecordsParams {
   pageSize?: number;
   /** "fieldApiName:asc" 或 "fieldApiName:desc" */
   sort?: string;
-  /** JSON 字符串:[{"field":"apiName","operator":"eq","value":"x"}] */
+  /** JsonLogic JSON 字符串，如 {"==": [{"var":"status"}, "active"]} */
   filter?: string;
-}
-
-/** 运行时筛选条件(field 为字段 apiName,对齐后端 record.service)。 */
-export interface RecordFilterCondition {
-  field: string;
-  operator: FilterOperator;
-  value?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -288,12 +269,10 @@ export const objectsApi = {
 
   /** 对象详情(含字段) — 后端返回 name，前端映射为 label */
   get: (objectId: string) =>
-    client
-      .get<ApiResponse<ObjectWithFields>>(`/api/objects/${objectId}`)
-      .then((res) => {
-        const data = res.data.data as ObjectWithFields;
-        return { ...data, label: data.label ?? data.name };
-      }),
+    client.get<ApiResponse<ObjectWithFields>>(`/api/objects/${objectId}`).then((res) => {
+      const data = res.data.data as ObjectWithFields;
+      return { ...data, label: data.label ?? data.name };
+    }),
 
   /** 创建对象 — 前端用 label，后端用 name，双向转换 */
   create: (appId: string, data: CreateObjectRequest) =>

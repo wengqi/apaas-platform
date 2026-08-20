@@ -18,8 +18,9 @@ import {
   Popconfirm,
   Form,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SettingOutlined } from '@ant-design/icons';
 import { rolesApi, type Role, type CreateRoleRequest } from '../../api/permissions.js';
+import PermissionRuleEditor from './PermissionRuleEditor.js';
 
 const { Text, Title } = Typography;
 
@@ -195,6 +196,7 @@ export default function RoleManager() {
 // ---------------------------------------------------------------------------
 
 function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
+  const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
   const { data: users } = useQuery({
     queryKey: ['role-users', role.id],
     queryFn: () => rolesApi.getUsers(role.id),
@@ -217,13 +219,18 @@ function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
         </Space>
       }
       extra={
-        !role.isBuiltIn && (
-          <Popconfirm title="确定删除此角色?" onConfirm={onDelete}>
-            <Button danger size="small" icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-        )
+        <Space>
+          <Button size="small" icon={<SettingOutlined />} onClick={() => setRuleEditorOpen(true)}>
+            编辑规则
+          </Button>
+          {!role.isBuiltIn && (
+            <Popconfirm title="确定删除此角色?" onConfirm={onDelete}>
+              <Button danger size="small" icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
       }
     >
       <div style={{ marginBottom: 24 }}>
@@ -254,8 +261,13 @@ function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
                   <Tag color="purple">{rule.type}</Tag>
                   <Tag>{rule.action}</Tag>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    {rule.targetId}
+                    {rule.targetId === '*' ? '所有对象' : rule.targetId}
                   </Text>
+                  {rule.condition && (
+                    <Tag color="orange" style={{ fontSize: 11 }}>
+                      行级条件
+                    </Tag>
+                  )}
                 </Space>
               </List.Item>
             )}
@@ -264,6 +276,12 @@ function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无权限规则" />
         )}
       </div>
+
+      <PermissionRuleEditor
+        open={ruleEditorOpen}
+        role={role}
+        onClose={() => setRuleEditorOpen(false)}
+      />
     </Card>
   );
 }

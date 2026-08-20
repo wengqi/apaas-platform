@@ -5,6 +5,7 @@ import { FormulaEngine } from '../object/formula-engine.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { TriggerService } from '../process/trigger.service.js';
 import { translateCondition } from '../permission/condition-translator.js';
+import { jsonLogicToPrismaWhere } from '../shared/jsonlogic-to-prisma.js';
 import type { PermissionContext } from '../auth/authenticated-request.js';
 
 /**
@@ -16,13 +17,6 @@ interface ObjectField {
   apiName: string;
   type: string;
   config: unknown;
-}
-
-/** 筛选条件（运行时，field 为字段 apiName）。 */
-export interface FilterCondition {
-  field: string;
-  operator: string;
-  value?: unknown;
 }
 
 /** 查询记录参数。 */
@@ -103,9 +97,10 @@ export class RecordService {
     // 构建 where 子句
     const where: Prisma.RecordWhereInput = { tenantId, objectId };
 
-    const filters = this.parseFilter(params.filter);
-    if (filters.length > 0) {
-      where.AND = filters.map((f) => this.buildCondition(f));
+    // 视图筛选（JsonLogic JSON 字符串）
+    const filterWhere = this.parseFilter(params.filter);
+    if (filterWhere) {
+      where.AND = [filterWhere];
     }
 
     // 注入行级权限条件
@@ -349,106 +344,17 @@ export class RecordService {
   }
 
   /**
-   * 解析 filter 查询参数（JSON 字符串）为条件数组。
-   * 接受格式：[{"field":"status","operator":"eq","value":"active"}, ...]
+   * 解析 filter 查询参数（JsonLogic JSON 字符串）为 Prisma where 片段。
+   * 接受格式：JsonLogic JSON 对象，如 {"==": [{"var":"status"}, "active"]}
    */
-  private parseFilter(filterStr?: string): FilterCondition[] {
-    if (!filterStr) return [];
+  private parseFilter(filterStr?: string): Prisma.RecordWhereInput | null {
+    if (!filterStr) return null;
     try {
       const parsed = JSON.parse(filterStr);
-      if (!Array.isArray(parsed)) return [];
-      return parsed as FilterCondition[];
+      if (!parsed || typeof parsed !== 'object') return null;
+      return jsonLogicToPrismaWhere(parsed);
     } catch {
-      return [];
-    }
-  }
-
-  /**
-   * 将单个筛选条件翻译为 Prisma where 片段（JSONB path 过滤）。
-   */
-  private buildCondition(filter: FilterCondition): Prisma.RecordWhereInput {
-    const path = [filter.field];
-    const value = filter.value;
-
-    switch (filter.operator) {
-      case 'eq':
-        return { data: { path, equals: value as Prisma.InputJsonValue } };
-
-      case 'ne':
-        return {
-          NOT: { data: { path, equals: value as Prisma.InputJsonValue } },
-        };
-
-      case 'contains':
-        return { data: { path, string_contains: String(value) } };
-
-      case 'not_contains':
-        return {
-          NOT: { data: { path, string_contains: String(value) } },
-        };
-
-      case 'starts_with':
-        return { data: { path, string_starts_with: String(value) } };
-
-      case 'ends_with':
-        return { data: { path, string_ends_with: String(value) } };
-
-      case 'gt':
-        return { data: { path, gt: value as Prisma.InputJsonValue } };
-
-      case 'gte':
-        return { data: { path, gte: value as Prisma.InputJsonValue } };
-
-      case 'lt':
-        return { data: { path, lt: value as Prisma.InputJsonValue } };
-
-      case 'lte':
-        return { data: { path, lte: value as Prisma.InputJsonValue } };
-
-      case 'is_empty':
-        return {
-          OR: [
-            { data: { path, equals: Prisma.DbNull } },
-            { data: { path, equals: Prisma.JsonNull } },
-          ],
-        };
-
-      case 'is_not_empty':
-        return {
-          NOT: {
-            OR: [
-              { data: { path, equals: Prisma.DbNull } },
-              { data: { path, equals: Prisma.JsonNull } },
-            ],
-          },
-        };
-
-      case 'in': {
-        const values = Array.isArray(value) ? value : [value];
-        return {
-          OR: values.map(
-            (v) =>
-              ({
-                data: { path, equals: v as Prisma.InputJsonValue },
-              }) as Prisma.RecordWhereInput,
-          ),
-        };
-      }
-
-      case 'not_in': {
-        const values = Array.isArray(value) ? value : [value];
-        return {
-          AND: values.map(
-            (v) =>
-              ({
-                NOT: { data: { path, equals: v as Prisma.InputJsonValue } },
-              }) as Prisma.RecordWhereInput,
-          ),
-        };
-      }
-
-      default:
-        return {};
+      return null;
     }
   }
 

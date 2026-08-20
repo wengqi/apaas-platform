@@ -142,11 +142,7 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
           dataSource={views}
           renderItem={(view) => (
             <List.Item>
-              <Space
-                direction="vertical"
-                size={4}
-                style={{ width: '100%' }}
-              >
+              <Space direction="vertical" size={4} style={{ width: '100%' }}>
                 <Space style={{ width: '100%', justifyContent: 'space-between' }}>
                   <Space size={10}>
                     <Text strong>{view.name}</Text>
@@ -252,11 +248,7 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
 // ---------------------------------------------------------------------------
 
 /** 展示视图的筛选/排序/字段配置摘要(行内小标签)。 */
-function ViewConfigSummary({
-  config,
-}: {
-  config: ViewConfig | undefined;
-}) {
+function ViewConfigSummary({ config }: { config: ViewConfig | undefined }) {
   if (!config) {
     return (
       <Text type="secondary" style={{ fontSize: 12 }}>
@@ -268,12 +260,11 @@ function ViewConfigSummary({
   const parts: React.ReactNode[] = [];
 
   // 筛选摘要
-  const filterCount = config.filters?.conditions?.length ?? 0;
-  if (filterCount > 0) {
-    const logic = config.filters?.logic === 'OR' ? '或' : '且';
+  const hasFilters = config.filters && Object.keys(config.filters).length > 0;
+  if (hasFilters) {
     parts.push(
       <Tag key="filter" icon={<FilterOutlined />} color="blue" style={{ margin: 0, fontSize: 11 }}>
-        {filterCount} 个筛选({logic})
+        已配置筛选
       </Tag>,
     );
   }

@@ -29,7 +29,6 @@ import {
   type Field,
   type FilterOperator,
   type ObjectWithFields,
-  type RecordFilterCondition,
   type RecordItem,
 } from '../../api/objects.js';
 import { type FieldType } from '../../constants/fieldTypes.js';
@@ -84,6 +83,46 @@ interface FilterRow {
 }
 
 /**
+ * 将单个筛选行转换为 JsonLogic 规则。
+ * field 为字段 apiName，operator 为旧操作符名。
+ */
+function filterRowToJsonLogic(field: string, operator: FilterOperator, value?: unknown): object {
+  const varRef = { var: field };
+  switch (operator) {
+    case 'eq':
+      return { '==': [varRef, value] };
+    case 'ne':
+      return { '!=': [varRef, value] };
+    case 'contains':
+      return { in: [String(value), varRef] };
+    case 'not_contains':
+      return { '!': { in: [String(value), varRef] } };
+    case 'starts_with':
+      return { in: [String(value), varRef] }; // 注: starts_with 简化为 contains，后端 JSONB 仅支持 string_contains
+    case 'ends_with':
+      return { in: [String(value), varRef] }; // 注: ends_with 简化为 contains
+    case 'gt':
+      return { '>': [varRef, value] };
+    case 'gte':
+      return { '>=': [varRef, value] };
+    case 'lt':
+      return { '<': [varRef, value] };
+    case 'lte':
+      return { '<=': [varRef, value] };
+    case 'is_empty':
+      return { '!': varRef };
+    case 'is_not_empty':
+      return { '!!': varRef };
+    case 'in':
+      return { in: [varRef, Array.isArray(value) ? value : [value]] };
+    case 'not_in':
+      return { '!': { in: [varRef, Array.isArray(value) ? value : [value]] } };
+    default:
+      return { '==': [varRef, value] };
+  }
+}
+
+/**
  * 记录列表(数据表格)。
  * 根据对象字段动态生成列,支持分页 / 筛选 / 排序 / 新增 / 编辑 / 删除。
  */
@@ -107,30 +146,28 @@ export default function RecordList({ object }: RecordListProps) {
     [object.fields],
   );
 
-  /** 构建筛选 JSON 字符串(field 用 apiName)。 */
+  /** 构建筛选 JsonLogic JSON 字符串(field 用 apiName)。 */
   const filterStr = useMemo(() => {
-    const conditions: RecordFilterCondition[] = [];
+    const rules: object[] = [];
 
     // 全文搜索(对第一个文本字段 contains)
     if (appliedSearch && firstTextField) {
-      conditions.push({
-        field: firstTextField.apiName,
-        operator: 'contains',
-        value: appliedSearch,
-      });
+      rules.push({ in: [appliedSearch, { var: firstTextField.apiName }] });
     }
 
     // 筛选行(忽略无值且需要值的条件)
     for (const row of appliedFilter) {
       if (NO_VALUE_OPERATORS.includes(row.operator)) {
-        conditions.push({ field: row.field, operator: row.operator });
+        rules.push(filterRowToJsonLogic(row.field, row.operator));
       } else if (row.value !== undefined && row.value !== '' && row.value !== null) {
-        conditions.push({ field: row.field, operator: row.operator, value: row.value });
+        rules.push(filterRowToJsonLogic(row.field, row.operator, row.value));
       }
     }
 
-    if (conditions.length === 0) return undefined;
-    return JSON.stringify(conditions);
+    if (rules.length === 0) return undefined;
+    // AND 组合所有条件
+    const logic = rules.length === 1 ? rules[0]! : { and: rules };
+    return JSON.stringify(logic);
   }, [appliedFilter, appliedSearch, firstTextField]);
 
   /** 排序字符串(field:order)。 */

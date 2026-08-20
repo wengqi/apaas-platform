@@ -5,8 +5,6 @@ import {
   Divider,
   Drawer,
   Empty,
-  Input,
-  InputNumber,
   Select,
   Space,
   Tag,
@@ -40,15 +38,13 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   objectsApi,
   type Field,
-  type FilterOperator,
   type ViewConfig,
   type ViewFieldConfig,
-  type ViewFilterCondition,
-  type ViewFilterGroup,
   type ViewInfo,
   type ViewSortConfig,
 } from '../../api/objects.js';
-import { getFieldTypeMeta, type FieldType } from '../../constants/fieldTypes.js';
+import { getFieldTypeMeta } from '../../constants/fieldTypes.js';
+import QueryBuilderPanel from '../shared/QueryBuilderPanel.js';
 
 const { Text, Title } = Typography;
 
@@ -59,27 +55,6 @@ interface ViewConfiguratorProps {
   onClose: () => void;
 }
 
-/** 操作符 → 中文标签。 */
-const OPERATOR_LABEL: Record<FilterOperator, string> = {
-  eq: '等于',
-  ne: '不等于',
-  contains: '包含',
-  not_contains: '不包含',
-  starts_with: '开头是',
-  ends_with: '结尾是',
-  gt: '大于',
-  gte: '大于等于',
-  lt: '小于',
-  lte: '小于等于',
-  is_empty: '为空',
-  is_not_empty: '不为空',
-  in: '属于',
-  not_in: '不属于',
-};
-
-/** 无需输入值的操作符。 */
-const NO_VALUE_OPERATORS: FilterOperator[] = ['is_empty', 'is_not_empty'];
-
 /**
  * 视图配置器(Drawer)。
  * 配置视图的筛选条件 / 排序 / 字段显隐,保存到 View.config JSON。
@@ -89,27 +64,14 @@ const NO_VALUE_OPERATORS: FilterOperator[] = ['is_empty', 'is_not_empty'];
  *   sorts:   [{ field: apiName, order: 'asc'|'desc' }]
  *   fields:  [{ fieldId, order }]
  */
-export default function ViewConfigurator({
-  open,
-  view,
-  fields,
-  onClose,
-}: ViewConfiguratorProps) {
+export default function ViewConfigurator({ open, view, fields, onClose }: ViewConfiguratorProps) {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState<ViewFilterGroup>({ logic: 'AND', conditions: [] });
+  const [filters, setFilters] = useState<object | null>(null);
   const [sorts, setSorts] = useState<ViewSortConfig[]>([]);
   /** 显隐字段列表(仅勾选的会显示,顺序可拖拽)。 */
   const [visibleFields, setVisibleFields] = useState<ViewFieldConfig[]>([]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
-
-  /** 字段选项(用于下拉)。 */
-  const fieldOptions = useMemo(
-    () => fields.map((f) => ({ value: f.id, label: f.label, apiName: f.apiName, type: f.type })),
-    [fields],
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   /** fieldId → Field 映射(快速查 apiName / 类型)。 */
   const fieldMap = useMemo(() => {
@@ -122,17 +84,13 @@ export default function ViewConfigurator({
   useEffect(() => {
     if (!open || !view) return;
     const cfg: ViewConfig = (view.config ?? {}) as ViewConfig;
-    setFilters(
-      cfg.filters ?? { logic: 'AND', conditions: [] },
-    );
+    setFilters(cfg.filters ?? null);
     setSorts(cfg.sorts ?? []);
     // 字段显隐:默认全部显示(按 fields 数组顺序)
     if (cfg.fields && cfg.fields.length > 0) {
       setVisibleFields(cfg.fields.map((f) => ({ ...f })));
     } else {
-      setVisibleFields(
-        fields.map((f, idx) => ({ fieldId: f.id, order: idx })),
-      );
+      setVisibleFields(fields.map((f, idx) => ({ fieldId: f.id, order: idx })));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, view?.id]);
@@ -161,48 +119,12 @@ export default function ViewConfigurator({
   };
 
   // -------------------------------------------------------------------------
-  // 筛选条件操作
-  // -------------------------------------------------------------------------
-
-  const addCondition = () => {
-    const firstField = fields[0];
-    setFilters((prev) => ({
-      ...prev,
-      conditions: [
-        ...prev.conditions,
-        {
-          fieldId: firstField?.id ?? '',
-          operator: 'eq',
-          value: '',
-        },
-      ],
-    }));
-  };
-
-  const updateCondition = (index: number, patch: Partial<ViewFilterCondition>) => {
-    setFilters((prev) => ({
-      ...prev,
-      conditions: prev.conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)),
-    }));
-  };
-
-  const removeCondition = (index: number) => {
-    setFilters((prev) => ({
-      ...prev,
-      conditions: prev.conditions.filter((_, i) => i !== index),
-    }));
-  };
-
-  // -------------------------------------------------------------------------
   // 排序操作
   // -------------------------------------------------------------------------
 
   const addSort = () => {
     const firstField = fields[0];
-    setSorts((prev) => [
-      ...prev,
-      { field: firstField?.apiName ?? '', order: 'asc' },
-    ]);
+    setSorts((prev) => [...prev, { field: firstField?.apiName ?? '', order: 'asc' }]);
   };
 
   const updateSort = (index: number, patch: Partial<ViewSortConfig>) => {
@@ -270,95 +192,12 @@ export default function ViewConfigurator({
     >
       {/* ===================== 筛选条件 ===================== */}
       <SectionHeader icon={<FilterOutlined />} title="筛选条件" />
-      <Space style={{ marginBottom: 12 }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          满足
-        </Text>
-        <Select
-          size="small"
-          value={filters.logic}
-          onChange={(v) => setFilters((prev) => ({ ...prev, logic: v }))}
-          style={{ width: 80 }}
-          options={[
-            { value: 'AND', label: '全部(AND)' },
-            { value: 'OR', label: '任意(OR)' },
-          ]}
-        />
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          以下条件
-        </Text>
-      </Space>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {filters.conditions.length === 0 && (
-          <Text type="secondary" style={{ fontSize: 12, padding: '8px 0' }}>
-            暂无筛选条件
-          </Text>
-        )}
-        {filters.conditions.map((cond, index) => {
-          const field = fieldMap.get(cond.fieldId);
-          const operators: FilterOperator[] = field ? getOperatorsForType(field.type) : ['eq', 'ne'];
-          const needValue = !NO_VALUE_OPERATORS.includes(cond.operator);
-          return (
-            <div
-              key={index}
-              style={{
-                display: 'flex',
-                gap: 6,
-                alignItems: 'center',
-                background: '#fafbfc',
-                borderRadius: 8,
-                padding: '6px 8px',
-              }}
-            >
-              <Select
-                size="small"
-                value={cond.fieldId}
-                onChange={(v) => {
-                  const newField = fieldMap.get(v);
-                  updateCondition(index, {
-                    fieldId: v,
-                    operator: newField ? getDefaultOperator(newField.type) : 'eq',
-                    value: '',
-                  });
-                }}
-                style={{ width: 130 }}
-                showSearch
-                optionFilterProp="label"
-                options={fieldOptions.map((o) => ({ value: o.value, label: o.label }))}
-              />
-              <Select
-                size="small"
-                value={cond.operator}
-                onChange={(v) => updateCondition(index, { operator: v })}
-                style={{ width: 110 }}
-                options={operators.map((op) => ({ value: op, label: OPERATOR_LABEL[op] }))}
-              />
-              {needValue ? (
-                <ConditionValueInput
-                  field={field}
-                  value={cond.value}
-                  onChange={(v) => updateCondition(index, { value: v })}
-                />
-              ) : (
-                <Text type="secondary" style={{ fontSize: 12, flex: 1 }}>
-                  —
-                </Text>
-              )}
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => removeCondition(index)}
-              />
-            </div>
-          );
-        })}
-        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addCondition} block>
-          添加条件
-        </Button>
-      </div>
+      <QueryBuilderPanel
+        fields={fields}
+        value={filters}
+        onChange={setFilters}
+        placeholder="空条件 = 显示所有记录，添加规则后将按条件筛选"
+      />
 
       <Divider style={{ margin: '20px 0 16px' }} />
 
@@ -521,75 +360,6 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
   );
 }
 
-/** 条件值输入控件(按字段类型适配)。 */
-function ConditionValueInput({
-  field,
-  value,
-  onChange,
-}: {
-  field: Field | undefined;
-  value: unknown;
-  onChange: (v: unknown) => void;
-}) {
-  if (!field) {
-    return <Input size="small" style={{ flex: 1 }} placeholder="值" />;
-  }
-  const type = field.type;
-  // 单选 / 多选 → Select
-  if (type === 'single_select' || type === 'multi_select') {
-    const options = (field.config.options ?? []).filter((o) => !!o.label);
-    return (
-      <Select
-        size="small"
-        mode={type === 'multi_select' ? 'multiple' : undefined}
-        allowClear
-        value={value as string | string[] | undefined}
-        onChange={(v) => onChange(v)}
-        style={{ flex: 1, minWidth: 120 }}
-        placeholder="选择值"
-        options={options.map((o) => ({ value: o.label, label: o.label }))}
-      />
-    );
-  }
-  // 复选框 → Switch
-  if (type === 'checkbox') {
-    return (
-      <Select
-        size="small"
-        value={value as string | undefined}
-        onChange={(v) => onChange(v)}
-        style={{ flex: 1 }}
-        options={[
-          { value: 'true', label: '是' },
-          { value: 'false', label: '否' },
-        ]}
-      />
-    );
-  }
-  // 数字类 → InputNumber
-  if (['number', 'currency', 'percent'].includes(type)) {
-    return (
-      <InputNumber
-        size="small"
-        value={value as number | undefined}
-        onChange={(v) => onChange(v ?? '')}
-        style={{ flex: 1 }}
-        placeholder="数值"
-      />
-    );
-  }
-  // 兜底文本
-  return (
-    <Input
-      size="small"
-      value={value as string | undefined}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ flex: 1 }}
-      placeholder="值"
-    />
-  );
-}
-
 /** 可拖拽的显隐字段行。 */
 function SortableFieldRow({
   fieldId,
@@ -635,51 +405,6 @@ function SortableFieldRow({
       <Text style={{ fontSize: 13, flex: 1 }}>{apiName}</Text>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// 操作符工具
-// ---------------------------------------------------------------------------
-
-/** 按字段类型返回可用操作符。 */
-function getOperatorsForType(type: FieldType): FilterOperator[] {
-  switch (type) {
-    case 'text':
-    case 'long_text':
-    case 'rich_text':
-    case 'auto_number':
-      return ['eq', 'ne', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
-    case 'number':
-    case 'currency':
-    case 'percent':
-      return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'];
-    case 'single_select':
-      return ['eq', 'ne', 'is_empty', 'is_not_empty', 'in'];
-    case 'multi_select':
-      return ['contains', 'is_empty', 'is_not_empty'];
-    case 'date':
-    case 'date_time':
-      return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'];
-    case 'checkbox':
-      return ['eq'];
-    default:
-      return ['eq', 'ne', 'is_empty', 'is_not_empty'];
-  }
-}
-
-/** 字段类型的默认操作符。 */
-function getDefaultOperator(type: FieldType): FilterOperator {
-  switch (type) {
-    case 'text':
-    case 'long_text':
-    case 'rich_text':
-    case 'auto_number':
-      return 'contains';
-    case 'multi_select':
-      return 'contains';
-    default:
-      return 'eq';
-  }
 }
 
 /** 统一错误提示。 */

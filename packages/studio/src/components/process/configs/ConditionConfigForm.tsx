@@ -249,6 +249,8 @@ export default function ConditionConfigForm({
         .group { background: transparent; border: none; border-radius: 0; }
         .group--header { padding: 0 0 6px 0; border: none; display: flex; align-items: center; gap: 6px; }
         .group--children { padding: 0 !important; }
+        /* 隐藏拖拽手柄（6 点图标）— 本平台不支持拖拽排序 */
+        .group--drag-handler, .qb-drag-handler { display: none !important; }
         /* 连接词按钮（And/Or/Not） */
         .group--conjunctions .ant-btn-group { display: flex; gap: 2px; }
         .group--conjunctions .ant-btn { font-size: 12px; height: 20px; line-height: 18px; padding: 0 8px; border-radius: 10px; border: none; }
@@ -260,6 +262,13 @@ export default function ConditionConfigForm({
         .group--actions .ant-btn { font-size: 12px; height: 20px; padding: 0 4px; border: none; background: transparent; box-shadow: none; color: rgba(0,0,0,0.45); }
         .group--actions .ant-btn:hover { color: #1677ff; background: #f0f5ff; }
         .group--actions .ant-btn .anticon { font-size: 11px; margin-right: 2px; }
+        /* 嵌套组容器 — 加左侧边线区分层级 */
+        .group-or-rule-container.group-container { margin-bottom: 6px; }
+        .group-or-rule-container.group-container > .group {
+          padding-left: 8px;
+          border-left: 2px solid #eef0f4;
+        }
+        .group-or-rule-container.group-container:last-child { margin-bottom: 0; }
 
         /* 自定义规则行 — 横向四列栅格 */
         .custom-rule-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }

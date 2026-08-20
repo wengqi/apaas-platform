@@ -144,9 +144,28 @@ export function buildQbConfig(variables: VariableOption[]): Config {
       label: '不包含',
       labelForFormat: '不包含',
       reversedOp: 'contains',
+      _jsonLogicIsExclamationOp: true, // 标记 ! 包装的反向操作符，RAQB 在反向导入时能识别 {"!": {"in": [...]}} 格式
     };
   } else {
-    operators['not_contains'] = { ...(operators['not_contains'] as object), label: '不包含' };
+    operators['not_contains'] = {
+      ...(operators['not_contains'] as object),
+      label: '不包含',
+      _jsonLogicIsExclamationOp: true,
+    };
+  }
+  if (!operators['not_in']) {
+    operators['not_in'] = {
+      label: '不属于',
+      labelForFormat: '不属于',
+      reversedOp: 'in',
+      _jsonLogicIsExclamationOp: true,
+    };
+  } else {
+    operators['not_in'] = {
+      ...(operators['not_in'] as object),
+      label: '不属于',
+      _jsonLogicIsExclamationOp: true,
+    };
   }
   if (!operators['in']) {
     operators['in'] = {

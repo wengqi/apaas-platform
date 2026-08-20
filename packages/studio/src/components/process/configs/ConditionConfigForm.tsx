@@ -302,21 +302,22 @@ export default function ConditionConfigForm({
           margin-right: 2px;
         }
 
-        /* === 嵌套组容器 — 左侧色带 + 缩进区分层级 === */
+        /* === 嵌套组容器 — 浅色背景卡片区分层级 === */
         .group-or-rule-container.group-container {
           margin-bottom: 8px;
-          padding-left: 10px;
-          border-left: 2px solid #eef0f4;
+          padding: 8px 10px 6px;
+          background: #f9fafb;
+          border-radius: 6px;
         }
         .group-or-rule-container.group-container:last-child {
           margin-bottom: 0;
         }
-        /* 嵌套组内的规则行与组头之间留间距 */
-        .group--children > .group-or-rule-container {
-          margin-bottom: 6px;
+        /* 顶层组不要背景（与分支卡片背景融合） */
+        .group--children > .group-or-rule-container.group-container {
+          background: #f9fafb;
         }
-        .group--children > .group-or-rule-container:last-child {
-          margin-bottom: 0;
+        .group--children > .group-or-rule-container.group-container > .group > .group--children > .group-or-rule-container.group-container {
+          background: #f3f4f6;
         }
 
         /* === 自定义规则行 — 横向四列栅格 === */

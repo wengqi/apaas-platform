@@ -444,7 +444,7 @@ function formatRule(rule: Record<string, unknown>): string {
     case 'or':
       return (args as unknown[]).map((a) => formatRule(a as Record<string, unknown>)).join(' or ');
     case '!': {
-      // "!" 可能是：isEmpty（内层是 var）、notContains（内层是 in）、notIn（内层是 in 且格式不同）、not（通用）
+      // "!" 可能是：isEmpty（内层是 var）、notContains/notIn（内层是 in）、not（通用）
       const innerRule = args[0] as Record<string, unknown>;
       const innerOp =
         innerRule && typeof innerRule === 'object' ? Object.keys(innerRule)[0] : undefined;
@@ -456,22 +456,22 @@ function formatRule(rule: Record<string, unknown>): string {
       }
 
       if (innerOp === 'in') {
+        // contains/notContains 与 in/notIn 的区分：
+        // - 第二个参数是数组 → in/notIn（多值语义）
+        // - 第二个参数是标量 → contains/notContains（单值包含语义）
+        //
+        // 注意：参数顺序可能是 field-first（RAQB 可视化导出）或 value-first（表达式解析器输出），
+        // 但判断 contains vs in 不依赖顺序，只依赖值的类型。
         const inArgs = innerRule!['in'] as unknown[];
-        // 判断是 contains 还是 notIn：contains 格式是 ["val", {"var":"field"}]
-        // notIn 格式是 [{"var":"field"}, ["val1","val2"]]
-        const first = inArgs[0];
-        if (first && typeof first === 'object' && 'var' in (first as Record<string, unknown>)) {
-          // 格式：{"!": {"in": [{"var":"field"}, ["val1","val2"]]}} → notIn(field, ["val1","val2"])
-          const fieldVar = first as Record<string, unknown>;
-          const fieldName = (fieldVar['var'] as string) ?? 'unknown';
-          const vals = inArgs[1];
-          return `notIn(${fieldName}, [${formatArrayValue(vals)}])`;
+        const [field, val] = extractFieldAndValue(inArgs[0], inArgs[1]);
+        if (field === null) return `not(${formatRule(innerRule)})`;
+
+        if (Array.isArray(val)) {
+          // notIn(field, [v1, v2, ...])
+          return `notIn(${field}, [${formatArrayValue(val)}])`;
         }
-        // 格式：{"!": {"in": ["val", {"var":"field"}]}} → notContains(field, "val")
-        const val = formatValue(inArgs[0]);
-        const fieldVar = inArgs[1] as Record<string, unknown>;
-        const fieldName = (fieldVar?.['var'] as string) ?? 'unknown';
-        return `notContains(${fieldName}, ${val})`;
+        // notContains(field, "val")
+        return `notContains(${field}, ${formatValue(val)})`;
       }
 
       // 通用 not(...)
@@ -488,24 +488,17 @@ function formatRule(rule: Record<string, unknown>): string {
       return `not(not(${formatRule(innerRule)}))`;
     }
     case 'in': {
-      // 两种格式：
-      // 1. ["val", {"var": "field"}] → contains(field, "val")
-      // 2. [{"var": "field"}, ["val1","val2"]] → in(field, ["val1","val2"])
-      const first = args[0];
-      const second = args[1];
+      // contains/in 的区分：第二个参数是数组 → in；标量 → contains
+      // 参数顺序可能是 field-first 或 value-first，统一用 extractFieldAndValue 处理。
+      const [field, val] = extractFieldAndValue(args[0], args[1]);
+      if (field === null) return '';
 
-      if (first && typeof first === 'object' && 'var' in (first as Record<string, unknown>)) {
-        // 格式 2：in(field, [val1, val2])
-        const fieldVar = first as Record<string, unknown>;
-        const fieldName = (fieldVar['var'] as string) ?? 'unknown';
-        return `in(${fieldName}, [${formatArrayValue(second)}])`;
+      if (Array.isArray(val)) {
+        // in(field, [v1, v2, ...])
+        return `in(${field}, [${formatArrayValue(val)}])`;
       }
-
-      // 格式 1：contains(field, "val")
-      const val = formatValue(first);
-      const fieldVar = second as Record<string, unknown>;
-      const fieldName = (fieldVar?.['var'] as string) ?? 'unknown';
-      return `contains(${fieldName}, ${val})`;
+      // contains(field, "val")
+      return `contains(${field}, ${formatValue(val)})`;
     }
     case '>':
     case '<':
@@ -521,6 +514,32 @@ function formatRule(rule: Record<string, unknown>): string {
     default:
       return '';
   }
+}
+
+/**
+ * 从 `in` 操作符的两个参数中提取字段名和值。
+ *
+ * RAQB 可视化导出和表达式解析器输出的参数顺序可能不同：
+ * - field-first: `[{var: "field"}, value]`（RAQB `contains` jsonLogic:'in' 的默认导出）
+ * - value-first: `[value, {var: "field"}]`（表达式解析器 contains(field, val) 的输出）
+ *
+ * 此函数统一两种顺序，返回 `[fieldName, value]`。若两个参数都不是 var 引用，返回 `[null, null]`。
+ */
+function extractFieldAndValue(first: unknown, second: unknown): [string, unknown] | [null, null] {
+  const firstIsVar =
+    first && typeof first === 'object' && 'var' in (first as Record<string, unknown>);
+  const secondIsVar =
+    second && typeof second === 'object' && 'var' in (second as Record<string, unknown>);
+
+  if (firstIsVar) {
+    const fieldName = ((first as Record<string, unknown>)['var'] as string) ?? 'unknown';
+    return [fieldName, second];
+  }
+  if (secondIsVar) {
+    const fieldName = ((second as Record<string, unknown>)['var'] as string) ?? 'unknown';
+    return [fieldName, first];
+  }
+  return [null, null];
 }
 
 /** 格式化值为表达式文本 */

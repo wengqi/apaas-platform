@@ -12,6 +12,94 @@ import type { IFlowValue } from '@apaas/shared';
 /** 单例 Parser（条件/表达式求值用）。 */
 const parser = new Parser();
 
+// ---------------------------------------------------------------------------
+// json-logic-js 自定义操作：relative_date
+// ---------------------------------------------------------------------------
+
+/**
+ * 计算相对日期范围的 [start, end) 区间。
+ *
+ * 飞书对齐：支持 today/yesterday/last_7_days/last_30_days/
+ * this_week/this_month/this_quarter/this_year。
+ * 返回 ISO 日期字符串数组 [start, end]。
+ */
+function computeRelativeDateRange(preset: string): [string, string] | null {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const ranges: Record<string, () => [string, string]> = {
+    today: () => [startOfDay.toISOString(), endOfDay.toISOString()],
+    yesterday: () => {
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - 1);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+    last_7_days: () => {
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - 6);
+      return [s.toISOString(), endOfDay.toISOString()];
+    },
+    last_30_days: () => {
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - 29);
+      return [s.toISOString(), endOfDay.toISOString()];
+    },
+    this_week: () => {
+      const day = startOfDay.getDay() || 7; // 周日=7
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - day + 1);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 7);
+      return [s.toISOString(), e.toISOString()];
+    },
+    this_month: () => {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+    this_quarter: () => {
+      const q = Math.floor(now.getMonth() / 3);
+      const s = new Date(now.getFullYear(), q * 3, 1);
+      const e = new Date(now.getFullYear(), q * 3 + 3, 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+    this_year: () => {
+      const s = new Date(now.getFullYear(), 0, 1);
+      const e = new Date(now.getFullYear() + 1, 0, 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+  };
+
+  const fn = ranges[preset];
+  return fn ? fn() : null;
+}
+
+/**
+ * json-logic-js 自定义操作：relative_date
+ *
+ * 输入: { "relative_date": [{ "var": "createdAt" }, "today"] }
+ * 语义: createdAt 在 "今天" 的日期范围内
+ * 返回: boolean（字段值是否落在相对日期区间内）
+ */
+jsonLogic.add_operation('relative_date', (fieldValue: unknown, preset: unknown) => {
+  if (fieldValue === null || fieldValue === undefined) return false;
+  if (typeof preset !== 'string') return false;
+  const range = computeRelativeDateRange(preset);
+  if (!range) return false;
+  const [start, end] = range;
+  const dateStr = typeof fieldValue === 'string' ? fieldValue : String(fieldValue);
+  try {
+    const d = new Date(dateStr);
+    return d >= new Date(start) && d < new Date(end);
+  } catch {
+    return false;
+  }
+});
+
 /**
  * 沿路径数组导航变量对象。
  * ['trigger_0', 'output', 'recordId'] → variables.trigger_0.output.recordId

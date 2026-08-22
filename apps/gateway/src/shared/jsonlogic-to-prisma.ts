@@ -105,6 +105,9 @@ function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhe
     case 'in':
       return translateIn(value, variables);
 
+    case 'relative_date':
+      return translateRelativeDate(value, variables);
+
     default:
       return null;
   }
@@ -204,6 +207,103 @@ function translateIn(value: unknown, variables?: VariableMap): Prisma.RecordWher
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// relative_date 操作符（相对日期范围过滤）
+// ---------------------------------------------------------------------------
+
+/**
+ * 翻译 relative_date 操作符：{"relative_date": [{"var":"field"}, "today"]}
+ *
+ * 将预设（today/yesterday/last_7_days 等）解析为日期区间 [start, end)，
+ * 翻译为 Prisma JSONB path 范围过滤（gte start AND lt end）。
+ */
+function translateRelativeDate(
+  value: unknown,
+  _variables?: VariableMap,
+): Prisma.RecordWhereInput | null {
+  const args = toArray(value);
+  if (args.length < 2) return null;
+
+  const fieldArg = args[0];
+  const presetArg = args[1];
+
+  const fieldName = extractVarName(fieldArg);
+  if (!fieldName) return null;
+
+  const preset = typeof presetArg === 'string' ? presetArg : '';
+  const range = computePrismaDateRange(preset);
+  if (!range) return null;
+
+  const [start, end] = range;
+  const path = [fieldName];
+
+  return {
+    AND: [
+      { data: { path, gte: start as Prisma.InputJsonValue } },
+      { data: { path, lt: end as Prisma.InputJsonValue } },
+    ],
+  };
+}
+
+/**
+ * 计算相对日期范围的 [start, end) ISO 字符串。
+ * 与 process-utils.ts 中的 computeRelativeDateRange 逻辑保持一致。
+ */
+function computePrismaDateRange(preset: string): [string, string] | null {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+
+  const ranges: Record<string, () => [string, string]> = {
+    today: () => [startOfDay.toISOString(), endOfDay.toISOString()],
+    yesterday: () => {
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - 1);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+    last_7_days: () => {
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - 6);
+      return [s.toISOString(), endOfDay.toISOString()];
+    },
+    last_30_days: () => {
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - 29);
+      return [s.toISOString(), endOfDay.toISOString()];
+    },
+    this_week: () => {
+      const day = startOfDay.getDay() || 7;
+      const s = new Date(startOfDay);
+      s.setDate(s.getDate() - day + 1);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 7);
+      return [s.toISOString(), e.toISOString()];
+    },
+    this_month: () => {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+    this_quarter: () => {
+      const q = Math.floor(now.getMonth() / 3);
+      const s = new Date(now.getFullYear(), q * 3, 1);
+      const e = new Date(now.getFullYear(), q * 3 + 3, 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+    this_year: () => {
+      const s = new Date(now.getFullYear(), 0, 1);
+      const e = new Date(now.getFullYear() + 1, 0, 1);
+      return [s.toISOString(), e.toISOString()];
+    },
+  };
+
+  const fn = ranges[preset];
+  return fn ? fn() : null;
 }
 
 // ---------------------------------------------------------------------------

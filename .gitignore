@@ -42,3 +42,6 @@ infra/data/
 
 # Coverage
 coverage/
+
+# ZCode
+.zcode/

@@ -316,4 +316,55 @@ describe('jsonlogic-to-prisma', () => {
       expect(jsonLogicToPrismaWhere({ '==': ['literal', 'value'] }, variables)).toBeNull();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // relative_date 操作符
+  // -------------------------------------------------------------------------
+
+  describe('relative_date 操作符', () => {
+    it('today 预设 → AND(gte start, lt end)', () => {
+      const result = jsonLogicToPrismaWhere(
+        { relative_date: [{ var: 'createdAt' }, 'today'] },
+        variables,
+      );
+      expect(result).not.toBeNull();
+      expect(result).toHaveProperty('AND');
+      const andArr = (result as { AND: unknown[] }).AND;
+      expect(andArr).toHaveLength(2);
+      expect(andArr[0]).toEqual({
+        data: { path: ['createdAt'], gte: expect.any(String) },
+      });
+      expect(andArr[1]).toEqual({
+        data: { path: ['createdAt'], lt: expect.any(String) },
+      });
+    });
+
+    it('this_month 预设 → AND(gte start, lt end)', () => {
+      const result = jsonLogicToPrismaWhere(
+        { relative_date: [{ var: 'createdAt' }, 'this_month'] },
+        variables,
+      );
+      expect(result).not.toBeNull();
+      expect(result).toHaveProperty('AND');
+    });
+
+    it('未知预设返回 null', () => {
+      expect(
+        jsonLogicToPrismaWhere(
+          { relative_date: [{ var: 'createdAt' }, 'unknown_preset'] },
+          variables,
+        ),
+      ).toBeNull();
+    });
+
+    it('左侧非字段引用返回 null', () => {
+      expect(jsonLogicToPrismaWhere({ relative_date: ['literal', 'today'] }, variables)).toBeNull();
+    });
+
+    it('参数不足返回 null', () => {
+      expect(
+        jsonLogicToPrismaWhere({ relative_date: [{ var: 'createdAt' }] }, variables),
+      ).toBeNull();
+    });
+  });
 });

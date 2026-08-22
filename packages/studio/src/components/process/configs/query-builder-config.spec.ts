@@ -76,13 +76,7 @@ describe('buildQbConfig — 字段类型映射', () => {
     expect(fields['isActive']!.type).toBe('boolean');
   });
 
-  it('date → text（当前实现 #2 已知问题）', () => {
-    const config = buildQbConfig([{ value: 'createdAt', label: '创建时间', type: 'date' }]);
-    const fields = config.fields as Record<string, { type: string }>;
-    expect(fields['createdAt']!.type).toBe('text');
-  });
-
-  it.skip('#2 修复后 date → date', () => {
+  it('date → date', () => {
     const config = buildQbConfig([{ value: 'createdAt', label: '创建时间', type: 'date' }]);
     const fields = config.fields as Record<string, { type: string }>;
     expect(fields['createdAt']!.type).toBe('date');
@@ -121,10 +115,17 @@ describe('buildQbConfig — 操作符注册', () => {
     expect(fields['isActive']!.operators).toEqual(['equal', 'not_equal']);
   });
 
-  it('date 类型字段映射为 text,有 6 个操作符', () => {
+  it('date 类型字段有 9 个操作符（含 relative_date）', () => {
     const config = buildQbConfig([{ value: 'createdAt', label: '创建时间', type: 'date' }]);
     const fields = config.fields as Record<string, { operators: string[] }>;
-    expect(fields['createdAt']!.operators).toHaveLength(6);
+    expect(fields['createdAt']!.operators).toHaveLength(9);
+    expect(fields['createdAt']!.operators).toContain('equal');
+    expect(fields['createdAt']!.operators).toContain('not_equal');
+    expect(fields['createdAt']!.operators).toContain('less');
+    expect(fields['createdAt']!.operators).toContain('greater');
+    expect(fields['createdAt']!.operators).toContain('is_empty');
+    expect(fields['createdAt']!.operators).toContain('is_not_empty');
+    expect(fields['createdAt']!.operators).toContain('relative_date');
   });
 });
 
@@ -304,20 +305,31 @@ describe('newQbId', () => {
   });
 });
 
-describe('buildQbConfig — 已知缺失项', () => {
-  it.skip('#2 relative_date 操作符尚未注册', () => {
-    // 飞书对齐要求：含 relative_date 操作符（相对日期选择）
-    // 当前实现：OPERATOR_KEYS_BY_TYPE.date 尚未注册 relative_date
-    // 计划在 #2 修复中注册
+describe('buildQbConfig — relative_date 操作符', () => {
+  it('date 类型的 select widget 注册了 relative_date 操作符', () => {
     const config = buildQbConfig(basicVariables);
     const types = (
       config as unknown as {
         types: Record<string, { widgets?: Record<string, { operators?: string[] }> }>;
       }
     ).types;
-    const dateOps = types['date']?.widgets
-      ? (Object.values(types['date'].widgets)[0]?.operators ?? [])
-      : [];
-    expect(dateOps).toContain('relative_date');
+    const selectWidget = types['date']?.widgets?.['select'];
+    expect(selectWidget).toBeDefined();
+    expect(selectWidget?.operators).toContain('relative_date');
+  });
+
+  it('date 类型的日期比较 widget 不含 relative_date', () => {
+    const config = buildQbConfig(basicVariables);
+    const types = (
+      config as unknown as {
+        types: Record<string, { widgets?: Record<string, { operators?: string[] }> }>;
+      }
+    ).types;
+    const dateWidgets = types['date']?.widgets ?? {};
+    // 除 select 外的 widget 不应包含 relative_date
+    for (const [name, widget] of Object.entries(dateWidgets)) {
+      if (name === 'select') continue;
+      expect(widget?.operators ?? []).not.toContain('relative_date');
+    }
   });
 });

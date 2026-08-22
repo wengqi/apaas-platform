@@ -25,6 +25,8 @@ function mapFieldType(type?: string): string {
       return 'number';
     case 'boolean':
       return 'boolean';
+    case 'date':
+      return 'date';
     case 'string':
     case 'object':
     case 'array':
@@ -33,6 +35,21 @@ function mapFieldType(type?: string): string {
       return 'text';
   }
 }
+
+// ---------------------------------------------------------------------------
+// 相对日期选项（飞书对齐：今天/昨天/近7天/近30天/本周/本月/本季度/本年）
+// ---------------------------------------------------------------------------
+
+const RELATIVE_DATE_OPTIONS = [
+  { value: 'today', title: '今天' },
+  { value: 'yesterday', title: '昨天' },
+  { value: 'last_7_days', title: '近7天' },
+  { value: 'last_30_days', title: '近30天' },
+  { value: 'this_week', title: '本周' },
+  { value: 'this_month', title: '本月' },
+  { value: 'this_quarter', title: '本季度' },
+  { value: 'this_year', title: '本年' },
+];
 
 // ---------------------------------------------------------------------------
 // 操作符定义 — 按字段类型（与 CustomRule.tsx OPERATORS_BY_TYPE 对齐）
@@ -61,6 +78,7 @@ const OPERATOR_KEYS_BY_TYPE: Record<string, string[]> = {
     'greater_or_equal',
     'is_empty',
     'is_not_empty',
+    'relative_date',
   ],
 };
 
@@ -76,7 +94,7 @@ export function buildQbConfig(variables: VariableOption[]): Config {
 
   for (const v of variables) {
     const fieldType = mapFieldType(v.type);
-    fields[v.value] = {
+    const fieldDef: Record<string, unknown> = {
       label: v.sourceNode ? `${v.label} — ${v.sourceNode}` : v.label,
       type: fieldType,
       // 按字段类型限定可用操作符
@@ -84,6 +102,12 @@ export function buildQbConfig(variables: VariableOption[]): Config {
       // 值来源：常量 + 引用字段 + 公式
       valueSources: ['value', 'field', 'expr'],
     };
+    // date 类型字段额外配置 select widget（供 relative_date 操作符使用）
+    if (fieldType === 'date') {
+      fieldDef['fieldSettings'] = { listValues: RELATIVE_DATE_OPTIONS };
+      fieldDef['preferWidgets'] = ['date'];
+    }
+    fields[v.value] = fieldDef;
   }
 
   // 如果没有变量，添加一个占位字段避免 RAQB 报错
@@ -145,6 +169,13 @@ export function buildQbConfig(variables: VariableOption[]): Config {
     labelForFormat: '不为空',
   };
 
+  // 注册相对日期操作符（飞书对齐：今天/昨天/近7天/近30天/本周/本月/本季度/本年）
+  operators['relative_date'] = {
+    label: '相对日期',
+    labelForFormat: '相对日期',
+    cardinality: 1,
+  };
+
   // 覆盖 config.types 中每种字段类型的 widget operators 列表
   // RAQB 从 config.types[fieldType].widgets[widgetName].operators 读取可用操作符，
   // 而非从字段的 operators 属性读取。必须在此覆盖才能使自定义操作符出现在下拉中。
@@ -154,10 +185,25 @@ export function buildQbConfig(variables: VariableOption[]): Config {
       const typeDef = types[fieldType] as
         { widgets?: Record<string, { operators?: string[] }> } | undefined;
       if (!typeDef?.widgets) continue;
-      const ops = OPERATOR_KEYS_BY_TYPE[fieldType]!;
-      for (const widgetDef of Object.values(typeDef.widgets)) {
-        if (widgetDef) {
-          widgetDef.operators = ops;
+      const allOps = OPERATOR_KEYS_BY_TYPE[fieldType]!;
+
+      if (fieldType === 'date') {
+        // date 类型：日期选择器只保留比较操作符（不含 relative_date），
+        // 另添加 select widget 专门承载 relative_date 操作符。
+        const comparisonOps = allOps.filter((op) => op !== 'relative_date');
+        for (const widgetDef of Object.values(typeDef.widgets)) {
+          if (widgetDef) {
+            widgetDef.operators = comparisonOps;
+          }
+        }
+        typeDef.widgets['select'] = {
+          operators: ['relative_date'],
+        };
+      } else {
+        for (const widgetDef of Object.values(typeDef.widgets)) {
+          if (widgetDef) {
+            widgetDef.operators = allOps;
+          }
         }
       }
     }
@@ -208,6 +254,14 @@ export function buildQbConfig(variables: VariableOption[]): Config {
     });
     (origJsonLogic as Record<string, unknown>)['is_not_empty'] = (field: string) => ({
       '!!': { var: field },
+    });
+    // 相对日期 → { "relative_date": [{ "var": field }, "today" ] }
+    // 后端 jsonlogic-to-prisma.ts 和 json-logic-js 各自翻译为日期范围条件
+    (origJsonLogic as Record<string, unknown>)['relative_date'] = (
+      field: string,
+      value: string,
+    ) => ({
+      relative_date: [{ var: field }, value],
     });
   }
 

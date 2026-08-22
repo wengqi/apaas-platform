@@ -1,13 +1,11 @@
 /**
- * 条件分支节点配置表单 —— 基于 react-awesome-query-builder + CodeMirror 双模式。
+ * 条件分支节点配置表单 —— 基于 react-awesome-query-builder 可视化模式。
  *
  * - 可视化模式：react-awesome-query-builder（Ant Design 主题，嵌套 AND/OR 树）
- * - 表达式模式：CodeMirror 6 编辑器 + 自动补全（变量名/运算符/函数提示）
  * - 底层存储：JsonLogic JSON（标准、可序列化、跨语言）
  *
  * 数据流：
  *   可视化 → exportToJsonLogic → JsonLogic → 存储
- *   表达式 → expressionToJsonLogic → JsonLogic → 存储
  *   后端 → jsonLogic.apply(rule, data) → boolean
  */
 

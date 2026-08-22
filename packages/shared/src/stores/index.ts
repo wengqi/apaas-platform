@@ -22,3 +22,6 @@ export * from './action-executor.js';
 
 // 运行时 Store（Zustand scoped store）
 export * from './runtime-store.js';
+
+// 共享组件渲染器（Studio + Runtime-UI 共用）
+export * from './component-renderer.js';

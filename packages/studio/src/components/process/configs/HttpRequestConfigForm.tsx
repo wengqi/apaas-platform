@@ -1,9 +1,17 @@
 /**
- * HTTP 请求节点配置表单 —— 对齐 DESIGN-process.md §6.6。
+ * HTTP 请求节点配置表单 — 支持连接器引用和直连两种模式。
+ *
+ * 选择连接器后：隐藏 URL，显示操作选择器（从连接器配置加载）。
+ * 未选择连接器时：保持原有直连模式（URL + method）。
  */
 
-import { Divider, Form, Input, Select } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { Divider, Form, Input, Select, Space, Typography } from 'antd';
+import { useParams } from 'react-router-dom';
 import FieldMapper from '../FieldMapper.js';
+import { connectorsApi, type ConnectorOperation } from '../../../api/connectors.js';
+
+const { Text } = Typography;
 
 export interface HttpRequestConfigData {
   method?: string;
@@ -12,6 +20,12 @@ export interface HttpRequestConfigData {
   body?: string;
   responseMapping?: Record<string, string>;
   title?: string;
+  /** 连接器 ID（选择后使用连接器配置） */
+  connectorId?: string;
+  /** 连接器操作 ID */
+  operationId?: string;
+  /** 覆盖路径（相对于 connector.baseUrl） */
+  path?: string;
 }
 
 export interface HttpRequestConfigFormProps {
@@ -28,36 +42,130 @@ const METHOD_OPTIONS = [
   { label: 'DELETE', value: 'DELETE' },
 ];
 
+interface HttpConfig {
+  operations?: ConnectorOperation[];
+}
+
 export default function HttpRequestConfigForm({
   data,
   onChange,
   disabled = false,
 }: HttpRequestConfigFormProps) {
-  const update = (patch: Partial<HttpRequestConfigData>) =>
-    onChange({ ...data, ...patch });
+  const update = (patch: Partial<HttpRequestConfigData>) => onChange({ ...data, ...patch });
+
+  const { appId } = useParams<{ appId: string }>();
+
+  // 加载连接器列表
+  const { data: connectors } = useQuery({
+    queryKey: ['connectors', appId],
+    queryFn: () => connectorsApi.list(appId!),
+    enabled: !!appId,
+  });
+
+  // 加载选中连接器的详情（获取操作列表）
+  const { data: selectedConnector } = useQuery({
+    queryKey: ['connector', data.connectorId],
+    queryFn: () => connectorsApi.get(data.connectorId!),
+    enabled: !!data.connectorId,
+  });
+
+  const httpConnectors = (connectors ?? []).filter((c) => c.type === 'HTTP');
+  const operations = ((selectedConnector?.config ?? {}) as unknown as HttpConfig).operations ?? [];
 
   const method = data.method || 'GET';
   const showBody = method === 'POST' || method === 'PUT' || method === 'PATCH';
+  const useConnector = !!data.connectorId;
 
   return (
     <Form layout="vertical" size="small" disabled={disabled} component="div">
       <Divider orientation="left" plain style={{ marginTop: 0 }}>
         HTTP 请求
       </Divider>
-      <Form.Item label="请求方法" required>
+
+      <Form.Item label="连接器（可选）">
         <Select
-          value={data.method}
-          onChange={(v) => update({ method: v })}
-          options={METHOD_OPTIONS}
+          value={data.connectorId}
+          onChange={(v) =>
+            update({
+              connectorId: v,
+              operationId: undefined,
+              path: undefined,
+              url: undefined,
+            })
+          }
+          allowClear
+          placeholder="不使用连接器，直接填写 URL"
+          options={httpConnectors.map((c) => ({
+            value: c.id,
+            label: `${c.name} (${c.apiName})`,
+          }))}
         />
       </Form.Item>
-      <Form.Item label="请求 URL" required>
-        <Input
-          value={data.url}
-          onChange={(e) => update({ url: e.target.value })}
-          placeholder="https://api.example.com/webhook"
-        />
-      </Form.Item>
+
+      {useConnector ? (
+        <>
+          {operations.length > 0 && (
+            <Form.Item label="操作">
+              <Select
+                value={data.operationId}
+                onChange={(v) => {
+                  const op = operations.find((o) => o.id === v);
+                  update({
+                    operationId: v,
+                    method: op?.method,
+                    path: op?.path,
+                  });
+                }}
+                allowClear
+                placeholder="选择预定义操作"
+                options={operations.map((o) => ({
+                  value: o.id,
+                  label: `${o.method} ${o.path} — ${o.name}`,
+                }))}
+              />
+            </Form.Item>
+          )}
+          {!data.operationId && (
+            <Space>
+              <Select
+                value={data.method}
+                onChange={(v) => update({ method: v })}
+                style={{ width: 100 }}
+                options={METHOD_OPTIONS}
+              />
+              <Input
+                value={data.path}
+                onChange={(e) => update({ path: e.target.value })}
+                placeholder="/users/{id}"
+                style={{ width: 200 }}
+              />
+            </Space>
+          )}
+          {selectedConnector?.baseUrl && (
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+              Base URL: {selectedConnector.baseUrl}
+            </Text>
+          )}
+        </>
+      ) : (
+        <>
+          <Form.Item label="请求方法" required>
+            <Select
+              value={data.method}
+              onChange={(v) => update({ method: v })}
+              options={METHOD_OPTIONS}
+            />
+          </Form.Item>
+          <Form.Item label="请求 URL" required>
+            <Input
+              value={data.url}
+              onChange={(e) => update({ url: e.target.value })}
+              placeholder="https://api.example.com/webhook"
+            />
+          </Form.Item>
+        </>
+      )}
+
       <Form.Item label="请求头">
         <FieldMapper
           value={data.headers}

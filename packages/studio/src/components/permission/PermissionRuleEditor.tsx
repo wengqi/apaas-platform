@@ -22,6 +22,7 @@ import {
 import { objectsApi, type Field } from '../../api/objects.js';
 import { pagesApi } from '../../api/pages.js';
 import { processesApi } from '../../api/processes.js';
+import { connectorsApi } from '../../api/connectors.js';
 import QueryBuilderPanel from '../shared/QueryBuilderPanel.js';
 
 const { Text } = Typography;
@@ -92,6 +93,13 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
   const { data: processes } = useQuery({
     queryKey: ['app-processes', role.appId],
     queryFn: () => processesApi.list(role.appId!),
+    enabled: open && !!role.appId,
+  });
+
+  // 加载应用连接器列表（用于 CONNECTOR 权限的目标选择）
+  const { data: connectors } = useQuery({
+    queryKey: ['connectors', role.appId],
+    queryFn: () => connectorsApi.list(role.appId!),
     enabled: open && !!role.appId,
   });
 
@@ -188,7 +196,7 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
       case 'PROCESS':
         return [...wildcard, ...(processes?.map((p) => ({ value: p.id, label: p.name })) ?? [])];
       case 'CONNECTOR':
-        return wildcard;
+        return [...wildcard, ...(connectors?.map((c) => ({ value: c.id, label: c.name })) ?? [])];
       case 'RECORD':
       case 'DATA_MODEL':
       default:

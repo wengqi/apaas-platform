@@ -26,6 +26,7 @@ import {
   CloudUploadOutlined,
   HistoryOutlined,
   GlobalOutlined,
+  ApiOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -69,6 +70,7 @@ export default function StudioLayout() {
       { key: 'processes', icon: <ApartmentOutlined />, label: '流程' },
       { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
+      { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },
     ],
     [],
   );

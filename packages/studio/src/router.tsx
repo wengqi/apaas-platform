@@ -14,6 +14,7 @@ import NotificationTemplateManager from './components/process/NotificationTempla
 import Permissions from './pages/Permissions.js';
 import PublishWizard from './pages/PublishWizard.js';
 import VersionHistory from './pages/VersionHistory.js';
+import ConnectorList from './pages/ConnectorList.js';
 import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
 import TenantManagement from './pages/TenantManagement.js';
@@ -160,6 +161,7 @@ export function AppRoutes() {
         <Route path="processes/notifications" element={<NotificationTemplateManager />} />
         <Route path="processes/:processId" element={<ProcessEditor />} />
         <Route path="permissions" element={<Permissions />} />
+        <Route path="connectors" element={<ConnectorList />} />
         <Route path="publish" element={<PublishWizard />} />
         <Route path="versions" element={<VersionHistory />} />
       </Route>

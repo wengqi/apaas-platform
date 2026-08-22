@@ -37,6 +37,11 @@
       "import": "./dist/connector/index.js",
       "require": "./dist/connector/index.js"
     },
+    "./dataset": {
+      "types": "./dist/dataset/index.d.ts",
+      "import": "./dist/dataset/index.js",
+      "require": "./dist/dataset/index.js"
+    },
     "./common": {
       "types": "./dist/common/index.d.ts",
       "import": "./dist/common/index.js",

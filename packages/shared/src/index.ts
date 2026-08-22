@@ -26,3 +26,6 @@ export * from './notification/index.js';
 
 // 连接器与集成
 export * from './connector/index.js';
+
+// 数据集与数据流
+export * from './dataset/index.js';

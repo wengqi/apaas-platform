@@ -55,6 +55,7 @@ export default {
         'notification',
         'queue',
         'connector',
+        'dataset',
         // 基础设施
         'infra',
         'docs',

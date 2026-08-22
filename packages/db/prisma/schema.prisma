@@ -47,6 +47,8 @@ model Tenant {
   inAppMessages InAppMessage[]
   connectors  Connector[]
   connectorCredentials ConnectorCredential[]
+  datasets    Dataset[]
+  dataFlows   DataFlow[]
 
   @@map("tenants")
 }
@@ -89,6 +91,8 @@ model Application {
   checks      AppCheck[]
   connectors  Connector[]
   connectorCredentials ConnectorCredential[]
+  datasets    Dataset[]
+  dataFlows   DataFlow[]
 
   @@unique([tenantId, apiName])
   @@index([tenantId])
@@ -684,4 +688,79 @@ model ConnectorCredential {
   @@index([tenantId])
   @@index([appId])
   @@map("connector_credentials")
+}
+
+// ============================================================================
+// 六·数据集与数据流 (Dataset & DataFlow) — 物化数据 + 数据变换 pipeline
+// ============================================================================
+
+/// 数据流 — 数据变换 pipeline 定义（数据源 → 筛选 → 关联 → 分组汇总 → 输出）。
+model DataFlow {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  appId         String   @map("app_id")
+  apiName       String   @map("api_name")
+  name          String
+  description   String?
+  /// 数据流配置（JSON pipeline 定义）
+  config        Json     @default("{}")
+  /// 输出数据集的列定义（执行后自动生成）
+  outputColumns Json?
+  status        String   @default("DRAFT") // DRAFT | ACTIVE
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  datasets      Dataset[]
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app           Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, appId, apiName])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("data_flows")
+}
+
+/// 数据集 — 由数据流生成的物化数据。
+model Dataset {
+  id              String   @id @default(cuid())
+  tenantId        String   @map("tenant_id")
+  appId           String   @map("app_id")
+  apiName         String   @map("api_name")
+  name            String
+  description     String?
+  sourceFlowId    String   @map("source_flow_id")
+  status          String   @default("EMPTY") // EMPTY | REFRESHING | READY | FAILED
+  rowCount        Int      @default(0) @map("row_count")
+  columns         Json     @default("[]") // 列定义 [{ apiName, label, type, source }]
+  lastRefreshedAt DateTime? @map("last_refreshed_at")
+  lastError       String?  @map("last_error")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app             Application  @relation(fields: [appId], references: [id], onDelete: Cascade)
+  sourceFlow      DataFlow     @relation(fields: [sourceFlowId], references: [id], onDelete: Cascade)
+  rows            DatasetRow[]
+
+  @@unique([tenantId, appId, apiName])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("datasets")
+}
+
+/// 数据集行 — 物化数据行（JSONB 宽表模式）。
+model DatasetRow {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  datasetId   String   @map("dataset_id")
+  data        Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  dataset     Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+  @@index([data], type: Gin)
+  @@map("dataset_rows")
 }

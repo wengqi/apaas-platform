@@ -10,6 +10,7 @@ import { PermissionModule } from './permission/permission.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { TenantModule } from './tenant/tenant.module.js';
 import { ConnectorModule } from './connector/connector.module.js';
+import { DatasetModule } from './dataset/dataset.module.js';
 import { HealthController } from './health.controller.js';
 import { envValidation } from './config/env.validation.js';
 
@@ -29,6 +30,7 @@ import { envValidation } from './config/env.validation.js';
     PermissionModule,
     QueueModule,
     ConnectorModule,
+    DatasetModule,
   ],
   controllers: [HealthController],
 })

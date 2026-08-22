@@ -16,7 +16,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
-import { PROCESS_QUEUE, DELAY_QUEUE } from './queue.constants.js';
+import { PROCESS_QUEUE, DELAY_QUEUE, DATASET_QUEUE } from './queue.constants.js';
 import { ProcessProcessor } from './process.processor.js';
 import { ProcessModule } from '../process/process.module.js';
 
@@ -53,8 +53,16 @@ function createQueue(queueName: string, connection: IORedis) {
       },
       inject: [ConfigService],
     },
+    {
+      provide: DATASET_QUEUE,
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
+        return createQueue(DATASET_QUEUE, new IORedis(url, { maxRetriesPerRequest: null }));
+      },
+      inject: [ConfigService],
+    },
     ProcessProcessor,
   ],
-  exports: [PROCESS_QUEUE, DELAY_QUEUE],
+  exports: [PROCESS_QUEUE, DELAY_QUEUE, DATASET_QUEUE],
 })
 export class QueueModule {}

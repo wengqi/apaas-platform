@@ -1,7 +1,7 @@
 /**
  * 数据流创建/编辑表单 — 步骤式配置。
  *
- * 步骤：基本信息 → 数据源 → 关联（可选）→ 分组汇总（可选）→ 输出字段
+ * 步骤：基本信息 → 数据源 → 关联（可选）→ 筛选（可选）→ 分组汇总（可选）→ 输出字段
  */
 
 import { useEffect, useState } from 'react';
@@ -33,6 +33,11 @@ const FIELD_TYPES = [
   { value: 'date', label: '日期' },
 ];
 
+const JOIN_TYPES = [
+  { value: 'left', label: '左关联（LEFT JOIN）' },
+  { value: 'inner', label: '内关联（INNER JOIN）' },
+];
+
 interface Props {
   open: boolean;
   editingFlow?: DataFlow | null;
@@ -45,6 +50,8 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [hasAggregation, setHasAggregation] = useState(false);
+  const [hasJoin, setHasJoin] = useState(false);
+  const [hasFilter, setHasFilter] = useState(false);
 
   const { data: objects } = useQuery({
     queryKey: ['app-objects', appId],
@@ -60,13 +67,22 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
         description: editingFlow.description,
         sources: editingFlow.config.sources,
         join: editingFlow.config.join,
+        filter: editingFlow.config.filter
+          ? typeof editingFlow.config.filter === 'string'
+            ? editingFlow.config.filter
+            : JSON.stringify(editingFlow.config.filter, null, 2)
+          : '',
         aggregation: editingFlow.config.aggregation,
         outputFields: editingFlow.config.outputFields,
       });
       setHasAggregation(!!editingFlow.config.aggregation);
+      setHasJoin(!!editingFlow.config.join);
+      setHasFilter(!!editingFlow.config.filter);
     } else {
       form.resetFields();
       setHasAggregation(false);
+      setHasJoin(false);
+      setHasFilter(false);
     }
   }, [editingFlow, form, open]);
 
@@ -75,10 +91,21 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
       const values = await form.validateFields();
       setLoading(true);
 
+      let parsedFilter: object | null = null;
+      if (hasFilter && values.filter) {
+        try {
+          parsedFilter = JSON.parse(values.filter);
+        } catch {
+          message.error('筛选条件不是有效的 JSON');
+          setLoading(false);
+          return;
+        }
+      }
+
       const config: DataFlowConfig = {
         sources: values.sources || [],
-        join: values.join || undefined,
-        filter: null,
+        join: hasJoin ? values.join : undefined,
+        filter: hasFilter ? parsedFilter : null,
         aggregation: hasAggregation ? values.aggregation : undefined,
         outputFields: values.outputFields || [],
       };
@@ -110,6 +137,10 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
   };
 
   const objectOptions = (objects ?? []).map((o) => ({ value: o.id, label: o.label ?? o.name }));
+  const sourceAliases = (form.getFieldValue('sources') as Array<{ alias?: string }>) ?? [];
+  const aliasOptions = sourceAliases
+    .filter((s) => s.alias)
+    .map((s) => ({ value: s.alias!, label: s.alias! }));
 
   return (
     <Modal
@@ -182,6 +213,66 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
             </>
           )}
         </Form.List>
+
+        <Divider orientation="left" plain>
+          关联（可选）
+        </Divider>
+        <Form.Item>
+          <Button type={hasJoin ? 'primary' : 'default'} onClick={() => setHasJoin(!hasJoin)}>
+            {hasJoin ? '已启用关联' : '启用关联（JOIN）'}
+          </Button>
+        </Form.Item>
+
+        {hasJoin && (
+          <>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              配置两个数据源之间的关联关系。关联后，右表字段会以 {`${'}{rightAlias}_{field}'}`}{' '}
+              格式合并到结果中。
+            </Text>
+            <Space style={{ display: 'flex', marginBottom: 8 }} wrap>
+              <Form.Item name={['join', 'leftAlias']} noStyle rules={[{ required: hasJoin }]}>
+                <Select style={{ width: 140 }} placeholder="左表别名" options={aliasOptions} />
+              </Form.Item>
+              <Form.Item name={['join', 'rightAlias']} noStyle rules={[{ required: hasJoin }]}>
+                <Select style={{ width: 140 }} placeholder="右表别名" options={aliasOptions} />
+              </Form.Item>
+              <Form.Item name={['join', 'type']} noStyle rules={[{ required: hasJoin }]}>
+                <Select style={{ width: 180 }} placeholder="关联类型" options={JOIN_TYPES} />
+              </Form.Item>
+            </Space>
+            <Space style={{ display: 'flex', marginBottom: 8 }} wrap>
+              <Form.Item name={['join', 'leftField']} noStyle rules={[{ required: hasJoin }]}>
+                <Input style={{ width: 160 }} placeholder="左表关联字段（如 customer_id）" />
+              </Form.Item>
+              <Form.Item name={['join', 'rightField']} noStyle rules={[{ required: hasJoin }]}>
+                <Input style={{ width: 160 }} placeholder="右表关联字段（如 id）" />
+              </Form.Item>
+            </Space>
+          </>
+        )}
+
+        <Divider orientation="left" plain>
+          筛选（可选）
+        </Divider>
+        <Form.Item>
+          <Button type={hasFilter ? 'primary' : 'default'} onClick={() => setHasFilter(!hasFilter)}>
+            {hasFilter ? '已启用筛选' : '启用筛选'}
+          </Button>
+        </Form.Item>
+
+        {hasFilter && (
+          <Form.Item
+            label="筛选条件（JsonLogic JSON）"
+            name="filter"
+            extra={'例如：{">": [{"var":"amount"}, 1000]} 表示 amount > 1000'}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder='{"and":[{"==":[{"var":"status"},"active"]},{">":[{"var":"amount"},1000]}]}'
+              style={{ fontFamily: 'monospace', fontSize: 12 }}
+            />
+          </Form.Item>
+        )}
 
         <Divider orientation="left" plain>
           分组汇总（可选）

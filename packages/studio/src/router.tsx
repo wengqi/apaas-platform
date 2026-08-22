@@ -15,6 +15,7 @@ import Permissions from './pages/Permissions.js';
 import PublishWizard from './pages/PublishWizard.js';
 import VersionHistory from './pages/VersionHistory.js';
 import ConnectorList from './pages/ConnectorList.js';
+import DatasetList from './pages/DatasetList.js';
 import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
 import TenantManagement from './pages/TenantManagement.js';
@@ -156,6 +157,7 @@ export function AppRoutes() {
         </Route>
         <Route path="pages" element={<PageList />} />
         <Route path="pages/:pageId" element={<PageBuilder />} />
+        <Route path="datasets" element={<DatasetList />} />
         <Route path="processes" element={<ProcessList />} />
         <Route path="processes/monitor" element={<ProcessMonitor />} />
         <Route path="processes/notifications" element={<NotificationTemplateManager />} />

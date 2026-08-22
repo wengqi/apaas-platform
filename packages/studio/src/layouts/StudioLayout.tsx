@@ -27,6 +27,7 @@ import {
   HistoryOutlined,
   GlobalOutlined,
   ApiOutlined,
+  FundProjectionScreenOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -67,6 +68,7 @@ export default function StudioLayout() {
       { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
       { key: 'objects', icon: <DatabaseOutlined />, label: '对象' },
       { key: 'pages', icon: <LayoutOutlined />, label: '页面' },
+      { key: 'datasets', icon: <FundProjectionScreenOutlined />, label: '数据集' },
       { key: 'processes', icon: <ApartmentOutlined />, label: '流程' },
       { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },

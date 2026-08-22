@@ -20,6 +20,7 @@
 | [ROADMAP-UPDATE-2026-08-06](./ROADMAP-UPDATE-2026-08-06.md) | 2026-08-06 | 后续推进计划更新（工程化治理已完成 + 技术债 28 项决策表 + Phase 5-8 路线图） |
 | [CODING-PRINCIPLE-NO-POLLING-2026-08-16](./CODING-PRINCIPLE-NO-POLLING-2026-08-16.md) | 2026-08-16 | 编码原则：禁止定时器轮询（setInterval）→ 事件驱动架构替代 + ESLint 拦截规则 |
 | [STAGE2-FRONTEND-FINISH-2026-08-22](./STAGE2-FRONTEND-FINISH-2026-08-22.md) | 2026-08-22 | Stage 2 前端收尾 + 条件表达式清理（应用编辑 + 站内信 UI + 权限规则增强 + 图表骨架 + relative_date 操作符 + date 类型映射修复）|
+| [PHASE5-CONNECTOR-2026-08-22](./PHASE5-CONNECTOR-2026-08-22.md) | 2026-08-22 | Phase 5 连接器与集成（连接器实体 + CRUD + 凭证管理 + HTTP 调用引擎 + Webhook 接收 + 流程节点升级 + 前端管理 UI）|
 
 ## 文档维护规则
 

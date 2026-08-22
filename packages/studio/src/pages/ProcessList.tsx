@@ -336,6 +336,29 @@ function ProcessCard({
                 { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
               ],
               onClick: ({ key }) => {
+                if (key === 'export-schema') {
+                  processesApi
+                    .get(process.id)
+                    .then((fullProcess) => {
+                      const schema = fullProcess.workflowSchema;
+                      if (!schema) {
+                        message.warning('该流程暂无 Schema 数据');
+                        return;
+                      }
+                      const json = JSON.stringify(schema, null, 2);
+                      const blob = new Blob([json], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${process.apiName}_schema.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      message.success('Schema 已导出');
+                    })
+                    .catch(() => {
+                      message.error('导出失败');
+                    });
+                }
                 if (key === 'delete') {
                   Modal.confirm({
                     title: '删除流程',

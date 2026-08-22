@@ -42,6 +42,8 @@ import type { Dayjs } from 'dayjs';
 import { resolvePropValue, getByPath } from '@apaas/shared/stores';
 import { buildChartOption } from '@apaas/shared/page';
 import type { ChartType, ChartAggregation } from '@apaas/shared';
+import { useQuery } from '@tanstack/react-query';
+import { datasetsApi } from '../api/datasets.js';
 import { useRuntimeCtx, type RuntimeState } from './RuntimeStore.js';
 import ReactECharts from 'echarts-for-react';
 
@@ -797,7 +799,9 @@ function renderStatistic(node: ComponentNode, ctx: RenderContext): React.ReactNo
 /**
  * 图表渲染 — 基于 ECharts。
  *
- * 从绑定数据（记录数组）和图表配置构建 ECharts option 并渲染。
+ * 支持两种数据源：
+ * 1. 数据集（datasourceType=dataset）：从 datasetsApi.queryRows 加载
+ * 2. ViewModel 绑定（默认）：从 resolvePropValue 解析绑定数据
  */
 function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx) || '图表';
@@ -805,9 +809,76 @@ function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const categoryField = getPropAsString(node, 'categoryField', ctx) || undefined;
   const valueField = getPropAsString(node, 'valueField', ctx) || undefined;
   const aggregation = (getPropAsString(node, 'aggregation', ctx) || 'sum') as ChartAggregation;
+  const datasourceType = getPropAsString(node, 'datasourceType', ctx);
+  const datasourceId = getPropAsString(node, 'datasourceId', ctx);
 
+  if (datasourceType === 'dataset' && datasourceId) {
+    return (
+      <DatasetChart
+        datasetId={datasourceId}
+        chartType={chartType}
+        title={title}
+        categoryField={categoryField}
+        valueField={valueField}
+        aggregation={aggregation}
+      />
+    );
+  }
+
+  // 默认：从 ViewModel 绑定解析数据
   const data = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
   const option = buildChartOption(chartType, title, categoryField, valueField, aggregation, data);
+
+  return (
+    <div style={{ padding: 8, background: '#fff', borderRadius: 6, minHeight: 200 }}>
+      <ReactECharts option={option} style={{ height: 200 }} />
+    </div>
+  );
+}
+
+/**
+ * 数据集图表 — 从数据集 API 加载数据并渲染 ECharts。
+ */
+function DatasetChart({
+  datasetId,
+  chartType,
+  title,
+  categoryField,
+  valueField,
+  aggregation,
+}: {
+  datasetId: string;
+  chartType: ChartType;
+  title: string;
+  categoryField?: string;
+  valueField?: string;
+  aggregation: ChartAggregation;
+}) {
+  const { data: result, isLoading } = useQuery({
+    queryKey: ['dataset-rows', datasetId],
+    queryFn: () => datasetsApi.queryRows(datasetId, { page: 1, pageSize: 100 }),
+  });
+
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          padding: 24,
+          background: '#fff',
+          borderRadius: 6,
+          minHeight: 200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text type="secondary">加载中...</Text>
+      </div>
+    );
+  }
+
+  const rows = result?.items ?? [];
+  const option = buildChartOption(chartType, title, categoryField, valueField, aggregation, rows);
 
   return (
     <div style={{ padding: 8, background: '#fff', borderRadius: 6, minHeight: 200 }}>

@@ -4,7 +4,7 @@
 
 ## 总体完成度
 
-**整体项目完成度约 88%**（↑8%），Phase 0-5 + Phase 9 核心功能已实现并可用，Phase 6（数据集）~70%，Phase 7（仪表盘）~40%，Phase 8（云函数）~5%。阻断性技术债全部修复，工程化治理完成，Stage 2 前端补全完成。当前最大风险：测试覆盖率不足（核心 Service/Controller 零覆盖）。
+**整体项目完成度约 90%**（↑10%），Phase 0-5 + Phase 8 + Phase 9 核心功能已实现并可用，Phase 6（数据集）~80%，Phase 7（仪表盘）~55%。阻断性技术债全部修复，工程化治理完成，Stage 2 前端补全完成，Phase 8 云函数已完成，核心模块单元测试已建立（12 spec / 376 测试）。当前最大风险：E2E 测试缺失 + 仪表盘布局未完成。
 
 ---
 
@@ -68,8 +68,6 @@
 - ❌ 子流程同步等待未实现（启动后立即继续）
 - ❌ 并行汇聚为简化策略（首个 token 到达即执行，非严格 AND-join）
 - ❌ 3 种节点类型未实现执行器：inclusive / loop / iterator
-- ❌ 流程 undo/redo 按钮无 handler
-- ❌ 流程导出菜单无实现
 
 ### 权限模块（permission）：进度 86%（↑6%）
 - ✅ 五级权限引擎（RBAC + ABAC，Deny-overrides 策略）
@@ -112,7 +110,20 @@
 - ❌ OpenAPI 导入暂不实现
 - ❌ 连接器市场暂不实现
 
-### 数据集模块（dataset）：进度 70%（✨ 新增）
+### 云函数模块（cloud-function）：进度 90%（✨ 新增）
+- ✅ 云函数 CRUD（创建/编辑/查询/删除/发布/调用 — 7 个端点）
+- ✅ isolated-vm 沙箱执行引擎（V8 Isolate 隔离，非 vm2）
+- ✅ 安全限制：内存限制可配置（CLOUD_FUNCTION_MEMORY_LIMIT_MB，默认 128MB）+ 执行超时可配置（CLOUD_FUNCTION_TIMEOUT_MS，默认 5s）+ 无 require/process 访问 + 仅注入受限 context（log/tenantId/appId）
+- ✅ 流程节点执行器（cloud_function.executor.ts — 流程中可调用已发布云函数）
+- ✅ Monaco 在线编辑器（@monaco-editor/react — 语法高亮 + Ctrl+S 保存快捷键）
+- ✅ 测试运行面板（编辑器内直接调用并查看输出）
+- ✅ 共享类型契约（packages/shared/cloud-function）
+- ✅ 单元测试（cloud-function.service.spec.ts）
+- ❌ 自定义组件注册 + 运行时加载未实现
+- ❌ JS 页面代码扩展未实现
+- ❌ E2E 测试未做
+
+### 数据集模块（dataset）：进度 80%（↑10%）
 - ✅ 数据集实体（DataFlow / Dataset / DatasetRow 三个模型）
 - ✅ 数据流引擎（多表内存 join + 筛选 + 分组聚合 + 物化输出）
 - ✅ BullMQ 异步刷新队列
@@ -121,6 +132,7 @@
 - ✅ Runtime 数据集查询 API（08-22 新增 — 运行时前端可查询数据集）
 - ✅ 共享类型（DataFlow / Dataset / DatasetColumn / JoinConfig / AggregationConfig）
 - ✅ 前端管理 UI（数据集列表 + 数据流表单 + 路由导航）
+- ✅ join/filter 表单式配置 UI（08-22 新增 — DataFlowFormModal 多步骤表单：基本信息→数据源→关联→筛选→分组汇总→输出字段）
 - ❌ 数据流可视化画布（节点式编排）未实现（当前为表单式配置）
 - ❌ E2E 测试未做
 
@@ -139,7 +151,7 @@
 
 ### API 文档：进度 100%
 - ✅ @nestjs/swagger 集成，文档访问 `/api/docs`
-- ✅ 12 个 Controller 标注 @ApiTags + @ApiBearerAuth
+- ✅ 13 个 Controller 标注 @ApiTags + @ApiBearerAuth（+cloud-function）
 - ✅ LoginDto 作为 class-based DTO 范式（class-validator + Swagger 同时生效）
 
 ---
@@ -190,11 +202,21 @@
 - ✅ 凭证管理（创建/编辑/删除）
 - ✅ http_request 节点配置表单升级（连接器选择器）
 
-### 数据集管理 UI：进度 75%（✨ 新增）
+### 数据集管理 UI：进度 80%（↑5%）
 - ✅ 数据集列表页
 - ✅ 数据流表单（数据源选择 + 关联配置 + 筛选 + 聚合 + 输出列配置）
 - ✅ 路由导航（侧边栏入口）
+- ✅ join/filter 多步骤表单 UI（08-22 新增 — DataFlowFormModal：基本信息→数据源→关联→筛选→分组汇总→输出字段）
 - ❌ 数据流可视化画布（节点式编排）未实现
+
+### 云函数管理 UI：进度 90%（✨ 新增）
+- ✅ 云函数列表页
+- ✅ 云函数创建/编辑表单（CloudFunctionFormModal）
+- ✅ Monaco 代码编辑器（语法高亮 + Ctrl+S 保存快捷键）
+- ✅ 测试运行面板（编辑器内直接调用并查看输出）
+- ✅ 发布/取消发布操作
+- ❌ 自定义组件注册 UI 未实现
+- ❌ JS 页面代码扩展 UI 未实现
 
 ---
 
@@ -212,15 +234,16 @@
 
 ## 四、测试基础设施
 
-### 测试覆盖：进度 15%（⚠️ 最大风险）
+### 测试覆盖：进度 35%（↑20%）
 - ✅ Vitest 配置（gateway + studio）
-- ✅ 4 个后端 spec 文件：formula-engine(25) / process-utils(23) / condition-translator(23) / jsonlogic-to-prisma(+relative_date 5)
+- ✅ 12 个后端 spec 文件：formula-engine(25) / process-utils(23) / condition-translator(23) / jsonlogic-to-prisma(+relative_date 5) / process-engine / permission.service / record.service / dataflow-engine / object.service / application.service / cloud-function.service / connector.service
 - ✅ 3 个前端 spec 文件：custom-logic-parser / jsonlogic-utils / query-builder-config
 - ✅ tsconfig.check.json（spec 文件类型检查）
-- ❌ **核心 Service/Controller 零测试覆盖**（process-engine 713行 / process.service 763行 / permission.service / record.service / dataflow-engine 等）
+- ✅ 376 个测试全部通过
+- ✅ Prisma Proxy mock 模式（无需真实数据库连接）
 - ❌ 无集成测试
 - ❌ 无 E2E 测试（Playwright）
-- ❌ 覆盖率 < 60% 目标
+- ❌ 覆盖率未达 60% 目标
 - ❌ runtime-ui / shared / db 无测试脚本
 
 ### 代码规范与约束链：进度 100%
@@ -246,14 +269,14 @@
 
 ## 五、基础设施与支撑
 
-### 数据库（packages/db）：进度 92%（↑2%）
-- ✅ Prisma schema 完整（28 model + 8 enum，+connector +dataset 模型）
+### 数据库（packages/db）：进度 93%（↑3%）
+- ✅ Prisma schema 完整（30 model + 8 enum，+connector +dataset +cloud-function 模型）
 - ✅ 9 个迁移文件 + GIN 索引
 - ✅ 种子数据（platform superadmin + demo tenant + roles + test users）
 - ❌ 种子数据覆盖 28 表中的部分
 
 ### 共享类型契约（packages/shared）：进度 100%
-- ✅ 9 个模块完整类型定义（+connector +dataset +notification）
+- ✅ 10 个模块完整类型定义（+connector +dataset +notification +cloud-function）
 - ✅ stores 子路径（auth/query-client/expression-engine/action-executor/runtime-store）
 
 ### 微服务骨架（meta-svc / process-svc / runtime-svc）：进度 5%
@@ -284,26 +307,26 @@
 | 对象/数据建模 | 90% | 缺 Rollup 聚合计算 |
 | 记录模块 | 85% | 缺 JSONB 字段排序、批量操作、数据导入导出 |
 | 页面模块 | 95% | 缺页面版本管理 |
-| 流程引擎 | 84% | 缺子流程同步、严格 AND-join、3 种节点类型、undo/redo、导出 |
+| 流程引擎 | 84% | 缺子流程同步、严格 AND-join、3 种节点类型 |
 | 权限模块 | 86% | 缺审计日志查询 UI、组织授权扩散 |
 | 应用发布 | 95% | 缺环境隔离运行时切换、审计日志查询 UI |
 | 连接器 | 70% | 缺数据库连接器、OAuth2、OpenAPI 导入、连接器市场 |
-| 数据集 | 70% | 缺可视化数据流画布、E2E 测试 |
-| 仪表盘 | 40% | 缺后端聚合引擎、完整仪表盘布局、运营报表 |
-| 云函数 | 5% | 仅类型定义 |
+| 数据集 | 80% | 缺可视化数据流画布、E2E 测试 |
+| 仪表盘 | 55% | 缺完整仪表盘布局、运营报表 |
+| 云函数 | 90% | 缺自定义组件注册、JS 页面扩展、E2E 测试 |
 | 队列模块 | 95% | 缺队列监控、重试策略 |
 | 全局错误处理 | 100% | 完整 |
 | API 文档 | 100% | 完整 |
-| Studio 前端 | 93% | 缺 JS 扩展、移动端、数据流可视化画布 |
+| Studio 前端 | 95% | 缺 JS 扩展、移动端、数据流可视化画布 |
 | Runtime-UI | 90% | 缺完整图表聚合、移动端适配 |
-| 测试基础设施 | 15% | ⚠️ 核心 Service/Controller 零覆盖，E2E 未建，覆盖率 <60% |
+| 测试基础设施 | 35% | E2E 未建，覆盖率 <60%，runtime-ui/shared/db 无测试 |
 | 工程化治理 | 100% | 完整 |
-| 数据库 | 92% | 种子数据覆盖不完整 |
+| 数据库 | 93% | 种子数据覆盖不完整 |
 | 共享类型 + stores | 100% | 完整 |
 | 微服务骨架 | 5% | 三个服务纯骨架（决策保留） |
 | 基础设施 | 85% | 缺监控/告警/日志（生产前） |
 | 文档 | 75% | 缺 Phase 5-8 PRD |
-| **整体** | **~88%** | Phase 6/7 收尾 + Phase 8 + 测试基础设施 + Phase 10 打磨 |
+| **整体** | **~90%** | Phase 6/7 收尾 + Phase 10 打磨 + E2E 测试 |
 
 ---
 
@@ -317,13 +340,13 @@
 | 权限多租户 | E | 80% | 86% | +fieldScope UI + 动态目标 + 组织角色授权 + CONNECTOR 权限 |
 | 应用发布 | I | 92% | 95% | +应用编辑入口 |
 | 连接器 | F | 5% | 70% | +连接器实体 + HTTP出站 + Webhook入站 + 凭证加密 + 前端UI |
-| 数据集 | B | 0% | 70% | +数据流引擎 + 物化存储 + 异步刷新 + 前端管理UI |
-| 仪表盘 | H | 5% | 40% | +图表骨架 + 数据源绑定 + 仪表盘页面模板 + Runtime数据集API |
-| 云函数 | G | 5% | 5% | — |
+| 数据集 | B | 0% | 80% | +数据流引擎 + 物化存储 + 异步刷新 + 前端管理UI + join/filter表单式配置 |
+| 仪表盘 | H | 5% | 55% | +图表骨架 + 数据源绑定 + 仪表盘页面模板 + Runtime数据集API + 后端聚合引擎 |
+| 云函数 | G | 5% | 90% | +isolated-vm沙箱 + Monaco编辑器 + CRUD/publish/invoke + 流程节点执行器 |
 | 数据管理 | J | 40% | 40% | — |
 | 飞书生态集成 | K | N/A | N/A | 独立平台，不依赖飞书 |
 
-**整体飞书对齐度：约 88%**（08-06: ~80% → 08-22: ~88%，↑8%）
+**整体飞书对齐度：约 90%**（08-06: ~80% → 08-22: ~90%，↑10%）
 
 ---
 
@@ -331,18 +354,19 @@
 
 ### 当前最大风险
 
-1. **🔴 测试覆盖率极低（~15%）** — 273 个源文件仅 7 个 spec 文件，核心 Service/Controller 零覆盖。fix:feat = 42:29 表明复杂模块已进入脆弱状态。这是项目失控的最大潜在因素。
-2. **🟡 文档与实际状态脱节** — 本次更新前主路线图落后 2 周以上（现已修复）。
-3. **🟡 上帝文件** — SimplifiedEditor.tsx 2054 行，集中了项目中大部分类型安全绕过和 lint 抑制。
+1. **🟡 E2E 测试缺失** — 核心模块单元测试已建立（12 spec / 376 测试），但无集成测试和 E2E 测试（Playwright），覆盖率未达 60% 目标。
+2. **🟡 文档与实际状态脱节** — 本次更新前主路线图落后于最近 5 个 commit 的实际开发进度（现已修复）。
+3. **🟡 上帝文件** — SimplifiedEditor.tsx 2054 行，集中了项目中大部分类型安全绕过和 lint 抑制。ComponentRenderer 已提取（1112→269+185 行），但 SimplifiedEditor 仍待拆分。
 4. **🟡 依赖版本漂移** — studio vs runtime-ui 6 个依赖版本不一致。
+5. **🟡 仪表盘布局未完成** — 后端聚合引擎和图表骨架已就绪，但缺少可拖拽网格布局组件（无 react-grid-layout）。
 
 ### 下一步优先级
 
 | 优先级 | 行动 | 预期效果 |
 |--------|------|---------|
-| 🔴 P0 | 建立核心模块测试（process-engine / permission / record / dataflow-engine） | 重建安全网，阻断 fix 恶性循环 |
-| 🟡 P1 | Phase 6 收尾（可视化数据流画布 + E2E） | 数据集模块对齐度 70%→90% |
-| 🟡 P1 | Phase 7 收尾（后端聚合引擎 + 仪表盘布局） | 仪表盘对齐度 40%→65% |
-| 🟢 P2 | Phase 8 云函数与扩展 | 新功能扩展 |
-| 🟢 P2 | 修复剩余技术债（TD-11/12/13） | 消除已知缺陷 |
+| 🟡 P1 | Phase 6 收尾（可视化数据流画布 + E2E） | 数据集模块对齐度 80%→90% |
+| 🟡 P1 | Phase 7 收尾（完整仪表盘布局 + 运营报表） | 仪表盘对齐度 55%→75% |
+| 🟡 P1 | E2E 测试（Playwright）+ 覆盖率达成 60% | 建立端到端安全网 |
 | 🟢 P2 | Phase 10 打磨（数据导入导出 / 批量操作 / 安全中间件） | 生产准备 |
+| 🟢 P2 | 修复剩余技术债（TD-6 审计日志查询 UI + Tenant 隔离 $extends 重构） | 消除已知缺陷 |
+| 🟢 P2 | Phase 8 扩展（自定义组件注册 + JS 页面扩展） | 功能扩展 |

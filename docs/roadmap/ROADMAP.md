@@ -129,7 +129,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 | # | 技术债 | 影响 | 修复状态 |
 |---|--------|------|---------|
-| TD-5 | 零测试覆盖 | vitest 已配置但无任何测试文件，ROADMAP 声称的 E2E 通过不实 | 🔄 部分修复：7 个 spec 文件（formula-engine 25 / process-utils 23 / condition-translator 23 / jsonlogic-to-prisma + 前端 3 个），但核心 Service/Controller 零覆盖，E2E 未建。覆盖率 < 60% |
+| TD-5 | 零测试覆盖 | vitest 已配置但无任何测试文件，ROADMAP 声称的 E2E 通过不实 | 🔄 大幅改善：12 个 spec 文件，核心模块已覆盖（process-engine / permission / record / dataflow-engine / object.service / cloud-function / connector / application），376 个测试通过。仍缺 E2E 测试（Playwright），覆盖率未达 60% 目标 |
 | TD-6 | 审计日志空壳 | AuditLog 模型存在但无写入路径，无法追溯操作行为 | 🔄 部分修复：写入路径已接通（PermissionGuard 写入），查询 API + 后台展示 UI 仍缺失 |
 | TD-7 | 通知 email/in_app 为日志桩 | 无 SMTP 发送、无站内信消息表，仅 console.log | ✅ 已修复：nodemailer SMTP + InAppMessage 模型 + 前端 NotificationBell UI |
 | TD-8 | 页面事件配置 UI 占位 | action-executor 引擎完整（12 动作），但属性面板 Events tab 为占位符，用户无法配置事件 | ✅ 已修复（08-04）：事件类型选择 + 动作链编辑器 |
@@ -148,7 +148,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~88%（飞书对齐度）。Phase 0-5 + Phase 9 已完成，Phase 6/7 进行中，Phase 8/10 待开始。
+> **当前整体完成度**: ~90%（飞书对齐度）。Phase 0-5 + Phase 8 + Phase 9 已完成，Phase 6/7 进行中，Phase 10 待开始。
 
 ### 已完成 ✅
 
@@ -161,17 +161,21 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 第三步 | Phase 5 连接器与集成 | 2026-08-22 |
 | Phase 6 部分 | 数据集引擎 + 管理UI + BullMQ异步刷新 | 2026-08-22 |
 | Phase 7 部分 | 图表骨架 + 数据源绑定 + 仪表盘页面模板 | 2026-08-22 |
+| 测试基础设施扩展 | 核心模块单元测试（process-engine / permission / record / dataflow-engine / object / cloud-function / connector / application）— 12 spec / 376 测试 | 2026-08-22 |
+| Phase 6/7 核心缺口 | join/filter 表单式 UI + 后端图表聚合引擎（sum/count/avg/max/min） | 2026-08-22 |
+| Phase 8 | 云函数与扩展 — isolated-vm 沙箱 + Monaco 编辑器 + 流程节点执行器 + CRUD/publish/invoke | 2026-08-22 |
+| 治理规范 | any 清理 + ComponentRenderer 提取（1112→269+185 行）+ 编码规范补充 + API 一致性修复 | 2026-08-22 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
-| 🔴 P0 | 建立测试基础设施 | TD-5 核心修复：为 process-engine / permission / record / dataflow-engine 等核心模块编写单元测试，覆盖率目标 60%+ |
 | 🟡 P1 | Phase 6 收尾 | 数据流可视化画布（节点式编排）+ E2E 测试 |
-| 🟡 P1 | Phase 7 收尾 | 后端图表聚合引擎 + 完整仪表盘布局 + 运营报表 |
-| 🟢 P2 | Phase 8 云函数与扩展 | 云函数平台(vm2隔离) + 自定义组件 + JS 扩展 + Monaco 编辑器 |
-| 🟢 P2 | 修复剩余技术债 | TD-11 流程undo/redo + TD-12 流程导出 + TD-13 通知模板挂载 |
-| 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 / 安全中间件 / E2E测试 |
+| 🟡 P1 | Phase 7 收尾 | 完整仪表盘布局（拖拽排版/网格 widget）+ 运营报表 + E2E 测试 |
+| 🟡 P1 | 测试覆盖率提升 | E2E 测试（Playwright）+ 覆盖率达成 60% 目标 |
+| 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 / 安全中间件 |
+| 🟢 P2 | 修复剩余技术债 | TD-6 审计日志查询 UI + TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
+| 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
 
 ---
 
@@ -196,7 +200,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 ---
 
-## Phase 6 — 数据集与数据流（🔄 进行中 ~70%）⭐ 飞书核心亮点
+## Phase 6 — 数据集与数据流（🔄 进行中 ~80%）⭐ 飞书核心亮点
 | # | 任务 | 状态 |
 |---|------|------|
 | 6.0 | 产品闸门: PRD-dataset.md | ⚠️ 跳过（直接开发） |
@@ -208,18 +212,18 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 6.6 | 前端: 数据流可视化画布(节点式编排) | ⬜ 未实现（当前为表单式配置） |
 | 6.7 | QA: 多表关联→分组汇总→输出数据集 E2E | ⬜ 未做 |
 
-> **完成度**: ~70%。数据流引擎（内存join + 聚合 + 物化）、BullMQ异步刷新、数据集管理前端UI均完整。剩余缺口：可视化数据流画布（当前为表单式）、E2E测试。
+> **完成度**: ~80%。数据流引擎（内存join + 聚合 + 物化）、BullMQ异步刷新、数据集管理前端UI、join/filter 表单式配置均完整。剩余缺口：可视化数据流画布（当前为表单式）、E2E测试。
 
 **验收标准**：创建数据流→多表关联+筛选+分组汇总→输出数据集→在页面表格中使用。
 > **验收状态**: ⚠️ 数据流引擎和前端管理可用，但未做端到端自动化测试。
 
 ---
 
-## Phase 7 — 仪表盘与报表（🔄 进行中 ~40%）
+## Phase 7 — 仪表盘与报表（🔄 进行中 ~55%）
 | # | 任务 | 状态 |
 |---|------|------|
 | 7.0 | 产品闸门: PRD-dashboard.md | ⚠️ 跳过（直接开发） |
-| 7.1 | 后端: 图表数据聚合引擎(基于对象/数据集) | ⬜ 未实现（前端使用 mock 数据 + 绑定数据解析） |
+| 7.1 | 后端: 图表数据聚合引擎(基于对象/数据集) | ✅ 完成（chart-data.service.ts — sum/count/avg/max/min 聚合 + 按 categoryField 分组） |
 | 7.2 | 前端: 图表组件骨架(ECharts 4种: 柱状/折线/饼图/漏斗) + 属性面板配置 | ✅ 完成 |
 | 7.3 | 前端: 图表数据源绑定(对象/数据集选择 + 字段下拉 + 聚合方式) | ✅ 完成 |
 | 7.4 | 前端: 仪表盘页面模板(创建仪表盘页自动生成默认模板) | ✅ 完成 |
@@ -228,18 +232,21 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 7.7 | 前端: 运营报表(表格/指标卡/趋势图组合) | ⬜ 未实现 |
 | 7.8 | QA: 创建仪表盘→配置图表→运行预览 | ⬜ 未做 |
 
-> **完成度**: ~40%。图表组件骨架（ECharts 4种类型 + 属性面板 + 数据源绑定）、仪表盘页面模板、Runtime数据集API均完整。剩余缺口：后端聚合引擎、完整仪表盘布局、运营报表、E2E测试。
+> **完成度**: ~55%。图表组件骨架（ECharts 4种类型 + 属性面板 + 数据源绑定）、后端聚合引擎（sum/count/avg/max/min）、仪表盘页面模板、Runtime数据集API均完整。剩余缺口：完整仪表盘布局（拖拽排版/网格widget）、运营报表、E2E测试。
 
 ---
 
-## Phase 8 — 云函数与扩展开发（全闸门）
+## Phase 8 — 云函数与扩展开发（✅ 已完成，2026-08-22）
 | # | 任务 | 状态 |
 |---|------|------|
-| 8.0 | 产品闸门: PRD-cloud-function.md (云函数/自定义组件/JS扩展) | ⬜ 待开始 |
-| 8.1 | 后端: 云函数平台(创建/编辑/调试/部署/调用) | ⬜ 待开始 |
-| 8.2 | 后端: 自定义组件注册 + 运行时加载 | ⬜ 待开始 |
-| 8.3 | 前端: 云函数在线编辑器(Code Editor) + 调试面板 | ⬜ 待开始 |
-| 8.4 | QA: 创建云函数→在流程中调用→验证返回 | ⬜ 待开始 |
+| 8.0 | 产品闸门: PRD-cloud-function.md (云函数/自定义组件/JS扩展) | ⚠️ 跳过（直接开发，知识库记录替代） |
+| 8.1 | 后端: 云函数平台(创建/编辑/调试/部署/调用) | ✅ 完成 — isolated-vm 沙箱 + 7 个 CRUD 端点（list/get/create/update/delete/publish/invoke） |
+| 8.2 | 后端: 自定义组件注册 + 运行时加载 | ⚠️ 简化（云函数流程节点执行器已实现；自定义组件注册待后续） |
+| 8.3 | 前端: 云函数在线编辑器(Code Editor) + 调试面板 | ✅ 完成 — Monaco 编辑器 + Ctrl+S 保存 + 测试运行面板 |
+| 8.4 | QA: 创建云函数→在流程中调用→验证返回 | ⚠️ 跳过（API + 单元测试验证，未做 E2E） |
+
+> **完成度**: ~90%。云函数 CRUD（创建/编辑/发布/调用/删除）、isolated-vm 沙箱执行引擎、Monaco 在线编辑器、流程节点执行器（cloud_function.executor.ts）均完整。剩余缺口：自定义组件注册/运行时加载、E2E 测试。
+> **安全措施**: isolated-vm V8 Isolate 隔离（非 vm2），内存限制可配置（CLOUD_FUNCTION_MEMORY_LIMIT_MB，默认 128MB），执行超时可配置（CLOUD_FUNCTION_TIMEOUT_MS，默认 5s），仅注入受限 context（log/tenantId/appId），无 require/process 访问。
 
 ---
 
@@ -293,3 +300,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-01：**飞书 aPaaS 应用生命周期深度调研**——新增 `docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`，完整记录应用创建→发布→管理全流程操作细节。调研发现：飞书核心架构理念为「开发态/运行态分离 + 版本化发布」，我方平台最大缺口为缺少完整发布流程。**ROADMAP 优先级调整**：Phase 9（应用发布与版本管理）从原第四步提升为第二步（P0 最高优先级），Phase 9 任务从 5 项扩展为 12 项（新增预检机制、变更追踪、环境隔离、应用创建完善等任务）。
 - 2026-08-06：**流程引擎模式决策**——统一为单模式（flowgram.ai Fixed Layout + WorkflowSchema SSOT），双模式/BPMN 相关内容已弃用并从文档清除。Phase 3 任务从 12 项精简为 9 项（删除 BPMN 互转、标准模式编辑器、模式切换任务，合并为单模式流程编辑器任务）。
 - 2026-08-22：**ROADMAP 重大同步**——主路线图与实际开发状态对齐。Phase 5（连接器）标记 ✅ 已完成。Phase 6（数据集）标记 🔄 进行中 ~70%。Phase 7（仪表盘）标记 🔄 进行中 ~40%。Phase 9（应用发布）标记 ✅ 已完成 ~95%。技术债清单 TD-5~TD-16 全部更新实际状态（7 项已修复 / 3 项部分修复 / 4 项未修复 / 1 项决策保留）。整体完成度从 ~40% 更新为 ~88%（飞书对齐度）。后续推进建议重排优先级：P0 建立测试基础设施 → P1 Phase 6/7 收尾 → P2 Phase 8 + 剩余技术债 + Phase 10。
+- 2026-08-22：**ROADMAP 第二次同步**——Phase 8（云函数）标记 ✅ 已完成 ~90%（isolated-vm 沙箱 + Monaco 编辑器 + 7 端点 + 流程节点执行器）。Phase 6 完成度 ~70%→~80%（join/filter 表单式 UI 已完成）。Phase 7 完成度 ~40%→~55%（后端聚合引擎已完成）。TD-5 从「核心零覆盖」更新为「12 spec / 376 测试 / 核心模块已覆盖」。整体完成度 ~88%→~90%。下一步优先级重排：移除已完成的 P0 测试基础设施和 P2 Phase 8/TD-11/12/13，新增 P1 E2E 测试 + P2 Tenant 隔离重构。

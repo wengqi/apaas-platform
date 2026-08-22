@@ -5,7 +5,7 @@
  */
 
 import { useCallback } from 'react';
-import { useClientContext } from '@flowgram.ai/fixed-layout-editor';
+import { useClientContext, type FixedLayoutPluginContext } from '@flowgram.ai/fixed-layout-editor';
 import { getNodeMeta } from '../../constants/process.js';
 import type { FlowNodeJSON } from '../../../features/process/simplified/src/index.js';
 
@@ -17,8 +17,11 @@ export const NODE_TYPE_MIME = 'application/x-apaas-node-type';
  * fromNodeJSON 不会将 block data 写入 extInfo（block 有 formData 但无 formMeta），
  * 因此在节点创建后通过 RAF + setTimeout 显式写入。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function syncConditionBlockExtInfo(ctx: any, type: string, nodeId: string): void {
+export function syncConditionBlockExtInfo(
+  ctx: FixedLayoutPluginContext,
+  type: string,
+  nodeId: string,
+): void {
   if (type !== 'condition') return;
   const ifBlockId = `ifBlock_${nodeId}`;
   const elseBlockId = `elseBlock_${nodeId}`;

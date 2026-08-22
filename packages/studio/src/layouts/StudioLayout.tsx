@@ -28,6 +28,7 @@ import {
   GlobalOutlined,
   ApiOutlined,
   FundProjectionScreenOutlined,
+  CloudOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -73,6 +74,7 @@ export default function StudioLayout() {
       { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
       { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },
+      { key: 'cloud-functions', icon: <CloudOutlined />, label: '云函数' },
     ],
     [],
   );

@@ -78,7 +78,8 @@ export class ConnectorCallService {
     }
 
     // 5. fetch 执行
-    const timeout = config.timeout ?? 10000;
+    const DEFAULT_HTTP_TIMEOUT_MS = 10000;
+    const timeout = config.timeout ?? DEFAULT_HTTP_TIMEOUT_MS;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 

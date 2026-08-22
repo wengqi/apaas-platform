@@ -87,7 +87,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 - Commit message 必须符合 Conventional Commits：`type(scope): subject`
 - type：`feat/fix/refactor/perf/docs/test/chore/style/ci/revert/breaking`
-- scope：`gateway/shared/db/studio/runtime-ui/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps`
+- scope：`gateway/shared/db/studio/runtime-ui/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function`
 - pre-commit 钩子：lint-staged（eslint --fix + prettier --write 暂存文件）
 - commit-msg 钩子：commitlint 格式校验（`commitlint.config.mjs`）
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
@@ -111,7 +111,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - 所有路由前缀 `/api/v1/`（URI 版本控制已启用）
 - Controller 必须标注 `@ApiTags` + `@ApiBearerAuth`（Swagger 文档，访问 `/api/docs`）
 - 请求体必须用 class-based DTO（`*.dto.ts`），配 `class-validator` 装饰器，使 ValidationPipe + Swagger 同时生效
-- 响应格式统一 `{ ok: true, data: ... }` / `{ ok: false, error: { code, message } }`
+- 响应格式统一 `{ ok: true as const, data: ... }` / `{ ok: false, error: { code, message } }`
+  - `as const` 必须——让 TypeScript 将 `ok` 窄化为字面量 `true`，使前端可安全做类型守卫
+  - Health 端点例外（返回 `{ status: 'ok' }` 是标准健康检查格式）
 - Prisma 异常由全局 `PrismaExceptionFilter` 自动转译（P2002→409、P2025→404、P2003→400）
 
 ### 环境变量
@@ -126,6 +128,63 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - PR 必须通过 CI 才能合并
 - 新增依赖必须更新 lockfile（`pnpm install`）
 - PR 模板在 `.github/pull_request_template.md`，包含检查清单和飞书对齐标注
+
+### 文件命名规范
+
+- 后端文件：kebab-case（`record.service.ts`、`jwt-auth.guard.ts`、`cloud-function.runner.service.ts`）
+- 前端 React 组件文件（`.tsx`）：PascalCase（`CloudFunctionEditor.tsx`、`RecordList.tsx`）
+- 前端非 React 模块文件（`.ts`）：camelCase（`processEditor.ts`、`pageBuilder.ts`）
+- 测试文件：与源文件同名 + `.spec.ts`（`record.service.spec.ts`）
+- 类名：PascalCase（`CloudFunctionRunner`、`PermissionService`）
+- 接口名：PascalCase，**不加 `I` 前缀**（`StoredField`、`RenderContext`，不是 `IStoredField`）
+- 枚举名 + 成员：PascalCase（`AppStatus`、`FieldType`）
+
+### 常量管理规范
+
+- 所有超时、限制、阈值等数值必须是命名常量或环境变量，禁止内联魔法数字
+- 文件内常量：大写 + 下划线（`const BATCH_SIZE = 500`、`const DEFAULT_HTTP_TIMEOUT_MS = 10000`）
+- 跨模块常量：放在 `@apaas/shared` 或 `config/` 目录
+- 可配置值：通过环境变量 + Joi schema 暴露（如 `CLOUD_FUNCTION_TIMEOUT_MS`）
+
+### 错误处理规范
+
+- 禁止空 catch 块。如果是有意忽略，必须加注释说明原因：`catch { /* 非 JSON 响应，保持文本 */ }`
+- `void` 异步调用（如 `triggerService.onRecordEvent`）必须有 `.catch()` 或确保被调用方有顶层 try/catch：
+  ```typescript
+  void this.triggerService.onRecordEvent(...).catch(err =>
+    this.logger.error(`触发器执行失败: ${err.message}`)
+  );
+  ```
+- 后端错误使用 NestJS HttpException 子类（`NotFoundException` / `BadRequestException` / `ForbiddenException`），携带明确的错误消息
+
+### Service 方法签名规范
+
+- 方法签名约定：`(tenantId, ...resourceIds, ...params)` — 租户上下文始终在前
+- 所有查询操作必须包含 `tenantId` 在 `where` 中
+- 所有写操作必须包含 `tenantId` 在 `data` 中
+- 返回 DTO 而非 Prisma 原始实体（通过 `toDto()` 方法转换）
+
+### 前端组件规范
+
+- 单文件最大 400 行（含注释），超过必须按职责拆分
+- React 组件职责单一：一个文件一个主组件（可含私有子组件）
+- 复杂逻辑提取为 custom hook（`useXxx`），与 UI 分离
+- 大型表单按 Section 拆分为子组件
+
+### 数据库变更规范
+
+- Schema 变更必须通过 `prisma migrate dev --name xxx` 生成迁移文件
+- 迁移文件一旦提交不可修改（追加新迁移修正，不回改旧的）
+- 新增模型必须包含：`tenantId` + `@@index([tenantId])` + `Tenant` 关系 + 级联删除
+- 新增模型必须在 `Tenant` 和 `Application` 模型上添加反向关系字段
+- JSON 字段必须标注 `@default("{}")` 避免空值
+
+### 文档同步规范
+
+- 每次完成功能开发后，同步更新 `ROADMAP.md` 中对应 Phase 的状态
+- `commitlint` scope-enum 新增模块时，同步更新本文件的 scope 列表
+- 每个阶段完成后新建 `STATUS-MATRIX-YYYY-MM-DD.md` 状态矩阵
+- `.env.example` 必须与 `env.validation.ts` 的 Joi schema 保持同步
 
 ## 当前阶段
 

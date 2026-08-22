@@ -49,6 +49,7 @@ model Tenant {
   connectorCredentials ConnectorCredential[]
   datasets    Dataset[]
   dataFlows   DataFlow[]
+  cloudFunctions CloudFunction[]
 
   @@map("tenants")
 }
@@ -93,6 +94,7 @@ model Application {
   connectorCredentials ConnectorCredential[]
   datasets    Dataset[]
   dataFlows   DataFlow[]
+  cloudFunctions CloudFunction[]
 
   @@unique([tenantId, apiName])
   @@index([tenantId])
@@ -120,6 +122,7 @@ model User {
   tenant          Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userRoles       UserRole[]
   orgMemberships  OrgMember[]
+  cloudFunctions  CloudFunction[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -763,4 +766,30 @@ model DatasetRow {
   @@index([datasetId])
   @@index([data], type: Gin)
   @@map("dataset_rows")
+}
+
+/// 云函数 — 用户自定义 JavaScript 代码，在 isolated-vm 沙箱中执行。
+model CloudFunction {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  appId       String   @map("app_id")
+  apiName     String   @map("api_name")
+  name        String
+  description String?
+  code        Json     @default("{\"source\":\"\",\"language\":\"javascript\"}")
+  inputSchema Json?
+  status      String   @default("DRAFT")
+  version     Int      @default(0)
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app         Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  creator     User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, appId, apiName])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("cloud_functions")
 }

@@ -13,6 +13,12 @@ import { Button, Typography } from 'antd';
 import type { WorkflowNode } from '../../api/processes.js';
 import { useProcessEditorStore } from '../../stores/processEditor.js';
 import NodeConfigPanel from './NodeConfigPanel.js';
+
+/** flowgram form-core 运行时注入的 getData 方法重载不在 FlowNodeEntity 静态类型上。 */
+interface FormDataResult {
+  formModel?: { initialized?: boolean };
+  toJSON(): { conditions?: unknown } | undefined;
+}
 import { getBranchBlocks } from './conditionBranchUtils.js';
 
 const { Text } = Typography;
@@ -48,8 +54,10 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
           return { ...node, data: { ...node.data, conditions: extConditions } };
         }
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const formData = (flowNode as any).getData?.({ type: 'FlowNodeEntityFormData' });
+          const nodeWithForm = flowNode as unknown as {
+            getData?(opts: { type: 'FlowNodeEntityFormData' }): FormDataResult | undefined;
+          };
+          const formData = nodeWithForm.getData?.({ type: 'FlowNodeEntityFormData' });
           if (formData?.formModel?.initialized) {
             const formJSON = formData.toJSON() as { conditions?: unknown } | undefined;
             const formConditions = formJSON?.conditions;

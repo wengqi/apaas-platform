@@ -11,6 +11,8 @@ import { DatasetRowService } from './dataset-row.service.js';
 import { DataFlowController } from './dataflow.controller.js';
 import { DataFlowService } from './dataflow.service.js';
 import { DataFlowEngine } from './dataflow-engine.service.js';
+import { ChartDataService } from './chart-data.service.js';
+import { ChartDataController } from './chart-data.controller.js';
 import { DatasetProcessor } from './dataset.processor.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
@@ -32,15 +34,16 @@ import { QueueModule } from '../queue/queue.module.js';
     ChangeLogModule,
     forwardRef(() => QueueModule),
   ],
-  controllers: [DatasetController, DataFlowController],
+  controllers: [DatasetController, DataFlowController, ChartDataController],
   providers: [
     DatasetService,
     DatasetRowService,
     DataFlowService,
     DataFlowEngine,
+    ChartDataService,
     DatasetProcessor,
     JwtStrategy,
   ],
-  exports: [DatasetService, DataFlowService, DataFlowEngine],
+  exports: [DatasetService, DataFlowService, DataFlowEngine, ChartDataService],
 })
 export class DatasetModule {}

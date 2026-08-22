@@ -16,6 +16,7 @@ import PublishWizard from './pages/PublishWizard.js';
 import VersionHistory from './pages/VersionHistory.js';
 import ConnectorList from './pages/ConnectorList.js';
 import DatasetList from './pages/DatasetList.js';
+import CloudFunctionList from './pages/CloudFunctionList.js';
 import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
 import TenantManagement from './pages/TenantManagement.js';
@@ -164,6 +165,7 @@ export function AppRoutes() {
         <Route path="processes/:processId" element={<ProcessEditor />} />
         <Route path="permissions" element={<Permissions />} />
         <Route path="connectors" element={<ConnectorList />} />
+        <Route path="cloud-functions" element={<CloudFunctionList />} />
         <Route path="publish" element={<PublishWizard />} />
         <Route path="versions" element={<VersionHistory />} />
       </Route>

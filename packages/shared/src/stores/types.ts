@@ -51,6 +51,63 @@ export type PropValue =
 export type ComponentProps = Record<string, PropValue>;
 
 // ---------------------------------------------------------------------------
+// 组件类型 / 组件节点
+// ---------------------------------------------------------------------------
+
+/**
+ * 组件类型枚举（字符串字面量联合，对齐各包 api/pages.ts 定义）。
+ * 对标飞书 aPaaS 组件库，按职能分四大类：容器 / 数据 / 表单 / 展示。
+ */
+export type ComponentType =
+  // —— 容器类 ——
+  | 'page'
+  | 'section'
+  | 'tabs'
+  | 'grid'
+  | 'grid_column'
+  // —— 数据类 ——
+  | 'data_table'
+  | 'detail_card'
+  | 'list'
+  // —— 表单类 ——
+  | 'form'
+  | 'text_input'
+  | 'textarea'
+  | 'number_input'
+  | 'select'
+  | 'multi_select'
+  | 'date_picker'
+  | 'radio'
+  | 'checkbox'
+  | 'switch'
+  | 'lookup_picker'
+  | 'sub_form_table'
+  | 'attachment_upload'
+  | 'user_picker'
+  // —— 展示类 ——
+  | 'button'
+  | 'statistic'
+  | 'chart'
+  | 'rich_text_display'
+  | 'divider'
+  | 'text';
+
+/** 组件节点。页面 Schema 的基本单元，组成树形结构。 */
+export interface ComponentNode {
+  /** 节点唯一 ID（页面内） */
+  id: string;
+  type: ComponentType;
+  /** 组件实例名称（搭建器中显示） */
+  name?: string;
+  /** 组件属性，值可为字面量或绑定表达式 */
+  props: ComponentProps;
+  /** 子节点（容器类组件） */
+  children?: ComponentNode[];
+  /** 是否隐藏（可绑定表达式） */
+  hidden?: boolean | { __bind: string };
+}
+
+// ---------------------------------------------------------------------------
 // 视图模型
 // ---------------------------------------------------------------------------
 

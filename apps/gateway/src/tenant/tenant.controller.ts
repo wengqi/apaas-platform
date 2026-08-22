@@ -26,32 +26,32 @@ export class TenantController {
 
   @Post()
   async create(@Body() body: { name: string; slug: string; description?: string }) {
-    return { ok: true, data: await this.tenantService.create(body) };
+    return { ok: true as const, data: await this.tenantService.create(body) };
   }
 
   @Get()
   async list() {
-    return { ok: true, data: await this.tenantService.list() };
+    return { ok: true as const, data: await this.tenantService.list() };
   }
 
   @Get(':id')
   async get(@Param('id') id: string) {
-    return { ok: true, data: await this.tenantService.get(id) };
+    return { ok: true as const, data: await this.tenantService.get(id) };
   }
 
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: { name?: string; description?: string }) {
-    return { ok: true, data: await this.tenantService.update(id, body) };
+    return { ok: true as const, data: await this.tenantService.update(id, body) };
   }
 
   @Post(':id/suspend')
   async suspend(@Param('id') id: string) {
-    return { ok: true, data: await this.tenantService.suspend(id) };
+    return { ok: true as const, data: await this.tenantService.suspend(id) };
   }
 
   @Post(':id/activate')
   async activate(@Param('id') id: string) {
-    return { ok: true, data: await this.tenantService.activate(id) };
+    return { ok: true as const, data: await this.tenantService.activate(id) };
   }
 
   @Post(':id/admins')
@@ -59,16 +59,16 @@ export class TenantController {
     @Param('id') id: string,
     @Body() body: { email: string; name: string; password: string },
   ) {
-    return { ok: true, data: await this.tenantService.assignAdmin(id, body) };
+    return { ok: true as const, data: await this.tenantService.assignAdmin(id, body) };
   }
 
   @Get(':id/users')
   async getUsers(@Param('id') id: string) {
-    return { ok: true, data: await this.tenantService.getUsers(id) };
+    return { ok: true as const, data: await this.tenantService.getUsers(id) };
   }
 
   @Get(':id/apps')
   async getApps(@Param('id') id: string) {
-    return { ok: true, data: await this.tenantService.getApps(id) };
+    return { ok: true as const, data: await this.tenantService.getApps(id) };
   }
 }

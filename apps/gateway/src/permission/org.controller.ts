@@ -14,17 +14,20 @@ export class OrgController {
 
   @Get()
   async getTree(@Req() req: AuthenticatedRequest) {
-    return { ok: true, data: await this.orgService.getTree(requireTenantId(req)) };
+    return { ok: true as const, data: await this.orgService.getTree(requireTenantId(req)) };
   }
 
   @Get(':id/roles')
   async getRoleGrants(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return { ok: true, data: await this.orgService.getRoleGrants(requireTenantId(req), id) };
+    return {
+      ok: true as const,
+      data: await this.orgService.getRoleGrants(requireTenantId(req), id),
+    };
   }
 
   @Get(':id')
   async getNode(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return { ok: true, data: await this.orgService.getNode(requireTenantId(req), id) };
+    return { ok: true as const, data: await this.orgService.getNode(requireTenantId(req), id) };
   }
 
   @Post()
@@ -39,7 +42,7 @@ export class OrgController {
       sort?: number;
     },
   ) {
-    return { ok: true, data: await this.orgService.create(requireTenantId(req), body) };
+    return { ok: true as const, data: await this.orgService.create(requireTenantId(req), body) };
   }
 
   @Put(':id')
@@ -48,13 +51,16 @@ export class OrgController {
     @Param('id') id: string,
     @Body() body: { name?: string; sort?: number; parentId?: string },
   ) {
-    return { ok: true, data: await this.orgService.update(requireTenantId(req), id, body) };
+    return {
+      ok: true as const,
+      data: await this.orgService.update(requireTenantId(req), id, body),
+    };
   }
 
   @Delete(':id')
   async delete(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     await this.orgService.delete(requireTenantId(req), id);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   }
 
   @Post(':id/move')
@@ -64,14 +70,14 @@ export class OrgController {
     @Body() body: { parentId: string },
   ) {
     return {
-      ok: true,
+      ok: true as const,
       data: await this.orgService.moveNode(requireTenantId(req), id, body.parentId),
     };
   }
 
   @Get(':id/members')
   async getMembers(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return { ok: true, data: await this.orgService.getMembers(requireTenantId(req), id) };
+    return { ok: true as const, data: await this.orgService.getMembers(requireTenantId(req), id) };
   }
 
   @Post(':id/members')
@@ -81,7 +87,7 @@ export class OrgController {
     @Body() body: { userId: string },
   ) {
     await this.orgService.addMember(requireTenantId(req), id, body.userId);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   }
 
   @Delete(':id/members/:userId')
@@ -91,7 +97,7 @@ export class OrgController {
     @Param('userId') userId: string,
   ) {
     await this.orgService.removeMember(requireTenantId(req), id, userId);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   }
 
   @Post(':id/roles')
@@ -101,7 +107,7 @@ export class OrgController {
     @Body() body: { roleId: string; appId?: string },
   ) {
     await this.orgService.grantRole(requireTenantId(req), id, body.roleId, body.appId);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   }
 
   @Delete(':id/roles/:roleId')
@@ -111,6 +117,6 @@ export class OrgController {
     @Param('roleId') roleId: string,
   ) {
     await this.orgService.revokeRole(requireTenantId(req), id, roleId);
-    return { ok: true, data: null };
+    return { ok: true as const, data: null };
   }
 }

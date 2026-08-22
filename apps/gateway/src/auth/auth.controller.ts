@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -18,6 +18,10 @@ export class AuthController {
   @Post('login')
   @ApiOperation({ summary: '用户登录', description: '租户用户或平台超管登录' })
   async login(@Body() body: LoginDto) {
-    return this.authService.login(body.email, body.password, body.tenantSlug);
+    const result = await this.authService.login(body.email, body.password, body.tenantSlug);
+    if (!result.ok) {
+      throw new UnauthorizedException(result.error.message);
+    }
+    return { ok: true as const, data: result.data };
   }
 }

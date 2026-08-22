@@ -20,6 +20,7 @@ import { ChangeLogModule } from '../application/changelog.module.js';
 import { NotificationModule } from '../notification/notification.module.js';
 import { QueueModule } from '../queue/queue.module.js';
 import { ConnectorModule } from '../connector/connector.module.js';
+import { CloudFunctionModule } from '../cloud-function/cloud-function.module.js';
 import { ProcessController } from './process.controller.js';
 import { ProcessService } from './process.service.js';
 import { ProcessEngine } from './process-engine.js';
@@ -37,6 +38,7 @@ import { NotificationExecutor } from './node-executors/notification.executor.js'
 import { HttpRequestExecutor } from './node-executors/http-request.executor.js';
 import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
 import { BlockExecutor } from './node-executors/block.executor.js';
+import { CloudFunctionExecutor } from './node-executors/cloud-function.executor.js';
 import { TriggerService } from './trigger.service.js';
 
 @Module({
@@ -55,6 +57,7 @@ import { TriggerService } from './trigger.service.js';
     NotificationModule,
     forwardRef(() => QueueModule),
     forwardRef(() => ConnectorModule),
+    forwardRef(() => CloudFunctionModule),
   ],
   controllers: [ProcessController],
   providers: [
@@ -75,6 +78,7 @@ import { TriggerService } from './trigger.service.js';
     HttpRequestExecutor,
     SubProcessExecutor,
     BlockExecutor,
+    CloudFunctionExecutor,
     // JWT 策略
     JwtStrategy,
     // 触发器服务

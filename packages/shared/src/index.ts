@@ -29,3 +29,6 @@ export * from './connector/index.js';
 
 // 数据集与数据流
 export * from './dataset/index.js';
+
+// 云函数与扩展
+export * from './cloud-function/index.js';

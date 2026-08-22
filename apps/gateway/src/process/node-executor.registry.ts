@@ -21,6 +21,7 @@ import { NotificationExecutor } from './node-executors/notification.executor.js'
 import { HttpRequestExecutor } from './node-executors/http-request.executor.js';
 import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
 import { BlockExecutor } from './node-executors/block.executor.js';
+import { CloudFunctionExecutor } from './node-executors/cloud-function.executor.js';
 
 @Injectable()
 export class NodeExecutorRegistry {
@@ -40,6 +41,7 @@ export class NodeExecutorRegistry {
     private readonly httpRequestExecutor: HttpRequestExecutor,
     private readonly subProcessExecutor: SubProcessExecutor,
     private readonly blockExecutor: BlockExecutor,
+    private readonly cloudFunctionExecutor: CloudFunctionExecutor,
   ) {
     // 注册 MVP P0 + P1 节点执行器（对应 SimplifiedNodeType snake_case）
     this.register(this.startExecutor);
@@ -56,6 +58,8 @@ export class NodeExecutorRegistry {
     this.register(this.subProcessExecutor);
     // block 容器透传执行器（条件分支的分支容器节点）
     this.register(this.blockExecutor);
+    // 云函数执行器
+    this.register(this.cloudFunctionExecutor);
   }
 
   /** 注册执行器。 */

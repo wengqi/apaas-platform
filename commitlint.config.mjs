@@ -56,6 +56,7 @@ export default {
         'queue',
         'connector',
         'dataset',
+        'cloud-function',
         // 基础设施
         'infra',
         'docs',

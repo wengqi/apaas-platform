@@ -202,6 +202,8 @@ export enum SimplifiedNodeType {
   Notification = 'notification',
   /** HTTP 请求/连接器 */
   HttpRequest = 'http_request',
+  /** 云函数调用 */
+  CloudFunction = 'cloud_function',
   /** 赋值/设置变量 */
   Assign = 'assign',
 
@@ -243,6 +245,16 @@ export interface ObjectOperationConfig {
   fieldMapping?: Record<string, string>;
   filter?: string;
   /** 查询结果映射到变量名 */
+  resultVariable?: string;
+}
+
+/** 云函数节点配置。 */
+export interface CloudFunctionConfig {
+  /** 云函数 ID。 */
+  cloudFunctionId: string;
+  /** 输入参数映射（变量路径 → 参数名）。 */
+  inputMapping?: Record<string, string>;
+  /** 结果映射到变量名。 */
   resultVariable?: string;
 }
 

@@ -50,6 +50,7 @@
     "@flowgram.ai/utils": "^1.0.12",
     "@flowgram.ai/variable-core": "^1.0.12",
     "@flowgram.ai/variable-plugin": "^1.0.12",
+    "@monaco-editor/react": "^4.7.0",
     "@react-awesome-query-builder/antd": "^6.6.0",
     "@tanstack/react-query": "^5.101.4",
     "antd": "^5.29.3",

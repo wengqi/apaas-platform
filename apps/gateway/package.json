@@ -28,6 +28,7 @@
     "class-validator": "^0.15.1",
     "expr-eval": "^2.0.2",
     "ioredis": "^5.4.1",
+    "isolated-vm": "^7.0.1",
     "joi": "^17.13.0",
     "json-logic-js": "^2.0.0",
     "nodemailer": "^9.0.3",

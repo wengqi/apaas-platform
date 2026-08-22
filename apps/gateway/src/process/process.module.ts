@@ -19,6 +19,7 @@ import { PermissionModule } from '../permission/permission.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { NotificationModule } from '../notification/notification.module.js';
 import { QueueModule } from '../queue/queue.module.js';
+import { ConnectorModule } from '../connector/connector.module.js';
 import { ProcessController } from './process.controller.js';
 import { ProcessService } from './process.service.js';
 import { ProcessEngine } from './process-engine.js';
@@ -53,6 +54,7 @@ import { TriggerService } from './trigger.service.js';
     ChangeLogModule,
     NotificationModule,
     forwardRef(() => QueueModule),
+    forwardRef(() => ConnectorModule),
   ],
   controllers: [ProcessController],
   providers: [

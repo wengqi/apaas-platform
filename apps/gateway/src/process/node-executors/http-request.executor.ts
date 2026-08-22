@@ -1,71 +1,118 @@
 /**
  * HttpRequestExecutor — HTTP 请求/连接器节点。
  *
- * 定位：调用外部 API（Phase 5 连接器的前置形态），打通外部系统。
- * 配置项（node.data）：method / url / headers（JSON）/ body（JSON，支持变量插值）/
- *   responseMapping（响应字段 → 变量名映射，可选）。
- * 输出：statusCode / responseBody / 按 responseMapping 映射的字段。
+ * 支持两种模式：
+ * 1. 连接器模式（connectorId 存在）：通过 ConnectorCallService 调用已配置的连接器，
+ *    自动注入凭证、baseUrl、默认 headers。
+ * 2. 直连模式（connectorId 不存在）：直接 fetch，向后兼容。
  *
- * url/headers/body 可四态绑定（经引擎解析后存于 inputs）。
+ * 配置项（node.data）：
+ *   - connectorId?: string      — 连接器 ID（选择后使用连接器配置）
+ *   - operationId?: string      — 连接器操作 ID
+ *   - method / url / headers / body / responseMapping — 直连模式参数
+ * 输出：statusCode / responseBody / success + responseMapping 映射字段
  */
 
 import { Injectable, Logger } from '@nestjs/common';
 import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../types.js';
 import { renderTemplateDotted } from '../process-utils.js';
+import { ConnectorService } from '../../connector/connector.service.js';
+import { ConnectorCallService } from '../../connector/connector-call.service.js';
 
 @Injectable()
 export class HttpRequestExecutor implements NodeExecutor {
   private readonly logger = new Logger(HttpRequestExecutor.name);
   readonly type = 'http_request';
 
+  constructor(
+    private readonly connectorService: ConnectorService,
+    private readonly callService: ConnectorCallService,
+  ) {}
+
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
-    const method =
-      (data['method'] as string) ?? (ctx.inputs['method'] as string) ?? 'GET';
-    const url = (data['url'] as string) ?? (ctx.inputs['url'] as string);
-    if (!url) {
-      throw new Error('HTTP 请求节点缺少 url');
-    }
+    const connectorId = (data['connectorId'] as string) ?? (ctx.inputs['connectorId'] as string);
 
-    const headersRaw = data['headers'] ?? ctx.inputs['headers'];
-    const headers = this.parseHeaders(headersRaw);
-    const bodyRaw = data['body'] ?? ctx.inputs['body'];
-
-    // 构建渲染作用域（同通知节点）
+    // 构建渲染作用域
     const globalVars = (ctx.variables['global'] as Record<string, unknown>) ?? {};
     const renderScope: Record<string, unknown> = { ...ctx.variables, ...globalVars };
 
-    // body 支持模版插值
-    let bodyStr: string | undefined;
-    if (bodyRaw !== undefined && bodyRaw !== null) {
-      bodyStr = typeof bodyRaw === 'string'
-        ? renderTemplateDotted(bodyRaw, renderScope)
-        : JSON.stringify(bodyRaw);
-    }
+    let statusCode: number;
+    let responseBody: unknown;
 
-    this.logger.log(`HTTP ${method} ${url}`);
+    if (connectorId) {
+      // 连接器模式
+      const connector = await this.connectorService.getEntity(ctx.tenantId, connectorId);
+      const operationId = (data['operationId'] as string) ?? undefined;
+      const method = (data['method'] as string) ?? undefined;
+      const path = (data['path'] as string) ?? undefined;
+      const headersRaw = data['headers'] ?? ctx.inputs['headers'];
+      const headers = this.parseHeaders(headersRaw);
+      const bodyRaw = data['body'] ?? ctx.inputs['body'];
+      let bodyStr: string | undefined;
+      if (bodyRaw !== undefined && bodyRaw !== null) {
+        bodyStr =
+          typeof bodyRaw === 'string'
+            ? renderTemplateDotted(bodyRaw, renderScope)
+            : JSON.stringify(bodyRaw);
+      }
 
-    const resp = await fetch(url, {
-      method,
-      headers,
-      body: bodyStr,
-    });
-    const respText = await resp.text();
-    let responseBody: unknown = respText;
-    try {
-      responseBody = JSON.parse(respText);
-    } catch {
-      // 非 JSON，保留原始文本
+      const result = await this.callService.invoke(connector, {
+        operationId,
+        method,
+        path,
+        headers,
+        body: bodyStr,
+        variables: renderScope,
+      });
+
+      statusCode = result.statusCode;
+      responseBody = result.responseBody;
+
+      this.logger.log(`连接器调用 ${connector.name}: ${result.statusCode}`);
+    } else {
+      // 直连模式（向后兼容）
+      const method = (data['method'] as string) ?? (ctx.inputs['method'] as string) ?? 'GET';
+      const url = (data['url'] as string) ?? (ctx.inputs['url'] as string);
+      if (!url) {
+        throw new Error('HTTP 请求节点缺少 url 或 connectorId');
+      }
+
+      const headersRaw = data['headers'] ?? ctx.inputs['headers'];
+      const headers = this.parseHeaders(headersRaw);
+      const bodyRaw = data['body'] ?? ctx.inputs['body'];
+      let bodyStr: string | undefined;
+      if (bodyRaw !== undefined && bodyRaw !== null) {
+        bodyStr =
+          typeof bodyRaw === 'string'
+            ? renderTemplateDotted(bodyRaw, renderScope)
+            : JSON.stringify(bodyRaw);
+      }
+
+      this.logger.log(`HTTP ${method} ${url}`);
+      const resp = await fetch(url, { method, headers, body: bodyStr });
+      const respText = await resp.text();
+      try {
+        responseBody = JSON.parse(respText);
+      } catch {
+        responseBody = respText;
+      }
+      statusCode = resp.status;
+
+      if (!resp.ok) {
+        this.logger.warn(`HTTP 请求失败: ${resp.status} ${url}`);
+      }
     }
 
     const output: Record<string, unknown> = {
-      statusCode: resp.status,
+      statusCode,
       responseBody,
-      success: resp.ok,
+      success: statusCode >= 200 && statusCode < 300,
     };
 
     // 按 responseMapping 映射字段到全局变量
-    const responseMapping = (data['responseMapping'] as Record<string, string> | undefined) ??
+    const responseMapping =
+      (data['responseMapping'] as Record<string, string> | undefined) ??
       (data['response_mapping'] as Record<string, string> | undefined);
     if (responseMapping) {
       const global = (ctx.variables['global'] as Record<string, unknown>) ?? {};
@@ -73,10 +120,6 @@ export class HttpRequestExecutor implements NodeExecutor {
         global[varName] = this.extractPath(responseBody, fieldPath);
       }
       ctx.variables['global'] = global;
-    }
-
-    if (!resp.ok) {
-      this.logger.warn(`HTTP 请求失败: ${resp.status} ${url}`);
     }
 
     return { output };

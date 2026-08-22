@@ -25,7 +25,7 @@ import { DisposableCollection } from '@flowgram.ai/utils';
 import type { FlowDocument, FlowNodeEntity } from '@flowgram.ai/document';
 import { FlowRendererKey } from '@flowgram.ai/renderer';
 import { defaultFixedSemiMaterials } from '@flowgram.ai/fixed-semi-materials';
-import { Button, Popover, Space, Typography } from 'antd';
+import { Button, Popover, Space, Tooltip, Typography } from 'antd';
 import {
   MinusOutlined,
   PlusOutlined,
@@ -642,18 +642,21 @@ function BlockOrderIconLabel({
           <Text style={{ fontSize: 11, color: '#ff4d4f', flexShrink: 0 }}>(未配置)</Text>
         )}
         {!isElse && conditionText && (
-          <Text
-            style={{
-              fontSize: 11,
-              color: 'rgba(0,0,0,0.45)',
-              flexShrink: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 80,
-            }}
-          >
-            {conditionText.length > 20 ? conditionText.substring(0, 20) + '...' : conditionText}
-          </Text>
+          <Tooltip title={conditionText} placement="top">
+            <Text
+              style={{
+                fontSize: 11,
+                color: 'rgba(0,0,0,0.45)',
+                flexShrink: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 80,
+                cursor: 'default',
+              }}
+            >
+              {conditionText.length > 20 ? conditionText.substring(0, 20) + '...' : conditionText}
+            </Text>
+          </Tooltip>
         )}
       </div>
     </div>

@@ -48,9 +48,16 @@ export class OrgService {
   }
 
   /** 创建节点。 */
-  async create(tenantId: string, data: {
-    parentId?: string; name: string; code: string; nodeType?: string; sort?: number;
-  }) {
+  async create(
+    tenantId: string,
+    data: {
+      parentId?: string;
+      name: string;
+      code: string;
+      nodeType?: string;
+      sort?: number;
+    },
+  ) {
     const exists = await prisma.orgNode.findFirst({ where: { tenantId, code: data.code } });
     if (exists) throw new BadRequestException('组织编码已存在');
 
@@ -67,7 +74,11 @@ export class OrgService {
   }
 
   /** 更新节点。 */
-  async update(tenantId: string, id: string, data: { name?: string; sort?: number; parentId?: string }) {
+  async update(
+    tenantId: string,
+    id: string,
+    data: { name?: string; sort?: number; parentId?: string },
+  ) {
     const node = await prisma.orgNode.findFirst({ where: { id, tenantId } });
     if (!node) throw new NotFoundException('组织节点不存在');
     if (data.parentId === id) throw new BadRequestException('不能将节点设为自身的子节点');
@@ -122,6 +133,24 @@ export class OrgService {
     await prisma.orgMember.delete({
       where: { userId_orgId: { userId, orgId } },
     });
+  }
+
+  /** 获取组织节点已授予的角色列表。 */
+  async getRoleGrants(tenantId: string, orgId: string) {
+    const org = await prisma.orgNode.findFirst({ where: { id: orgId, tenantId } });
+    if (!org) throw new NotFoundException('组织节点不存在');
+    const grants = await prisma.orgRoleGrant.findMany({
+      where: { orgId },
+      include: { role: true },
+    });
+    return grants.map((g) => ({
+      id: g.id,
+      orgId: g.orgId,
+      roleId: g.roleId,
+      appId: g.appId,
+      createdAt: g.createdAt,
+      role: { id: g.role.id, name: g.role.name, code: g.role.code },
+    }));
   }
 
   /** 组织角色授权。 */

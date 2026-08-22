@@ -259,7 +259,7 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     category: 'display',
     isContainer: false,
     description: '数据可视化图表',
-    defaultProps: {},
+    defaultProps: { chartType: 'bar', title: '图表' },
   },
   rich_text_display: {
     label: '富文本展示',

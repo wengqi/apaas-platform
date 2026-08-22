@@ -37,7 +37,10 @@ import type {
 } from '../../api/pages.js';
 import type { Dayjs } from 'dayjs';
 import { resolvePropValue, getByPath } from '@apaas/shared/stores';
+import { buildChartOption } from '@apaas/shared/page';
+import type { ChartType, ChartAggregation } from '@apaas/shared';
 import { useRuntimeCtx, type RuntimeState } from './RuntimeStore.js';
+import ReactECharts from 'echarts-for-react';
 
 const { Text, Title } = Typography;
 
@@ -1047,27 +1050,20 @@ function renderStatistic(node: ComponentNode, ctx: RenderContext): React.ReactNo
 
 function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx) || '图表';
-  const meta = getComponentMeta(node.type);
-  const Icon = meta.icon;
+  const chartType = (getPropAsString(node, 'chartType', ctx) || 'bar') as ChartType;
+  const categoryField = getPropAsString(node, 'categoryField', ctx) || undefined;
+  const valueField = getPropAsString(node, 'valueField', ctx) || undefined;
+  const aggregation = (getPropAsString(node, 'aggregation', ctx) || 'sum') as ChartAggregation;
+
+  // 编辑模式使用 mock 数据；预览模式解析绑定数据
+  const data =
+    ctx.mode === 'preview' ? resolvePropValue(node.props.data ?? null, { vm: ctx.vm }) : null;
+
+  const option = buildChartOption(chartType, title, categoryField, valueField, aggregation, data);
+
   return (
-    <div
-      style={{
-        padding: 24,
-        background: '#fafbfc',
-        border: '1px dashed #eef0f4',
-        borderRadius: 6,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 120,
-        gap: 8,
-      }}
-    >
-      <Icon style={{ fontSize: 32, color: '#bfbfbf' }} />
-      <Text type="secondary" style={{ fontSize: 13 }}>
-        {title}(图表引擎后续迭代)
-      </Text>
+    <div style={{ padding: 8, background: '#fff', borderRadius: 6, minHeight: 200 }}>
+      <ReactECharts option={option} style={{ height: 200 }} />
     </div>
   );
 }

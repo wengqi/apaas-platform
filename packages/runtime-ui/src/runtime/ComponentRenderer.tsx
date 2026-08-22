@@ -40,7 +40,10 @@ import type {
 } from '../api/pages.js';
 import type { Dayjs } from 'dayjs';
 import { resolvePropValue, getByPath } from '@apaas/shared/stores';
+import { buildChartOption } from '@apaas/shared/page';
+import type { ChartType, ChartAggregation } from '@apaas/shared';
 import { useRuntimeCtx, type RuntimeState } from './RuntimeStore.js';
+import ReactECharts from 'echarts-for-react';
 
 const { Text, Title } = Typography;
 
@@ -792,33 +795,23 @@ function renderStatistic(node: ComponentNode, ctx: RenderContext): React.ReactNo
 }
 
 /**
- * 图表渲染 — 尚未实现。
+ * 图表渲染 — 基于 ECharts。
  *
- * 图表引擎（ECharts/AntV 等）尚未集成，当前仅渲染占位 UI。
- * 后续接入图表库后替换此实现。
+ * 从绑定数据（记录数组）和图表配置构建 ECharts option 并渲染。
  */
 function renderChart(node: ComponentNode, ctx: RenderContext): React.ReactNode {
   const title = getPropAsString(node, 'title', ctx) || '图表';
+  const chartType = (getPropAsString(node, 'chartType', ctx) || 'bar') as ChartType;
+  const categoryField = getPropAsString(node, 'categoryField', ctx) || undefined;
+  const valueField = getPropAsString(node, 'valueField', ctx) || undefined;
+  const aggregation = (getPropAsString(node, 'aggregation', ctx) || 'sum') as ChartAggregation;
 
-  console.warn('[ComponentRenderer] 图表组件尚未实现，渲染占位 UI');
+  const data = resolvePropValue(node.props.data ?? null, { vm: ctx.vm });
+  const option = buildChartOption(chartType, title, categoryField, valueField, aggregation, data);
+
   return (
-    <div
-      style={{
-        padding: 24,
-        background: '#fafbfc',
-        border: '1px dashed #eef0f4',
-        borderRadius: 6,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 120,
-        gap: 8,
-      }}
-    >
-      <Text type="secondary" style={{ fontSize: 13 }}>
-        {title}（图表组件尚未实现）
-      </Text>
+    <div style={{ padding: 8, background: '#fff', borderRadius: 6, minHeight: 200 }}>
+      <ReactECharts option={option} style={{ height: 200 }} />
     </div>
   );
 }

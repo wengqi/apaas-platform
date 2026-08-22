@@ -128,6 +128,7 @@ export interface OrgRoleGrant {
   roleId: string;
   appId?: string;
   createdAt: string;
+  role?: { id: string; name: string; code: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,8 @@ export const orgsApi = {
     unwrap<void>(client.post(`/api/permissions/orgs/${id}/roles`, { roleId, appId })),
   revokeRole: (id: string, roleId: string) =>
     unwrap<void>(client.delete(`/api/permissions/orgs/${id}/roles/${roleId}`)),
+  getRoleGrants: (id: string) =>
+    unwrap<OrgRoleGrant[]>(client.get(`/api/permissions/orgs/${id}/roles`)),
 };
 
 /** 用户管理 API。 */

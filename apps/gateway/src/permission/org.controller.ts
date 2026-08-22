@@ -17,6 +17,11 @@ export class OrgController {
     return { ok: true, data: await this.orgService.getTree(requireTenantId(req)) };
   }
 
+  @Get(':id/roles')
+  async getRoleGrants(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return { ok: true, data: await this.orgService.getRoleGrants(requireTenantId(req), id) };
+  }
+
   @Get(':id')
   async getNode(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return { ok: true, data: await this.orgService.getNode(requireTenantId(req), id) };

@@ -20,3 +20,6 @@ export * from './process/index.js';
 
 // 权限（Phase 4 补充）
 export * from './permission/index.js';
+
+// 站内信通知
+export * from './notification/index.js';

@@ -251,3 +251,30 @@ export interface UpdatePageRequest {
   /** 发布状态 */
   isPublished?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// 图表组件配置（飞书对齐：柱状图/折线图/饼图/漏斗图）
+// ---------------------------------------------------------------------------
+
+/** 图表类型。 */
+export type ChartType = 'bar' | 'line' | 'pie' | 'funnel';
+
+/** 聚合方式。 */
+export type ChartAggregation = 'sum' | 'count' | 'avg' | 'max' | 'min';
+
+/** 图表组件配置。 */
+export interface ChartConfig {
+  /** 图表类型 */
+  chartType: ChartType;
+  /** 图表标题 */
+  title?: string;
+  /** 分类字段（X 轴 / 饼图标签） */
+  categoryField?: string;
+  /** 值字段（Y 轴 / 饼图值） */
+  valueField?: string;
+  /** 聚合方式 */
+  aggregation?: ChartAggregation;
+}
+
+// 图表 ECharts option 构建工具
+export { buildChartOption } from './chart-options.js';

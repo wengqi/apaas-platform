@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Drawer, Select, Space, Typography, message } from 'antd';
+import { Button, Checkbox, Drawer, Select, Space, Typography, message } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import {
   rolesApi,
@@ -20,6 +20,8 @@ import {
   type Role,
 } from '../../api/permissions.js';
 import { objectsApi, type Field } from '../../api/objects.js';
+import { pagesApi } from '../../api/pages.js';
+import { processesApi } from '../../api/processes.js';
 import QueryBuilderPanel from '../shared/QueryBuilderPanel.js';
 
 const { Text } = Typography;
@@ -79,6 +81,20 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
     enabled: !!selectedObjectId,
   });
 
+  // 加载应用页面列表（用于 PAGE 权限的目标选择）
+  const { data: pages } = useQuery({
+    queryKey: ['app-pages', role.appId],
+    queryFn: () => pagesApi.list(role.appId!),
+    enabled: open && !!role.appId,
+  });
+
+  // 加载应用流程列表（用于 PROCESS 权限的目标选择）
+  const { data: processes } = useQuery({
+    queryKey: ['app-processes', role.appId],
+    queryFn: () => processesApi.list(role.appId!),
+    enabled: open && !!role.appId,
+  });
+
   useEffect(() => {
     if (existingRules) {
       setRules(
@@ -123,7 +139,26 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
   };
 
   const handleUpdateRule = (index: number, patch: Partial<CreatePermissionRuleRequest>) => {
-    setRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setRules((prev) =>
+      prev.map((r, i) => {
+        if (i !== index) return r;
+        const updated = { ...r, ...patch };
+        // 切换权限类型时，清除不兼容的条件和列级权限
+        if (patch.type && patch.type !== r.type) {
+          if (patch.type !== 'RECORD') {
+            updated.condition = null;
+          }
+          if (patch.type !== 'RECORD' && patch.type !== 'DATA_MODEL') {
+            updated.fieldScope = null;
+          }
+        }
+        // 切换到通配符目标时，清除条件和列级权限
+        if (patch.targetId === '*') {
+          updated.fieldScope = null;
+        }
+        return updated;
+      }),
+    );
   };
 
   const handleRemoveRule = (index: number) => {
@@ -143,6 +178,27 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
   const objectFields: Field[] = useMemo(() => {
     return selectedObject?.fields ?? [];
   }, [selectedObject]);
+
+  /** 根据权限类型构建目标选项列表。 */
+  const getTargetOptions = (ruleType: PermissionType) => {
+    const wildcard = [{ value: '*', label: '所有 (*)' }];
+    switch (ruleType) {
+      case 'PAGE':
+        return [...wildcard, ...(pages?.map((p) => ({ value: p.id, label: p.name })) ?? [])];
+      case 'PROCESS':
+        return [...wildcard, ...(processes?.map((p) => ({ value: p.id, label: p.name })) ?? [])];
+      case 'CONNECTOR':
+        return wildcard;
+      case 'RECORD':
+      case 'DATA_MODEL':
+      default:
+        return [...wildcard, ...(objects?.map((o) => ({ value: o.id, label: o.label })) ?? [])];
+    }
+  };
+
+  /** 判断规则是否支持列级权限（fieldScope）。 */
+  const supportsFieldScope = (rule: CreatePermissionRuleRequest) =>
+    (rule.type === 'RECORD' || rule.type === 'DATA_MODEL') && rule.targetId !== '*';
 
   return (
     <Drawer
@@ -218,10 +274,7 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
                   value={rule.targetId}
                   onChange={(v) => handleTargetChange(index, v)}
                   style={{ flex: 1, minWidth: 150 }}
-                  options={[
-                    { value: '*', label: '所有对象 (*)' },
-                    ...(objects?.map((o) => ({ value: o.id, label: o.label })) ?? []),
-                  ]}
+                  options={getTargetOptions(rule.type)}
                 />
                 <Button
                   type="text"
@@ -246,6 +299,39 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
                     onChange={(cond) => handleUpdateRule(index, { condition: cond })}
                     placeholder="空条件 = 可见所有记录，添加规则后按条件过滤"
                   />
+                </div>
+              )}
+
+              {supportsFieldScope(rule) && (
+                <div style={{ borderTop: '1px dashed #eef0f4', paddingTop: 12 }}>
+                  <Text
+                    type="secondary"
+                    style={{ fontSize: 12, display: 'block', marginBottom: 8 }}
+                  >
+                    列级权限（
+                    {rule.effect === 'ALLOW' ? '勾选可见字段，未勾选隐藏' : '勾选隐藏字段'}）
+                  </Text>
+                  {objectFields.length > 0 ? (
+                    <Checkbox.Group
+                      value={rule.fieldScope ?? []}
+                      onChange={(checkedValues) =>
+                        handleUpdateRule(index, {
+                          fieldScope: checkedValues as string[],
+                        })
+                      }
+                      style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}
+                    >
+                      {objectFields.map((f) => (
+                        <Checkbox key={f.id} value={f.id}>
+                          {f.label || f.apiName}
+                        </Checkbox>
+                      ))}
+                    </Checkbox.Group>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      该对象暂无字段
+                    </Text>
+                  )}
                 </div>
               )}
 

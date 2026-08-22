@@ -14,16 +14,9 @@ import {
   TreeSelect,
   Typography,
 } from 'antd';
-import {
-  LayoutOutlined,
-  DatabaseOutlined,
-  LinkOutlined,
-} from '@ant-design/icons';
+import { LayoutOutlined, DatabaseOutlined, LinkOutlined } from '@ant-design/icons';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
-import {
-  getComponentMeta,
-  PAGE_TYPE_OPTIONS,
-} from '../../constants/pageComponents.js';
+import { getComponentMeta, PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
 import type { ComponentNode, PageType, PropValue } from '../../api/pages.js';
 import { EventsTab } from './EventsTab.js';
 
@@ -224,18 +217,12 @@ function ComponentPropertyPanel({ node }: { node: ComponentNode }) {
           <Text strong style={{ fontSize: 14 }}>
             {node.name || meta.label}
           </Text>
-          <Tag
-            style={{ margin: 0, fontSize: 11, lineHeight: '18px' }}
-            color="default"
-          >
+          <Tag style={{ margin: 0, fontSize: 11, lineHeight: '18px' }} color="default">
             {node.type}
           </Tag>
         </Space>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text
-            type="secondary"
-            style={{ fontSize: 12, fontFamily: 'monospace' }}
-          >
+          <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
             {node.id}
           </Text>
           <Button
@@ -291,6 +278,9 @@ function BasicPropsTab({ node }: { node: ComponentNode }) {
   const isHidden = node.hidden === true;
   const className = typeof node.props.className === 'string' ? node.props.className : '';
 
+  const getStr = (key: string): string =>
+    typeof node.props[key] === 'string' ? (node.props[key] as string) : '';
+
   return (
     <div>
       <FormField label="组件 ID">
@@ -329,14 +319,98 @@ function BasicPropsTab({ node }: { node: ComponentNode }) {
       <FormField label="自定义 class">
         <Input
           value={className}
-          onChange={(e) =>
-            updateComponentProps(node.id, { className: e.target.value })
-          }
+          onChange={(e) => updateComponentProps(node.id, { className: e.target.value })}
           size="small"
           placeholder="highlight-card"
         />
       </FormField>
+
+      {/* 图表组件专属配置 */}
+      {node.type === 'chart' && (
+        <ChartPropsSection
+          node={node}
+          getStr={getStr}
+          updateComponentProps={updateComponentProps}
+        />
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 图表组件专属配置
+// ---------------------------------------------------------------------------
+
+const CHART_TYPE_OPTIONS = [
+  { value: 'bar', label: '柱状图' },
+  { value: 'line', label: '折线图' },
+  { value: 'pie', label: '饼图' },
+  { value: 'funnel', label: '漏斗图' },
+];
+
+const CHART_AGGREGATION_OPTIONS = [
+  { value: 'sum', label: '求和' },
+  { value: 'count', label: '计数' },
+  { value: 'avg', label: '平均值' },
+  { value: 'max', label: '最大值' },
+  { value: 'min', label: '最小值' },
+];
+
+function ChartPropsSection({
+  node,
+  getStr,
+  updateComponentProps,
+}: {
+  node: ComponentNode;
+  getStr: (key: string) => string;
+  updateComponentProps: (id: string, props: Record<string, unknown>) => void;
+}) {
+  return (
+    <>
+      <SectionDivider>图表配置</SectionDivider>
+      <FormField label="图表类型">
+        <Select
+          value={getStr('chartType') || 'bar'}
+          onChange={(v) => updateComponentProps(node.id, { chartType: v })}
+          size="small"
+          style={{ width: '100%' }}
+          options={CHART_TYPE_OPTIONS}
+        />
+      </FormField>
+      <FormField label="图表标题">
+        <Input
+          value={getStr('title')}
+          onChange={(e) => updateComponentProps(node.id, { title: e.target.value })}
+          size="small"
+          placeholder="图表标题"
+        />
+      </FormField>
+      <FormField label="分类字段">
+        <Input
+          value={getStr('categoryField')}
+          onChange={(e) => updateComponentProps(node.id, { categoryField: e.target.value })}
+          size="small"
+          placeholder="如：category"
+        />
+      </FormField>
+      <FormField label="值字段">
+        <Input
+          value={getStr('valueField')}
+          onChange={(e) => updateComponentProps(node.id, { valueField: e.target.value })}
+          size="small"
+          placeholder="如：value"
+        />
+      </FormField>
+      <FormField label="聚合方式">
+        <Select
+          value={getStr('aggregation') || 'sum'}
+          onChange={(v) => updateComponentProps(node.id, { aggregation: v })}
+          size="small"
+          style={{ width: '100%' }}
+          options={CHART_AGGREGATION_OPTIONS}
+        />
+      </FormField>
+    </>
   );
 }
 
@@ -513,12 +587,8 @@ function DataBindingTab({ node }: { node: ComponentNode }) {
             isBind={isBind}
             value={value}
             treeData={treeData}
-            onSetConstant={(val) =>
-              updateComponentProps(node.id, { [key]: val })
-            }
-            onSetBind={(path) =>
-              updateComponentProps(node.id, { [key]: { __bind: path } })
-            }
+            onSetConstant={(val) => updateComponentProps(node.id, { [key]: val })}
+            onSetBind={(path) => updateComponentProps(node.id, { [key]: { __bind: path } })}
           />
         );
       })}
@@ -547,13 +617,7 @@ function BindingRow({
   /** 渲染常量输入控件(按值类型)。 */
   const renderConstantControl = () => {
     if (typeof value === 'boolean') {
-      return (
-        <Switch
-          size="small"
-          checked={value}
-          onChange={(v) => onSetConstant(v)}
-        />
-      );
+      return <Switch size="small" checked={value} onChange={(v) => onSetConstant(v)} />;
     }
     if (typeof value === 'number') {
       return (

@@ -2,6 +2,7 @@ import { Avatar, Dropdown, Layout, Space, Typography, Button } from 'antd';
 import { LogoutOutlined, UserOutlined, HomeOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@apaas/shared/stores';
+import NotificationBell from '../components/NotificationBell';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -63,28 +64,31 @@ export default function RuntimeLayout() {
             </Button>
           </Space>
         </Space>
-        <Dropdown
-          placement="bottomRight"
-          menu={{
-            items: [
-              {
-                key: 'logout',
-                icon: <LogoutOutlined />,
-                label: '退出登录',
+        <Space size="middle" align="center">
+          <NotificationBell />
+          <Dropdown
+            placement="bottomRight"
+            menu={{
+              items: [
+                {
+                  key: 'logout',
+                  icon: <LogoutOutlined />,
+                  label: '退出登录',
+                },
+              ],
+              onClick: (info) => {
+                if (info.key === 'logout') {
+                  handleLogout();
+                }
               },
-            ],
-            onClick: (info) => {
-              if (info.key === 'logout') {
-                handleLogout();
-              }
-            },
-          }}
-        >
-          <Space style={{ cursor: 'pointer', color: '#fff' }} align="center">
-            <Avatar icon={<UserOutlined />} />
-            <span>{user?.name ?? '未登录'}</span>
-          </Space>
-        </Dropdown>
+            }}
+          >
+            <Space style={{ cursor: 'pointer', color: '#fff' }} align="center">
+              <Avatar icon={<UserOutlined />} />
+              <span>{user?.name ?? '未登录'}</span>
+            </Space>
+          </Dropdown>
+        </Space>
       </Header>
       <Content style={{ padding: 24 }}>
         <Outlet />

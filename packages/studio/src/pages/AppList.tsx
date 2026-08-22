@@ -30,6 +30,7 @@ import {
   MoreOutlined,
   InboxOutlined,
   GlobalOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -71,6 +72,7 @@ export default function AppList() {
   const queryClient = useQueryClient();
   const { user, logout } = useAuthStore();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingApp, setEditingApp] = useState<AppSummary | null>(null);
   const [form] = Form.useForm<CreateFormValues>();
 
   /** 加载应用列表。 */
@@ -139,9 +141,38 @@ export default function AppList() {
     },
   });
 
+  /** 编辑应用（更新元数据：名称/描述/图标/主题色）。 */
+  const updateMutation = useMutation({
+    mutationFn: ({ appId, data }: { appId: string; data: Partial<CreateAppRequest> }) =>
+      appsApi.update(appId, data),
+    onSuccess: () => {
+      message.success('应用信息已更新');
+      queryClient.invalidateQueries({ queryKey: ['apps'] });
+      setEditingApp(null);
+      form.resetFields();
+    },
+    onError: (err) => {
+      const axErr = err as {
+        response?: { data?: { message?: string; error?: { message?: string } } };
+        message?: string;
+      };
+      const errMsg =
+        axErr.response?.data?.message ??
+        axErr.response?.data?.error?.message ??
+        axErr.message ??
+        '更新失败，请重试';
+      message.error(errMsg, 5);
+    },
+  });
+
   /** 卡片更多操作菜单 — 按状态显示不同操作。 */
   const cardMenuItems = (app: AppSummary): MenuProps['items'] => {
     const items: MenuProps['items'] = [];
+    items.push({
+      key: 'edit',
+      icon: <EditOutlined />,
+      label: '编辑应用',
+    });
     if (app.status === 'PUBLISHED') {
       items.push({
         key: 'archive',
@@ -162,7 +193,16 @@ export default function AppList() {
 
   /** 处理卡片菜单点击。 */
   const handleCardMenuClick = (app: AppSummary, info: { key: string }) => {
-    if (info.key === 'delete') {
+    if (info.key === 'edit') {
+      setEditingApp(app);
+      form.setFieldsValue({
+        apiName: app.apiName,
+        name: app.name,
+        description: app.description,
+        icon: app.icon,
+        color: app.color,
+      });
+    } else if (info.key === 'delete') {
       Modal.confirm({
         title: '删除应用',
         content:
@@ -195,6 +235,25 @@ export default function AppList() {
         description: values.description,
         icon: values.icon,
         color: values.color,
+      });
+    } catch {
+      /* 校验错误已由 Form 展示 */
+    }
+  };
+
+  /** 提交编辑表单。 */
+  const handleEdit = async () => {
+    if (!editingApp) return;
+    try {
+      const values = await form.validateFields();
+      updateMutation.mutate({
+        appId: editingApp.id,
+        data: {
+          name: values.name,
+          description: values.description,
+          icon: values.icon,
+          color: values.color,
+        },
       });
     } catch {
       /* 校验错误已由 Form 展示 */
@@ -355,7 +414,10 @@ export default function AppList() {
             <Button
               type="primary"
               icon={<AppstoreAddOutlined />}
-              onClick={() => setCreateOpen(true)}
+              onClick={() => {
+                form.resetFields();
+                setCreateOpen(true);
+              }}
             >
               创建应用
             </Button>
@@ -386,7 +448,10 @@ export default function AppList() {
                 type="primary"
                 size="large"
                 icon={<AppstoreAddOutlined />}
-                onClick={() => setCreateOpen(true)}
+                onClick={() => {
+                  form.resetFields();
+                  setCreateOpen(true);
+                }}
               >
                 创建第一个应用
               </Button>
@@ -551,6 +616,49 @@ export default function AppList() {
             ]}
           >
             <Input placeholder="留空则自动生成" />
+          </Form.Item>
+          <Form.Item
+            label="显示名称"
+            name="name"
+            rules={[{ required: true, message: '请输入显示名称' }]}
+          >
+            <Input placeholder="资产管理" />
+          </Form.Item>
+          <Form.Item label="描述" name="description">
+            <Input.TextArea rows={2} placeholder="应用简介（可选）" />
+          </Form.Item>
+          <Form.Item label="图标" name="icon" tooltip="输入一个 emoji 或文本">
+            <Input placeholder="📦" maxLength={4} />
+          </Form.Item>
+          <Form.Item
+            label="主题色"
+            name="color"
+            getValueProps={(value) => ({ value: value ?? undefined })}
+            getValueFromEvent={(color) => color?.toHexString()}
+          >
+            <ColorPicker showText format="hex" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ── 编辑应用弹窗 ── */}
+      <Modal
+        title="编辑应用"
+        open={!!editingApp}
+        onCancel={() => {
+          setEditingApp(null);
+          form.resetFields();
+        }}
+        onOk={handleEdit}
+        confirmLoading={updateMutation.isPending}
+        okText="保存"
+        cancelText="取消"
+        destroyOnClose
+        modalRender={(node) => node}
+      >
+        <Form<CreateFormValues> form={form} layout="vertical" preserve={false}>
+          <Form.Item label="API 名称">
+            <Input value={editingApp?.apiName} disabled />
           </Form.Item>
           <Form.Item
             label="显示名称"

@@ -121,10 +121,11 @@ export class CredentialService {
 
   /** 解密凭证数据（供 ConnectorCallService 内部使用）。 */
   async decrypt(
+    tenantId: string,
     credentialId: string,
   ): Promise<BasicCredentialData | ApiKeyCredentialData | BearerCredentialData> {
-    const credential = await prisma.connectorCredential.findUnique({
-      where: { id: credentialId },
+    const credential = await prisma.connectorCredential.findFirst({
+      where: { id: credentialId, tenantId },
     });
     if (!credential) throw new NotFoundException('凭证不存在');
     const encrypted = credential.data as string;

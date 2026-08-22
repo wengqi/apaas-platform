@@ -52,13 +52,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // 租户用户：加载角色（直接角色 + 组织授权角色）
+    // 通过关联表的 tenantId 进行防御性过滤，确保角色/组织属于同一租户
+    const tenantId = dbUser.tenantId!;
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({
-        where: { userId: payload.sub },
+        where: { userId: payload.sub, role: { tenantId } },
         select: { roleId: true, role: { select: { code: true } } },
       }),
       prisma.orgMember.findMany({
-        where: { userId: payload.sub },
+        where: { userId: payload.sub, org: { tenantId } },
         select: { orgId: true },
       }),
     ]);
@@ -69,7 +71,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // 组织授权的角色
     if (orgMembers.length > 0) {
       const orgGrants = await prisma.orgRoleGrant.findMany({
-        where: { orgId: { in: orgMembers.map((m) => m.orgId) } },
+        where: { orgId: { in: orgMembers.map((m) => m.orgId) }, orgNode: { tenantId } },
         select: { roleId: true, role: { select: { code: true } } },
       });
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];

@@ -67,7 +67,7 @@ export class ConnectorCallService {
     // 3. 合并 headers：defaultHeaders + 凭证注入 + 额外 headers
     let headers: Record<string, string> = { ...(config.defaultHeaders ?? {}) };
     if (connector.credentialId) {
-      headers = await this.applyCredential(headers, connector.credentialId);
+      headers = await this.applyCredential(headers, connector.tenantId, connector.credentialId);
     }
     headers = { ...headers, ...(params.headers ?? {}) };
 
@@ -123,9 +123,10 @@ export class ConnectorCallService {
   /** 注入凭证到请求头。 */
   private async applyCredential(
     headers: Record<string, string>,
+    tenantId: string,
     credentialId: string,
   ): Promise<Record<string, string>> {
-    const data = await this.credentialService.decrypt(credentialId);
+    const data = await this.credentialService.decrypt(tenantId, credentialId);
     const result = { ...headers };
 
     if ('username' in data && 'password' in data) {

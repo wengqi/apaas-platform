@@ -23,3 +23,6 @@ export * from './permission/index.js';
 
 // 站内信通知
 export * from './notification/index.js';
+
+// 连接器与集成
+export * from './connector/index.js';

@@ -45,6 +45,8 @@ model Tenant {
   changeLogs  ChangeLog[]
   appChecks   AppCheck[]
   inAppMessages InAppMessage[]
+  connectors  Connector[]
+  connectorCredentials ConnectorCredential[]
 
   @@map("tenants")
 }
@@ -85,6 +87,8 @@ model Application {
   versions    AppVersion[]
   changeLogs  ChangeLog[]
   checks      AppCheck[]
+  connectors  Connector[]
+  connectorCredentials ConnectorCredential[]
 
   @@unique([tenantId, apiName])
   @@index([tenantId])
@@ -626,4 +630,58 @@ model AppCheck {
   @@index([tenantId])
   @@index([appId])
   @@map("app_checks")
+}
+
+// ============================================================================
+// 五·连接器 (Connector) — 可复用的外部 API 调用配置
+// ============================================================================
+
+/// 连接器 — 可复用的外部 API 调用配置（HTTP 出站 / Webhook 入站）。
+model Connector {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  appId         String   @map("app_id")
+  apiName       String   @map("api_name") // 应用内唯一标识
+  name          String // 显示名称
+  description   String?
+  type          String // HTTP | WEBHOOK
+  baseUrl       String?  @map("base_url") // HTTP 类型的基础 URL
+  config        Json     @default("{}") // 类型特定配置（操作定义/默认 headers 等）
+  credentialId  String?  @map("credential_id") // 关联凭证（可选）
+  status        String   @default("ACTIVE") // ACTIVE | INACTIVE
+  // Webhook 专用：生成的入站 token（用于验证请求合法性）
+  webhookToken  String?  @map("webhook_token")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app          Application           @relation(fields: [appId], references: [id], onDelete: Cascade)
+  credential   ConnectorCredential?  @relation(fields: [credentialId], references: [id])
+
+  @@unique([tenantId, appId, apiName])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("connectors")
+}
+
+/// 连接器凭证 — 独立管理，可被多个连接器引用。
+model ConnectorCredential {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  appId       String   @map("app_id")
+  name        String // 显示名称（如"生产环境 API Key"）
+  type        String // BASIC | API_KEY | BEARER
+  data        Json // 加密存储的凭证数据
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  connectors  Connector[]
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app         Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, appId, name])
+  @@index([tenantId])
+  @@index([appId])
+  @@map("connector_credentials")
 }

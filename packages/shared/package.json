@@ -32,6 +32,11 @@
       "import": "./dist/permission/index.js",
       "require": "./dist/permission/index.js"
     },
+    "./connector": {
+      "types": "./dist/connector/index.d.ts",
+      "import": "./dist/connector/index.js",
+      "require": "./dist/connector/index.js"
+    },
     "./common": {
       "types": "./dist/common/index.d.ts",
       "import": "./dist/common/index.js",

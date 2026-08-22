@@ -58,7 +58,11 @@ async function main() {
   // 2. 迁移旧 ADMIN 角色 → TENANT_ADMIN（若存在）
   await prisma.role.updateMany({
     where: { tenantId: tenant.id, code: 'ADMIN' },
-    data: { code: 'TENANT_ADMIN', name: '租户管理员', description: '管理本租户用户、组织、角色和应用' },
+    data: {
+      code: 'TENANT_ADMIN',
+      name: '租户管理员',
+      description: '管理本租户用户、组织、角色和应用',
+    },
   });
 
   // 3. 创建/更新内置角色
@@ -159,7 +163,9 @@ async function main() {
     create: { userId: endUser.id, roleId: endUserRole.id },
   });
 
-  console.log(`✅ 用户: ${admin.email} (TENANT_ADMIN), ${builder.email} (BUILDER), ${endUser.email} (END_USER)`);
+  console.log(
+    `✅ 用户: ${admin.email} (TENANT_ADMIN), ${builder.email} (BUILDER), ${endUser.email} (END_USER)`,
+  );
 
   // 6. 为 BUILDER 角色创建权限规则（允许搭建操作）
   const builderRules = [
@@ -181,6 +187,11 @@ async function main() {
     { type: 'RECORD', action: 'EDIT', targetId: '*' },
     { type: 'RECORD', action: 'DELETE', targetId: '*' },
     { type: 'RECORD', action: 'VIEW', targetId: '*' },
+    { type: 'CONNECTOR', action: 'CREATE', targetId: '*' },
+    { type: 'CONNECTOR', action: 'EDIT', targetId: '*' },
+    { type: 'CONNECTOR', action: 'DELETE', targetId: '*' },
+    { type: 'CONNECTOR', action: 'VIEW', targetId: '*' },
+    { type: 'CONNECTOR', action: 'EXECUTE', targetId: '*' },
   ];
   await prisma.permissionRule.createMany({
     data: builderRules.map((rule) => ({

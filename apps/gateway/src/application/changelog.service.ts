@@ -20,7 +20,7 @@ export class ChangeLogService {
   async log(params: {
     tenantId: string;
     appId: string;
-    module: 'PAGE' | 'OBJECT' | 'PROCESS' | 'PERMISSION';
+    module: 'PAGE' | 'OBJECT' | 'PROCESS' | 'PERMISSION' | 'CONNECTOR';
     entityType: string;
     entityId: string;
     entityName?: string;

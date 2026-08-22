@@ -33,4 +33,7 @@ export const envValidation = Joi.object({
   SMTP_USER: Joi.string().optional(),
   SMTP_PASS: Joi.string().optional(),
   SMTP_FROM: Joi.string().optional(),
+
+  // ---- 连接器凭证加密 ----
+  CONNECTOR_ENCRYPTION_KEY: Joi.string().hex().length(64).required(),
 });

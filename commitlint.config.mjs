@@ -54,6 +54,7 @@ export default {
         'application',
         'notification',
         'queue',
+        'connector',
         // 基础设施
         'infra',
         'docs',

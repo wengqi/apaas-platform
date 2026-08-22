@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Button,
   ColorPicker,
@@ -18,6 +19,9 @@ import { LayoutOutlined, DatabaseOutlined, LinkOutlined } from '@ant-design/icon
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { getComponentMeta, PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
 import type { ComponentNode, PageType, PropValue } from '../../api/pages.js';
+import { objectsApi } from '../../api/objects.js';
+import { datasetsApi } from '../../api/datasets.js';
+import { useParams } from 'react-router-dom';
 import { EventsTab } from './EventsTab.js';
 
 const { Text, Title } = Typography;
@@ -365,6 +369,62 @@ function ChartPropsSection({
   getStr: (key: string) => string;
   updateComponentProps: (id: string, props: Record<string, unknown>) => void;
 }) {
+  // 从路由参数获取 appId
+  const { appId } = useParams<{ appId: string }>();
+  const datasourceType = getStr('datasourceType') || 'object';
+  const datasourceId = getStr('datasourceId');
+
+  // 加载应用对象列表（用于数据源选择）
+  const { data: objects } = useQuery({
+    queryKey: ['app-objects', appId],
+    queryFn: () => objectsApi.list(appId!),
+    enabled: !!appId && datasourceType === 'object',
+  });
+
+  // 加载数据集列表
+  const { data: datasets } = useQuery({
+    queryKey: ['datasets', appId],
+    queryFn: () => datasetsApi.list(appId!),
+    enabled: !!appId && datasourceType === 'dataset',
+  });
+
+  // 加载选中对象的字段（用于字段选择器）
+  const { data: selectedObject } = useQuery({
+    queryKey: ['object', datasourceId],
+    queryFn: () => objectsApi.get(datasourceId!),
+    enabled: datasourceType === 'object' && !!datasourceId,
+  });
+
+  // 加载选中数据集的列定义
+  const { data: selectedDataset } = useQuery({
+    queryKey: ['dataset', datasourceId],
+    queryFn: () => datasetsApi.get(datasourceId!),
+    enabled: datasourceType === 'dataset' && !!datasourceId,
+  });
+
+  // 构建字段选项列表
+  const fieldOptions = useMemo(() => {
+    if (datasourceType === 'object' && selectedObject?.fields) {
+      return selectedObject.fields.map((f) => ({
+        value: f.apiName,
+        label: `${f.label || f.apiName} (${f.apiName})`,
+      }));
+    }
+    if (datasourceType === 'dataset' && selectedDataset?.columns) {
+      return selectedDataset.columns.map((c) => ({
+        value: c.apiName,
+        label: `${c.label} (${c.apiName})`,
+      }));
+    }
+    return [];
+  }, [datasourceType, selectedObject, selectedDataset]);
+
+  // 数据源选项
+  const datasourceOptions =
+    datasourceType === 'object'
+      ? (objects ?? []).map((o) => ({ value: o.id, label: o.label ?? o.name }))
+      : (datasets ?? []).map((d) => ({ value: d.id, label: d.name }));
+
   return (
     <>
       <SectionDivider>图表配置</SectionDivider>
@@ -385,20 +445,71 @@ function ChartPropsSection({
           placeholder="图表标题"
         />
       </FormField>
-      <FormField label="分类字段">
-        <Input
-          value={getStr('categoryField')}
-          onChange={(e) => updateComponentProps(node.id, { categoryField: e.target.value })}
+
+      <SectionDivider>数据源</SectionDivider>
+      <FormField label="数据源类型">
+        <Select
+          value={datasourceType}
+          onChange={(v) =>
+            updateComponentProps(node.id, {
+              datasourceType: v,
+              datasourceId: '',
+              categoryField: '',
+              valueField: '',
+            })
+          }
           size="small"
-          placeholder="如：category"
+          style={{ width: '100%' }}
+          options={[
+            { value: 'object', label: '对象' },
+            { value: 'dataset', label: '数据集' },
+          ]}
         />
       </FormField>
-      <FormField label="值字段">
-        <Input
-          value={getStr('valueField')}
-          onChange={(e) => updateComponentProps(node.id, { valueField: e.target.value })}
+      <FormField label={datasourceType === 'object' ? '选择对象' : '选择数据集'}>
+        <Select
+          value={datasourceId || undefined}
+          onChange={(v) =>
+            updateComponentProps(node.id, {
+              datasourceId: v,
+              categoryField: '',
+              valueField: '',
+            })
+          }
           size="small"
-          placeholder="如：value"
+          style={{ width: '100%' }}
+          placeholder={datasourceType === 'object' ? '选择对象' : '选择数据集'}
+          options={datasourceOptions}
+          showSearch
+          optionFilterProp="label"
+        />
+      </FormField>
+
+      <SectionDivider>字段映射</SectionDivider>
+      <FormField label="分类字段（X 轴 / 标签）">
+        <Select
+          value={getStr('categoryField') || undefined}
+          onChange={(v) => updateComponentProps(node.id, { categoryField: v })}
+          size="small"
+          style={{ width: '100%' }}
+          placeholder={fieldOptions.length ? '选择字段' : '请先选择数据源'}
+          options={fieldOptions}
+          showSearch
+          optionFilterProp="label"
+          disabled={fieldOptions.length === 0}
+        />
+      </FormField>
+      <FormField label="值字段（Y 轴 / 数值）">
+        <Select
+          value={getStr('valueField') || undefined}
+          onChange={(v) => updateComponentProps(node.id, { valueField: v })}
+          size="small"
+          style={{ width: '100%' }}
+          placeholder={fieldOptions.length ? '选择字段' : '请先选择数据源'}
+          options={fieldOptions}
+          showSearch
+          optionFilterProp="label"
+          disabled={fieldOptions.length === 0}
         />
       </FormField>
       <FormField label="聚合方式">

@@ -12,15 +12,22 @@ import type { FlowDocument, FlowNodeEntity } from '@flowgram.ai/document';
 import type { WorkflowNode } from '../../api/processes.js';
 
 /**
+ * flowgram form-core 在运行时注入的 getData 方法重载不在 FlowNodeEntity 静态类型上。
+ * 使用类型断言访问，避免接口继承冲突。
+ */
+interface FormDataResult {
+  formModel?: { initialized?: boolean };
+  toJSON(): { conditions?: unknown } | undefined;
+}
+
+/**
  * 获取 dynamicSplit 条件节点的分支 block 列表。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getBranchBlocks(conditionNode: any): any[] {
+export function getBranchBlocks(conditionNode: FlowNodeEntity | undefined): FlowNodeEntity[] {
   if (!conditionNode) return [];
 
   const inlineBlocks = conditionNode?.blocks?.find(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (b: any) =>
+    (b: FlowNodeEntity) =>
       b.flowNodeType === 'inlineBlocks' ||
       b.flowNodeType === 'mainInlineBlocks' ||
       b.flowNodeType === 'catchInlineBlocks',
@@ -37,10 +44,7 @@ export function getBranchBlocks(conditionNode: any): any[] {
     }
   }
 
-  return (conditionNode?.blocks ?? []).filter(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (b: any) => b.flowNodeType === 'block',
-  );
+  return (conditionNode?.blocks ?? []).filter((b: FlowNodeEntity) => b.flowNodeType === 'block');
 }
 
 /**
@@ -85,8 +89,10 @@ export function reconcileConditionBranches(
 
   if (conditions.length === 0) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const formData = (conditionNode as any).getData?.({ type: 'FlowNodeEntityFormData' });
+      const nodeWithForm = conditionNode as unknown as {
+        getData?(opts: { type: 'FlowNodeEntityFormData' }): FormDataResult | undefined;
+      };
+      const formData = nodeWithForm.getData?.({ type: 'FlowNodeEntityFormData' });
       if (formData?.formModel?.initialized) {
         const formJSON = formData.toJSON() as { conditions?: unknown } | undefined;
         const formConditions = formJSON?.conditions;
@@ -127,6 +133,7 @@ export function reconcileConditionBranches(
     let nonElseIdx = 0;
     for (let i = 0; i < branchBlocks.length; i++) {
       const block = branchBlocks[i];
+      if (!block) continue;
       const blockExtInfo = block.getExtInfo?.() ?? {};
       if (!blockExtInfo.title || blockExtInfo.title === '分支') {
         const isElse = isElseBlock(block);

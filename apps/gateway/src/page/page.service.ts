@@ -70,11 +70,7 @@ export class PageService {
    *
    * Studio 预览模式不受影响 — Studio 通过 GET /pages/:pageId 读取开发态数据。
    */
-  async getPublishedBySlug(
-    tenantId: string,
-    appId: string,
-    slug: string,
-  ): Promise<PageMeta> {
+  async getPublishedBySlug(tenantId: string, appId: string, slug: string): Promise<PageMeta> {
     // 1. 查询 Application，获取 publishedSnapshot
     const app = await prisma.application.findFirst({
       where: { id: appId, tenantId },
@@ -100,9 +96,7 @@ export class PageService {
       name: pageData.name,
       slug: pageData.apiName,
       type: pageData.type as PageType,
-      objectId: pageData.objectId
-        ? asObjectId(pageData.objectId)
-        : undefined,
+      objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
       schema: pageData.schema as unknown as PageSchema,
       published: true,
       createdAt: snapshot.meta.publishedAt,
@@ -119,6 +113,10 @@ export class PageService {
     req: CreatePageRequest,
     changedBy?: string,
   ): Promise<PageMeta> {
+    // 仪表盘页面自动生成默认模板（预置栅格 + 图表布局）
+    const defaultSchema =
+      req.type === 'dashboard' && !req.schema ? generateDashboardSchema() : (req.schema ?? {});
+
     const page = await prisma.pageMeta.create({
       data: {
         tenantId,
@@ -127,7 +125,7 @@ export class PageService {
         name: req.name,
         type: req.type,
         objectId: req.objectId,
-        schema: (req.schema ?? {}) as unknown as Prisma.InputJsonValue,
+        schema: defaultSchema as unknown as Prisma.InputJsonValue,
         isPublished: false,
       },
     });
@@ -248,4 +246,139 @@ export class PageService {
       updatedAt: row.updatedAt.toISOString(),
     };
   }
+}
+
+/**
+ * 生成仪表盘默认 Schema — 预置栅格布局 + 图表组件。
+ *
+ * 与前端 templates.ts 的 generateDashboardTemplate 保持一致，
+ * 确保从 API 创建的仪表盘页也有起始布局。
+ */
+function generateDashboardSchema(): object {
+  const nodeId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    version: '1',
+    pageType: 'dashboard',
+    viewModel: { variables: {} },
+    root: {
+      id: nodeId('page'),
+      name: '仪表盘',
+      type: 'page',
+      props: {},
+      children: [
+        {
+          id: nodeId('section'),
+          name: '数据概览',
+          type: 'section',
+          props: { title: '数据概览' },
+          children: [
+            {
+              id: nodeId('grid'),
+              name: '栅格',
+              type: 'grid',
+              props: { gutter: 16 },
+              children: [
+                {
+                  id: nodeId('grid_column'),
+                  name: '列1',
+                  type: 'grid_column',
+                  props: { span: 6 },
+                  children: [
+                    {
+                      id: nodeId('statistic'),
+                      name: '统计数字',
+                      type: 'statistic',
+                      props: { title: '总数', value: 0 },
+                    },
+                  ],
+                },
+                {
+                  id: nodeId('grid_column'),
+                  name: '列2',
+                  type: 'grid_column',
+                  props: { span: 18 },
+                  children: [
+                    {
+                      id: nodeId('chart'),
+                      name: '图表1',
+                      type: 'chart',
+                      props: {
+                        chartType: 'bar',
+                        title: '数据分布',
+                        datasourceType: 'object',
+                        datasourceId: '',
+                        categoryField: '',
+                        valueField: '',
+                        aggregation: 'count',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: nodeId('section'),
+          name: '趋势分析',
+          type: 'section',
+          props: { title: '趋势分析' },
+          children: [
+            {
+              id: nodeId('grid'),
+              name: '栅格',
+              type: 'grid',
+              props: { gutter: 16 },
+              children: [
+                {
+                  id: nodeId('grid_column'),
+                  name: '列1',
+                  type: 'grid_column',
+                  props: { span: 12 },
+                  children: [
+                    {
+                      id: nodeId('chart'),
+                      name: '图表2',
+                      type: 'chart',
+                      props: {
+                        chartType: 'line',
+                        title: '趋势图',
+                        datasourceType: 'object',
+                        datasourceId: '',
+                        categoryField: '',
+                        valueField: '',
+                        aggregation: 'sum',
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: nodeId('grid_column'),
+                  name: '列2',
+                  type: 'grid_column',
+                  props: { span: 12 },
+                  children: [
+                    {
+                      id: nodeId('chart'),
+                      name: '图表3',
+                      type: 'chart',
+                      props: {
+                        chartType: 'pie',
+                        title: '占比分布',
+                        datasourceType: 'object',
+                        datasourceId: '',
+                        categoryField: '',
+                        valueField: '',
+                        aggregation: 'count',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  };
 }

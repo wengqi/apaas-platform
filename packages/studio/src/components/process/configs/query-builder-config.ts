@@ -40,16 +40,7 @@ function mapFieldType(type?: string): string {
 
 /** 各字段类型可用操作符 key 列表（使用 RAQB 内置操作符 key） */
 const OPERATOR_KEYS_BY_TYPE: Record<string, string[]> = {
-  text: [
-    'equal',
-    'not_equal',
-    'like',
-    'not_like',
-    'select_any_in',
-    'select_not_any_in',
-    'is_empty',
-    'is_not_empty',
-  ],
+  text: ['equal', 'not_equal', 'like', 'not_like', 'is_empty', 'is_not_empty'],
   number: [
     'equal',
     'not_equal',

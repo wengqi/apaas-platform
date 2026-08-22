@@ -96,16 +96,14 @@ describe('buildQbConfig — 字段类型映射', () => {
 });
 
 describe('buildQbConfig — 操作符注册', () => {
-  it('text 类型字段有 8 个操作符', () => {
+  it('text 类型字段有 6 个操作符', () => {
     const config = buildQbConfig([{ value: 'name', label: '名称', type: 'text' }]);
     const fields = config.fields as Record<string, { operators: string[] }>;
-    expect(fields['name']!.operators).toHaveLength(8);
+    expect(fields['name']!.operators).toHaveLength(6);
     expect(fields['name']!.operators).toContain('equal');
     expect(fields['name']!.operators).toContain('not_equal');
     expect(fields['name']!.operators).toContain('like');
     expect(fields['name']!.operators).toContain('not_like');
-    expect(fields['name']!.operators).toContain('select_any_in');
-    expect(fields['name']!.operators).toContain('select_not_any_in');
     expect(fields['name']!.operators).toContain('is_empty');
     expect(fields['name']!.operators).toContain('is_not_empty');
   });
@@ -123,10 +121,10 @@ describe('buildQbConfig — 操作符注册', () => {
     expect(fields['isActive']!.operators).toEqual(['equal', 'not_equal']);
   });
 
-  it('date 类型字段有 8 个操作符', () => {
+  it('date 类型字段映射为 text,有 6 个操作符', () => {
     const config = buildQbConfig([{ value: 'createdAt', label: '创建时间', type: 'date' }]);
     const fields = config.fields as Record<string, { operators: string[] }>;
-    expect(fields['createdAt']!.operators).toHaveLength(8);
+    expect(fields['createdAt']!.operators).toHaveLength(6);
   });
 });
 

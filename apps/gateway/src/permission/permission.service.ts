@@ -17,15 +17,20 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 export class PermissionService {
   /**
    * 获取用户的所有角色 ID（直接角色 + 组织授权角色）。
+   *
+   * 通过关联表的 tenantId 进行防御性过滤：
+   * - UserRole → role.tenantId（确保角色属于同一租户）
+   * - OrgMember → org.tenantId（确保组织属于同一租户）
+   * - OrgRoleGrant → org.tenantId（确保授权属于同一租户）
    */
-  async getUserRoleIds(userId: string, _tenantId: string): Promise<string[]> {
+  async getUserRoleIds(userId: string, tenantId: string): Promise<string[]> {
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({
-        where: { userId },
+        where: { userId, role: { tenantId } },
         select: { roleId: true },
       }),
       prisma.orgMember.findMany({
-        where: { userId },
+        where: { userId, org: { tenantId } },
         select: { orgId: true },
       }),
     ]);
@@ -34,7 +39,7 @@ export class PermissionService {
 
     if (orgMembers.length > 0) {
       const orgGrants = await prisma.orgRoleGrant.findMany({
-        where: { orgId: { in: orgMembers.map((m) => m.orgId) } },
+        where: { orgId: { in: orgMembers.map((m) => m.orgId) }, orgNode: { tenantId } },
         select: { roleId: true },
       });
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];

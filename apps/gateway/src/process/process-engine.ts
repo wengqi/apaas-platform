@@ -148,6 +148,10 @@ export class ProcessEngine {
    * - 无活跃令牌（全部到达 End，实例 COMPLETED）
    * - 某节点返回 wait（实例 WAITING_USER_TASK）
    * - 节点执行失败（实例 FAILED）
+   *
+   * 注：此方法由 BullMQ Worker 调用，tenantId 从 job data 继承
+   * （job 由已验证的 HTTP 请求入队，tenantId 已在入队时确定）。
+   * 实例本身的 tenantId 列确保了数据归属正确。
    */
   async executeNextNode(instanceId: string): Promise<void> {
     // 重新加载实例（确保拿到最新状态）
@@ -308,6 +312,7 @@ export class ProcessEngine {
    * @param decision 审批决策（approved/rejected）
    * @param comment 审批意见
    * @param formData 表单数据
+   * @param tenantId 租户 ID（防御性校验，确保任务属于该租户）
    */
   async completeTask(
     taskId: string,
@@ -315,9 +320,10 @@ export class ProcessEngine {
     decision: string,
     comment: string | undefined,
     formData: Record<string, unknown> | undefined,
+    tenantId?: string,
   ): Promise<void> {
     const task = await prisma.processTask.findFirst({
-      where: { id: taskId },
+      where: { id: taskId, ...(tenantId ? { tenantId } : {}) },
       include: { instance: { include: { processDef: true } } },
     });
     if (!task) throw new NotFoundException('任务不存在');
@@ -425,10 +431,12 @@ export class ProcessEngine {
   /**
    * 取消/终止流程实例。
    * 取消所有待办任务，实例置为 TERMINATED。
+   *
+   * @param tenantId 租户 ID（防御性校验，确保实例属于该租户）
    */
-  async cancelProcess(instanceId: string): Promise<void> {
+  async cancelProcess(instanceId: string, tenantId?: string): Promise<void> {
     const instance = await prisma.processInstance.findFirst({
-      where: { id: instanceId },
+      where: { id: instanceId, ...(tenantId ? { tenantId } : {}) },
     });
     if (!instance) throw new NotFoundException('流程实例不存在');
 
@@ -640,7 +648,7 @@ export class ProcessEngine {
 
     if (ccAssigneeType === 'ROLE') {
       const userRoles = await prisma.userRole.findMany({
-        where: { roleId: { in: ccRecipients } },
+        where: { roleId: { in: ccRecipients }, role: { tenantId } },
         select: { userId: true },
       });
       return [...new Set(userRoles.map((r) => r.userId))];
@@ -648,7 +656,7 @@ export class ProcessEngine {
 
     if (ccAssigneeType === 'ORG') {
       const members = await prisma.orgMember.findMany({
-        where: { orgId: { in: ccRecipients } },
+        where: { orgId: { in: ccRecipients }, org: { tenantId } },
         select: { userId: true },
       });
       return [...new Set(members.map((m) => m.userId))];

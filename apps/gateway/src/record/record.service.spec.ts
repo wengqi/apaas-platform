@@ -1,0 +1,460 @@
+/**
+ * RecordService 单元测试 — JSONB 宽表记录 CRUD。
+ *
+ * 测试覆盖：
+ * - 查询（分页、筛选、权限条件注入、字段级投影）
+ * - 单条查询（get）
+ * - 创建（AutoNumber 生成 + Formula 计算 + 事件触发）
+ * - 更新（AutoNumber 不可更新 + Formula 重算 + 合并）
+ * - 删除 + 事件触发
+ * - 辅助方法（parseFilter / buildOrderBy / toResult）
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
+import { FieldType } from '@apaas/shared';
+import { RecordService } from './record.service.js';
+import { getMockPrisma } from '../test/test-helpers.js';
+import { makeObjectMeta, makeRecord } from '../test/mock-factories.js';
+
+// ---------------------------------------------------------------------------
+// Mock 依赖工厂
+// ---------------------------------------------------------------------------
+
+function createMockFormulaEngine() {
+  return {
+    computeRecordFields: vi.fn().mockReturnValue({}),
+  };
+}
+
+function createMockAutoNumberGenerator() {
+  return {
+    generate: vi.fn().mockResolvedValue('ORD-0001'),
+  };
+}
+
+function createMockTriggerService() {
+  return {
+    onRecordEvent: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createService() {
+  const formulaEngine = createMockFormulaEngine();
+  const autoNumberGenerator = createMockAutoNumberGenerator();
+  const triggerService = createMockTriggerService();
+  const service = new RecordService(
+    formulaEngine as unknown as ConstructorParameters<typeof RecordService>[0],
+    autoNumberGenerator as unknown as ConstructorParameters<typeof RecordService>[1],
+    triggerService as unknown as ConstructorParameters<typeof RecordService>[2],
+  );
+  return { service, formulaEngine, autoNumberGenerator, triggerService };
+}
+
+describe('RecordService', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // =========================================================================
+  // query
+  // =========================================================================
+
+  describe('query', () => {
+    it('返回分页记录（默认 page=1, pageSize=20）', async () => {
+      const records = [makeRecord()];
+      prisma.record.findMany.mockResolvedValue(records);
+      prisma.record.count.mockResolvedValue(1);
+
+      const { service } = createService();
+      const result = await service.query('tenant-001', 'obj-001', {});
+
+      expect(result.page).toBe(1);
+      expect(result.pageSize).toBe(20);
+      expect(result.total).toBe(1);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.id).toBe('rec-001');
+    });
+
+    it('自定义 page 和 pageSize 被正确应用', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query('tenant-001', 'obj-001', { page: 3, pageSize: 50 });
+
+      const findManyCall = prisma.record.findMany.mock.calls[0]![0];
+      expect(findManyCall.skip).toBe(100); // (3-1) * 50
+      expect(findManyCall.take).toBe(50);
+    });
+
+    it('pageSize 上限 100', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query('tenant-001', 'obj-001', { pageSize: 500 });
+
+      expect(prisma.record.findMany.mock.calls[0]![0].take).toBe(100);
+    });
+
+    it('where 子句包含 tenantId 和 objectId', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query('tenant-001', 'obj-001', {});
+
+      const where = prisma.record.findMany.mock.calls[0]![0].where;
+      expect(where.tenantId).toBe('tenant-001');
+      expect(where.objectId).toBe('obj-001');
+    });
+
+    it('权限条件被注入到 where.AND', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query(
+        'tenant-001',
+        'obj-001',
+        {},
+        {
+          condition: { '==': [{ var: 'createdBy' }, 'user-001'] },
+          fieldScope: null,
+          currentUserId: 'user-001',
+        },
+      );
+
+      const where = prisma.record.findMany.mock.calls[0]![0].where;
+      expect(where.AND).toBeDefined();
+      expect(Array.isArray(where.AND)).toBe(true);
+    });
+
+    it('fieldScope 白名单投影 data 字段', async () => {
+      prisma.record.findMany.mockResolvedValue([
+        makeRecord({ data: { name: 'Record A', status: 'active', secret: 'hidden' } }),
+      ]);
+      prisma.record.count.mockResolvedValue(1);
+
+      const { service } = createService();
+      const result = await service.query(
+        'tenant-001',
+        'obj-001',
+        {},
+        {
+          condition: null,
+          fieldScope: ['name', 'status'],
+          currentUserId: 'user-001',
+        },
+      );
+
+      const data = result.items[0]!.data;
+      expect(data.name).toBe('Record A');
+      expect(data.status).toBe('active');
+      expect(data.secret).toBeUndefined();
+    });
+
+    it('排序 — 系统字段 createdAt:desc（默认）', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query('tenant-001', 'obj-001', {});
+
+      expect(prisma.record.findMany.mock.calls[0]![0].orderBy).toEqual({ createdAt: 'desc' });
+    });
+
+    it('排序 — 自定义系统字段 updatedAt:asc', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query('tenant-001', 'obj-001', { sort: 'updatedAt:asc' });
+
+      expect(prisma.record.findMany.mock.calls[0]![0].orderBy).toEqual({ updatedAt: 'asc' });
+    });
+
+    it('filter 参数解析为 JsonLogic where', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      const filter = JSON.stringify({ '==': [{ var: 'status' }, 'active'] });
+      await service.query('tenant-001', 'obj-001', { filter });
+
+      const where = prisma.record.findMany.mock.calls[0]![0].where;
+      expect(where.AND).toBeDefined();
+    });
+
+    it('filter 为无效 JSON 时不崩溃（返回 null filter）', async () => {
+      prisma.record.findMany.mockResolvedValue([]);
+      prisma.record.count.mockResolvedValue(0);
+
+      const { service } = createService();
+      await service.query('tenant-001', 'obj-001', { filter: 'not-json' });
+
+      // 查询正常执行，where 不含 AND filter
+      const where = prisma.record.findMany.mock.calls[0]![0].where;
+      expect(where.AND).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // get
+  // =========================================================================
+
+  describe('get', () => {
+    it('记录不存在时抛出 NotFoundException', async () => {
+      prisma.record.findFirst.mockResolvedValue(null);
+      const { service } = createService();
+
+      await expect(service.get('tenant-001', 'missing-rec')).rejects.toThrow(NotFoundException);
+    });
+
+    it('返回记录数据', async () => {
+      prisma.record.findFirst.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      const result = await service.get('tenant-001', 'rec-001');
+
+      expect(result.id).toBe('rec-001');
+      expect(result.data.name).toBe('Test Record');
+    });
+
+    it('fieldScope 投影生效', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: 'A', code: 'X', desc: 'D' } }),
+      );
+      const { service } = createService();
+
+      const result = await service.get('tenant-001', 'rec-001', {
+        condition: null,
+        fieldScope: ['name'],
+        currentUserId: 'user-001',
+      });
+
+      expect(result.data.name).toBe('A');
+      expect(result.data.code).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // create
+  // =========================================================================
+
+  describe('create', () => {
+    it('对象不存在时抛出 NotFoundException', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(null);
+      const { service } = createService();
+
+      await expect(service.create('tenant-001', 'missing-obj', 'user-001', {})).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('AutoNumber 字段自动生成编号', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'order_no',
+              type: FieldType.AutoNumber,
+              config: { autoNumber: { format: 'ORD-{seq:0000}' } },
+            },
+          ],
+        }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord({ data: { order_no: 'ORD-0001' } }));
+
+      const { service, autoNumberGenerator } = createService();
+      await service.create('tenant-001', 'obj-001', 'user-001', { name: 'Test' });
+
+      expect(autoNumberGenerator.generate).toHaveBeenCalledWith('ORD-{seq:0000}', 'obj-001');
+    });
+
+    it('Formula 字段自动计算', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'total',
+              type: FieldType.Formula,
+              config: { formula: '{{price * quantity}}' },
+            },
+          ],
+        }),
+      );
+      prisma.record.create.mockResolvedValue(
+        makeRecord({ data: { price: 100, quantity: 3, total: 300 } }),
+      );
+
+      const { service, formulaEngine } = createService();
+      formulaEngine.computeRecordFields.mockReturnValue({ total: 300 });
+
+      const result = await service.create('tenant-001', 'obj-001', 'user-001', {
+        price: 100,
+        quantity: 3,
+      });
+
+      expect(formulaEngine.computeRecordFields).toHaveBeenCalled();
+      expect(result.data.total).toBe(300);
+    });
+
+    it('创建后触发 onRecordEvent(created)', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta());
+      prisma.record.create.mockResolvedValue(makeRecord());
+
+      const { service, triggerService } = createService();
+      await service.create('tenant-001', 'obj-001', 'user-001', { name: 'Test' });
+
+      expect(triggerService.onRecordEvent).toHaveBeenCalledWith(
+        'tenant-001',
+        'app-001',
+        'obj-001',
+        'created',
+        expect.objectContaining({ id: 'rec-001' }),
+      );
+    });
+  });
+
+  // =========================================================================
+  // update
+  // =========================================================================
+
+  describe('update', () => {
+    it('记录不存在时抛出 NotFoundException', async () => {
+      prisma.record.findFirst.mockResolvedValue(null);
+      const { service } = createService();
+
+      await expect(service.update('tenant-001', 'missing-rec', 'user-001', {})).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('AutoNumber 字段在更新时被忽略', async () => {
+      const existingData = { name: 'Old', order_no: 'ORD-0001' };
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({
+          data: existingData,
+          object: {
+            fields: [{ id: 'f1', apiName: 'order_no', type: FieldType.AutoNumber, config: {} }],
+          },
+        }),
+      );
+      prisma.record.update.mockResolvedValue(
+        makeRecord({ data: { name: 'New', order_no: 'ORD-0001' } }),
+      );
+
+      const { service } = createService();
+      // 尝试更新 order_no（应被忽略）
+      const result = await service.update('tenant-001', 'rec-001', 'user-001', {
+        name: 'New',
+        order_no: 'ORD-9999',
+      });
+
+      // order_no 应保持原值
+      expect(result.data.order_no).toBe('ORD-0001');
+      // update 调用中的 data 不应包含 order_no=ORD-9999
+      const updateCall = prisma.record.update.mock.calls[0]![0];
+      expect((updateCall.data.data as Record<string, unknown>).order_no).not.toBe('ORD-9999');
+    });
+
+    it('更新后触发 onRecordEvent(updated)', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({
+          data: { name: 'Old' },
+          object: { fields: [] },
+        }),
+      );
+      prisma.record.update.mockResolvedValue(makeRecord({ data: { name: 'New' } }));
+
+      const { service, triggerService } = createService();
+      await service.update('tenant-001', 'rec-001', 'user-001', { name: 'New' });
+
+      expect(triggerService.onRecordEvent).toHaveBeenCalledWith(
+        'tenant-001',
+        'app-001',
+        'obj-001',
+        'updated',
+        expect.objectContaining({ id: 'rec-001' }),
+      );
+    });
+
+    it('Formula 字段在更新后被重新计算', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({
+          data: { price: 100, quantity: 2, total: 200 },
+          object: {
+            fields: [
+              {
+                id: 'f1',
+                apiName: 'total',
+                type: FieldType.Formula,
+                config: { formula: '{{price * quantity}}' },
+              },
+            ],
+          },
+        }),
+      );
+      prisma.record.update.mockResolvedValue(
+        makeRecord({ data: { price: 100, quantity: 5, total: 500 } }),
+      );
+
+      const { service, formulaEngine } = createService();
+      formulaEngine.computeRecordFields.mockReturnValue({ total: 500 });
+
+      const result = await service.update('tenant-001', 'rec-001', 'user-001', {
+        quantity: 5,
+      });
+
+      expect(formulaEngine.computeRecordFields).toHaveBeenCalled();
+      expect(result.data.total).toBe(500);
+    });
+  });
+
+  // =========================================================================
+  // delete
+  // =========================================================================
+
+  describe('delete', () => {
+    it('记录不存在时抛出 NotFoundException', async () => {
+      prisma.record.findFirst.mockResolvedValue(null);
+      const { service } = createService();
+
+      await expect(service.delete('tenant-001', 'missing-rec')).rejects.toThrow(NotFoundException);
+    });
+
+    it('正常删除并触发 onRecordEvent(deleted)', async () => {
+      prisma.record.findFirst.mockResolvedValue(makeRecord({ data: { name: 'To Delete' } }));
+      prisma.record.deleteMany.mockResolvedValue({ count: 1 });
+
+      const { service, triggerService } = createService();
+      await service.delete('tenant-001', 'rec-001');
+
+      expect(prisma.record.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'rec-001', tenantId: 'tenant-001' },
+      });
+      expect(triggerService.onRecordEvent).toHaveBeenCalledWith(
+        'tenant-001',
+        'app-001',
+        'obj-001',
+        'deleted',
+        expect.objectContaining({ id: 'rec-001', name: 'To Delete' }),
+      );
+    });
+
+    it('deleteMany 返回 count=0 时抛出 NotFoundException', async () => {
+      prisma.record.findFirst.mockResolvedValue(makeRecord());
+      prisma.record.deleteMany.mockResolvedValue({ count: 0 });
+
+      const { service } = createService();
+
+      await expect(service.delete('tenant-001', 'rec-001')).rejects.toThrow(NotFoundException);
+    });
+  });
+});

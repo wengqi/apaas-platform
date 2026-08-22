@@ -412,7 +412,7 @@ export class ProcessService {
       where: { id: instanceId, tenantId },
     });
     if (!instance) throw new NotFoundException('流程实例不存在');
-    await this.engine.cancelProcess(instanceId);
+    await this.engine.cancelProcess(instanceId, tenantId);
     return { cancelled: true };
   }
 
@@ -425,13 +425,13 @@ export class ProcessService {
     const where: Prisma.ProcessTaskWhereInput = { tenantId };
     // 我的待办：assignee = userId 或候选组匹配（candidateGroups 存角色ID，需用用户角色匹配）
     const [userRoles, orgMembers] = await Promise.all([
-      prisma.userRole.findMany({ where: { userId }, select: { roleId: true } }),
-      prisma.orgMember.findMany({ where: { userId }, select: { orgId: true } }),
+      prisma.userRole.findMany({ where: { userId, role: { tenantId } }, select: { roleId: true } }),
+      prisma.orgMember.findMany({ where: { userId, org: { tenantId } }, select: { orgId: true } }),
     ]);
     let roleIds = userRoles.map((r) => r.roleId);
     if (orgMembers.length > 0) {
       const orgGrants = await prisma.orgRoleGrant.findMany({
-        where: { orgId: { in: orgMembers.map((m) => m.orgId) } },
+        where: { orgId: { in: orgMembers.map((m) => m.orgId) }, orgNode: { tenantId } },
         select: { roleId: true },
       });
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
@@ -529,13 +529,22 @@ export class ProcessService {
       task.assignee === userId || (user?.email != null && task.assignee === user.email);
     // 查询用户角色（直接 + 组织授权）
     const [userRoles, orgMembers] = await Promise.all([
-      prisma.userRole.findMany({ where: { userId }, select: { roleId: true } }),
-      prisma.orgMember.findMany({ where: { userId }, select: { orgId: true } }),
+      prisma.userRole.findMany({
+        where: { userId, role: { tenantId: task.tenantId } },
+        select: { roleId: true },
+      }),
+      prisma.orgMember.findMany({
+        where: { userId, org: { tenantId: task.tenantId } },
+        select: { orgId: true },
+      }),
     ]);
     let roleIds = userRoles.map((r) => r.roleId);
     if (orgMembers.length > 0) {
       const orgGrants = await prisma.orgRoleGrant.findMany({
-        where: { orgId: { in: orgMembers.map((m) => m.orgId) } },
+        where: {
+          orgId: { in: orgMembers.map((m) => m.orgId) },
+          orgNode: { tenantId: task.tenantId },
+        },
         select: { roleId: true },
       });
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
@@ -548,7 +557,7 @@ export class ProcessService {
       });
     }
 
-    await this.engine.completeTask(taskId, userId, decision, comment, formData);
+    await this.engine.completeTask(taskId, userId, decision, comment, formData, tenantId);
     return { completed: true };
   }
 

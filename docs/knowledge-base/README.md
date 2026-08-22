@@ -19,6 +19,7 @@
 | [STATUS-MATRIX-2026-08-06](./STATUS-MATRIX-2026-08-06.md) | 2026-08-06 | 功能完成度矩阵（18 模块逐项评估 + 工程化治理新增模块 + 飞书对齐度 ~80%） |
 | [ROADMAP-UPDATE-2026-08-06](./ROADMAP-UPDATE-2026-08-06.md) | 2026-08-06 | 后续推进计划更新（工程化治理已完成 + 技术债 28 项决策表 + Phase 5-8 路线图） |
 | [CODING-PRINCIPLE-NO-POLLING-2026-08-16](./CODING-PRINCIPLE-NO-POLLING-2026-08-16.md) | 2026-08-16 | 编码原则：禁止定时器轮询（setInterval）→ 事件驱动架构替代 + ESLint 拦截规则 |
+| [STAGE2-FRONTEND-FINISH-2026-08-22](./STAGE2-FRONTEND-FINISH-2026-08-22.md) | 2026-08-22 | Stage 2 前端收尾 + 条件表达式清理（应用编辑 + 站内信 UI + 权限规则增强 + 图表骨架 + relative_date 操作符 + date 类型映射修复）|
 
 ## 文档维护规则
 

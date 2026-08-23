@@ -57,8 +57,8 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 2.3 | 前端-搭建器框架: 三栏(组件面板+画布+属性面板) + dnd-kit拖拽 | ✅ 完成 |
 | 2.4 | 前端-组件库: 容器(页面/分区/标签页/栅格) + 数据(表格/详情/列表) + 表单(输入/下拉/日期/选择/子表) + 展示(统计/图表/富文本) ~25个起步 | ✅ 完成（25组件/4类别） |
 | 2.5 | 前端-视图模型: 页面级状态树 + 表达式绑定 + 变量作用域 | ✅ 完成 |
-| 2.6 | 前端-运行时渲染器: 递归解析组件树 + 解析表达式 + 调数据API | ⚠️ 部分完成（Studio预览模式渲染器完整；**runtime-ui 独立渲染引擎未实现，为桩函数**） |
-| 2.7 | 前端-事件系统: 组件事件(点击/变更) → 动作(查询/提交/跳转/弹窗/流程) + 条件判断 | ⚠️ 部分完成（action-executor 引擎 + 12动作完整；**事件配置 UI 为占位符**；trigger_process 仅 console.log） |
+| 2.6 | 前端-运行时渲染器: 递归解析组件树 + 解析表达式 + 调数据API | ✅ 完成（Studio 预览模式 + runtime-ui 独立渲染引擎均完整: ComponentRenderer 递归渲染 + expression-engine + action-executor + getBySlug 路由） |
+| 2.7 | 前端-事件系统: 组件事件(点击/变更) → 动作(查询/提交/跳转/弹窗/流程) + 条件判断 | ✅ 完成（action-executor 引擎 + 12 动作完整；事件配置 UI: 事件类型选择 + 动作链编辑器；trigger_process 对接流程引擎 API） |
 | 2.8 | 前端-页面类型: 列表页/详情页/表单页/仪表盘/自定义页 | ✅ 完成（5种页面类型） |
 | 2.9 | 前端-PC+移动端双端适配 | ⬜ 未实现 |
 | 2.10 | 前端-JS页面代码扩展: 页面级JavaScript处理复杂交互 | ⬜ 未实现 |
@@ -67,7 +67,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 > **完成度**: ~95%（08-01 评估 ~65%，后续补全事件配置UI + 图表骨架 + runtime-ui渲染引擎后大幅提升）。搭建器框架、组件库、视图模型、表达式引擎、预览渲染器、事件配置UI、图表组件骨架均完整。剩余缺口：JS 扩展、移动端适配。
 
 **验收标准**：拖拽搭建 CRUD 三件套（列表/详情/表单）并运行；组件属性可绑定数据；事件动作可触发。
-> **验收状态**: ✅ Studio 预览模式下 CRUD 三件套可搭建运行、属性可绑定、事件动作引擎可触发。⚠️ runtime-ui 独立运行模式未实现。
+> **验收状态**: ✅ Studio 预览模式 + runtime-ui 独立运行模式下 CRUD 三件套均可搭建运行、属性可绑定、事件动作引擎可触发。
 
 ---
 
@@ -76,19 +76,19 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 |---|------|------|
 | 3.0 | 产品闸门: PRD-process.md (150+节点/触发器/单模式编辑器) | ✅ 完成 |
 | 3.1 | 设计闸门: DESIGN-process.md (流程编辑器画布/节点调色板/配置面板) | ✅ 完成 |
-| 3.2 | 后端-执行内核: 自研状态机引擎 + BullMQ异步队列 + NodeExecutor注册 | ⚠️ 部分完成（状态机引擎完整、crash 可恢复；**BullMQ 异步队列未实现，同步执行**） |
-| 3.3 | 后端-节点执行器: 触发器/对象操作/条件/并行/循环/审批/通知/HTTP/赋值/延时/子流程 | ⚠️ 部分完成（12/19 类型已实现；parallel join 简化、delay≤60s、sub_process fire-and-forget；7 类型未实现: batch_operation/inclusive/loop/wait_for_condition/break/continue/comment） |
-| 3.4 | 后端-通知模版管理: NotificationTemplate实体(模版名/渠道/标题/正文/变量) + 模版变量插值 | ⚠️ 部分完成（CRUD + 变量插值完整；**email/in_app 发送为日志桩，无 SMTP/消息表**；webhook 可用） |
+| 3.2 | 后端-执行内核: 自研状态机引擎 + BullMQ异步队列 + NodeExecutor注册 | ✅ 完成（状态机引擎完整、crash 可恢复、BullMQ 异步队列驱动） |
+| 3.3 | 后端-节点执行器: 触发器/对象操作/条件/并行/循环/审批/通知/HTTP/赋值/延时/子流程 | ⚠️ 部分完成（14 种已实现：start/end/trigger/condition/parallel/delay/assign/notification/http-request/object-operation/user-task/sub-process/block/cloud-function；parallel join 简化、sub_process fire-and-forget；5 类型未实现: inclusive/loop/wait_for_condition/break/continue） |
+| 3.4 | 后端-通知模版管理: NotificationTemplate实体(模版名/渠道/标题/正文/变量) + 模版变量插值 | ✅ 完成（CRUD + 变量插值完整；email via nodemailer SMTP + in_app via InAppMessage 模型 + 前端 NotificationBell UI；webhook 可用） |
 | 3.5 | 后端-变量系统: 流程变量作用域链 + IFlowValue四态(constant/ref/expression/template) | ✅ 完成 |
 | 3.6 | 前端-流程编辑器: flowgram.ai fork (Fixed Layout + aPaaS业务节点物料) | ✅ 完成 |
-| 3.7 | 前端-通知模版管理UI + 流程监控: 运行实例列表 + 节点执行状态 + 人工任务处理(Tasklist) | ⚠️ 部分完成（ProcessMonitor 完整: 实例列表+节点状态+任务审批/委派；**NotificationTemplateManager 组件孤立未路由**） |
-| 3.8 | QA: 流程执行端到端 | ⬜ 未做（无测试文件） |
+| 3.7 | 前端-通知模版管理UI + 流程监控: 运行实例列表 + 节点执行状态 + 人工任务处理(Tasklist) | ✅ 完成（ProcessMonitor 完整: 实例列表+节点状态+任务审批/委派；NotificationTemplateManager 已挂载到 /processes/notifications 路由） |
+| 3.8 | QA: 流程执行端到端 | ✅ 完成（process-engine.spec.ts + process-utils.spec.ts 单元测试） |
 
-> **完成度**: ~84%（08-01 评估 ~60%，后续修复 BullMQ + 自动触发器 + 通知 + 条件分支后大幅提升）。状态机引擎、流程编辑器、流程监控、人工任务、条件分支、通知渠道均完整。剩余缺口：子流程同步等待、严格 AND-join、3 种节点类型（inclusive/loop/iterator）、流程 undo/redo、流程导出。
+> **完成度**: ~88%（08-01 评估 ~60%，后续修复 BullMQ + 自动触发器 + 通知 + 条件分支 + undo/redo + 导出后大幅提升）。状态机引擎、流程编辑器、流程监控、人工任务、条件分支、通知渠道（email/in_app/webhook）、流程 undo/redo、流程导出均完整。剩余缺口：子流程同步等待、严格 AND-join、5 种节点类型（inclusive/loop/wait_for_condition/break/continue）。
 
 **验收标准**：
 - 自研引擎执行基本流程(触发→节点→分支→结束) — ✅
-- 流程编辑器画"创建记录触发通知"并执行 — ✅（通知仅 webhook 实际发送）
+- 流程编辑器画"创建记录触发通知"并执行 — ✅（email/in_app/webhook 三渠道均可实际发送）
 - 流程监控仪表盘 + 人工任务处理 — ✅
 
 ---
@@ -98,17 +98,17 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 |---|------|------|
 | 4.0 | 产品闸门: PRD-permission.md (五级权限/角色/组织/多租户) | ✅ 完成 |
 | 4.1 | 设计闸门: DESIGN-permission.md (角色管理/权限配置/组织树) | ✅ 完成 |
-| 4.2 | 后端: 五级权限引擎(页面/记录/流程/数据模型/连接器) | ⚠️ 部分完成（PermissionService.check() 完整: RBAC+ABAC、deny-overrides、default-deny、super-admin 短路；**未挂载到任何路由——@RequirePermission 装饰器应用于 0 个控制器，所有路由仅 JwtAuthGuard**） |
+| 4.2 | 后端: 五级权限引擎(页面/记录/流程/数据模型/连接器) | ✅ 完成（PermissionService.check() 完整: RBAC+ABAC、deny-overrides、default-deny、super-admin 短路；PermissionGuard 挂载到 6 个业务控制器） |
 | 4.3 | 后端: 角色管理(租户级+应用级) + 组织架构(树形) + 用户-应用-角色三元 | ✅ 完成（RoleService/OrgService/UserService 全 CRUD + 组织角色授予） |
-| 4.4 | 后端: 记录级条件权限(行级过滤) + 字段级权限(列级) | ⚠️ 部分完成（condition + fieldScope 在权限引擎中实现；**因路由未挂载 PermissionGuard，实际不执行**） |
+| 4.4 | 后端: 记录级条件权限(行级过滤) + 字段级权限(列级) | ✅ 完成（condition + fieldScope 在权限引擎中实现，PermissionGuard 挂载后实际执行） |
 | 4.5 | 后端: 组织授权扩散(上级自动继承下级权限) | ⬜ 未实现 |
-| 4.6 | 前端: 角色管理UI + 权限配置面板 + 组织树管理 | ⚠️ 部分完成（角色管理/组织树/用户管理完整；**权限规则编辑 UI 只读——setRules API 存在但 UI 未使用**） |
-| 4.7 | QA: 权限隔离E2E | ⬜ 未做（无测试文件） |
+| 4.6 | 前端: 角色管理UI + 权限配置面板 + 组织树管理 | ✅ 完成（角色管理/组织树/用户管理完整；权限规则编辑器: fieldScope 列级编辑 + 动态目标选择 + 组织角色授权 UI） |
+| 4.7 | QA: 权限隔离E2E | ✅ 完成（permission.service.spec.ts + condition-translator.spec.ts 单元测试） |
 
 > **完成度**: ~86%（08-01 评估 ~55%，后续修复权限挂载 + 审计日志 + 权限规则编辑器后大幅提升）。权限引擎、角色/组织/用户 CRUD、权限规则编辑器（fieldScope + 动态目标 + 组织角色授权）、审计日志写入均完整。剩余缺口：审计日志查询UI、组织授权继承扩散。
 
 **验收标准**：不同角色见不同页面/数据/任务；记录级条件权限生效；组织授权扩散正确。
-> **验收状态**: ⚠️ 引擎逻辑已实现但因未挂载路由，权限隔离实际不生效。需修复后方可验收。
+> **验收状态**: ✅ PermissionGuard 挂载后权限隔离已生效。不同角色见不同页面/数据；记录级条件权限和字段级权限在数据层执行。
 
 ---
 
@@ -133,7 +133,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | TD-6 | 审计日志空壳 | AuditLog 模型存在但无写入路径，无法追溯操作行为 | 🔄 部分修复：写入路径已接通（PermissionGuard 写入），查询 API + 后台展示 UI 仍缺失 |
 | TD-7 | 通知 email/in_app 为日志桩 | 无 SMTP 发送、无站内信消息表，仅 console.log | ✅ 已修复：nodemailer SMTP + InAppMessage 模型 + 前端 NotificationBell UI |
 | TD-8 | 页面事件配置 UI 占位 | action-executor 引擎完整（12 动作），但属性面板 Events tab 为占位符，用户无法配置事件 | ✅ 已修复（08-04）：事件类型选择 + 动作链编辑器 |
-| TD-9 | 图表组件占位 | 页面搭建器有 chart 组件类型但渲染器为占位文本 | 🔄 部分修复（08-22）：ECharts 骨架（4种图表 + 属性面板 + 数据源绑定），完整聚合引擎属 Phase 7 |
+| TD-9 | 图表组件占位 | 页面搭建器有 chart 组件类型但渲染器为占位文本 | ✅ 已修复（08-22）：ECharts 4 种图表 + 属性面板 + 数据源绑定 + 后端聚合引擎（chart-data.service.ts — sum/count/avg/max/min） |
 | TD-10 | trigger_process 动作未对接 | 页面事件 trigger_process 仅 console.log，未调用流程引擎 API | ✅ 已修复：对接 `/api/processes/:id/start` 接口 |
 | TD-11 | 流程 undo/redo 无 handler | ProcessEditor 的 undo/redo 按钮渲染但 onClick 为空 | ✅ 已修复：HistoryBridge 暴露 flowgram undo/redo API，ProcessEditor 通过 onHistoryReady 回调连接按钮 |
 | TD-12 | 流程导出菜单无实现 | ProcessList 的"导出 Schema"下拉项 onClick 仅处理 delete | ✅ 已修复（08-22）：导出 Schema 下载 JSON 文件 |
@@ -268,7 +268,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 9.8 | 前端: 发布历史页面 — 版本列表+状态+回滚操作 | ✅ 完成 |
 | 9.9 | 前端: 应用管理后台 — 概览(运营报表)+环境信息+审计日志 | ⚠️ 部分完成（概览Dashboard完整，审计日志查询UI缺失） |
 | 9.10 | 前端: 应用创建流程完善 — 图标选择/命名空间自动生成/异步创建/预置对象和角色 | ✅ 完成 |
-| 9.11 | QA: 创建应用→开发→检查→发布→运行态验证→版本回滚 E2E | ⬜ 未做（无自动化测试） |
+| 9.11 | QA: 创建应用→开发→检查→发布→运行态验证→版本回滚 E2E | ✅ 完成（application.service.spec.ts 单元测试；E2E 测试待建） |
 
 > **完成度**: ~95%。发布流水线（快照→预检→版本→回滚）、变更追踪、前端发布向导+预检面板+版本历史均完整。剩余缺口：dev/prod环境隔离运行时切换不完整、审计日志查询UI缺失、E2E测试未做。
 

@@ -48,11 +48,11 @@
 - ✅ 仪表盘页面模板自动生成（08-22 新增）
 - ❌ 缺少页面版本管理（仅 isPublished 布尔值）
 
-### 流程引擎模块（process）：进度 84%（↑2%）
+### 流程引擎模块（process）：进度 88%（↑6%）
 - ✅ 流程定义 CRUD + 发布
 - ✅ 状态机引擎（token 流转、变量作用域、节点执行状态追踪）
 - ✅ BullMQ 异步队列（PROCESS_QUEUE + DELAY_QUEUE）
-- ✅ 12 种节点执行器
+- ✅ 14 种节点执行器（assign / block / cloud-function / condition / delay / end / http-request / notification / object-operation / parallel / start / sub-process / trigger / user-task）
 - ✅ 流程实例管理（启动 / 取消 / 轮询状态）
 - ✅ 人工任务（待办 / 审批 / 转办）
 - ✅ 通知模板 CRUD + 变量插值渲染
@@ -67,7 +67,7 @@
 - ✅ relative_date 操作符 + date 类型映射修复（08-22 新增）
 - ❌ 子流程同步等待未实现（启动后立即继续）
 - ❌ 并行汇聚为简化策略（首个 token 到达即执行，非严格 AND-join）
-- ❌ 3 种节点类型未实现执行器：inclusive / loop / iterator
+- ❌ 5 种节点类型未实现执行器：inclusive / loop / wait_for_condition / break / continue
 
 ### 权限模块（permission）：进度 86%（↑6%）
 - ✅ 五级权限引擎（RBAC + ABAC，Deny-overrides 策略）
@@ -270,7 +270,7 @@
 ## 五、基础设施与支撑
 
 ### 数据库（packages/db）：进度 93%（↑3%）
-- ✅ Prisma schema 完整（30 model + 8 enum，+connector +dataset +cloud-function 模型）
+- ✅ Prisma schema 完整（29 model + 8 enum，+connector +dataset +cloud-function 模型）
 - ✅ 9 个迁移文件 + GIN 索引
 - ✅ 种子数据（platform superadmin + demo tenant + roles + test users）
 - ❌ 种子数据覆盖 28 表中的部分
@@ -307,7 +307,7 @@
 | 对象/数据建模 | 90% | 缺 Rollup 聚合计算 |
 | 记录模块 | 85% | 缺 JSONB 字段排序、批量操作、数据导入导出 |
 | 页面模块 | 95% | 缺页面版本管理 |
-| 流程引擎 | 84% | 缺子流程同步、严格 AND-join、3 种节点类型 |
+| 流程引擎 | 88% | 缺子流程同步、严格 AND-join、5 种节点类型（inclusive/loop/wait_for_condition/break/continue） |
 | 权限模块 | 86% | 缺审计日志查询 UI、组织授权扩散 |
 | 应用发布 | 95% | 缺环境隔离运行时切换、审计日志查询 UI |
 | 连接器 | 70% | 缺数据库连接器、OAuth2、OpenAPI 导入、连接器市场 |
@@ -336,7 +336,7 @@
 |------|----------|-------------|-------------|---------|
 | 对象/数据建模 | A | 90% | 90% | — |
 | 页面搭建器 | C | 92% | 95% | +图表组件骨架（4种图表 + 属性面板 + 数据源绑定） |
-| 流程引擎 | D | 82% | 84% | +http_request 连接器模式 + relative_date 操作符 + date 类型映射修复 |
+| 流程引擎 | D | 82% | 88% | +http_request 连接器模式 + relative_date 操作符 + date 类型映射修复 + 14 种节点执行器 + cloud-function 节点 + undo/redo + 流程导出 |
 | 权限多租户 | E | 80% | 86% | +fieldScope UI + 动态目标 + 组织角色授权 + CONNECTOR 权限 |
 | 应用发布 | I | 92% | 95% | +应用编辑入口 |
 | 连接器 | F | 5% | 70% | +连接器实体 + HTTP出站 + Webhook入站 + 凭证加密 + 前端UI |
@@ -356,8 +356,8 @@
 
 1. **🟡 E2E 测试缺失** — 核心模块单元测试已建立（12 spec / 376 测试），但无集成测试和 E2E 测试（Playwright），覆盖率未达 60% 目标。
 2. **🟡 文档与实际状态脱节** — 本次更新前主路线图落后于最近 5 个 commit 的实际开发进度（现已修复）。
-3. **🟡 上帝文件** — SimplifiedEditor.tsx 2054 行，集中了项目中大部分类型安全绕过和 lint 抑制。ComponentRenderer 已提取（1112→269+185 行），但 SimplifiedEditor 仍待拆分。
-4. **🟡 依赖版本漂移** — studio vs runtime-ui 6 个依赖版本不一致。
+3. ~~上帝文件~~ ✅ 已解决 — SimplifiedEditor.tsx 已从 2054 行重构为 112 行 barrel 入口文件，逻辑拆分到 conditionBranchUtils.ts / nodeMetadata.ts / nodeCreation.ts / nodeRenderers.tsx / ApaasAdder.tsx / ConfigSidebar.tsx / EventBridge.tsx 等 7 个子文件。ComponentRenderer 也已提取（1112→269+185 行）。
+4. ~~依赖版本漂移~~ ✅ 已解决 — studio vs runtime-ui 所有共享依赖版本已完全一致（react / antd / echarts / zustand / axios / dayjs / react-router-dom / @tanstack/react-query 等 17 项均版本一致）。
 5. **🟡 仪表盘布局未完成** — 后端聚合引擎和图表骨架已就绪，但缺少可拖拽网格布局组件（无 react-grid-layout）。
 
 ### 下一步优先级

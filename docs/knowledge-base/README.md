@@ -22,6 +22,7 @@
 | [STAGE2-FRONTEND-FINISH-2026-08-22](./STAGE2-FRONTEND-FINISH-2026-08-22.md) | 2026-08-22 | Stage 2 前端收尾 + 条件表达式清理（应用编辑 + 站内信 UI + 权限规则增强 + 图表骨架 + relative_date 操作符 + date 类型映射修复）|
 | [PHASE5-CONNECTOR-2026-08-22](./PHASE5-CONNECTOR-2026-08-22.md) | 2026-08-22 | Phase 5 连接器与集成（连接器实体 + CRUD + 凭证管理 + HTTP 调用引擎 + Webhook 接收 + 流程节点升级 + 前端管理 UI）|
 | [STATUS-MATRIX-2026-08-22](./STATUS-MATRIX-2026-08-22.md) | 2026-08-22 | 功能完成度矩阵（24 模块逐项评估 + 连接器/数据集/仪表盘新增模块 + 测试基础设施风险 + 飞书对齐度 ~88%）|
+| [STATUS-MATRIX-2026-08-23](./STATUS-MATRIX-2026-08-23.md) | 2026-08-23 | 功能完成度矩阵（Phase 7 运营报表完成 — 指标卡+趋势图+后端聚合直连 + 21 单元测试 + 6 E2E 测试 + 飞书对齐度 ~94%）|
 
 ## 文档维护规则
 

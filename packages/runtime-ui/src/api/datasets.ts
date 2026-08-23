@@ -4,6 +4,7 @@
  */
 
 import apiClient from './client';
+import type { ChartAggregation, TimeGranularity } from '@apaas/shared';
 
 /** 数据集列定义。 */
 export interface DatasetColumn {
@@ -30,6 +31,25 @@ export interface DatasetRowListResponse {
   pageSize: number;
 }
 
+/** 图表聚合请求参数。 */
+export interface ChartDataRequest {
+  sourceType: 'object' | 'dataset';
+  sourceId: string;
+  categoryField?: string;
+  valueField?: string;
+  aggregation: ChartAggregation;
+  filter?: Record<string, unknown> | null;
+  timeGranularity?: TimeGranularity;
+}
+
+/** 图表聚合结果。 */
+export interface ChartDataResult {
+  data: Array<{ category: string; value: number }>;
+  categories: string[];
+  values: number[];
+  totalRecords: number;
+}
+
 export const datasetsApi = {
   /** 获取数据集详情（含列定义） */
   get: (datasetId: string) =>
@@ -44,5 +64,11 @@ export const datasetsApi = {
   ) =>
     apiClient
       .get<{ ok: true; data: DatasetRowListResponse }>(`/datasets/${datasetId}/rows`, { params })
+      .then((res) => res.data.data),
+
+  /** 图表数据聚合（后端聚合引擎） */
+  getChartData: (appId: string, request: ChartDataRequest) =>
+    apiClient
+      .post<{ ok: true; data: ChartDataResult }>(`/apps/${appId}/datasets/chart-data`, request)
       .then((res) => res.data.data),
 };

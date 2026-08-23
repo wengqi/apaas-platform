@@ -103,6 +103,24 @@ export function buildChartOption(
   const agg = aggregation ?? 'sum';
 
   const aggregated = aggregate(records, catField, valField, agg);
+  return buildChartOptionFromAggregated(chartType, title, aggregated);
+}
+
+/**
+ * 从已聚合的数据点构建 ECharts option。
+ *
+ * 用于后端聚合结果（ChartDataResult.data）直接构建图表，
+ * 跳过客户端 aggregate 步骤。
+ *
+ * @param chartType 图表类型
+ * @param title 标题
+ * @param aggregated 已聚合的数据点数组
+ */
+export function buildChartOptionFromAggregated(
+  chartType: ChartType,
+  title: string,
+  aggregated: Array<{ category: string; value: number }>,
+): EChartsOption {
   const categories = aggregated.map((d) => d.category);
   const values = aggregated.map((d) => d.value);
 

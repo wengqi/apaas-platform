@@ -44,9 +44,39 @@ export function renderButton(node: ComponentNode, ctx: RenderContext): ReactNode
 
 export function renderStatistic(node: ComponentNode, ctx: RenderContext): ReactNode {
   const title = getPropAsString(node, 'title', ctx) || '统计';
-  const value = getPropAsNumber(node, 'value', ctx);
   const prefix = getPropAsString(node, 'prefix', ctx) || undefined;
   const suffix = getPropAsString(node, 'suffix', ctx) || undefined;
+
+  // 有聚合配置时（指标卡），编辑模式显示占位提示
+  const hasAggregation = !!getPropAsString(node, 'aggregation', ctx);
+  if (hasAggregation && ctx.mode === 'edit') {
+    return (
+      <div
+        style={{
+          padding: 16,
+          background: '#fafbfc',
+          border: '1px dashed #d9d9d9',
+          borderRadius: 6,
+          minHeight: 80,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}
+      >
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {title}
+        </Text>
+        <Text strong style={{ fontSize: 24 }}>
+          指标卡
+        </Text>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          预览时加载数据
+        </Text>
+      </div>
+    );
+  }
+
+  const value = getPropAsNumber(node, 'value', ctx);
   return <Statistic title={title} value={value} prefix={prefix} suffix={suffix} />;
 }
 

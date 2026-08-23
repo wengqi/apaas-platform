@@ -143,6 +143,25 @@ export const dataFlowsApi = {
     unwrap<{ datasetId: string }>(client.post(`/api/data-flows/${flowId}/execute`)),
 };
 
+/** 图表聚合请求参数。 */
+export interface ChartDataRequest {
+  sourceType: 'object' | 'dataset';
+  sourceId: string;
+  categoryField?: string;
+  valueField?: string;
+  aggregation: AggregateFunction;
+  filter?: Record<string, unknown> | null;
+  timeGranularity?: 'day' | 'week' | 'month';
+}
+
+/** 图表聚合结果。 */
+export interface ChartDataResult {
+  data: Array<{ category: string; value: number }>;
+  categories: string[];
+  values: number[];
+  totalRecords: number;
+}
+
 /** 数据集 API。 */
 export const datasetsApi = {
   list: (appId: string) => unwrap<Dataset[]>(client.get(`/api/apps/${appId}/datasets`)),
@@ -155,4 +174,6 @@ export const datasetsApi = {
   ) => unwrap<DatasetRowListResponse>(client.get(`/api/datasets/${datasetId}/rows`, { params })),
   refresh: (datasetId: string) =>
     unwrap<{ datasetId: string }>(client.post(`/api/datasets/${datasetId}/refresh`)),
+  getChartData: (appId: string, request: ChartDataRequest) =>
+    unwrap<ChartDataResult>(client.post(`/api/apps/${appId}/datasets/chart-data`, request)),
 };

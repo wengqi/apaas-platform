@@ -263,18 +263,43 @@ export type ChartType = 'bar' | 'line' | 'pie' | 'funnel';
 /** 聚合方式。 */
 export type ChartAggregation = 'sum' | 'count' | 'avg' | 'max' | 'min';
 
+/** 时间分桶粒度（趋势图用）。 */
+export type TimeGranularity = 'day' | 'week' | 'month';
+
 /** 图表组件配置。 */
 export interface ChartConfig {
   /** 图表类型 */
   chartType: ChartType;
   /** 图表标题 */
   title?: string;
-  /** 分类字段（X 轴 / 饼图标签） */
+  /** 分类字段（X 轴 / 饼图标签），省略时返回标量聚合值（指标卡用） */
   categoryField?: string;
-  /** 值字段（Y 轴 / 饼图值） */
+  /** 值字段（Y 轴 / 饼图值），count 聚合时可省略 */
   valueField?: string;
   /** 聚合方式 */
   aggregation?: ChartAggregation;
+  /** 时间分桶粒度（当 categoryField 为日期字段时使用） */
+  timeGranularity?: TimeGranularity;
+}
+
+/** 图表聚合数据点。 */
+export interface ChartDataPoint {
+  /** 分类标签 */
+  category: string;
+  /** 聚合值 */
+  value: number;
+}
+
+/** 图表聚合结果（后端 ChartDataService 返回）。 */
+export interface ChartDataResult {
+  /** 聚合后的数据点数组 */
+  data: ChartDataPoint[];
+  /** 分类标签列表 */
+  categories: string[];
+  /** 数值列表 */
+  values: number[];
+  /** 源数据总行数 */
+  totalRecords: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,4 +321,4 @@ export interface LayoutItem {
 }
 
 // 图表 ECharts option 构建工具
-export { buildChartOption } from './chart-options.js';
+export { buildChartOption, buildChartOptionFromAggregated } from './chart-options.js';

@@ -256,10 +256,11 @@ export class PageService {
  */
 function generateDashboardSchema(): object {
   const nodeId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 8)}`;
-  const statId = nodeId('statistic');
-  const chart1Id = nodeId('chart');
-  const chart2Id = nodeId('chart');
-  const chart3Id = nodeId('chart');
+  const metric1Id = nodeId('statistic');
+  const metric2Id = nodeId('statistic');
+  const trendId = nodeId('chart');
+  const barId = nodeId('chart');
+  const pieId = nodeId('chart');
   return {
     version: '1',
     pageType: 'dashboard',
@@ -278,21 +279,61 @@ function generateDashboardSchema(): object {
             cols: 12,
             rowHeight: 30,
             layout: [
-              { i: statId, x: 0, y: 0, w: 4, h: 4 },
-              { i: chart1Id, x: 4, y: 0, w: 8, h: 8 },
-              { i: chart2Id, x: 0, y: 4, w: 6, h: 8 },
-              { i: chart3Id, x: 6, y: 4, w: 6, h: 8 },
+              { i: metric1Id, x: 0, y: 0, w: 3, h: 4 },
+              { i: metric2Id, x: 3, y: 0, w: 3, h: 4 },
+              { i: trendId, x: 6, y: 0, w: 6, h: 8 },
+              { i: barId, x: 0, y: 4, w: 6, h: 8 },
+              { i: pieId, x: 6, y: 8, w: 6, h: 8 },
             ],
           },
           children: [
             {
-              id: statId,
-              name: '总数',
+              id: metric1Id,
+              name: '记录总数',
               type: 'statistic',
-              props: { title: '总数', value: 0 },
+              props: {
+                title: '记录总数',
+                value: 0,
+                datasourceType: 'object',
+                datasourceId: '',
+                valueField: '',
+                aggregation: 'count',
+                prefix: '',
+                suffix: '条',
+              },
             },
             {
-              id: chart1Id,
+              id: metric2Id,
+              name: '数值汇总',
+              type: 'statistic',
+              props: {
+                title: '数值汇总',
+                value: 0,
+                datasourceType: 'object',
+                datasourceId: '',
+                valueField: '',
+                aggregation: 'sum',
+                prefix: '',
+                suffix: '',
+              },
+            },
+            {
+              id: trendId,
+              name: '趋势图',
+              type: 'chart',
+              props: {
+                chartType: 'line',
+                title: '趋势图',
+                datasourceType: 'object',
+                datasourceId: '',
+                categoryField: '',
+                valueField: '',
+                aggregation: 'sum',
+                timeGranularity: 'day',
+              },
+            },
+            {
+              id: barId,
               name: '数据分布',
               type: 'chart',
               props: {
@@ -306,21 +347,7 @@ function generateDashboardSchema(): object {
               },
             },
             {
-              id: chart2Id,
-              name: '趋势图',
-              type: 'chart',
-              props: {
-                chartType: 'line',
-                title: '趋势图',
-                datasourceType: 'object',
-                datasourceId: '',
-                categoryField: '',
-                valueField: '',
-                aggregation: 'sum',
-              },
-            },
-            {
-              id: chart3Id,
+              id: pieId,
               name: '占比分布',
               type: 'chart',
               props: {

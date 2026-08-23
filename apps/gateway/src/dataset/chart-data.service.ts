@@ -9,7 +9,14 @@
 
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { prisma } from '@apaas/db';
-import type { ChartAggregation } from '@apaas/shared';
+import jsonLogic from 'json-logic-js';
+import type { ChartAggregation, TimeGranularity } from '@apaas/shared';
+
+/** 后端聚合最大加载行数（防御性，避免全表加载）。 */
+const CHART_DATA_MAX_ROWS = 10000;
+
+/** 标量聚合（无分类字段时）的默认分组标签。 */
+const SCALAR_CATEGORY = '_total';
 
 /** 图表聚合请求参数。 */
 export interface ChartDataRequest {
@@ -17,14 +24,16 @@ export interface ChartDataRequest {
   sourceType: 'object' | 'dataset';
   /** 数据源 ID（对象 ID 或数据集 ID）。 */
   sourceId: string;
-  /** 分类字段名（分组依据）。 */
-  categoryField: string;
-  /** 值字段名（聚合对象）。 */
-  valueField: string;
+  /** 分类字段名（分组依据）。省略时返回标量聚合值（指标卡用）。 */
+  categoryField?: string;
+  /** 值字段名（聚合对象）。count 聚合时可省略。 */
+  valueField?: string;
   /** 聚合函数。 */
   aggregation: ChartAggregation;
   /** 筛选条件（JsonLogic JSON，可选）。 */
   filter?: Record<string, unknown> | null;
+  /** 时间分桶粒度（当 categoryField 为日期字段时使用）。 */
+  timeGranularity?: TimeGranularity;
 }
 
 /** 图表聚合结果。 */
@@ -46,18 +55,27 @@ export class ChartDataService {
    *
    * 从对象记录或数据集行加载源数据，按 categoryField 分组，
    * 对 valueField 执行聚合运算，返回结构化结果。
+   *
+   * 当 categoryField 省略时，所有记录归入单组，返回标量值（指标卡用）。
+   * 当 timeGranularity 存在时，categoryField 按时间分桶聚合。
    */
   async aggregate(tenantId: string, request: ChartDataRequest): Promise<ChartDataResult> {
-    if (!request.categoryField || !request.valueField) {
-      throw new BadRequestException('分类字段和值字段不能为空');
+    if (request.aggregation !== 'count' && !request.valueField) {
+      throw new BadRequestException('非 count 聚合必须指定值字段');
     }
 
-    const records = await this.loadSourceData(request, tenantId);
+    let records = await this.loadSourceData(request, tenantId);
+
+    if (request.filter) {
+      records = records.filter((r) => jsonLogic.apply(request.filter!, r) === true);
+    }
+
     const aggregated = this.executeAggregation(
       records,
       request.categoryField,
       request.valueField,
       request.aggregation,
+      request.timeGranularity,
     );
 
     return {
@@ -79,6 +97,7 @@ export class ChartDataService {
       const dbRecords = await prisma.record.findMany({
         where: { tenantId, objectId: request.sourceId },
         select: { data: true },
+        take: CHART_DATA_MAX_ROWS,
       });
       return dbRecords.map((r) => r.data as Record<string, unknown>);
     }
@@ -87,6 +106,7 @@ export class ChartDataService {
       const dbRows = await prisma.datasetRow.findMany({
         where: { tenantId, datasetId: request.sourceId },
         select: { data: true },
+        take: CHART_DATA_MAX_ROWS,
       });
       return dbRows.map((r) => r.data as Record<string, unknown>);
     }
@@ -101,20 +121,21 @@ export class ChartDataService {
    */
   private executeAggregation(
     records: Record<string, unknown>[],
-    categoryField: string,
-    valueField: string,
+    categoryField: string | undefined,
+    valueField: string | undefined,
     aggregation: ChartAggregation,
+    timeGranularity: TimeGranularity | undefined,
   ): Array<{ category: string; value: number }> {
     const groups = new Map<string, number[]>();
 
     for (const record of records) {
-      const category = String(record[categoryField] ?? '未知');
-      const value = Number(record[valueField] ?? 0);
+      const category = this.resolveCategory(record, categoryField, timeGranularity);
+      const value = aggregation === 'count' ? 1 : Number(record[valueField ?? ''] ?? 0);
       if (!groups.has(category)) groups.set(category, []);
       groups.get(category)!.push(value);
     }
 
-    return Array.from(groups.entries()).map(([category, values]) => {
+    let result = Array.from(groups.entries()).map(([category, values]) => {
       let value: number;
       switch (aggregation) {
         case 'count':
@@ -136,5 +157,111 @@ export class ChartDataService {
       }
       return { category, value: Math.round(value * 100) / 100 };
     });
+
+    if (timeGranularity) {
+      result = this.sortByTime(result);
+    }
+
+    return result;
+  }
+
+  /**
+   * 解析分类标签。
+   *
+   * 无 categoryField 时返回标量分组标签。
+   * 有 timeGranularity 时将字段值解析为日期并按粒度分桶。
+   */
+  private resolveCategory(
+    record: Record<string, unknown>,
+    categoryField: string | undefined,
+    timeGranularity: TimeGranularity | undefined,
+  ): string {
+    if (!categoryField) {
+      return SCALAR_CATEGORY;
+    }
+
+    const raw = record[categoryField];
+    if (raw === null || raw === undefined || raw === '') {
+      return '未知';
+    }
+
+    if (!timeGranularity) {
+      return String(raw);
+    }
+
+    const date = this.parseDate(raw);
+    if (!date) {
+      return '未知';
+    }
+
+    return this.bucketTime(date, timeGranularity);
+  }
+
+  /**
+   * 将各种日期格式解析为 Date 对象。
+   * 支持 ISO 字符串、时间戳（毫秒）、Date 对象。
+   */
+  private parseDate(value: unknown): Date | null {
+    if (value instanceof Date) {
+      return isNaN(value.getTime()) ? null : value;
+    }
+    if (typeof value === 'number') {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof value === 'string') {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  }
+
+  /**
+   * 按时间粒度生成分桶标签。
+   *
+   * - day:   YYYY-MM-DD
+   * - week:  YYYY-MM-DD（本周一日期）
+   * - month: YYYY-MM
+   */
+  private bucketTime(date: Date, granularity: TimeGranularity): string {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    if (granularity === 'month') {
+      return `${year}-${pad(month)}`;
+    }
+
+    if (granularity === 'week') {
+      const monday = this.getMonday(date);
+      return `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+    }
+
+    // day
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+
+  /** 获取指定日期所在周的周一。 */
+  private getMonday(date: Date): Date {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayOfWeek = d.getDay(); // 0=Sunday, 1=Monday...
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+
+  /**
+   * 按时间标签升序排序（最早 → 最晚）。
+   * 标签格式为 YYYY-MM-DD 或 YYYY-MM，字典序即时间序。
+   */
+  private sortByTime(
+    result: Array<{ category: string; value: number }>,
+  ): Array<{ category: string; value: number }> {
+    return result
+      .filter((d) => d.category !== '未知')
+      .sort((a, b) => a.category.localeCompare(b.category))
+      .concat(result.filter((d) => d.category === '未知'));
   }
 }

@@ -339,6 +339,15 @@ function BasicPropsTab({ node }: { node: ComponentNode }) {
         />
       )}
 
+      {/* 统计数字/指标卡专属配置 */}
+      {node.type === 'statistic' && (
+        <StatisticPropsSection
+          node={node}
+          getStr={getStr}
+          updateComponentProps={updateComponentProps}
+        />
+      )}
+
       {/* 仪表盘网格专属配置 */}
       {node.type === 'dashboard_grid' && (
         <DashboardGridPropsSection node={node} updateComponentProps={updateComponentProps} />
@@ -364,6 +373,12 @@ const CHART_AGGREGATION_OPTIONS = [
   { value: 'avg', label: '平均值' },
   { value: 'max', label: '最大值' },
   { value: 'min', label: '最小值' },
+];
+
+const TIME_GRANULARITY_OPTIONS = [
+  { value: 'day', label: '按天' },
+  { value: 'week', label: '按周' },
+  { value: 'month', label: '按月' },
 ];
 
 function ChartPropsSection({
@@ -527,6 +542,189 @@ function ChartPropsSection({
           options={CHART_AGGREGATION_OPTIONS}
         />
       </FormField>
+      <FormField label="时间分桶">
+        <Select
+          value={getStr('timeGranularity') || undefined}
+          onChange={(v) => updateComponentProps(node.id, { timeGranularity: v || '' })}
+          size="small"
+          style={{ width: '100%' }}
+          placeholder="不启用（按原始值分组）"
+          allowClear
+          options={TIME_GRANULARITY_OPTIONS}
+        />
+      </FormField>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 统计数字/指标卡专属配置
+// ---------------------------------------------------------------------------
+
+function StatisticPropsSection({
+  node,
+  getStr,
+  updateComponentProps,
+}: {
+  node: ComponentNode;
+  getStr: (key: string) => string;
+  updateComponentProps: (id: string, props: Record<string, unknown>) => void;
+}) {
+  const { appId } = useParams<{ appId: string }>();
+  const datasourceType = getStr('datasourceType') || 'object';
+  const datasourceId = getStr('datasourceId');
+  const hasAggregation = !!getStr('aggregation');
+
+  // 加载应用对象列表
+  const { data: objects } = useQuery({
+    queryKey: ['app-objects', appId],
+    queryFn: () => objectsApi.list(appId!),
+    enabled: !!appId && datasourceType === 'object' && hasAggregation,
+  });
+
+  // 加载数据集列表
+  const { data: datasets } = useQuery({
+    queryKey: ['datasets', appId],
+    queryFn: () => datasetsApi.list(appId!),
+    enabled: !!appId && datasourceType === 'dataset' && hasAggregation,
+  });
+
+  // 加载选中对象的字段
+  const { data: selectedObject } = useQuery({
+    queryKey: ['object', datasourceId],
+    queryFn: () => objectsApi.get(datasourceId!),
+    enabled: datasourceType === 'object' && !!datasourceId && hasAggregation,
+  });
+
+  // 加载选中数据集的列定义
+  const { data: selectedDataset } = useQuery({
+    queryKey: ['dataset', datasourceId],
+    queryFn: () => datasetsApi.get(datasourceId!),
+    enabled: datasourceType === 'dataset' && !!datasourceId && hasAggregation,
+  });
+
+  const fieldOptions = useMemo(() => {
+    if (datasourceType === 'object' && selectedObject?.fields) {
+      return selectedObject.fields.map((f) => ({
+        value: f.apiName,
+        label: `${f.label || f.apiName} (${f.apiName})`,
+      }));
+    }
+    if (datasourceType === 'dataset' && selectedDataset?.columns) {
+      return selectedDataset.columns.map((c) => ({
+        value: c.apiName,
+        label: `${c.label} (${c.apiName})`,
+      }));
+    }
+    return [];
+  }, [datasourceType, selectedObject, selectedDataset]);
+
+  const datasourceOptions =
+    datasourceType === 'object'
+      ? (objects ?? []).map((o) => ({ value: o.id, label: o.label ?? o.name }))
+      : (datasets ?? []).map((d) => ({ value: d.id, label: d.name }));
+
+  return (
+    <>
+      <SectionDivider>基本配置</SectionDivider>
+      <FormField label="标题">
+        <Input
+          value={getStr('title')}
+          onChange={(e) => updateComponentProps(node.id, { title: e.target.value })}
+          size="small"
+          placeholder="统计标题"
+        />
+      </FormField>
+      <FormField label="数值">
+        <Input
+          value={getStr('value')}
+          onChange={(e) => updateComponentProps(node.id, { value: e.target.value })}
+          size="small"
+          placeholder="静态数值（未启用聚合时使用）"
+          disabled={hasAggregation}
+        />
+      </FormField>
+      <FormField label="前缀">
+        <Input
+          value={getStr('prefix')}
+          onChange={(e) => updateComponentProps(node.id, { prefix: e.target.value })}
+          size="small"
+          placeholder="¥"
+        />
+      </FormField>
+      <FormField label="后缀">
+        <Input
+          value={getStr('suffix')}
+          onChange={(e) => updateComponentProps(node.id, { suffix: e.target.value })}
+          size="small"
+          placeholder="元"
+        />
+      </FormField>
+
+      <SectionDivider>聚合配置（指标卡）</SectionDivider>
+      <FormField label="聚合方式">
+        <Select
+          value={getStr('aggregation') || undefined}
+          onChange={(v) =>
+            updateComponentProps(node.id, {
+              aggregation: v || '',
+              datasourceId: v ? datasourceId : '',
+            })
+          }
+          size="small"
+          style={{ width: '100%' }}
+          placeholder="不聚合（使用静态数值）"
+          allowClear
+          options={CHART_AGGREGATION_OPTIONS}
+        />
+      </FormField>
+      {hasAggregation && (
+        <>
+          <FormField label="数据源类型">
+            <Select
+              value={datasourceType}
+              onChange={(v) =>
+                updateComponentProps(node.id, {
+                  datasourceType: v,
+                  datasourceId: '',
+                  valueField: '',
+                })
+              }
+              size="small"
+              style={{ width: '100%' }}
+              options={[
+                { value: 'object', label: '对象' },
+                { value: 'dataset', label: '数据集' },
+              ]}
+            />
+          </FormField>
+          <FormField label={datasourceType === 'object' ? '选择对象' : '选择数据集'}>
+            <Select
+              value={datasourceId || undefined}
+              onChange={(v) => updateComponentProps(node.id, { datasourceId: v, valueField: '' })}
+              size="small"
+              style={{ width: '100%' }}
+              placeholder={datasourceType === 'object' ? '选择对象' : '选择数据集'}
+              options={datasourceOptions}
+              showSearch
+              optionFilterProp="label"
+            />
+          </FormField>
+          <FormField label="值字段">
+            <Select
+              value={getStr('valueField') || undefined}
+              onChange={(v) => updateComponentProps(node.id, { valueField: v })}
+              size="small"
+              style={{ width: '100%' }}
+              placeholder={fieldOptions.length ? '选择字段' : '请先选择数据源'}
+              options={fieldOptions}
+              showSearch
+              optionFilterProp="label"
+              disabled={fieldOptions.length === 0}
+            />
+          </FormField>
+        </>
+      )}
     </>
   );
 }

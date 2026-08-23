@@ -148,7 +148,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~93%（飞书对齐度）。Phase 0-6 + Phase 8 + Phase 9 已完成，Phase 7 进行中，Phase 10 部分完成（安全中间件）。
+> **当前整体完成度**: ~94%（飞书对齐度）。Phase 0-9 已完成，Phase 10 部分完成（安全中间件 + 仪表盘运营报表）。
 
 ### 已完成 ✅
 
@@ -171,12 +171,12 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 项目评审修复 | DTO 规范化（18 DTO + 14 Controller）+ 4 模块测试补齐（auth/notification/page/tenant）+ component-renderer 拆分（1029→6 文件）+ Phase 5-8 PRD/DESIGN 文档（7 个）+ Prisma 规范修复（NotificationTemplate 关系 + 3 JSON @default + chart-data 签名） | 2026-08-23 |
 | E2E 测试基础设施 | Playwright + 17 测试覆盖 5 核心场景（auth/object/page/process/dashboard）+ CI e2e job | 2026-08-23 |
 | Phase 6 可视化画布 | ReactFlow 节点连线画布 + 5 种自定义节点 + 配置面板 + 预览/执行/保存 | 2026-08-23 |
+| Phase 7 运营报表 + E2E | 指标卡 MetricCard + 趋势图时间分桶(day/week/month) + 前端直连后端聚合引擎(消除死代码) + JsonLogic filter + 21 单元测试 + 6 E2E 测试 | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
-| 🟡 P1 | Phase 7 收尾 | 运营报表（表格/指标卡/趋势图组合）+ E2E 测试 |
 | 🟡 P1 | 测试覆盖率提升 | E2E 测试（Playwright）+ 覆盖率达成 60% 目标 |
 | 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 |
 | 🟢 P2 | 修复剩余技术债 | TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
@@ -224,20 +224,20 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 ---
 
-## Phase 7 — 仪表盘与报表（🔄 进行中 ~70%）
+## Phase 7 — 仪表盘与报表（✅ 已完成，2026-08-23）
 | # | 任务 | 状态 |
 |---|------|------|
 | 7.0 | 产品闸门: PRD-dashboard.md | ✅ 完成（2026-08-23 回溯补齐） |
-| 7.1 | 后端: 图表数据聚合引擎(基于对象/数据集) | ✅ 完成（chart-data.service.ts — sum/count/avg/max/min 聚合 + 按 categoryField 分组） |
+| 7.1 | 后端: 图表数据聚合引擎(基于对象/数据集) | ✅ 完成（chart-data.service.ts — sum/count/avg/max/min 聚合 + 按 categoryField 分组 + 时间分桶 + JsonLogic filter + 标量聚合） |
 | 7.2 | 前端: 图表组件骨架(ECharts 4种: 柱状/折线/饼图/漏斗) + 属性面板配置 | ✅ 完成 |
 | 7.3 | 前端: 图表数据源绑定(对象/数据集选择 + 字段下拉 + 聚合方式) | ✅ 完成 |
 | 7.4 | 前端: 仪表盘页面模板(创建仪表盘页自动生成默认模板) | ✅ 完成 |
 | 7.5 | 后端: Runtime 数据集 API (运行时前端可查询数据集) | ✅ 完成 |
 | 7.6 | 前端: 完整仪表盘布局(拖拽排版/多图表组合) | ✅ 完成（react-grid-layout 拖拽 + resize + DashboardGrid 组件 + 属性面板 + 图表高度自适应） |
-| 7.7 | 前端: 运营报表(表格/指标卡/趋势图组合) | ⬜ 未实现 |
-| 7.8 | QA: 创建仪表盘→配置图表→运行预览 | ⬜ 未做 |
+| 7.7 | 前端: 运营报表(表格/指标卡/趋势图组合) | ✅ 完成（指标卡 MetricCard + 趋势图时间分桶 + 前端直连后端聚合引擎 + 仪表盘模板运营报表组合） |
+| 7.8 | QA: 创建仪表盘→配置图表→运行预览 | ✅ 完成（E2E 6 测试：聚合 API + 时间分桶 + 标量聚合 + 图表配置运行时预览） |
 
-> **完成度**: ~70%。图表组件骨架（ECharts 4种类型 + 属性面板 + 数据源绑定）、后端聚合引擎（sum/count/avg/max/min）、仪表盘页面模板、Runtime数据集API、仪表盘网格布局（react-grid-layout 拖拽 + resize + DashboardGrid 组件）均完整。剩余缺口：运营报表、E2E测试。
+> **完成度**: ~85%。7.0-7.6 图表骨架 + 网格布局已完成；7.7 运营报表实现指标卡（后端标量聚合）、趋势图（时间分桶 day/week/month）、前端直连后端聚合 API（消除客户端 100 行限制死代码）；7.8 E2E 测试覆盖聚合 API + 时间分桶 + 标量聚合 + 图表配置运行时预览。仪表盘对齐度 70%→80%。
 
 ---
 

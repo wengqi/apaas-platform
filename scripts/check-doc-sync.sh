@@ -92,7 +92,7 @@ check_scope_sync() {
   # 从 commitlint.config.mjs 提取 scope-enum 列表
   # 提取 scope-enum 行到下一个 ] 之间的单引号字符串
   local commitlint_scopes
-  commitlint_scopes=$(sed -n "/scope-enum/,/]/p" "$commitlint_file" | grep -oE "'[a-z-]+'" | sed "s/'//g" | grep -v -e "^scope-enum$" -e "^always$" | sort -u)
+  commitlint_scopes=$(sed -n "/scope-enum/,/]/p" "$commitlint_file" | grep -oE "'[a-z0-9-]+'" | sed "s/'//g" | grep -v -e "^scope-enum$" -e "^always$" | sort -u)
 
   # 从 AGENTS.md 提取 scope 列表（反引号包裹的斜杠分隔列表）
   # AGENTS.md 中的 scope 行格式：scope：`gateway/shared/db/.../cloud-function`

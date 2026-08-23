@@ -7,7 +7,7 @@
 
 import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { ChartAggregation } from '@apaas/shared';
+import type { ChartAggregation, TimeGranularity } from '@apaas/shared';
 
 export class ChartDataDto {
   @ApiProperty({
@@ -22,13 +22,21 @@ export class ChartDataDto {
   @IsString()
   sourceId!: string;
 
-  @ApiProperty({ example: 'status', description: '分类字段名（分组依据）' })
+  @ApiPropertyOptional({
+    example: 'status',
+    description: '分类字段名（分组依据）。省略时返回标量聚合值（指标卡用）',
+  })
+  @IsOptional()
   @IsString()
-  categoryField!: string;
+  categoryField?: string;
 
-  @ApiProperty({ example: 'amount', description: '值字段名（聚合对象）' })
+  @ApiPropertyOptional({
+    example: 'amount',
+    description: '值字段名（聚合对象）。count 聚合时可省略',
+  })
+  @IsOptional()
   @IsString()
-  valueField!: string;
+  valueField?: string;
 
   @ApiProperty({
     enum: ['sum', 'count', 'avg', 'max', 'min'],
@@ -43,4 +51,14 @@ export class ChartDataDto {
   @IsOptional()
   @IsObject()
   filter?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    enum: ['day', 'week', 'month'],
+    enumName: 'TimeGranularity',
+    example: 'day',
+    description: '时间分桶粒度（当 categoryField 为日期字段时使用）',
+  })
+  @IsOptional()
+  @IsEnum(['day', 'week', 'month'] satisfies readonly TimeGranularity[])
+  timeGranularity?: TimeGranularity;
 }

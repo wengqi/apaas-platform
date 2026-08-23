@@ -125,6 +125,44 @@ DashboardGrid 使用 `react-grid-layout` 的 `Responsive` 组件，12 列网格�
 
 `extractRecords(data)` 兼容两种数据格式：原始数组 `[{...}]` 和包装格式 `{ records: [{...}] }`，与 RecordService 和 DatasetRowService 的返回格式对齐。
 
+### 3.6 运营报表 — 前端直连后端聚合引擎（7.7 新增，2026-08-23）
+
+**问题**：原架构中后端 `ChartDataService` 已完整实现聚合引擎，但前端从未调用它 — 图表在客户端对 ≤100 行数据聚合或显示 mock 数据，后端聚合引擎是死代码。
+
+**解决方案**：
+
+1. **`buildChartOptionFromAggregated(chartType, title, aggregated)`** — 新增函数，从后端返回的已聚合数据点直接构建 ECharts option，跳过客户端 `aggregate()` 步骤。保留原 `buildChartOption` 供编辑模式 mock 使用。
+
+2. **`AggregationChart` 组件（runtime-ui）** — 替代原 `DatasetChart`。用 `useQuery` 调用 `datasetsApi.getChartData(appId, request)` 获取后端聚合结果，然后用 `buildChartOptionFromAggregated` 构建 ECharts option。同时支持 object 和 dataset 数据源。
+
+3. **`MetricCard` 组件（runtime-ui）** — 新增。调用后端标量聚合 API（无 categoryField → 返回单值），渲染 AntD `<Statistic>`。通过 `renderStatisticWithAggregation` 覆盖注入：有 `aggregation` + `datasourceId` 时走 `MetricCard`，否则委托共享 `RENDERERS.statistic`（向后兼容静态值）。
+
+4. **`appId` 传递** — runtime-ui `ComponentRenderer` 通过 `useParams` 从路由获取 `appId`，注入到 `runtime` 上下文，供图表/指标卡调用后端聚合 API。
+
+5. **`StatisticPropsSection`（Studio PropertyPanel）** — 新增指标卡配置面板：标题 + 数值（静态）+ 前缀/后缀 + 聚合方式（可选）+ 数据源 + 值字段。有聚合配置时禁用静态数值输入。
+
+6. **`timeGranularity` Select** — 图表属性面板新增时间分桶配置（day/week/month），可选。
+
+### 3.7 后端聚合引擎增强（7.7 新增，2026-08-23）
+
+`ChartDataService.aggregate()` 增强：
+
+- **`categoryField` 可选** — 省略时所有记录归入单组 `_total`，返回标量值（指标卡用）
+- **`timeGranularity` 时间分桶** — 当 categoryField 为日期字段时，按 day（YYYY-MM-DD）/ week（周一日期）/ month（YYYY-MM）分桶。`resolveCategory()` 解析日期值，`bucketTime()` 生成桶标签，`sortByTime()` 按时间升序排列（"未知"排最后）
+- **`filter` 实现** — 用 `json-logic-js` 的 `apply(filter, record)` 对每条记录求值，仅聚合满足条件的记录
+- **`count` 聚合不要求 `valueField`** — count 统计记录数，值设为 1
+- **`take: 10000` 防御性上限** — `loadSourceData` 增加 take 限制，避免全表加载
+
+### 3.8 仪表盘模板更新（7.7 新增，2026-08-23）
+
+`generateDashboardSchema()` 从"1 statistic + 3 charts"升级为运营报表组合：
+- 2 指标卡（记录总数 count + 数值汇总 sum）
+- 1 趋势图（line + timeGranularity: 'day'）
+- 1 柱状图（bar + count）
+- 1 饼图（pie + count）
+
+模板内 datasourceId 仍为空（用户配置后生效），与现有模式一致。
+
 ---
 
 ## 4. 简化项说明（偏离飞书）
@@ -137,5 +175,7 @@ DashboardGrid 使用 `react-grid-layout` 的 `Responsive` 组件，12 列网格�
 | 联动筛选 | 图表间联动 | ❌ 独立展示 | 单图表独立，联动待后续 |
 | 自定义指标 | 公式引擎 | ❌ 5 种聚合 | 基础聚合够用 |
 | 多系列图表 | 支持 | ❌ 单系列 | 多系列待后续扩展 |
+| 时间粒度 | 更细粒度（时/分） | day/week/month | 覆盖常见趋势分析场景 |
+| 管理后台运营报表 | 活跃用户/存储/流程监控 | ❌ 属 Phase 9.9 | 本次聚焦仪表盘 widget 层 |
 
-> **验收状态**: ✅ 后端聚合 API 测试 + 前端 4 种图表渲染验证 + DashboardGrid 拖拽交互验证全部通过
+> **验收状态**: ✅ 后端聚合 API 21 单元测试 + E2E 6 测试 + 前端 4 种图表渲染验证 + DashboardGrid 拖拽交互验证 + 指标卡/趋势图运行时验证全部通过

@@ -47,7 +47,7 @@ export class ChartDataService {
    * 从对象记录或数据集行加载源数据，按 categoryField 分组，
    * 对 valueField 执行聚合运算，返回结构化结果。
    */
-  async aggregate(request: ChartDataRequest, tenantId: string): Promise<ChartDataResult> {
+  async aggregate(tenantId: string, request: ChartDataRequest): Promise<ChartDataResult> {
     if (!request.categoryField || !request.valueField) {
       throw new BadRequestException('分类字段和值字段不能为空');
     }

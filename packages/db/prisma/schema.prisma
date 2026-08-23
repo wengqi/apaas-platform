@@ -50,6 +50,7 @@ model Tenant {
   datasets    Dataset[]
   dataFlows   DataFlow[]
   cloudFunctions CloudFunction[]
+  notificationTemplates NotificationTemplate[]
 
   @@map("tenants")
 }
@@ -95,6 +96,7 @@ model Application {
   datasets    Dataset[]
   dataFlows   DataFlow[]
   cloudFunctions CloudFunction[]
+  notificationTemplates NotificationTemplate[]
 
   @@unique([tenantId, apiName])
   @@index([tenantId])
@@ -402,7 +404,7 @@ model ProcessDef {
   apiName   String   @map("api_name")
   name      String
   // ★ 核心：WorkflowSchema JSON（节点图 + 边），自研引擎直接消费
-  workflowSchema Json @map("workflow_schema")
+  workflowSchema Json @default("{}") @map("workflow_schema")
   version   Int      @default(1)
   status    ProcessDefStatus @default(DRAFT)
   triggerType String? @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | RECORD_DELETED | SCHEDULED | MANUAL | API | BUTTON_CLICK
@@ -541,6 +543,9 @@ model NotificationTemplate {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application   Application  @relation(fields: [appId], references: [id], onDelete: Cascade)
+
   @@unique([tenantId, appId, name])
   @@index([tenantId])
   @@index([appId])
@@ -578,7 +583,7 @@ model AppVersion {
   appId         String           @map("app_id")
   versionNumber String           // 语义化版本号，如 "0.1.0"
   description   String           // 更新说明
-  snapshot      Json             // 完整应用配置快照 (AppSnapshot JSON)
+  snapshot      Json             @default("{}") // 完整应用配置快照 (AppSnapshot JSON)
   changeSet     Json?            // 变更清单 (ChangeSet JSON)，首次发布为 null
   status        AppVersionStatus @default(PUBLISHED)
   publishedBy   String           @map("published_by")
@@ -678,7 +683,7 @@ model ConnectorCredential {
   appId       String   @map("app_id")
   name        String // 显示名称（如"生产环境 API Key"）
   type        String // BASIC | API_KEY | BEARER
-  data        Json // 加密存储的凭证数据
+  data        Json @default("{}") // 加密存储的凭证数据
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

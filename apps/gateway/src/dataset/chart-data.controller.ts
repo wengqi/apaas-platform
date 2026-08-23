@@ -27,7 +27,7 @@ export class ChartDataController {
     @Request() req: AuthenticatedRequest,
   ) {
     const tenantId = req.user.tenantId!;
-    const result = await this.chartDataService.aggregate(body, tenantId);
+    const result = await this.chartDataService.aggregate(tenantId, body);
     return { ok: true as const, data: result };
   }
 }

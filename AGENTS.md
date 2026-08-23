@@ -87,7 +87,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 - Commit message 必须符合 Conventional Commits：`type(scope): subject`
 - type：`feat/fix/refactor/perf/docs/test/chore/style/ci/revert/breaking`
-- scope：`gateway/shared/db/studio/runtime-ui/meta-svc/process-svc/runtime-svc/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function`
+- scope：`gateway/shared/db/studio/runtime-ui/meta-svc/process-svc/runtime-svc/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function/e2e`
 - pre-commit 钩子：lint-staged（eslint --fix + prettier --write 暂存文件）
 - commit-msg 钩子：commitlint 格式校验（`commitlint.config.mjs`）
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）

@@ -62,6 +62,7 @@ export default {
         'docs',
         'config',
         'deps',
+        'e2e',
       ],
     ],
     // scope 非必填（允许 `feat: xxx` 无 scope）

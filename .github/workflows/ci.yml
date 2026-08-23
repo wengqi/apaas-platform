@@ -75,3 +75,79 @@ jobs:
 
       - name: Doc sync check
         run: bash scripts/check-doc-sync.sh
+
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: ci
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: apaas
+          POSTGRES_PASSWORD: apaas
+          POSTGRES_DB: apaas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apaas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: 'postgresql://apaas:apaas@localhost:5432/apaas?schema=public'
+      REDIS_URL: 'redis://localhost:6379'
+      JWT_SECRET: 'ci-e2e-test-secret-at-least-16-chars'
+      JWT_EXPIRES_IN: '7d'
+      GATEWAY_PORT: '3000'
+      NODE_ENV: 'test'
+      CONNECTOR_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      CI: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Run database migrations
+        run: pnpm db:migrate
+
+      - name: Seed database
+        run: pnpm db:seed
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

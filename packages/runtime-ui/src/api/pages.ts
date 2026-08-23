@@ -11,19 +11,51 @@ import apiClient from './client';
 // ---------------------------------------------------------------------------
 
 export type ComponentType =
-  | 'page' | 'section' | 'tabs' | 'grid' | 'grid_column'
-  | 'data_table' | 'detail_card' | 'list'
-  | 'form' | 'text_input' | 'textarea' | 'number_input' | 'select'
-  | 'multi_select' | 'date_picker' | 'radio' | 'checkbox' | 'switch'
-  | 'lookup_picker' | 'sub_form_table' | 'attachment_upload' | 'user_picker'
-  | 'button' | 'statistic' | 'chart' | 'rich_text_display' | 'divider' | 'text';
+  | 'page'
+  | 'section'
+  | 'tabs'
+  | 'grid'
+  | 'grid_column'
+  | 'dashboard_grid'
+  | 'data_table'
+  | 'detail_card'
+  | 'list'
+  | 'form'
+  | 'text_input'
+  | 'textarea'
+  | 'number_input'
+  | 'select'
+  | 'multi_select'
+  | 'date_picker'
+  | 'radio'
+  | 'checkbox'
+  | 'switch'
+  | 'lookup_picker'
+  | 'sub_form_table'
+  | 'attachment_upload'
+  | 'user_picker'
+  | 'button'
+  | 'statistic'
+  | 'chart'
+  | 'rich_text_display'
+  | 'divider'
+  | 'text';
 
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
 
 export type ActionType =
-  | 'query_records' | 'create_record' | 'update_record' | 'delete_record'
-  | 'navigate' | 'open_modal' | 'close_modal' | 'confirm' | 'toast'
-  | 'call_api' | 'trigger_process' | 'set_variable';
+  | 'query_records'
+  | 'create_record'
+  | 'update_record'
+  | 'delete_record'
+  | 'navigate'
+  | 'open_modal'
+  | 'close_modal'
+  | 'confirm'
+  | 'toast'
+  | 'call_api'
+  | 'trigger_process'
+  | 'set_variable';
 
 export type VariableType = 'record' | 'record_list' | 'scalar' | 'object' | 'array';
 
@@ -112,19 +144,13 @@ export interface PageMeta {
 export const pagesApi = {
   /** 列出应用下已发布页面 */
   list: (appId: string) =>
-    apiClient
-      .get(`/apps/${appId}/pages`)
-      .then((res) => res.data.data as PageMeta[]),
+    apiClient.get(`/apps/${appId}/pages`).then((res) => res.data.data as PageMeta[]),
 
   /** 按 ID 获取页面详情 */
   get: (pageId: string) =>
-    apiClient
-      .get(`/pages/${pageId}`)
-      .then((res) => res.data.data as PageMeta),
+    apiClient.get(`/pages/${pageId}`).then((res) => res.data.data as PageMeta),
 
   /** 按 slug 获取已发布页面（运行时渲染用） */
   getBySlug: (appId: string, slug: string) =>
-    apiClient
-      .get(`/apps/${appId}/pages/slug/${slug}`)
-      .then((res) => res.data.data as PageMeta),
+    apiClient.get(`/apps/${appId}/pages/slug/${slug}`).then((res) => res.data.data as PageMeta),
 };

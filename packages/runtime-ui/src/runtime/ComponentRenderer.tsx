@@ -78,8 +78,10 @@ function DatasetChart({
   const option = buildChartOption(chartType, title, categoryField, valueField, aggregation, rows);
 
   return (
-    <div style={{ padding: 8, background: '#fff', borderRadius: 6, minHeight: 200 }}>
-      <ReactECharts option={option} style={{ height: 200 }} />
+    <div
+      style={{ padding: 8, background: '#fff', borderRadius: 6, height: '100%', minHeight: 200 }}
+    >
+      <ReactECharts option={option} style={{ height: '100%', minHeight: 200 }} />
     </div>
   );
 }

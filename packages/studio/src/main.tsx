@@ -6,6 +6,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { createQueryClient } from '@apaas/shared/stores';
 import App from './App';
 import './index.css';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 
 const queryClient = createQueryClient();
 

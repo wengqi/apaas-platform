@@ -226,6 +226,7 @@ export default function ComponentRenderer({ node, isRoot }: ComponentRendererPro
   const schema = usePageBuilderStore((s) => s.schema);
   const selectedNodeId = usePageBuilderStore((s) => s.selectedNodeId);
   const selectNode = usePageBuilderStore((s) => s.selectNode);
+  const updateComponentProps = usePageBuilderStore((s) => s.updateComponentProps);
   const vm = useRuntimeCtx((s) => s.vm);
   const setVariable = useRuntimeCtx((s) => s.setVariable);
   const executeActions = useRuntimeCtx((s) => s.executeActions);
@@ -263,6 +264,10 @@ export default function ComponentRenderer({ node, isRoot }: ComponentRendererPro
         {children}
       </DroppableArea>
     ),
+    onLayoutChange: (nodeId, layout) => {
+      if (mode !== 'edit') return;
+      updateComponentProps(nodeId, { layout });
+    },
   };
 
   return <SharedRenderer node={node} ctx={ctx} isRoot={isRoot} />;

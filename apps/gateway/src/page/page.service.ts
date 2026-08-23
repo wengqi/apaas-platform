@@ -256,6 +256,10 @@ export class PageService {
  */
 function generateDashboardSchema(): object {
   const nodeId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 8)}`;
+  const statId = nodeId('statistic');
+  const chart1Id = nodeId('chart');
+  const chart2Id = nodeId('chart');
+  const chart3Id = nodeId('chart');
   return {
     version: '1',
     pageType: 'dashboard',
@@ -267,114 +271,67 @@ function generateDashboardSchema(): object {
       props: {},
       children: [
         {
-          id: nodeId('section'),
-          name: '数据概览',
-          type: 'section',
-          props: { title: '数据概览' },
+          id: nodeId('dashboard_grid'),
+          name: '仪表盘网格',
+          type: 'dashboard_grid',
+          props: {
+            cols: 12,
+            rowHeight: 30,
+            layout: [
+              { i: statId, x: 0, y: 0, w: 4, h: 4 },
+              { i: chart1Id, x: 4, y: 0, w: 8, h: 8 },
+              { i: chart2Id, x: 0, y: 4, w: 6, h: 8 },
+              { i: chart3Id, x: 6, y: 4, w: 6, h: 8 },
+            ],
+          },
           children: [
             {
-              id: nodeId('grid'),
-              name: '栅格',
-              type: 'grid',
-              props: { gutter: 16 },
-              children: [
-                {
-                  id: nodeId('grid_column'),
-                  name: '列1',
-                  type: 'grid_column',
-                  props: { span: 6 },
-                  children: [
-                    {
-                      id: nodeId('statistic'),
-                      name: '统计数字',
-                      type: 'statistic',
-                      props: { title: '总数', value: 0 },
-                    },
-                  ],
-                },
-                {
-                  id: nodeId('grid_column'),
-                  name: '列2',
-                  type: 'grid_column',
-                  props: { span: 18 },
-                  children: [
-                    {
-                      id: nodeId('chart'),
-                      name: '图表1',
-                      type: 'chart',
-                      props: {
-                        chartType: 'bar',
-                        title: '数据分布',
-                        datasourceType: 'object',
-                        datasourceId: '',
-                        categoryField: '',
-                        valueField: '',
-                        aggregation: 'count',
-                      },
-                    },
-                  ],
-                },
-              ],
+              id: statId,
+              name: '总数',
+              type: 'statistic',
+              props: { title: '总数', value: 0 },
             },
-          ],
-        },
-        {
-          id: nodeId('section'),
-          name: '趋势分析',
-          type: 'section',
-          props: { title: '趋势分析' },
-          children: [
             {
-              id: nodeId('grid'),
-              name: '栅格',
-              type: 'grid',
-              props: { gutter: 16 },
-              children: [
-                {
-                  id: nodeId('grid_column'),
-                  name: '列1',
-                  type: 'grid_column',
-                  props: { span: 12 },
-                  children: [
-                    {
-                      id: nodeId('chart'),
-                      name: '图表2',
-                      type: 'chart',
-                      props: {
-                        chartType: 'line',
-                        title: '趋势图',
-                        datasourceType: 'object',
-                        datasourceId: '',
-                        categoryField: '',
-                        valueField: '',
-                        aggregation: 'sum',
-                      },
-                    },
-                  ],
-                },
-                {
-                  id: nodeId('grid_column'),
-                  name: '列2',
-                  type: 'grid_column',
-                  props: { span: 12 },
-                  children: [
-                    {
-                      id: nodeId('chart'),
-                      name: '图表3',
-                      type: 'chart',
-                      props: {
-                        chartType: 'pie',
-                        title: '占比分布',
-                        datasourceType: 'object',
-                        datasourceId: '',
-                        categoryField: '',
-                        valueField: '',
-                        aggregation: 'count',
-                      },
-                    },
-                  ],
-                },
-              ],
+              id: chart1Id,
+              name: '数据分布',
+              type: 'chart',
+              props: {
+                chartType: 'bar',
+                title: '数据分布',
+                datasourceType: 'object',
+                datasourceId: '',
+                categoryField: '',
+                valueField: '',
+                aggregation: 'count',
+              },
+            },
+            {
+              id: chart2Id,
+              name: '趋势图',
+              type: 'chart',
+              props: {
+                chartType: 'line',
+                title: '趋势图',
+                datasourceType: 'object',
+                datasourceId: '',
+                categoryField: '',
+                valueField: '',
+                aggregation: 'sum',
+              },
+            },
+            {
+              id: chart3Id,
+              name: '占比分布',
+              type: 'chart',
+              props: {
+                chartType: 'pie',
+                title: '占比分布',
+                datasourceType: 'object',
+                datasourceId: '',
+                categoryField: '',
+                valueField: '',
+                aggregation: 'count',
+              },
             },
           ],
         },

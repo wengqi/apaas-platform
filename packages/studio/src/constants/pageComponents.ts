@@ -95,6 +95,14 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     description: '栅格列(栅格子项)',
     defaultProps: {},
   },
+  dashboard_grid: {
+    label: '仪表盘网格',
+    icon: AppstoreOutlined,
+    category: 'container',
+    isContainer: true,
+    description: '可拖拽/调整大小的仪表盘网格布局',
+    defaultProps: { cols: 12, rowHeight: 30, layout: [] },
+  },
 
   // —— 数据类 ——
   data_table: {
@@ -293,7 +301,11 @@ export const COMPONENT_GROUPS: {
   category: ComponentCategory;
   types: ComponentType[];
 }[] = [
-  { title: '容器', category: 'container', types: ['page', 'section', 'tabs', 'grid'] },
+  {
+    title: '容器',
+    category: 'container',
+    types: ['page', 'section', 'tabs', 'grid', 'dashboard_grid'],
+  },
   { title: '数据', category: 'data', types: ['data_table', 'detail_card', 'list'] },
   {
     title: '表单',

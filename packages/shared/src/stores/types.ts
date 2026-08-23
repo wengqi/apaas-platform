@@ -65,6 +65,7 @@ export type ComponentType =
   | 'tabs'
   | 'grid'
   | 'grid_column'
+  | 'dashboard_grid'
   // —— 数据类 ——
   | 'data_table'
   | 'detail_card'

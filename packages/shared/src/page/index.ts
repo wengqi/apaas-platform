@@ -26,6 +26,7 @@ export enum ComponentType {
   Tabs = 'tabs',
   Grid = 'grid',
   GridColumn = 'grid_column',
+  DashboardGrid = 'dashboard_grid',
 
   // —— 数据类 ——
   DataTable = 'data_table',
@@ -274,6 +275,24 @@ export interface ChartConfig {
   valueField?: string;
   /** 聚合方式 */
   aggregation?: ChartAggregation;
+}
+
+// ---------------------------------------------------------------------------
+// 仪表盘网格布局（react-grid-layout 坐标模型）
+// ---------------------------------------------------------------------------
+
+/** 网格布局项（单个 widget 在网格中的位置和尺寸）。 */
+export interface LayoutItem {
+  /** 关联的子节点 ID（与 ComponentNode.id 对应） */
+  i: string;
+  /** X 坐标（列偏移，0-based） */
+  x: number;
+  /** Y 坐标（行偏移，0-based） */
+  y: number;
+  /** 宽度（列数，cols 总数由 DashboardGrid props.cols 决定，默认 12） */
+  w: number;
+  /** 高度（行数，单行高度由 props.rowHeight 决定，默认 30px） */
+  h: number;
 }
 
 // 图表 ECharts option 构建工具

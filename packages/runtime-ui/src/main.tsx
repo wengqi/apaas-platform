@@ -6,6 +6,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { createQueryClient, initAuthFromHash } from '@apaas/shared/stores';
 import App from './App';
 import './index.css';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 
 // 从 URL hash 读取 token（SSO / 测试场景）
 initAuthFromHash();

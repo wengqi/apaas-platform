@@ -39,13 +39,17 @@ import { UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import ReactECharts from 'echarts-for-react';
+import GridLayout, { WidthProvider } from 'react-grid-layout';
+import type { Layout } from 'react-grid-layout';
 import type { ActionConfig, ComponentNode, ComponentType, PropValue, ViewModel } from './types.js';
 import type { RuntimeState } from './runtime-store.js';
 import { resolvePropValue, getByPath } from './expression-engine.js';
 import { buildChartOption } from '../page/chart-options.js';
-import type { ChartType, ChartAggregation } from '../page/index.js';
+import type { ChartType, ChartAggregation, LayoutItem } from '../page/index.js';
 
 const { Text, Title } = Typography;
+
+const ResponsiveGrid = WidthProvider(GridLayout);
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -70,6 +74,11 @@ export interface RenderContext {
    * 由 Studio 注入 DroppableArea（@dnd-kit/core）；Runtime-UI 不需要（始终 preview）。
    */
   renderDropzone?: (parentId: string, isEmpty: boolean, children: ReactNode) => ReactNode;
+  /**
+   * 编辑模式：仪表盘网格布局变化回调（拖拽/resize 后更新 layout 到 schema）。
+   * Runtime-UI 不需要（始终 preview/static）。
+   */
+  onLayoutChange?: (nodeId: string, layout: LayoutItem[]) => void;
 }
 
 /** 子节点渲染回调。 */
@@ -327,7 +336,7 @@ export function PageLoadEffect({ node, ctx }: { node: ComponentNode; ctx: Render
 // 组件渲染器注册表
 // ---------------------------------------------------------------------------
 
-/** 全部 26 个组件渲染器（studio 超集形式）。 */
+/** 全部 27 个组件渲染器（studio 超集形式）。 */
 export const RENDERERS: Record<ComponentType, RendererFn> = {
   // —— 容器类 ——
   page: renderPage,
@@ -335,6 +344,7 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   tabs: renderTabs,
   grid: renderGrid,
   grid_column: renderGridColumn,
+  dashboard_grid: renderDashboardGrid,
 
   // —— 数据类 ——
   data_table: renderDataTable,
@@ -435,6 +445,56 @@ function renderGridColumn(
   renderChild: RenderChild,
 ): ReactNode {
   return renderContainerChildren(node, ctx, renderChild);
+}
+
+function renderDashboardGrid(
+  node: ComponentNode,
+  ctx: RenderContext,
+  renderChild: RenderChild,
+): ReactNode {
+  const children = node.children ?? [];
+  const cols = getPropAsNumber(node, 'cols', ctx) || 12;
+  const rowHeight = getPropAsNumber(node, 'rowHeight', ctx) || 30;
+  const rawLayout = node.props.layout;
+  const layout: LayoutItem[] = Array.isArray(rawLayout)
+    ? (rawLayout as unknown as LayoutItem[])
+    : children.map((child, i) => ({
+        i: child.id,
+        x: (i % 2) * (cols / 2),
+        y: Math.floor(i / 2) * 4,
+        w: cols / 2,
+        h: 8,
+      }));
+
+  const isEditing = ctx.mode === 'edit';
+
+  const gridItems = children.map((child) => (
+    <div key={child.id} style={{ height: '100%' }}>
+      {renderChild(child)}
+    </div>
+  ));
+
+  return (
+    <ResponsiveGrid
+      className="dashboard-grid-layout"
+      layout={layout}
+      cols={cols}
+      rowHeight={rowHeight}
+      margin={[8, 8]}
+      isDraggable={isEditing}
+      isResizable={isEditing}
+      onLayoutChange={(newLayout: Layout[]) => {
+        if (ctx.onLayoutChange) {
+          ctx.onLayoutChange(
+            node.id,
+            newLayout.map((l: Layout) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h })),
+          );
+        }
+      }}
+    >
+      {gridItems}
+    </ResponsiveGrid>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -807,9 +867,21 @@ function renderChart(node: ComponentNode, ctx: RenderContext): ReactNode {
 
   const option = buildChartOption(chartType, title, categoryField, valueField, aggregation, data);
 
+  const styleObj = asPropObject(node.props.style);
+  const customHeight = styleObj && typeof styleObj.height === 'number' ? styleObj.height : 200;
+  const chartHeight = customHeight > 0 ? customHeight : 200;
+
   return (
-    <div style={{ padding: 8, background: '#fff', borderRadius: 6, minHeight: 200 }}>
-      <ReactECharts option={option} style={{ height: 200 }} />
+    <div
+      style={{
+        padding: 8,
+        background: '#fff',
+        borderRadius: 6,
+        height: '100%',
+        minHeight: chartHeight,
+      }}
+    >
+      <ReactECharts option={option} style={{ height: chartHeight }} />
     </div>
   );
 }

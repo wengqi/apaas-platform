@@ -148,7 +148,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~90%（飞书对齐度）。Phase 0-5 + Phase 8 + Phase 9 已完成，Phase 6/7 进行中，Phase 10 待开始。
+> **当前整体完成度**: ~91%（飞书对齐度）。Phase 0-5 + Phase 8 + Phase 9 已完成，Phase 6/7 进行中，Phase 10 待开始。
 
 ### 已完成 ✅
 
@@ -165,13 +165,14 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | Phase 6/7 核心缺口 | join/filter 表单式 UI + 后端图表聚合引擎（sum/count/avg/max/min） | 2026-08-22 |
 | Phase 8 | 云函数与扩展 — isolated-vm 沙箱 + Monaco 编辑器 + 流程节点执行器 + CRUD/publish/invoke | 2026-08-22 |
 | 治理规范 | any 清理 + ComponentRenderer 提取（1112→269+185 行）+ 编码规范补充 + API 一致性修复 | 2026-08-22 |
+| Phase 7 仪表盘布局 | DashboardGrid 组件 + react-grid-layout 拖拽/resize + 属性面板 + 图表高度自适应 | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
 | 🟡 P1 | Phase 6 收尾 | 数据流可视化画布（节点式编排）+ E2E 测试 |
-| 🟡 P1 | Phase 7 收尾 | 完整仪表盘布局（拖拽排版/网格 widget）+ 运营报表 + E2E 测试 |
+| 🟡 P1 | Phase 7 收尾 | 运营报表（表格/指标卡/趋势图组合）+ E2E 测试 |
 | 🟡 P1 | 测试覆盖率提升 | E2E 测试（Playwright）+ 覆盖率达成 60% 目标 |
 | 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 / 安全中间件 |
 | 🟢 P2 | 修复剩余技术债 | TD-6 审计日志查询 UI + TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
@@ -219,7 +220,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 ---
 
-## Phase 7 — 仪表盘与报表（🔄 进行中 ~55%）
+## Phase 7 — 仪表盘与报表（🔄 进行中 ~70%）
 | # | 任务 | 状态 |
 |---|------|------|
 | 7.0 | 产品闸门: PRD-dashboard.md | ⚠️ 跳过（直接开发） |
@@ -228,11 +229,11 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 7.3 | 前端: 图表数据源绑定(对象/数据集选择 + 字段下拉 + 聚合方式) | ✅ 完成 |
 | 7.4 | 前端: 仪表盘页面模板(创建仪表盘页自动生成默认模板) | ✅ 完成 |
 | 7.5 | 后端: Runtime 数据集 API (运行时前端可查询数据集) | ✅ 完成 |
-| 7.6 | 前端: 完整仪表盘布局(拖拽排版/多图表组合) | ⬜ 未实现 |
+| 7.6 | 前端: 完整仪表盘布局(拖拽排版/多图表组合) | ✅ 完成（react-grid-layout 拖拽 + resize + DashboardGrid 组件 + 属性面板 + 图表高度自适应） |
 | 7.7 | 前端: 运营报表(表格/指标卡/趋势图组合) | ⬜ 未实现 |
 | 7.8 | QA: 创建仪表盘→配置图表→运行预览 | ⬜ 未做 |
 
-> **完成度**: ~55%。图表组件骨架（ECharts 4种类型 + 属性面板 + 数据源绑定）、后端聚合引擎（sum/count/avg/max/min）、仪表盘页面模板、Runtime数据集API均完整。剩余缺口：完整仪表盘布局（拖拽排版/网格widget）、运营报表、E2E测试。
+> **完成度**: ~70%。图表组件骨架（ECharts 4种类型 + 属性面板 + 数据源绑定）、后端聚合引擎（sum/count/avg/max/min）、仪表盘页面模板、Runtime数据集API、仪表盘网格布局（react-grid-layout 拖拽 + resize + DashboardGrid 组件）均完整。剩余缺口：运营报表、E2E测试。
 
 ---
 
@@ -301,3 +302,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-06：**流程引擎模式决策**——统一为单模式（flowgram.ai Fixed Layout + WorkflowSchema SSOT），双模式/BPMN 相关内容已弃用并从文档清除。Phase 3 任务从 12 项精简为 9 项（删除 BPMN 互转、标准模式编辑器、模式切换任务，合并为单模式流程编辑器任务）。
 - 2026-08-22：**ROADMAP 重大同步**——主路线图与实际开发状态对齐。Phase 5（连接器）标记 ✅ 已完成。Phase 6（数据集）标记 🔄 进行中 ~70%。Phase 7（仪表盘）标记 🔄 进行中 ~40%。Phase 9（应用发布）标记 ✅ 已完成 ~95%。技术债清单 TD-5~TD-16 全部更新实际状态（7 项已修复 / 3 项部分修复 / 4 项未修复 / 1 项决策保留）。整体完成度从 ~40% 更新为 ~88%（飞书对齐度）。后续推进建议重排优先级：P0 建立测试基础设施 → P1 Phase 6/7 收尾 → P2 Phase 8 + 剩余技术债 + Phase 10。
 - 2026-08-22：**ROADMAP 第二次同步**——Phase 8（云函数）标记 ✅ 已完成 ~90%（isolated-vm 沙箱 + Monaco 编辑器 + 7 端点 + 流程节点执行器）。Phase 6 完成度 ~70%→~80%（join/filter 表单式 UI 已完成）。Phase 7 完成度 ~40%→~55%（后端聚合引擎已完成）。TD-5 从「核心零覆盖」更新为「12 spec / 376 测试 / 核心模块已覆盖」。整体完成度 ~88%→~90%。下一步优先级重排：移除已完成的 P0 测试基础设施和 P2 Phase 8/TD-11/12/13，新增 P1 E2E 测试 + P2 Tenant 隔离重构。
+- 2026-08-23：**Phase 7 仪表盘网格布局完成**——新增 DashboardGrid 组件类型（react-grid-layout 拖拽 + resize），更新仪表盘页面模板（DashboardGrid 替换 Grid + GridColumn），图表高度自适应（renderChart 从 props.style 读取高度），前后端模板同步。Phase 7 完成度 ~55%→~70%，整体完成度 ~90%→~91%。

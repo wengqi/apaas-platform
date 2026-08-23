@@ -172,15 +172,16 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | E2E 测试基础设施 | Playwright + 17 测试覆盖 5 核心场景（auth/object/page/process/dashboard）+ CI e2e job | 2026-08-23 |
 | Phase 6 可视化画布 | ReactFlow 节点连线画布 + 5 种自定义节点 + 配置面板 + 预览/执行/保存 | 2026-08-23 |
 | Phase 7 运营报表 + E2E | 指标卡 MetricCard + 趋势图时间分桶(day/week/month) + 前端直连后端聚合引擎(消除死代码) + JsonLogic filter + 21 单元测试 + 6 E2E 测试 | 2026-08-23 |
+| E2E 测试补齐 + PropertyPanel 拆分 | 4 新 E2E spec（连接器/数据集/云函数/应用发布）12 测试 + PropertyPanel 1178→231 行拆分 7 子文件 + vitest 覆盖率阈值启用(基线 39%/75%/61%) | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
-| 🟡 P1 | 测试覆盖率提升 | E2E 测试（Playwright）+ 覆盖率达成 60% 目标 |
 | 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 |
 | 🟢 P2 | 修复剩余技术债 | TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
 | 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
+| 🟢 P2 | 覆盖率提升至 60% | 当前基线 39% → 目标 60%（补充 controller / node-executor 测试） |
 
 ---
 
@@ -192,7 +193,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 5.2 | 后端: 连接器管理(创建/配置/测试/调用) + 凭证管理(AES-256-GCM加密) | ✅ 完成 |
 | 5.3 | 后端: 内置连接器(HTTP出站 + Webhook入站) | ✅ 完成（数据库连接器暂不实现） |
 | 5.4 | 前端: 连接器管理UI + 配置向导 + 调试面板 + 凭证管理 | ✅ 完成 |
-| 5.5 | QA: 连接器调用E2E | ✅ 完成（API端到端 + 浏览器UI + Docker部署验证） |
+| 5.5 | QA: 连接器调用E2E | ✅ 完成（API端到端 + 浏览器UI + Docker部署验证 + Playwright E2E 06-connector.spec.ts） |
 | 5.6 | 流程节点升级: http_request 节点支持引用连接器(向后兼容) | ✅ 完成 |
 | 5.7 | 权限集成: CONNECTOR 权限类型 + BUILDER 角色种子数据 | ✅ 完成 |
 
@@ -215,12 +216,12 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 6.4 | 前端: 数据集管理UI + 数据流表单(数据源/关联/筛选/聚合配置) + 路由导航 | ✅ 完成 |
 | 6.5 | 共享类型: packages/shared/dataset (DataFlow/Dataset/DatasetColumn/JoinConfig/AggregationConfig) | ✅ 完成 |
 | 6.6 | 前端: 数据流可视化画布(节点式编排) | ✅ 完成（ReactFlow 节点连线画布 + 5 种自定义节点 + 配置面板 + 预览/执行/保存） |
-| 6.7 | QA: 多表关联→分组汇总→输出数据集 E2E | ⬜ 未做 |
+| 6.7 | QA: 多表关联→分组汇总→输出数据集 E2E | ✅ 完成（07-dataset.spec.ts — 数据流创建+预览+执行+轮询+行查询） |
 
-> **完成度**: ~90%。数据流引擎（内存join + 聚合 + 物化）、BullMQ异步刷新、数据集管理前端UI、join/filter 表单式配置、可视化数据流画布（ReactFlow 节点连线 + 配置面板）均完整。剩余缺口：E2E测试。
+> **完成度**: ~93%。数据流引擎（内存join + 聚合 + 物化）、BullMQ异步刷新、数据集管理前端UI、join/filter 表单式配置、可视化数据流画布（ReactFlow 节点连线 + 配置面板）、E2E 测试均完整。
 
 **验收标准**：创建数据流→多表关联+筛选+分组汇总→输出数据集→在页面表格中使用。
-> **验收状态**: ⚠️ 数据流引擎和前端管理可用，但未做端到端自动化测试。
+> **验收状态**: ✅ E2E 测试通过（数据流创建 → preview 验证聚合 → execute 物化 → 轮询 READY → 行查询验证）。
 
 ---
 
@@ -248,9 +249,9 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 8.1 | 后端: 云函数平台(创建/编辑/调试/部署/调用) | ✅ 完成 — isolated-vm 沙箱 + 7 个 CRUD 端点（list/get/create/update/delete/publish/invoke） |
 | 8.2 | 后端: 自定义组件注册 + 运行时加载 | ⚠️ 简化（云函数流程节点执行器已实现；自定义组件注册待后续） |
 | 8.3 | 前端: 云函数在线编辑器(Code Editor) + 调试面板 | ✅ 完成 — Monaco 编辑器 + Ctrl+S 保存 + 测试运行面板 |
-| 8.4 | QA: 创建云函数→在流程中调用→验证返回 | ⚠️ 跳过（API + 单元测试验证，未做 E2E） |
+| 8.4 | QA: 创建云函数→在流程中调用→验证返回 | ✅ 完成（08-cloud-function.spec.ts — 创建+发布+调用+日志验证+未发布报错） |
 
-> **完成度**: ~90%。云函数 CRUD（创建/编辑/发布/调用/删除）、isolated-vm 沙箱执行引擎、Monaco 在线编辑器、流程节点执行器（cloud_function.executor.ts）均完整。剩余缺口：自定义组件注册/运行时加载、E2E 测试。
+> **完成度**: ~93%。云函数 CRUD（创建/编辑/发布/调用/删除）、isolated-vm 沙箱执行引擎、Monaco 在线编辑器、流程节点执行器（cloud_function.executor.ts）、E2E 测试均完整。剩余缺口：自定义组件注册/运行时加载。
 > **安全措施**: isolated-vm V8 Isolate 隔离（非 vm2），内存限制可配置（CLOUD_FUNCTION_MEMORY_LIMIT_MB，默认 128MB），执行超时可配置（CLOUD_FUNCTION_TIMEOUT_MS，默认 5s），仅注入受限 context（log/tenantId/appId），无 require/process 访问。
 
 ---
@@ -273,9 +274,9 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 9.8 | 前端: 发布历史页面 — 版本列表+状态+回滚操作 | ✅ 完成 |
 | 9.9 | 前端: 应用管理后台 — 概览(运营报表)+环境信息+审计日志 | ⚠️ 部分完成（概览Dashboard完整，审计日志查询UI缺失） |
 | 9.10 | 前端: 应用创建流程完善 — 图标选择/命名空间自动生成/异步创建/预置对象和角色 | ✅ 完成 |
-| 9.11 | QA: 创建应用→开发→检查→发布→运行态验证→版本回滚 E2E | ✅ 完成（application.service.spec.ts 单元测试；E2E 测试待建） |
+| 9.11 | QA: 创建应用→开发→检查→发布→运行态验证→版本回滚 E2E | ✅ 完成（09-app-publish.spec.ts — 预检+发布+版本列表+运行态验证+回滚） |
 
-> **完成度**: ~95%。发布流水线（快照→预检→版本→回滚）、变更追踪、前端发布向导+预检面板+版本历史均完整。剩余缺口：dev/prod环境隔离运行时切换不完整、审计日志查询UI缺失、E2E测试未做。
+> **完成度**: ~96%。发布流水线（快照→预检→版本→回滚）、变更追踪、前端发布向导+预检面板+版本历史、E2E 测试均完整。剩余缺口：dev/prod环境隔离运行时切换不完整。
 
 ---
 

@@ -232,12 +232,12 @@
 
 ## 四、测试基础设施
 
-### 测试覆盖：进度 35%（↑20%）
+### 测试覆盖：进度 40%（↑25%）
 - ✅ Vitest 配置（gateway + studio）
-- ✅ 12 个后端 spec 文件：formula-engine(25) / process-utils(23) / condition-translator(23) / jsonlogic-to-prisma(+relative_date 5) / process-engine / permission.service / record.service / dataflow-engine / object.service / application.service / cloud-function.service / connector.service
+- ✅ 16 个后端 spec 文件：formula-engine(25) / process-utils(23) / condition-translator(23) / jsonlogic-to-prisma(+relative_date 5) / process-engine / permission.service / record.service / dataflow-engine / object.service / application.service / cloud-function.service / connector.service / auth.service / in-app-message.service / page.service / tenant.service
 - ✅ 3 个前端 spec 文件：custom-logic-parser / jsonlogic-utils / query-builder-config
 - ✅ tsconfig.check.json（spec 文件类型检查）
-- ✅ 376 个测试全部通过
+- ✅ 396 个测试全部通过（310 后端 + 86 前端）
 - ✅ Prisma Proxy mock 模式（无需真实数据库连接）
 - ❌ 无集成测试
 - ❌ 无 E2E 测试（Playwright）
@@ -288,12 +288,11 @@
 - ✅ Docker 部署文档 DEPLOY.md
 - ❌ 无监控 / 告警 / 日志收集（生产前补齐）
 
-### 文档（docs）：进度 75%（↑5%）
-- ✅ PRD + DESIGN 覆盖 Phase 1-4 + Phase 9
+### 文档（docs）：进度 85%（↑10%）
+- ✅ PRD + DESIGN 覆盖 Phase 1-9（Phase 5-8 闸门文档已于 08-23 回溯补齐）
 - ✅ 架构总览 + 路线图 + 飞书调研
 - ✅ 知识库目录（含架构分析、审计报告、阶段修复记录、完成度矩阵、编码原则）
 - ✅ 编码规范（AGENTS.md 7 节规范条款）
-- ❌ 缺少 Phase 5-8 的 PRD/DESIGN（跳过闸门直接开发）
 
 ---
 
@@ -317,13 +316,13 @@
 | API 文档 | 100% | 完整 |
 | Studio 前端 | 95% | 缺 JS 扩展、移动端、数据流可视化画布 |
 | Runtime-UI | 90% | 缺完整图表聚合、移动端适配 |
-| 测试基础设施 | 35% | E2E 未建，覆盖率 <60%，runtime-ui/shared/db 无测试 |
+| 测试基础设施 | 40% | 16 spec / 396 测试，E2E 未建，覆盖率 <60% |
 | 工程化治理 | 100% | 完整 |
 | 数据库 | 93% | 种子数据覆盖不完整 |
 | 共享类型 + stores | 100% | 完整 |
 | 微服务骨架 | 5% | 三个服务纯骨架（决策保留） |
 | 基础设施 | 85% | 缺监控/告警/日志（生产前） |
-| 文档 | 75% | 缺 Phase 5-8 PRD |
+| 文档 | 85% | Phase 5-8 PRD/DESIGN 已回溯补齐 |
 | **整体** | **~92%** | Phase 6 收尾 + Phase 7 运营报表 + Phase 10 打磨 + E2E 测试 |
 
 ---

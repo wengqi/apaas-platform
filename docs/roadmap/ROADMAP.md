@@ -168,6 +168,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | Phase 7 仪表盘布局 | DashboardGrid 组件 + react-grid-layout 拖拽/resize + 属性面板 + 图表高度自适应 | 2026-08-23 |
 | Phase 10 安全中间件 | helmet HTTP 安全头 + @nestjs/throttler 限流 + nestjs-pino 结构化日志 | 2026-08-23 |
 | TD-6 审计日志查询 | 查询 API（分页+筛选）+ 后台展示页面（操作类型/资源/用户筛选+详情展开） | 2026-08-23 |
+| 项目评审修复 | DTO 规范化（18 DTO + 14 Controller）+ 4 模块测试补齐（auth/notification/page/tenant）+ component-renderer 拆分（1029→6 文件）+ Phase 5-8 PRD/DESIGN 文档（7 个）+ Prisma 规范修复（NotificationTemplate 关系 + 3 JSON @default + chart-data 签名） | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
@@ -185,8 +186,8 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 ## Phase 5 — 连接器与集成（✅ 已完成，2026-08-22）
 | # | 任务 | 状态 |
 |---|------|------|
-| 5.0 | 产品闸门: PRD-connector.md | ⚠️ 跳过（直接开发，知识库记录替代） |
-| 5.1 | 设计闸门: DESIGN-connector.md | ⚠️ 跳过（直接开发，知识库记录替代） |
+| 5.0 | 产品闸门: PRD-connector.md | ✅ 完成（2026-08-23 回溯补齐） |
+| 5.1 | 设计闸门: DESIGN-connector.md | ✅ 完成（2026-08-23 回溯补齐） |
 | 5.2 | 后端: 连接器管理(创建/配置/测试/调用) + 凭证管理(AES-256-GCM加密) | ✅ 完成 |
 | 5.3 | 后端: 内置连接器(HTTP出站 + Webhook入站) | ✅ 完成（数据库连接器暂不实现） |
 | 5.4 | 前端: 连接器管理UI + 配置向导 + 调试面板 + 凭证管理 | ✅ 完成 |
@@ -206,8 +207,8 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 ## Phase 6 — 数据集与数据流（🔄 进行中 ~80%）⭐ 飞书核心亮点
 | # | 任务 | 状态 |
 |---|------|------|
-| 6.0 | 产品闸门: PRD-dataset.md | ⚠️ 跳过（直接开发） |
-| 6.1 | 设计闸门: DESIGN-dataset.md | ⚠️ 跳过（直接开发） |
+| 6.0 | 产品闸门: PRD-dataset.md | ✅ 完成（2026-08-23 回溯补齐） |
+| 6.1 | 设计闸门: DESIGN-dataset.md | ✅ 完成（2026-08-23 回溯补齐） |
 | 6.2 | 后端: 数据集实体(DataFlow/Dataset/DatasetRow) + 数据流引擎(多表关联/筛选/分组/汇总/物化) | ✅ 完成 |
 | 6.3 | 后端: BullMQ 异步刷新队列 + 数据集行物化存储 | ✅ 完成 |
 | 6.4 | 前端: 数据集管理UI + 数据流表单(数据源/关联/筛选/聚合配置) + 路由导航 | ✅ 完成 |
@@ -225,7 +226,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 ## Phase 7 — 仪表盘与报表（🔄 进行中 ~70%）
 | # | 任务 | 状态 |
 |---|------|------|
-| 7.0 | 产品闸门: PRD-dashboard.md | ⚠️ 跳过（直接开发） |
+| 7.0 | 产品闸门: PRD-dashboard.md | ✅ 完成（2026-08-23 回溯补齐） |
 | 7.1 | 后端: 图表数据聚合引擎(基于对象/数据集) | ✅ 完成（chart-data.service.ts — sum/count/avg/max/min 聚合 + 按 categoryField 分组） |
 | 7.2 | 前端: 图表组件骨架(ECharts 4种: 柱状/折线/饼图/漏斗) + 属性面板配置 | ✅ 完成 |
 | 7.3 | 前端: 图表数据源绑定(对象/数据集选择 + 字段下拉 + 聚合方式) | ✅ 完成 |
@@ -242,7 +243,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 ## Phase 8 — 云函数与扩展开发（✅ 已完成，2026-08-22）
 | # | 任务 | 状态 |
 |---|------|------|
-| 8.0 | 产品闸门: PRD-cloud-function.md (云函数/自定义组件/JS扩展) | ⚠️ 跳过（直接开发，知识库记录替代） |
+| 8.0 | 产品闸门: PRD-cloud-function.md (云函数/自定义组件/JS扩展) | ✅ 完成（2026-08-23 回溯补齐） |
 | 8.1 | 后端: 云函数平台(创建/编辑/调试/部署/调用) | ✅ 完成 — isolated-vm 沙箱 + 7 个 CRUD 端点（list/get/create/update/delete/publish/invoke） |
 | 8.2 | 后端: 自定义组件注册 + 运行时加载 | ⚠️ 简化（云函数流程节点执行器已实现；自定义组件注册待后续） |
 | 8.3 | 前端: 云函数在线编辑器(Code Editor) + 调试面板 | ✅ 完成 — Monaco 编辑器 + Ctrl+S 保存 + 测试运行面板 |
@@ -307,3 +308,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-22：**ROADMAP 第二次同步**——Phase 8（云函数）标记 ✅ 已完成 ~90%（isolated-vm 沙箱 + Monaco 编辑器 + 7 端点 + 流程节点执行器）。Phase 6 完成度 ~70%→~80%（join/filter 表单式 UI 已完成）。Phase 7 完成度 ~40%→~55%（后端聚合引擎已完成）。TD-5 从「核心零覆盖」更新为「12 spec / 376 测试 / 核心模块已覆盖」。整体完成度 ~88%→~90%。下一步优先级重排：移除已完成的 P0 测试基础设施和 P2 Phase 8/TD-11/12/13，新增 P1 E2E 测试 + P2 Tenant 隔离重构。
 - 2026-08-23：**Phase 7 仪表盘网格布局完成**——新增 DashboardGrid 组件类型（react-grid-layout 拖拽 + resize），更新仪表盘页面模板（DashboardGrid 替换 Grid + GridColumn），图表高度自适应（renderChart 从 props.style 读取高度），前后端模板同步。Phase 7 完成度 ~55%→~70%，整体完成度 ~90%→~91%。
 - 2026-08-23：**安全中间件 + 审计日志查询完成**——Phase 10.3 安全中间件（helmet HTTP 安全头 + @nestjs/throttler 限流 default 100/min auth 10/min + nestjs-pino 结构化 JSON 日志）。TD-6 审计日志查询完整修复（AuditLogService.query 分页+筛选 + AuditLogController GET /api/v1/audit-logs + AuditLogs 前端页面 Table+筛选+详情展开 + 路由 /platform/audit-logs + 导航入口）。整体完成度 ~91%→~92%。
+- 2026-08-23：**项目评审修复**——DTO 规范化（18 class-based DTO + class-validator，14 Controller 改造，ValidationPipe + Swagger 生效）+ 4 模块测试补齐（auth/notification/page/tenant，16 spec / 310 后端 + 86 前端 = 396 测试）+ component-renderer.tsx 拆分（1029→208+302+143+96+293+126 行，6 文件无循环依赖）+ Phase 5-8 PRD/DESIGN 闸门文档（7 个回溯编写）+ Prisma 规范修复（NotificationTemplate 补 Tenant 关系 + 3 个 JSON 字段补 @default + chart-data.service 签名修正）。整体完成度维持 ~92%。

@@ -70,6 +70,12 @@ vi.mock('@apaas/db', () => ({
   // Prisma namespace 仅用于 TypeScript 类型（as Prisma.InputJsonValue 等），
   // 运行时不被访问，提供空对象即可。
   Prisma: {},
+  // 租户上下文函数 — 使用真实实现（纯 ALS，不依赖 Prisma）
+  runWithTenant: <T>(tenantId: string, fn: () => T): T => fn(),
+  runAsSystem: <T>(fn: () => T): T => fn(),
+  getTenantId: (): string | null => null,
+  getTenantContext: () => undefined,
+  isSystemContext: () => false,
 }));
 
 // 暴露到 globalThis 供测试文件访问

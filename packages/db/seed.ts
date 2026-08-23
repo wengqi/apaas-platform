@@ -11,7 +11,7 @@
  *   终端用户:  user@apaas.dev / user123（租户标识: demo）
  */
 
-import { prisma } from './src/index.js';
+import { prisma, runAsSystem } from './src/index.js';
 import * as bcrypt from 'bcrypt';
 
 async function main() {
@@ -257,7 +257,8 @@ async function main() {
   console.log('🌱 种子数据完成!');
 }
 
-main()
+// Seed 跨越租户边界（平台超管 tenantId=null + 租户数据），需在系统上下文中执行
+runAsSystem(() => main())
   .catch((e) => {
     console.error('❌ 种子失败:', e);
     process.exit(1);

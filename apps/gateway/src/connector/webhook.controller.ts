@@ -20,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { prisma } from '@apaas/db';
+import { prisma, runWithTenant } from '@apaas/db';
 import { ConnectorService } from './connector.service.js';
 import { ProcessService } from '../process/process.service.js';
 import type { WebhookConnectorConfig } from '@apaas/shared';
@@ -49,53 +49,56 @@ export class WebhookController {
       throw new BadRequestException(`Webhook 不允许 ${req.method} 方法`);
     }
 
-    // 3. 查找该应用下 triggerType 为 WEBHOOK 的已发布流程
-    const processes = await prisma.processDef.findMany({
-      where: {
-        tenantId: connector.tenantId,
-        appId: connector.appId,
-        triggerType: 'WEBHOOK',
-        status: 'PUBLISHED',
-      },
-      select: { id: true, name: true },
-    });
+    // Webhook 是公开端点（无 JWT），需从 connector 记录恢复租户上下文
+    return runWithTenant(connector.tenantId, async () => {
+      // 3. 查找该应用下 triggerType 为 WEBHOOK 的已发布流程
+      const processes = await prisma.processDef.findMany({
+        where: {
+          tenantId: connector.tenantId,
+          appId: connector.appId,
+          triggerType: 'WEBHOOK',
+          status: 'PUBLISHED',
+        },
+        select: { id: true, name: true },
+      });
 
-    if (processes.length === 0) {
+      if (processes.length === 0) {
+        return {
+          ok: true as const,
+          data: {
+            message: 'Webhook 已接收，但未找到已发布的 Webhook 触发流程',
+            connectorId: connector.id,
+          },
+        };
+      }
+
+      // 4. 启动流程实例（将请求信息作为触发上下文）
+      const triggerContext = {
+        triggerType: 'WEBHOOK',
+        triggeredBy: 'WEBHOOK',
+        connectorId: connector.id,
+        connectorName: connector.name,
+        httpMethod: req.method,
+        httpHeaders: req.headers as Record<string, string>,
+        body: body ?? {},
+      };
+
+      const instances = await Promise.all(
+        processes.map(async (p) => {
+          const instance = await this.processService.startInstance(connector.tenantId, p.id, {
+            variables: { webhook: triggerContext },
+          });
+          return { processId: p.id, processName: p.name, instanceId: instance.id };
+        }),
+      );
+
       return {
         ok: true as const,
         data: {
-          message: 'Webhook 已接收，但未找到已发布的 Webhook 触发流程',
-          connectorId: connector.id,
+          message: `Webhook 触发成功，启动了 ${instances.length} 个流程`,
+          instances,
         },
       };
-    }
-
-    // 4. 启动流程实例（将请求信息作为触发上下文）
-    const triggerContext = {
-      triggerType: 'WEBHOOK',
-      triggeredBy: 'WEBHOOK',
-      connectorId: connector.id,
-      connectorName: connector.name,
-      httpMethod: req.method,
-      httpHeaders: req.headers as Record<string, string>,
-      body: body ?? {},
-    };
-
-    const instances = await Promise.all(
-      processes.map(async (p) => {
-        const instance = await this.processService.startInstance(connector.tenantId, p.id, {
-          variables: { webhook: triggerContext },
-        });
-        return { processId: p.id, processName: p.name, instanceId: instance.id };
-      }),
-    );
-
-    return {
-      ok: true as const,
-      data: {
-        message: `Webhook 触发成功，启动了 ${instances.length} 个流程`,
-        instances,
-      },
-    };
+    });
   }
 }

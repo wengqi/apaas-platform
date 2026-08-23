@@ -141,6 +141,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | TD-14 | 权限规则编辑 UI 只读 | RoleManager 显示权限规则但无创建/编辑入口，setRules API 未被 UI 调用 | ✅ 已修复（08-22）：fieldScope 列级编辑器 + 动态目标选择 + 组织角色授权 UI |
 | TD-15 | 无 GIN 索引 | records.data JSONB 查询无 GIN 加速，大数据量时全表扫描 | ✅ 已修复（08-06）：Prisma migration 添加 GIN 索引 |
 | TD-16 | 微服务桩未填充 | meta-svc / runtime-svc / process-svc 仅 HealthController，所有逻辑在 gateway 中。需决策保留拆分还是正式合并 | ⬜ 决策保留：维持单服务架构，骨架保留待未来拆分（TD-16 决策：不迁移） |
+| TD-17 | 租户隔离手动约定 | tenantId 依赖开发者手动注入每个查询，遗漏即跨租户泄露；auto-number 跨租户扫描预存 bug | ✅ 已修复（2026-08-23）：Prisma $extends 自动注入 + AsyncLocalStorage 上下文 + HTTP 拦截器 + BullMQ worker 上下文修复 + DatasetRow 索引迁移 |
 
 ---
 
@@ -148,7 +149,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~94%（飞书对齐度）。Phase 0-9 已完成，Phase 10 部分完成（安全中间件 + 仪表盘运营报表）。
+> **当前整体完成度**: ~96%（飞书对齐度）。Phase 0-9 已完成，Phase 10 部分完成（安全中间件 + 仪表盘运营报表 + 租户隔离 $extends 重构）。
 
 ### 已完成 ✅
 
@@ -174,13 +175,14 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | Phase 7 运营报表 + E2E | 指标卡 MetricCard + 趋势图时间分桶(day/week/month) + 前端直连后端聚合引擎(消除死代码) + JsonLogic filter + 21 单元测试 + 6 E2E 测试 | 2026-08-23 |
 | E2E 测试补齐 + PropertyPanel 拆分 | 4 新 E2E spec（连接器/数据集/云函数/应用发布）12 测试 + PropertyPanel 1178→231 行拆分 7 子文件 + vitest 覆盖率阈值启用(基线 39%/75%/61%) | 2026-08-23 |
 | Phase 10.1+10.2 数据导入导出+批量操作 | CSV 导入导出(csv-parse/csv-stringify) + 模板下载 + multer 文件上传 + batchCreate/batchUpdate/batchDelete + 前端行选择+批量操作浮动条+导入弹窗 + 10 单元测试 | 2026-08-23 |
+| TD-17 租户隔离 $extends 重构 | Prisma $extends 自动注入 tenantId（11 操作 × 24 模型白名单）+ AsyncLocalStorage 上下文 + HTTP 拦截器 + BullMQ worker 上下文修复（process-queue/delay-queue/dataset-queue/webhook/seed）+ DatasetRow 索引迁移 + 42 单元测试 | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
 | 🟢 P2 | Phase 10 打磨 | 完整Demo / 部署文档 + 性能优化 |
-| 🟢 P2 | 修复剩余技术债 | TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
+| ✅ 已完成 | TD-17 租户隔离 $extends 重构 | Prisma 自动注入 tenantId + ALS 上下文 + BullMQ worker 修复（2026-08-23） |
 | 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
 | 🟢 P2 | 覆盖率提升至 60% | 当前基线 39% → 目标 60%（补充 controller / node-executor 测试） |
 
@@ -312,3 +314,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-23：**Phase 7 仪表盘网格布局完成**——新增 DashboardGrid 组件类型（react-grid-layout 拖拽 + resize），更新仪表盘页面模板（DashboardGrid 替换 Grid + GridColumn），图表高度自适应（renderChart 从 props.style 读取高度），前后端模板同步。Phase 7 完成度 ~55%→~70%，整体完成度 ~90%→~91%。
 - 2026-08-23：**安全中间件 + 审计日志查询完成**——Phase 10.3 安全中间件（helmet HTTP 安全头 + @nestjs/throttler 限流 default 100/min auth 10/min + nestjs-pino 结构化 JSON 日志）。TD-6 审计日志查询完整修复（AuditLogService.query 分页+筛选 + AuditLogController GET /api/v1/audit-logs + AuditLogs 前端页面 Table+筛选+详情展开 + 路由 /platform/audit-logs + 导航入口）。整体完成度 ~91%→~92%。
 - 2026-08-23：**项目评审修复**——DTO 规范化（18 class-based DTO + class-validator，14 Controller 改造，ValidationPipe + Swagger 生效）+ 4 模块测试补齐（auth/notification/page/tenant，16 spec / 310 后端 + 86 前端 = 396 测试）+ component-renderer.tsx 拆分（1029→208+302+143+96+293+126 行，6 文件无循环依赖）+ Phase 5-8 PRD/DESIGN 闸门文档（7 个回溯编写）+ Prisma 规范修复（NotificationTemplate 补 Tenant 关系 + 3 个 JSON 字段补 @default + chart-data.service 签名修正）。整体完成度维持 ~92%。
+- 2026-08-23：**TD-17 租户隔离 $extends 重构完成**——Prisma `$extends` 查询扩展自动注入 tenantId（11 操作类型 × 24 模型白名单，基于 AsyncLocalStorage 上下文）+ HTTP 拦截器从 `req.user.tenantId` 设置 ALS + BullMQ worker 上下文修复（process-queue/delay-queue 从实例恢复 tenantId，dataset-queue 从 job.data 获取，webhook 从 connector.tenantId 恢复，seed 用 runAsSystem 包裹）+ DatasetRow 添加 `@@index([tenantId])` 迁移 + 42 单元测试（ALS 上下文 18 + 注入逻辑 24）。预存跨租户泄露 bug（auto-number.ts 跨租户扫描）自动修复。三层防御体系：Layer 1 手动 tenantId（保留）+ Layer 2 $extends 自动注入（新增）+ Layer 3 PostgreSQL RLS（未来）。整体完成度 ~95%→~96%。

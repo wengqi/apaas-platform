@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module.js';
 import { ApplicationModule } from './application/application.module.js';
@@ -16,6 +16,7 @@ import { ConnectorModule } from './connector/connector.module.js';
 import { DatasetModule } from './dataset/dataset.module.js';
 import { CloudFunctionModule } from './cloud-function/cloud-function.module.js';
 import { HealthController } from './health.controller.js';
+import { TenantContextInterceptor } from './common/tenant-context.interceptor.js';
 import { envValidation } from './config/env.validation.js';
 
 @Module({
@@ -48,6 +49,9 @@ import { envValidation } from './config/env.validation.js';
     CloudFunctionModule,
   ],
   controllers: [HealthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+  ],
 })
 export class AppModule {}

@@ -768,6 +768,7 @@ model DatasetRow {
 
   dataset     Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([datasetId])
   @@index([data], type: Gin)
   @@map("dataset_rows")

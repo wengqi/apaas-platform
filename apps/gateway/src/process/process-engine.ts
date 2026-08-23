@@ -15,7 +15,7 @@
 
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { prisma, Prisma } from '@apaas/db';
+import { prisma, Prisma, runWithTenant } from '@apaas/db';
 import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
 import { resolveInputs, writeNodeOutput } from './process-utils.js';
@@ -112,7 +112,8 @@ export class ProcessEngine {
 
   /**
    * 按 processDefId 启动流程实例（用于定时触发器 — 无 tenantId 上下文）。
-   * 先加载流程定义获取 tenantId，再委托 startProcess。
+   * 先加载流程定义获取 tenantId（此查询在 ALS 上下文外 — 安全，processDefId 全局唯一），
+   * 再通过 runWithTenant 设置 ALS 上下文，委托 startProcess。
    */
   async startProcessByDefId(
     processDefId: string,
@@ -131,7 +132,9 @@ export class ProcessEngine {
 
     this.logger.log(`定时触发流程 ${def.apiName}(${processDefId})`);
 
-    return this.startProcess(def.tenantId, def.id, triggerContext);
+    return runWithTenant(def.tenantId, () =>
+      this.startProcess(def.tenantId, def.id, triggerContext),
+    );
   }
 
   // ===========================================================================

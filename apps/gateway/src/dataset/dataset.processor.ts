@@ -8,7 +8,7 @@ import IORedis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 import { DATASET_QUEUE } from '../queue/queue.constants.js';
 import { DataFlowEngine } from './dataflow-engine.service.js';
-import { prisma } from '@apaas/db';
+import { prisma, runWithTenant } from '@apaas/db';
 import type { DataFlowConfig } from '@apaas/shared';
 
 @Injectable()
@@ -37,13 +37,16 @@ export class DatasetProcessor implements OnModuleInit, OnModuleDestroy {
 
         this.logger.log(`开始刷新数据集 ${datasetId}（数据流 ${flowId}）`);
 
-        const flow = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
-        if (!flow) {
-          throw new Error(`数据流 ${flowId} 不存在`);
-        }
+        // BullMQ worker 在 HTTP 上下文外执行，需显式设置 ALS 租户上下文
+        await runWithTenant(tenantId, async () => {
+          const flow = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
+          if (!flow) {
+            throw new Error(`数据流 ${flowId} 不存在`);
+          }
 
-        const config = flow.config as unknown as DataFlowConfig;
-        await this.engine.executeAndMaterialize(tenantId, datasetId, config);
+          const config = flow.config as unknown as DataFlowConfig;
+          await this.engine.executeAndMaterialize(tenantId, datasetId, config);
+        });
       },
       {
         connection: this.connection.duplicate(),

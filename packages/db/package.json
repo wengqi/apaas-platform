@@ -2,7 +2,7 @@
   "name": "@apaas/db",
   "version": "0.1.0",
   "private": true,
-  "description": "Prisma schema + 数据库客户端（全平台共享）",
+  "description": "Prisma schema + \u6570\u636e\u5e93\u5ba2\u6237\u7aef\uff08\u5168\u5e73\u53f0\u5171\u4eab\uff09",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -12,7 +12,8 @@
     "studio": "prisma studio",
     "seed": "tsx seed.ts",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -23,6 +24,7 @@
     "@types/node": "^22.9.0",
     "prisma": "^5.22.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
   }
 }

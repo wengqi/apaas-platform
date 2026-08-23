@@ -8,6 +8,7 @@ import App from './App';
 import './index.css';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import 'reactflow/dist/style.css';
 
 const queryClient = createQueryClient();
 

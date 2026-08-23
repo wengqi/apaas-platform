@@ -60,7 +60,7 @@ describe('PageService', () => {
       const result = await service.list('tenant-001', 'app-001');
 
       expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('测试页');
+      expect(result[0]?.name).toBe('测试页');
     });
   });
 

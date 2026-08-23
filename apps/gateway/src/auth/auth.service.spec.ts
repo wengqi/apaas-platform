@@ -53,7 +53,9 @@ describe('AuthService', () => {
         isPlatformAdmin: true,
         status: 'ACTIVE',
       });
-      vi.mocked(bcrypt.compare).mockResolvedValue(false);
+      (
+        vi.mocked(bcrypt.compare) as unknown as { mockResolvedValue: (v: boolean) => void }
+      ).mockResolvedValue(false);
 
       const { service } = createService();
       await expect(service.login('test@example.com', 'wrong')).rejects.toThrow(

@@ -69,7 +69,7 @@ describe('InAppMessageService', () => {
       const result = await service.list('tenant-001', 'user-001', { page: 1, pageSize: 20 });
 
       expect(result.items).toHaveLength(1);
-      expect(result.items[0].title).toBe('测试标题');
+      expect(result.items[0]?.title).toBe('测试标题');
     });
   });
 

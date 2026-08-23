@@ -1,0 +1,65 @@
+/* 数据流画布节点样式 */
+
+.flow-node {
+  border: 2px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fff;
+  min-width: 160px;
+  max-width: 240px;
+  font-size: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.flow-node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px 6px 0 0;
+  color: #fff;
+  font-weight: 600;
+}
+
+.flow-node-icon {
+  font-size: 14px;
+}
+
+.flow-node-title {
+  font-size: 13px;
+}
+
+.flow-node-body {
+  padding: 8px 10px;
+  color: #595959;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+/* 画布工具栏 */
+.dataflow-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* 配置面板 */
+.dataflow-config-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 360px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}

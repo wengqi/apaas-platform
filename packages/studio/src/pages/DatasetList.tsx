@@ -21,12 +21,14 @@ import {
   DeleteOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  ApartmentOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { dataFlowsApi, datasetsApi, type DataFlow, type Dataset } from '../api/datasets.js';
 import DataFlowFormModal from '../components/dataset/DataFlowFormModal.js';
+import DataFlowCanvas from '../components/dataset/DataFlowCanvas.js';
 
 const { Title, Text } = Typography;
 
@@ -48,6 +50,7 @@ export default function DatasetList() {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DataFlow | null>(null);
+  const [canvasFlow, setCanvasFlow] = useState<DataFlow | null>(null);
 
   const { data: flows, isLoading: flowsLoading } = useQuery({
     queryKey: ['data-flows', appId],
@@ -130,6 +133,7 @@ export default function DatasetList() {
           >
             执行
           </Button>
+          <Button size="small" icon={<ApartmentOutlined />} onClick={() => setCanvasFlow(record)} />
           <Button
             size="small"
             icon={<EditOutlined />}
@@ -269,6 +273,8 @@ export default function DatasetList() {
         onClose={() => setFormOpen(false)}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ['data-flows', appId] })}
       />
+
+      {canvasFlow && <DataFlowCanvas flow={canvasFlow} onClose={() => setCanvasFlow(null)} />}
     </div>
   );
 }

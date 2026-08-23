@@ -148,7 +148,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~92%（飞书对齐度）。Phase 0-5 + Phase 8 + Phase 9 已完成，Phase 6/7 进行中，Phase 10 部分完成（安全中间件）。
+> **当前整体完成度**: ~93%（飞书对齐度）。Phase 0-6 + Phase 8 + Phase 9 已完成，Phase 7 进行中，Phase 10 部分完成（安全中间件）。
 
 ### 已完成 ✅
 
@@ -169,12 +169,13 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | Phase 10 安全中间件 | helmet HTTP 安全头 + @nestjs/throttler 限流 + nestjs-pino 结构化日志 | 2026-08-23 |
 | TD-6 审计日志查询 | 查询 API（分页+筛选）+ 后台展示页面（操作类型/资源/用户筛选+详情展开） | 2026-08-23 |
 | 项目评审修复 | DTO 规范化（18 DTO + 14 Controller）+ 4 模块测试补齐（auth/notification/page/tenant）+ component-renderer 拆分（1029→6 文件）+ Phase 5-8 PRD/DESIGN 文档（7 个）+ Prisma 规范修复（NotificationTemplate 关系 + 3 JSON @default + chart-data 签名） | 2026-08-23 |
+| E2E 测试基础设施 | Playwright + 17 测试覆盖 5 核心场景（auth/object/page/process/dashboard）+ CI e2e job | 2026-08-23 |
+| Phase 6 可视化画布 | ReactFlow 节点连线画布 + 5 种自定义节点 + 配置面板 + 预览/执行/保存 | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
-| 🟡 P1 | Phase 6 收尾 | 数据流可视化画布（节点式编排）+ E2E 测试 |
 | 🟡 P1 | Phase 7 收尾 | 运营报表（表格/指标卡/趋势图组合）+ E2E 测试 |
 | 🟡 P1 | 测试覆盖率提升 | E2E 测试（Playwright）+ 覆盖率达成 60% 目标 |
 | 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 |
@@ -204,7 +205,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 ---
 
-## Phase 6 — 数据集与数据流（🔄 进行中 ~80%）⭐ 飞书核心亮点
+## Phase 6 — 数据集与数据流（✅ 已完成 ~90%）⭐ 飞书核心亮点
 | # | 任务 | 状态 |
 |---|------|------|
 | 6.0 | 产品闸门: PRD-dataset.md | ✅ 完成（2026-08-23 回溯补齐） |
@@ -213,10 +214,10 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 6.3 | 后端: BullMQ 异步刷新队列 + 数据集行物化存储 | ✅ 完成 |
 | 6.4 | 前端: 数据集管理UI + 数据流表单(数据源/关联/筛选/聚合配置) + 路由导航 | ✅ 完成 |
 | 6.5 | 共享类型: packages/shared/dataset (DataFlow/Dataset/DatasetColumn/JoinConfig/AggregationConfig) | ✅ 完成 |
-| 6.6 | 前端: 数据流可视化画布(节点式编排) | ⬜ 未实现（当前为表单式配置） |
+| 6.6 | 前端: 数据流可视化画布(节点式编排) | ✅ 完成（ReactFlow 节点连线画布 + 5 种自定义节点 + 配置面板 + 预览/执行/保存） |
 | 6.7 | QA: 多表关联→分组汇总→输出数据集 E2E | ⬜ 未做 |
 
-> **完成度**: ~80%。数据流引擎（内存join + 聚合 + 物化）、BullMQ异步刷新、数据集管理前端UI、join/filter 表单式配置均完整。剩余缺口：可视化数据流画布（当前为表单式）、E2E测试。
+> **完成度**: ~90%。数据流引擎（内存join + 聚合 + 物化）、BullMQ异步刷新、数据集管理前端UI、join/filter 表单式配置、可视化数据流画布（ReactFlow 节点连线 + 配置面板）均完整。剩余缺口：E2E测试。
 
 **验收标准**：创建数据流→多表关联+筛选+分组汇总→输出数据集→在页面表格中使用。
 > **验收状态**: ⚠️ 数据流引擎和前端管理可用，但未做端到端自动化测试。

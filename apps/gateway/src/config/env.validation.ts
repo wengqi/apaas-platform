@@ -41,6 +41,11 @@ export const envValidation = Joi.object({
   CLOUD_FUNCTION_MEMORY_LIMIT_MB: Joi.number().default(128),
   CLOUD_FUNCTION_TIMEOUT_MS: Joi.number().default(5000),
 
+  // ---- 记录批量操作 / 导入导出 ----
+  BATCH_MAX_ROWS: Joi.number().default(500),
+  IMPORT_MAX_ROWS: Joi.number().default(5000),
+  IMPORT_FILE_MAX_SIZE_MB: Joi.number().default(10),
+
   // ---- 日志 ----
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
 });

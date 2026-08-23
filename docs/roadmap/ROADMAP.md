@@ -173,12 +173,13 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | Phase 6 可视化画布 | ReactFlow 节点连线画布 + 5 种自定义节点 + 配置面板 + 预览/执行/保存 | 2026-08-23 |
 | Phase 7 运营报表 + E2E | 指标卡 MetricCard + 趋势图时间分桶(day/week/month) + 前端直连后端聚合引擎(消除死代码) + JsonLogic filter + 21 单元测试 + 6 E2E 测试 | 2026-08-23 |
 | E2E 测试补齐 + PropertyPanel 拆分 | 4 新 E2E spec（连接器/数据集/云函数/应用发布）12 测试 + PropertyPanel 1178→231 行拆分 7 子文件 + vitest 覆盖率阈值启用(基线 39%/75%/61%) | 2026-08-23 |
+| Phase 10.1+10.2 数据导入导出+批量操作 | CSV 导入导出(csv-parse/csv-stringify) + 模板下载 + multer 文件上传 + batchCreate/batchUpdate/batchDelete + 前端行选择+批量操作浮动条+导入弹窗 + 10 单元测试 | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
-| 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 |
+| 🟢 P2 | Phase 10 打磨 | 完整Demo / 部署文档 + 性能优化 |
 | 🟢 P2 | 修复剩余技术债 | TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
 | 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
 | 🟢 P2 | 覆盖率提升至 60% | 当前基线 39% → 目标 60%（补充 controller / node-executor 测试） |
@@ -283,8 +284,8 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 ## Phase 10 — 打磨与集成
 | # | 任务 | 状态 |
 |---|------|------|
-| 10.1 | 数据导入导出(CSV/Excel) | ⬜ 待开始 |
-| 10.2 | 记录批量操作 | ⬜ 待开始 |
+| 10.1 | 数据导入导出(CSV/Excel) | ✅ 完成（2026-08-23 — CSV 导入导出 + 模板下载 + csv-parse/csv-stringify + multer 文件上传 + 10 单元测试） |
+| 10.2 | 记录批量操作 | ✅ 完成（2026-08-23 — batchCreate/batchUpdate/batchDelete + 前端行选择 + 批量操作浮动条） |
 | 10.3 | 安全中间件（helmet + throttler + pino） | ✅ 完成（2026-08-23） |
 | 10.4 | 完整demo(资产管理系统，含对象/页面/流程/权限/仪表盘) | ⬜ 待开始 |
 | 10.5 | 部署文档 + 性能优化 | ⬜ 待开始 |

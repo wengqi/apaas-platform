@@ -22,6 +22,8 @@ import {
   SearchOutlined,
   FilterOutlined,
   ReloadOutlined,
+  ImportOutlined,
+  ExportOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -33,6 +35,7 @@ import {
 } from '../../api/objects.js';
 import { type FieldType } from '../../constants/fieldTypes.js';
 import RecordFormDrawer from './RecordFormDrawer.js';
+import ImportRecordsModal from './ImportRecordsModal.js';
 
 const { Text } = Typography;
 
@@ -139,6 +142,8 @@ export default function RecordList({ object }: RecordListProps) {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editRecord, setEditRecord] = useState<RecordItem | undefined>(undefined);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
 
   /** 第一个文本类字段(用于全文搜索 contains)。 */
   const firstTextField = useMemo(
@@ -194,6 +199,32 @@ export default function RecordList({ object }: RecordListProps) {
     onSuccess: () => {
       message.success('记录已删除');
       queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+    },
+    onError: (err) => showError(err),
+  });
+
+  /** 批量删除记录。 */
+  const batchDeleteMutation = useMutation({
+    mutationFn: (recordIds: string[]) => objectsApi.records.batchDelete(recordIds),
+    onSuccess: (result) => {
+      message.success(`已删除 ${result.deleted} 条记录`);
+      setSelectedRowKeys([]);
+      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+    },
+    onError: (err) => showError(err),
+  });
+
+  /** 导出记录为 CSV。 */
+  const exportMutation = useMutation({
+    mutationFn: () => objectsApi.records.exportCsv(object.id, { sort: sortStr, filter: filterStr }),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${object.id}_records.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success('导出成功');
     },
     onError: (err) => showError(err),
   });
@@ -395,6 +426,20 @@ export default function RecordList({ object }: RecordListProps) {
               style={{ width: 200 }}
             />
           )}
+          <Tooltip title="导入 CSV">
+            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
+              导入
+            </Button>
+          </Tooltip>
+          <Tooltip title="导出当前视图为 CSV">
+            <Button
+              icon={<ExportOutlined />}
+              loading={exportMutation.isPending}
+              onClick={() => exportMutation.mutate()}
+            >
+              导出
+            </Button>
+          </Tooltip>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             新增记录
           </Button>
@@ -500,23 +545,62 @@ export default function RecordList({ object }: RecordListProps) {
           )}
         </Empty>
       ) : (
-        <Table<RecordItem>
-          rowKey="id"
-          size="middle"
-          columns={columns}
-          dataSource={records}
-          loading={isFetching && !isLoading}
-          scroll={{ x: 'max-content' }}
-          onChange={handleTableChange}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
-            pageSizeOptions: ['10', '20', '50'],
-          }}
-        />
+        <>
+          {selectedRowKeys.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: '#e6f4ff',
+                padding: '8px 16px',
+                borderRadius: 8,
+                marginBottom: 12,
+              }}
+            >
+              <Text>已选择 {selectedRowKeys.length} 项</Text>
+              <Space>
+                <Popconfirm
+                  title={`确认删除 ${selectedRowKeys.length} 条记录？`}
+                  onConfirm={() => batchDeleteMutation.mutate(selectedRowKeys as string[])}
+                >
+                  <Button
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    loading={batchDeleteMutation.isPending}
+                  >
+                    批量删除
+                  </Button>
+                </Popconfirm>
+                <Button size="small" type="text" onClick={() => setSelectedRowKeys([])}>
+                  取消选择
+                </Button>
+              </Space>
+            </div>
+          )}
+          <Table<RecordItem>
+            rowKey="id"
+            size="middle"
+            columns={columns}
+            dataSource={records}
+            loading={isFetching && !isLoading}
+            scroll={{ x: 'max-content' }}
+            onChange={handleTableChange}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys),
+            }}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              showTotal: (t) => `共 ${t} 条`,
+              pageSizeOptions: ['10', '20', '50'],
+            }}
+          />
+        </>
       )}
 
       {/* 记录表单抽屉 */}
@@ -527,6 +611,17 @@ export default function RecordList({ object }: RecordListProps) {
         fields={object.fields}
         record={editRecord}
         onClose={() => setFormOpen(false)}
+      />
+
+      {/* 导入记录弹窗 */}
+      <ImportRecordsModal
+        open={importOpen}
+        objectId={object.id}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          setImportOpen(false);
+          queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+        }}
       />
     </div>
   );

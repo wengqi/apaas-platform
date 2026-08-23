@@ -32,3 +32,6 @@ export * from './dataset/index.js';
 
 // 云函数与扩展
 export * from './cloud-function/index.js';
+
+// 记录模块（批量操作 + 导入导出）
+export * from './record/index.js';

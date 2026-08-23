@@ -1,6 +1,18 @@
-import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { FieldType } from '@apaas/shared';
+import type {
+  BatchCreateResult,
+  BatchUpdateResult,
+  BatchDeleteResult,
+  ImportError,
+} from '@apaas/shared';
 import { FormulaEngine } from '../object/formula-engine.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { TriggerService } from '../process/trigger.service.js';
@@ -299,6 +311,113 @@ export class RecordService {
       id: recordId,
       ...(existing.data as Record<string, unknown>),
     });
+  }
+
+  // ===========================================================================
+  // 批量操作
+  // ===========================================================================
+
+  /**
+   * 批量创建记录。
+   *
+   * 循环调用 create 逻辑（含 AutoNumber/Formula 计算），逐条创建。
+   * 单条失败不阻断其他记录，错误收集到 errors 数组返回。
+   */
+  async batchCreate(
+    tenantId: string,
+    objectId: string,
+    userId: string,
+    records: Record<string, unknown>[],
+  ): Promise<BatchCreateResult> {
+    const errors: ImportError[] = [];
+    let created = 0;
+
+    for (let i = 0; i < records.length; i++) {
+      try {
+        await this.create(tenantId, objectId, userId, records[i]!);
+        created++;
+      } catch (err) {
+        errors.push({
+          row: i + 1,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { created, errors };
+  }
+
+  /**
+   * 批量更新记录（同一 data 覆盖到多条记录）。
+   *
+   * 逐条调用 update 逻辑（含 Formula 重算），单条失败不阻断其他记录。
+   */
+  async batchUpdate(
+    tenantId: string,
+    recordIds: string[],
+    userId: string,
+    data: Record<string, unknown>,
+  ): Promise<BatchUpdateResult> {
+    const errors: ImportError[] = [];
+    let updated = 0;
+
+    for (let i = 0; i < recordIds.length; i++) {
+      try {
+        await this.update(tenantId, recordIds[i]!, userId, data);
+        updated++;
+      } catch (err) {
+        errors.push({
+          row: i + 1,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { updated, errors };
+  }
+
+  /**
+   * 批量删除记录。
+   *
+   * 使用 deleteMany 一次查询删除所有匹配记录，触发删除事件。
+   */
+  async batchDelete(tenantId: string, recordIds: string[]): Promise<BatchDeleteResult> {
+    const records = await prisma.record.findMany({
+      where: { id: { in: recordIds }, tenantId },
+      select: { id: true, appId: true, objectId: true, data: true },
+    });
+
+    if (records.length === 0) {
+      throw new BadRequestException('未找到要删除的记录');
+    }
+
+    const result = await prisma.record.deleteMany({
+      where: { id: { in: recordIds }, tenantId },
+    });
+
+    // 按对象分组触发事件（非阻塞）
+    const byObject = new Map<
+      string,
+      { appId: string; objectId: string; records: typeof records }
+    >();
+    for (const record of records) {
+      const key = record.objectId;
+      if (!byObject.has(key)) {
+        byObject.set(key, { appId: record.appId, objectId: record.objectId, records: [] });
+      }
+      byObject.get(key)!.records.push(record);
+    }
+
+    for (const { appId, objectId, records: objs } of byObject.values()) {
+      for (const record of objs) {
+        void this.triggerService.onRecordEvent(tenantId, appId, objectId, 'deleted', {
+          id: record.id,
+          ...(record.data as Record<string, unknown>),
+        });
+      }
+    }
+
+    return { deleted: result.count };
   }
 
   // ===========================================================================

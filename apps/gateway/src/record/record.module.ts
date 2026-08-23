@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { RecordService } from './record.service.js';
+import { RecordImportExportService } from './record-import-export.service.js';
 import { RecordController } from './record.controller.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -10,7 +11,7 @@ import { PermissionModule } from '../permission/permission.module.js';
 import { ProcessModule } from '../process/process.module.js';
 
 /**
- * 记录模块 — 基于 JSONB 宽表的记录 CRUD。
+ * 记录模块 — 基于 JSONB 宽表的记录 CRUD + 批量操作 + CSV 导入导出。
  * 独立持有 JwtModule + JwtStrategy，使记录路由可受 JWT 保护。
  * 导入 PermissionModule 使 PermissionGuard 可注入。
  *
@@ -32,7 +33,13 @@ import { ProcessModule } from '../process/process.module.js';
     forwardRef(() => ProcessModule),
   ],
   controllers: [RecordController],
-  providers: [RecordService, JwtStrategy, FormulaEngine, AutoNumberGenerator],
-  exports: [RecordService],
+  providers: [
+    RecordService,
+    RecordImportExportService,
+    JwtStrategy,
+    FormulaEngine,
+    AutoNumberGenerator,
+  ],
+  exports: [RecordService, RecordImportExportService],
 })
 export class RecordModule {}

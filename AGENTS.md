@@ -87,7 +87,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 - Commit message 必须符合 Conventional Commits：`type(scope): subject`
 - type：`feat/fix/refactor/perf/docs/test/chore/style/ci/revert/breaking`
-- scope：`gateway/shared/db/studio/runtime-ui/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function`
+- scope：`gateway/shared/db/studio/runtime-ui/meta-svc/process-svc/runtime-svc/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function`
 - pre-commit 钩子：lint-staged（eslint --fix + prettier --write 暂存文件）
 - commit-msg 钩子：commitlint 格式校验（`commitlint.config.mjs`）
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
@@ -179,12 +179,30 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - 新增模型必须在 `Tenant` 和 `Application` 模型上添加反向关系字段
 - JSON 字段必须标注 `@default("{}")` 避免空值
 
-### 文档同步规范
+### 文档同步规范（强制执行）
 
-- 每次完成功能开发后，同步更新 `ROADMAP.md` 中对应 Phase 的状态
-- `commitlint` scope-enum 新增模块时，同步更新本文件的 scope 列表
+> **重要**：文档同步不是可选步骤。每次完成功能开发或阶段性工作后，**必须**在同一次提交中同步更新文档。
+> 自动化检查脚本 `scripts/check-doc-sync.sh` 已集成到 pre-push 钩子，不同步将**阻断推送**。
+
+#### 每次提交后必须执行的检查清单
+
+1. **ROADMAP.md** — 对应 Phase 的任务状态和完成度已更新
+2. **STATUS-MATRIX** — 对应模块的进度百分比和缺口列表已更新
+3. **AGENTS.md "当前阶段"** — 整体完成度、Phase 状态、风险项已同步
+4. **.env.example** — 新增环境变量已同步添加（可选变量用 `#` 注释前缀）
+5. **commitlint.config.mjs** — 新增模块 scope 已添加到 scope-enum
+6. **AGENTS.md scope 列表** — 新增模块 scope 已同步添加（与 commitlint 一致）
+
+#### 自动化保障机制
+
+- **pre-push 钩子**：`bash scripts/check-doc-sync.sh` 检查 .env.example ↔ env.validation.ts 和 commitlint ↔ AGENTS.md scope 一致性
+- **CI 流水线**：PR 合并前运行文档同步检查
+- **PR 模板**：feat/fix 类型 PR 必填文档同步检查项
+
+#### 阶段性工作
+
 - 每个阶段完成后新建 `STATUS-MATRIX-YYYY-MM-DD.md` 状态矩阵
-- `.env.example` 必须与 `env.validation.ts` 的 Joi schema 保持同步
+- 知识库文档（`docs/knowledge-base/`）记录实现细节和设计决策
 
 ## 当前阶段
 

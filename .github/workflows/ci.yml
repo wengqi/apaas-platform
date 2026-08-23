@@ -72,3 +72,6 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Doc sync check
+        run: bash scripts/check-doc-sync.sh

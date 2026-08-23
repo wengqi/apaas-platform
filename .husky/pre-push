@@ -1,4 +1,5 @@
-echo "📋 Running typecheck and tests before push..."
+echo "📋 Running typecheck, tests, and doc sync check before push..."
 pnpm typecheck || (echo "❌ Type check failed. Fix errors before pushing." && exit 1)
 pnpm test || (echo "❌ Tests failed. Fix failures before pushing." && exit 1)
+bash scripts/check-doc-sync.sh || (echo "❌ Doc sync check failed. Fix issues before pushing." && exit 1)
 echo "✅ All checks passed. Pushing..."

@@ -15,6 +15,12 @@ import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import { RoleService } from './role.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
+import {
+  CreateRoleDto,
+  UpdateRoleDto,
+  AssignRoleUsersDto,
+  SetRoleRulesDto,
+} from './dto/role.dto.js';
 
 @ApiTags('Role')
 @ApiBearerAuth()
@@ -38,12 +44,7 @@ export class RoleController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Body()
-    body: {
-      name: string;
-      code: string;
-      description?: string;
-      appId?: string;
-    },
+    body: CreateRoleDto,
   ) {
     return { ok: true as const, data: await this.roleService.create(requireTenantId(req), body) };
   }
@@ -52,7 +53,7 @@ export class RoleController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { name?: string; description?: string },
+    @Body() body: UpdateRoleDto,
   ) {
     return {
       ok: true as const,
@@ -75,7 +76,7 @@ export class RoleController {
   async assignUsers(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { userIds: string[] },
+    @Body() body: AssignRoleUsersDto,
   ) {
     await this.roleService.assignUsers(requireTenantId(req), id, body.userIds);
     return { ok: true as const, data: null };
@@ -103,7 +104,7 @@ export class RoleController {
   async setRules(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { rules: Array<Record<string, unknown>> },
+    @Body() body: SetRoleRulesDto,
   ) {
     await this.roleService.setPermissionRules(requireTenantId(req), id, body.rules as never);
     return { ok: true as const, data: null };

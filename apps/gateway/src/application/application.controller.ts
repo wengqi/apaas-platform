@@ -4,7 +4,7 @@ import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApplicationService } from './application.service.js';
 import { ChangeLogService } from './changelog.service.js';
-import type { CreateAppRequest, UpdateAppRequest, PublishAppRequest } from '@apaas/shared';
+import { CreateAppDto, UpdateAppDto, PublishAppDto } from './dto/app.dto.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
@@ -41,7 +41,7 @@ export class ApplicationController {
 
   @Post()
   @RequirePermission('PAGE', 'MANAGE')
-  async create(@Req() req: AuthenticatedRequest, @Body() body: CreateAppRequest) {
+  async create(@Req() req: AuthenticatedRequest, @Body() body: CreateAppDto) {
     const app = await this.appService.create(requireTenantId(req), req.user.id, body);
     return { ok: true as const, data: app };
   }
@@ -51,7 +51,7 @@ export class ApplicationController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: UpdateAppRequest,
+    @Body() body: UpdateAppDto,
   ) {
     const app = await this.appService.update(requireTenantId(req), appId, body, req.user.id);
     return { ok: true as const, data: app };
@@ -107,7 +107,7 @@ export class ApplicationController {
   async publish(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: PublishAppRequest,
+    @Body() body: PublishAppDto,
   ) {
     const version = await this.appService.publish(requireTenantId(req), appId, req.user.id, body);
     return { ok: true as const, data: version };

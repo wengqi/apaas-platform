@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   Req,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
@@ -17,6 +18,7 @@ import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { RecordService } from './record.service.js';
 import type { RecordQueryParams } from './record.service.js';
+import { RecordCreateDto, RecordUpdateDto } from './dto/record.dto.js';
 
 /**
  * 记录控制器 — 记录 CRUD（基于 JSONB 宽表）。
@@ -78,7 +80,8 @@ export class RecordController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
-    @Body() body: Record<string, unknown>,
+    @Body(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }))
+    body: RecordCreateDto,
   ) {
     const record = await this.recordService.create(
       requireTenantId(req),
@@ -94,7 +97,8 @@ export class RecordController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,
-    @Body() body: Record<string, unknown>,
+    @Body(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }))
+    body: RecordUpdateDto,
   ) {
     const record = await this.recordService.update(
       requireTenantId(req),

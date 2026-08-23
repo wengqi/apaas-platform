@@ -4,6 +4,13 @@ import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import { OrgService } from './org.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
+import {
+  CreateOrgDto,
+  UpdateOrgDto,
+  MoveOrgDto,
+  AddOrgMemberDto,
+  GrantOrgRoleDto,
+} from './dto/org.dto.js';
 
 @ApiTags('Organization')
 @ApiBearerAuth()
@@ -34,13 +41,7 @@ export class OrgController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Body()
-    body: {
-      parentId?: string;
-      name: string;
-      code: string;
-      nodeType?: string;
-      sort?: number;
-    },
+    body: CreateOrgDto,
   ) {
     return { ok: true as const, data: await this.orgService.create(requireTenantId(req), body) };
   }
@@ -49,7 +50,7 @@ export class OrgController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { name?: string; sort?: number; parentId?: string },
+    @Body() body: UpdateOrgDto,
   ) {
     return {
       ok: true as const,
@@ -64,11 +65,7 @@ export class OrgController {
   }
 
   @Post(':id/move')
-  async move(
-    @Req() req: AuthenticatedRequest,
-    @Param('id') id: string,
-    @Body() body: { parentId: string },
-  ) {
+  async move(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() body: MoveOrgDto) {
     return {
       ok: true as const,
       data: await this.orgService.moveNode(requireTenantId(req), id, body.parentId),
@@ -84,7 +81,7 @@ export class OrgController {
   async addMember(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { userId: string },
+    @Body() body: AddOrgMemberDto,
   ) {
     await this.orgService.addMember(requireTenantId(req), id, body.userId);
     return { ok: true as const, data: null };
@@ -104,7 +101,7 @@ export class OrgController {
   async grantRole(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { roleId: string; appId?: string },
+    @Body() body: GrantOrgRoleDto,
   ) {
     await this.orgService.grantRole(requireTenantId(req), id, body.roleId, body.appId);
     return { ok: true as const, data: null };

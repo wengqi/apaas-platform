@@ -11,11 +11,8 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
-import {
-  CredentialService,
-  type CreateCredentialInput,
-  type UpdateCredentialInput,
-} from './credential.service.js';
+import { CredentialService } from './credential.service.js';
+import { CreateCredentialDto, UpdateCredentialDto } from './dto/credential.dto.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
@@ -36,7 +33,7 @@ export class CredentialController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreateCredentialInput,
+    @Body() body: CreateCredentialDto,
   ) {
     const credential = await this.credentialService.create(requireTenantId(req), appId, body);
     return { ok: true as const, data: credential };
@@ -46,7 +43,7 @@ export class CredentialController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('credentialId') credentialId: string,
-    @Body() body: UpdateCredentialInput,
+    @Body() body: UpdateCredentialDto,
   ) {
     const credential = await this.credentialService.update(
       requireTenantId(req),

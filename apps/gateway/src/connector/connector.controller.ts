@@ -18,11 +18,7 @@ import { RequirePermission } from '../permission/require-permission.decorator.js
 import { ConnectorService } from './connector.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
-import type {
-  InvokeConnectorRequest,
-  CreateConnectorRequest,
-  UpdateConnectorRequest,
-} from '@apaas/shared';
+import { CreateConnectorDto, UpdateConnectorDto, InvokeConnectorDto } from './dto/connector.dto.js';
 
 @ApiTags('Connector')
 @ApiBearerAuth()
@@ -50,7 +46,7 @@ export class ConnectorController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreateConnectorRequest,
+    @Body() body: CreateConnectorDto,
   ) {
     const connector = await this.connectorService.create(
       requireTenantId(req),
@@ -66,7 +62,7 @@ export class ConnectorController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('connectorId') connectorId: string,
-    @Body() body: UpdateConnectorRequest,
+    @Body() body: UpdateConnectorDto,
   ) {
     const connector = await this.connectorService.update(
       requireTenantId(req),
@@ -89,7 +85,7 @@ export class ConnectorController {
   async test(
     @Req() req: AuthenticatedRequest,
     @Param('connectorId') connectorId: string,
-    @Body() body: InvokeConnectorRequest,
+    @Body() body: InvokeConnectorDto,
   ) {
     const result = await this.connectorService.test(requireTenantId(req), connectorId, body);
     return { ok: true as const, data: result };
@@ -100,7 +96,7 @@ export class ConnectorController {
   async invoke(
     @Req() req: AuthenticatedRequest,
     @Param('connectorId') connectorId: string,
-    @Body() body: InvokeConnectorRequest,
+    @Body() body: InvokeConnectorDto,
   ) {
     const result = await this.connectorService.invoke(requireTenantId(req), connectorId, body);
     return { ok: true as const, data: result };

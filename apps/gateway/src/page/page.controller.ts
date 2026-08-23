@@ -5,7 +5,7 @@ import { RequirePermission } from '../permission/require-permission.decorator.js
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { PageService } from './page.service.js';
-import type { CreatePageRequest, UpdatePageRequest } from '@apaas/shared';
+import { CreatePageDto, UpdatePageDto } from './dto/page.dto.js';
 
 /**
  * 页面控制器 — 页面 Schema 存取 CRUD。
@@ -38,7 +38,7 @@ export class PageController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreatePageRequest,
+    @Body() body: CreatePageDto,
   ) {
     const page = await this.pageService.create(requireTenantId(req), appId, body, req.user.id);
     return { ok: true as const, data: page };
@@ -66,7 +66,7 @@ export class PageController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('pageId') pageId: string,
-    @Body() body: UpdatePageRequest,
+    @Body() body: UpdatePageDto,
   ) {
     const page = await this.pageService.update(requireTenantId(req), pageId, body, req.user.id);
     return { ok: true as const, data: page };

@@ -10,7 +10,8 @@ import { Controller, Post, Body, Param, UseGuards, Request } from '@nestjs/commo
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
-import { ChartDataService, type ChartDataRequest } from './chart-data.service.js';
+import { ChartDataService } from './chart-data.service.js';
+import { ChartDataDto } from './dto/chart-data.dto.js';
 
 @ApiTags('chart-data')
 @ApiBearerAuth()
@@ -23,7 +24,7 @@ export class ChartDataController {
   @ApiOperation({ summary: '图表数据聚合' })
   async getChartData(
     @Param('appId') _appId: string,
-    @Body() body: ChartDataRequest,
+    @Body() body: ChartDataDto,
     @Request() req: AuthenticatedRequest,
   ) {
     const tenantId = req.user.tenantId!;

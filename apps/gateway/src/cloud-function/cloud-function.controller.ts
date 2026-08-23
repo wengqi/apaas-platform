@@ -17,11 +17,11 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { CloudFunctionService } from './cloud-function.service.js';
-import type {
-  CreateCloudFunctionRequest,
-  UpdateCloudFunctionRequest,
-  InvokeCloudFunctionRequest,
-} from '@apaas/shared';
+import {
+  CreateCloudFunctionDto,
+  UpdateCloudFunctionDto,
+  InvokeCloudFunctionDto,
+} from './dto/cloud-function.dto.js';
 
 @ApiTags('cloud-functions')
 @ApiBearerAuth()
@@ -42,7 +42,7 @@ export class CloudFunctionController {
   @ApiOperation({ summary: '创建云函数' })
   async create(
     @Param('appId') appId: string,
-    @Body() body: CreateCloudFunctionRequest,
+    @Body() body: CreateCloudFunctionDto,
     @Request() req: AuthenticatedRequest,
   ) {
     const tenantId = req.user.tenantId!;
@@ -62,7 +62,7 @@ export class CloudFunctionController {
   @ApiOperation({ summary: '更新云函数' })
   async update(
     @Param('id') id: string,
-    @Body() body: UpdateCloudFunctionRequest,
+    @Body() body: UpdateCloudFunctionDto,
     @Request() req: AuthenticatedRequest,
   ) {
     const tenantId = req.user.tenantId!;
@@ -90,7 +90,7 @@ export class CloudFunctionController {
   @ApiOperation({ summary: '执行云函数' })
   async invoke(
     @Param('id') id: string,
-    @Body() body: InvokeCloudFunctionRequest,
+    @Body() body: InvokeCloudFunctionDto,
     @Request() req: AuthenticatedRequest,
   ) {
     const tenantId = req.user.tenantId!;

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/co
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PlatformAdminGuard } from '../auth/platform-admin.guard.js';
 import { TenantService } from './tenant.service.js';
+import { CreateTenantDto, UpdateTenantDto, AssignTenantAdminDto } from './dto/tenant.dto.js';
 
 /**
  * 租户管理控制器 — 仅平台超管可访问。
@@ -25,7 +26,7 @@ export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
   @Post()
-  async create(@Body() body: { name: string; slug: string; description?: string }) {
+  async create(@Body() body: CreateTenantDto) {
     return { ok: true as const, data: await this.tenantService.create(body) };
   }
 
@@ -40,7 +41,7 @@ export class TenantController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() body: { name?: string; description?: string }) {
+  async update(@Param('id') id: string, @Body() body: UpdateTenantDto) {
     return { ok: true as const, data: await this.tenantService.update(id, body) };
   }
 
@@ -55,10 +56,7 @@ export class TenantController {
   }
 
   @Post(':id/admins')
-  async assignAdmin(
-    @Param('id') id: string,
-    @Body() body: { email: string; name: string; password: string },
-  ) {
+  async assignAdmin(@Param('id') id: string, @Body() body: AssignTenantAdminDto) {
     return { ok: true as const, data: await this.tenantService.assignAdmin(id, body) };
   }
 

@@ -9,7 +9,7 @@ import { RequirePermission } from '../permission/require-permission.decorator.js
 import { DataFlowService } from './dataflow.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
-import type { CreateDataFlowRequest, UpdateDataFlowRequest } from '@apaas/shared';
+import { CreateDataFlowDto, UpdateDataFlowDto } from './dto/dataflow.dto.js';
 
 @ApiTags('DataFlow')
 @ApiBearerAuth()
@@ -37,7 +37,7 @@ export class DataFlowController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreateDataFlowRequest,
+    @Body() body: CreateDataFlowDto,
   ) {
     const flow = await this.dataFlowService.create(requireTenantId(req), appId, req.user.id, body);
     return { ok: true as const, data: flow };
@@ -48,7 +48,7 @@ export class DataFlowController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('flowId') flowId: string,
-    @Body() body: UpdateDataFlowRequest,
+    @Body() body: UpdateDataFlowDto,
   ) {
     const flow = await this.dataFlowService.update(requireTenantId(req), flowId, req.user.id, body);
     return { ok: true as const, data: flow };

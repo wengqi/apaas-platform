@@ -5,14 +5,9 @@ import { RequirePermission } from '../permission/require-permission.decorator.js
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { ObjectService } from './object.service.js';
-import type {
-  CreateObjectInput,
-  UpdateObjectInput,
-  CreateFieldInput,
-  UpdateFieldInput,
-  CreateViewInput,
-  UpdateViewInput,
-} from './object.service.js';
+import { CreateObjectDto, UpdateObjectDto } from './dto/object.dto.js';
+import { CreateFieldDto, UpdateFieldDto } from './dto/field.dto.js';
+import { CreateViewDto, UpdateViewDto } from './dto/view.dto.js';
 
 /**
  * 对象控制器 — 对象 / 字段 / 视图 CRUD。
@@ -60,7 +55,7 @@ export class ObjectController {
   async createObject(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreateObjectInput,
+    @Body() body: CreateObjectDto,
   ) {
     const object = await this.objectService.create(requireTenantId(req), appId, req.user.id, body);
     return { ok: true as const, data: object };
@@ -77,7 +72,7 @@ export class ObjectController {
   async updateObject(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
-    @Body() body: UpdateObjectInput,
+    @Body() body: UpdateObjectDto,
   ) {
     const object = await this.objectService.update(
       requireTenantId(req),
@@ -104,7 +99,7 @@ export class ObjectController {
   async addField(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
-    @Body() body: CreateFieldInput,
+    @Body() body: CreateFieldDto,
   ) {
     const field = await this.objectService.addField(requireTenantId(req), objectId, body);
     return { ok: true as const, data: field };
@@ -116,7 +111,7 @@ export class ObjectController {
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
     @Param('fieldId') fieldId: string,
-    @Body() body: UpdateFieldInput,
+    @Body() body: UpdateFieldDto,
   ) {
     const field = await this.objectService.updateField(
       requireTenantId(req),
@@ -153,7 +148,7 @@ export class ObjectController {
   async createView(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
-    @Body() body: CreateViewInput,
+    @Body() body: CreateViewDto,
   ) {
     const view = await this.objectService.createView(requireTenantId(req), objectId, body);
     return { ok: true as const, data: view };
@@ -164,7 +159,7 @@ export class ObjectController {
   async updateView(
     @Req() req: AuthenticatedRequest,
     @Param('viewId') viewId: string,
-    @Body() body: UpdateViewInput,
+    @Body() body: UpdateViewDto,
   ) {
     const view = await this.objectService.updateView(requireTenantId(req), viewId, body);
     return { ok: true as const, data: view };

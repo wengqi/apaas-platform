@@ -15,6 +15,7 @@ import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import { UserService } from './user.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
+import { CreateUserDto, UpdateUserDto, SetUserRolesDto, SetUserOrgsDto } from './dto/user.dto.js';
 
 @ApiTags('User')
 @ApiBearerAuth()
@@ -43,13 +44,7 @@ export class UserController {
   async create(
     @Req() req: AuthenticatedRequest,
     @Body()
-    body: {
-      email: string;
-      name: string;
-      password: string;
-      roleIds?: string[];
-      orgIds?: string[];
-    },
+    body: CreateUserDto,
   ) {
     return { ok: true as const, data: await this.userService.create(requireTenantId(req), body) };
   }
@@ -58,7 +53,7 @@ export class UserController {
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { name?: string; avatar?: string; status?: string },
+    @Body() body: UpdateUserDto,
   ) {
     return {
       ok: true as const,
@@ -76,7 +71,7 @@ export class UserController {
   async setRoles(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { roleIds: string[] },
+    @Body() body: SetUserRolesDto,
   ) {
     await this.userService.setRoles(requireTenantId(req), id, body.roleIds);
     return { ok: true as const, data: null };
@@ -86,7 +81,7 @@ export class UserController {
   async setOrgs(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
-    @Body() body: { orgIds: string[] },
+    @Body() body: SetUserOrgsDto,
   ) {
     await this.userService.setOrgs(requireTenantId(req), id, body.orgIds);
     return { ok: true as const, data: null };

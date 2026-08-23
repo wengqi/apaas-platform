@@ -50,13 +50,9 @@ import { RequirePermission } from '../permission/require-permission.decorator.js
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { ProcessService } from './process.service.js';
-import type {
-  CreateProcessDefRequest,
-  UpdateProcessDefRequest,
-  StartInstanceRequest,
-  CreateTemplateRequest,
-  UpdateTemplateRequest,
-} from './process.service.js';
+import { CreateProcessDefDto, UpdateProcessDefDto, StartInstanceDto } from './dto/process.dto.js';
+import { CompleteTaskDto, DelegateTaskDto } from './dto/task.dto.js';
+import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto.js';
 
 @ApiTags('Process')
 @ApiBearerAuth()
@@ -80,7 +76,7 @@ export class ProcessController {
   async createProcess(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreateProcessDefRequest,
+    @Body() body: CreateProcessDefDto,
   ) {
     const data = await this.processService.createProcess(
       requireTenantId(req),
@@ -102,7 +98,7 @@ export class ProcessController {
   async updateProcess(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
-    @Body() body: UpdateProcessDefRequest,
+    @Body() body: UpdateProcessDefDto,
   ) {
     const data = await this.processService.updateProcess(
       requireTenantId(req),
@@ -140,7 +136,7 @@ export class ProcessController {
   async startInstance(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
-    @Body() body: StartInstanceRequest,
+    @Body() body: StartInstanceDto,
   ) {
     const data = await this.processService.startInstance(requireTenantId(req), processId, body);
     return { ok: true as const, data };
@@ -216,7 +212,7 @@ export class ProcessController {
   async completeTask(
     @Req() req: AuthenticatedRequest,
     @Param('taskId') taskId: string,
-    @Body() body: { decision: string; comment?: string; formData?: Record<string, unknown> },
+    @Body() body: CompleteTaskDto,
   ) {
     const data = await this.processService.completeTask(
       requireTenantId(req),
@@ -233,7 +229,7 @@ export class ProcessController {
   async delegateTask(
     @Req() req: AuthenticatedRequest,
     @Param('taskId') taskId: string,
-    @Body() body: { delegatedTo: string },
+    @Body() body: DelegateTaskDto,
   ) {
     const data = await this.processService.delegateTask(
       requireTenantId(req),
@@ -258,7 +254,7 @@ export class ProcessController {
   async createTemplate(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
-    @Body() body: CreateTemplateRequest,
+    @Body() body: CreateTemplateDto,
   ) {
     const data = await this.processService.createTemplate(requireTenantId(req), appId, body);
     return { ok: true as const, data };
@@ -268,7 +264,7 @@ export class ProcessController {
   async updateTemplate(
     @Req() req: AuthenticatedRequest,
     @Param('templateId') templateId: string,
-    @Body() body: UpdateTemplateRequest,
+    @Body() body: UpdateTemplateDto,
   ) {
     const data = await this.processService.updateTemplate(requireTenantId(req), templateId, body);
     return { ok: true as const, data };

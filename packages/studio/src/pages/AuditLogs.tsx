@@ -1,0 +1,212 @@
+/**
+ * 审计日志页面 — 租户级，展示权限操作审计记录。
+ *
+ * 支持按操作类型、资源类型、用户 ID 筛选，分页查询。
+ */
+
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Card, Table, Tag, Input, Select, Space, Typography, Button, Descriptions } from 'antd';
+import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { auditLogsApi, type AuditLogItem } from '../api/audit-logs.js';
+
+const { Title } = Typography;
+
+const DEFAULT_PAGE_SIZE = 20;
+
+const ACTION_COLORS: Record<string, string> = {
+  PERMISSION_DENIED: 'red',
+  PERMISSION_CHECK: 'default',
+  CREATE: 'green',
+  UPDATE: 'blue',
+  DELETE: 'orange',
+};
+
+export default function AuditLogs() {
+  const navigate = useNavigate();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [actionFilter, setActionFilter] = useState<string | undefined>();
+  const [resourceFilter, setResourceFilter] = useState<string | undefined>();
+  const [userIdFilter, setUserIdFilter] = useState<string | undefined>();
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['audit-logs', page, pageSize, actionFilter, resourceFilter, userIdFilter],
+    queryFn: () =>
+      auditLogsApi.query({
+        page,
+        pageSize,
+        action: actionFilter,
+        resource: resourceFilter,
+        userId: userIdFilter,
+      }),
+  });
+
+  const columns = [
+    {
+      title: '时间',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      width: 180,
+      render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+    },
+    {
+      title: '操作',
+      dataIndex: 'action',
+      key: 'action',
+      width: 160,
+      render: (v: string) => <Tag color={ACTION_COLORS[v] ?? 'default'}>{v}</Tag>,
+    },
+    {
+      title: '资源类型',
+      dataIndex: 'resource',
+      key: 'resource',
+      width: 120,
+      render: (v: string | null) => v ?? '—',
+    },
+    {
+      title: '资源 ID',
+      dataIndex: 'resourceId',
+      key: 'resourceId',
+      width: 200,
+      render: (v: string | null) => (
+        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</span>
+      ),
+    },
+    {
+      title: '用户 ID',
+      dataIndex: 'userId',
+      key: 'userId',
+      width: 200,
+      render: (v: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span>,
+    },
+    {
+      title: 'IP',
+      dataIndex: 'ip',
+      key: 'ip',
+      width: 140,
+      render: (v: string | null) => v ?? '—',
+    },
+    {
+      title: '详情',
+      dataIndex: 'detail',
+      key: 'detail',
+      render: (v: unknown) => {
+        if (!v) return '—';
+        return (
+          <pre style={{ margin: 0, fontSize: 12, maxWidth: 300, overflow: 'auto' }}>
+            {JSON.stringify(v, null, 2)}
+          </pre>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+      <div
+        style={{
+          background: '#fff',
+          padding: '16px 24px',
+          borderBottom: '1px solid #f0f0f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+        }}
+      >
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} type="text" />
+        <Title level={4} style={{ margin: 0 }}>
+          审计日志
+        </Title>
+      </div>
+
+      <div style={{ padding: 24 }}>
+        <Card style={{ marginBottom: 16 }}>
+          <Space wrap size={12}>
+            <Select
+              allowClear
+              placeholder="操作类型"
+              style={{ width: 180 }}
+              value={actionFilter}
+              onChange={(v) => {
+                setActionFilter(v);
+                setPage(1);
+              }}
+              options={[
+                { value: 'PERMISSION_CHECK', label: '权限检查' },
+                { value: 'PERMISSION_DENIED', label: '权限拒绝' },
+                { value: 'CREATE', label: '创建' },
+                { value: 'UPDATE', label: '更新' },
+                { value: 'DELETE', label: '删除' },
+              ]}
+            />
+            <Select
+              allowClear
+              placeholder="资源类型"
+              style={{ width: 180 }}
+              value={resourceFilter}
+              onChange={(v) => {
+                setResourceFilter(v);
+                setPage(1);
+              }}
+              options={[
+                { value: 'OBJECT', label: '对象' },
+                { value: 'PAGE', label: '页面' },
+                { value: 'PROCESS', label: '流程' },
+                { value: 'ROLE', label: '角色' },
+                { value: 'CONNECTOR', label: '连接器' },
+                { value: 'CLOUD_FUNCTION', label: '云函数' },
+              ]}
+            />
+            <Input
+              allowClear
+              placeholder="用户 ID"
+              style={{ width: 240 }}
+              value={userIdFilter ?? ''}
+              onChange={(e) => {
+                setUserIdFilter(e.target.value || undefined);
+                setPage(1);
+              }}
+            />
+            <Button icon={<ReloadOutlined />} onClick={() => refetch()}>
+              刷新
+            </Button>
+          </Space>
+        </Card>
+
+        <Card>
+          <Table<AuditLogItem>
+            loading={isLoading}
+            columns={columns}
+            dataSource={data?.items ?? []}
+            rowKey="id"
+            pagination={{
+              current: data?.page ?? 1,
+              pageSize: data?.pageSize ?? DEFAULT_PAGE_SIZE,
+              total: data?.total ?? 0,
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (p, ps) => {
+                setPage(p);
+                setPageSize(ps);
+              },
+            }}
+            expandable={{
+              expandedRowRender: (record) => (
+                <Descriptions size="small" column={1} bordered>
+                  <Descriptions.Item label="详情">
+                    <pre style={{ margin: 0, fontSize: 12 }}>
+                      {JSON.stringify(record.detail, null, 2)}
+                    </pre>
+                  </Descriptions.Item>
+                </Descriptions>
+              ),
+              rowExpandable: (record) => !!record.detail,
+            }}
+          />
+        </Card>
+      </div>
+    </div>
+  );
+}

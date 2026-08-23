@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { RoleController } from './role.controller.js';
 import { OrgController } from './org.controller.js';
 import { UserController } from './user.controller.js';
+import { AuditLogController } from './audit-log.controller.js';
 import { RoleService } from './role.service.js';
 import { OrgService } from './org.service.js';
 import { UserService } from './user.service.js';
@@ -15,8 +16,15 @@ import { AuditLogService } from './audit-log.service.js';
  * 导出 PermissionService 和 PermissionGuard 供其他模块使用。
  */
 @Module({
-  controllers: [RoleController, OrgController, UserController],
-  providers: [RoleService, OrgService, UserService, PermissionService, PermissionGuard, AuditLogService],
+  controllers: [RoleController, OrgController, UserController, AuditLogController],
+  providers: [
+    RoleService,
+    OrgService,
+    UserService,
+    PermissionService,
+    PermissionGuard,
+    AuditLogService,
+  ],
   exports: [PermissionService, PermissionGuard, AuditLogService],
 })
 export class PermissionModule {}

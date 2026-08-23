@@ -19,6 +19,7 @@ import DatasetList from './pages/DatasetList.js';
 import CloudFunctionList from './pages/CloudFunctionList.js';
 import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
+import AuditLogs from './pages/AuditLogs.js';
 import TenantManagement from './pages/TenantManagement.js';
 import TenantDetail from './pages/TenantDetail.js';
 import { useAuthStore } from '@apaas/shared/stores';
@@ -137,6 +138,14 @@ export function AppRoutes() {
         element={
           <TenantAdminRoute>
             <PlatformOrgs />
+          </TenantAdminRoute>
+        }
+      />
+      <Route
+        path="/platform/audit-logs"
+        element={
+          <TenantAdminRoute>
+            <AuditLogs />
           </TenantAdminRoute>
         }
       />

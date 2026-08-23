@@ -31,6 +31,7 @@ import {
   InboxOutlined,
   GlobalOutlined,
   EditOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -293,6 +294,12 @@ export default function AppList() {
             label: '组织架构',
             onClick: () => navigate('/platform/orgs'),
           },
+          {
+            key: 'audit-logs',
+            icon: <AuditOutlined />,
+            label: '审计日志',
+            onClick: () => navigate('/platform/audit-logs'),
+          },
         ]
       : []),
     { type: 'divider' as const },
@@ -360,6 +367,12 @@ export default function AppList() {
                           icon: <ApartmentOutlined />,
                           label: '组织架构',
                           onClick: () => navigate('/platform/orgs'),
+                        },
+                        {
+                          key: 'audit-logs',
+                          icon: <AuditOutlined />,
+                          label: '审计日志',
+                          onClick: () => navigate('/platform/audit-logs'),
                         },
                       ]
                     : []),

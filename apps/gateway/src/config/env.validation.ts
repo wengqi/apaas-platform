@@ -40,4 +40,7 @@ export const envValidation = Joi.object({
   // ---- 云函数沙箱 ----
   CLOUD_FUNCTION_MEMORY_LIMIT_MB: Joi.number().default(128),
   CLOUD_FUNCTION_TIMEOUT_MS: Joi.number().default(5000),
+
+  // ---- 日志 ----
+  LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
 });

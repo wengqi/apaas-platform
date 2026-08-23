@@ -130,7 +130,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | # | 技术债 | 影响 | 修复状态 |
 |---|--------|------|---------|
 | TD-5 | 零测试覆盖 | vitest 已配置但无任何测试文件，ROADMAP 声称的 E2E 通过不实 | 🔄 大幅改善：12 个 spec 文件，核心模块已覆盖（process-engine / permission / record / dataflow-engine / object.service / cloud-function / connector / application），376 个测试通过。仍缺 E2E 测试（Playwright），覆盖率未达 60% 目标 |
-| TD-6 | 审计日志空壳 | AuditLog 模型存在但无写入路径，无法追溯操作行为 | 🔄 部分修复：写入路径已接通（PermissionGuard 写入），查询 API + 后台展示 UI 仍缺失 |
+| TD-6 | 审计日志空壳 | AuditLog 模型存在但无写入路径，无法追溯操作行为 | ✅ 已修复：写入路径（PermissionGuard）+ 查询 API（AuditLogController 分页查询 + 筛选）+ 后台展示 UI（AuditLogs 页面 + 操作类型/资源/用户筛选 + 详情展开） |
 | TD-7 | 通知 email/in_app 为日志桩 | 无 SMTP 发送、无站内信消息表，仅 console.log | ✅ 已修复：nodemailer SMTP + InAppMessage 模型 + 前端 NotificationBell UI |
 | TD-8 | 页面事件配置 UI 占位 | action-executor 引擎完整（12 动作），但属性面板 Events tab 为占位符，用户无法配置事件 | ✅ 已修复（08-04）：事件类型选择 + 动作链编辑器 |
 | TD-9 | 图表组件占位 | 页面搭建器有 chart 组件类型但渲染器为占位文本 | ✅ 已修复（08-22）：ECharts 4 种图表 + 属性面板 + 数据源绑定 + 后端聚合引擎（chart-data.service.ts — sum/count/avg/max/min） |
@@ -148,7 +148,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~91%（飞书对齐度）。Phase 0-5 + Phase 8 + Phase 9 已完成，Phase 6/7 进行中，Phase 10 待开始。
+> **当前整体完成度**: ~92%（飞书对齐度）。Phase 0-5 + Phase 8 + Phase 9 已完成，Phase 6/7 进行中，Phase 10 部分完成（安全中间件）。
 
 ### 已完成 ✅
 
@@ -166,6 +166,8 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | Phase 8 | 云函数与扩展 — isolated-vm 沙箱 + Monaco 编辑器 + 流程节点执行器 + CRUD/publish/invoke | 2026-08-22 |
 | 治理规范 | any 清理 + ComponentRenderer 提取（1112→269+185 行）+ 编码规范补充 + API 一致性修复 | 2026-08-22 |
 | Phase 7 仪表盘布局 | DashboardGrid 组件 + react-grid-layout 拖拽/resize + 属性面板 + 图表高度自适应 | 2026-08-23 |
+| Phase 10 安全中间件 | helmet HTTP 安全头 + @nestjs/throttler 限流 + nestjs-pino 结构化日志 | 2026-08-23 |
+| TD-6 审计日志查询 | 查询 API（分页+筛选）+ 后台展示页面（操作类型/资源/用户筛选+详情展开） | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
@@ -174,8 +176,8 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 🟡 P1 | Phase 6 收尾 | 数据流可视化画布（节点式编排）+ E2E 测试 |
 | 🟡 P1 | Phase 7 收尾 | 运营报表（表格/指标卡/趋势图组合）+ E2E 测试 |
 | 🟡 P1 | 测试覆盖率提升 | E2E 测试（Playwright）+ 覆盖率达成 60% 目标 |
-| 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 / 安全中间件 |
-| 🟢 P2 | 修复剩余技术债 | TD-6 审计日志查询 UI + TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
+| 🟢 P2 | Phase 10 打磨 | 数据导入导出 / 批量操作 / 完整Demo / 性能优化 |
+| 🟢 P2 | 修复剩余技术债 | TD-16 Tenant Isolation $extends 重构（Prisma 自动注入 tenantId） |
 | 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
 
 ---
@@ -280,8 +282,9 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 |---|------|------|
 | 10.1 | 数据导入导出(CSV/Excel) | ⬜ 待开始 |
 | 10.2 | 记录批量操作 | ⬜ 待开始 |
-| 10.3 | 完整demo(资产管理系统，含对象/页面/流程/权限/仪表盘) | ⬜ 待开始 |
-| 10.4 | 部署文档 + 性能优化 | ⬜ 待开始 |
+| 10.3 | 安全中间件（helmet + throttler + pino） | ✅ 完成（2026-08-23） |
+| 10.4 | 完整demo(资产管理系统，含对象/页面/流程/权限/仪表盘) | ⬜ 待开始 |
+| 10.5 | 部署文档 + 性能优化 | ⬜ 待开始 |
 
 **验收标准**：从零搭建含对象/页面/审批流程/权限/仪表盘的完整应用。
 
@@ -303,3 +306,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-22：**ROADMAP 重大同步**——主路线图与实际开发状态对齐。Phase 5（连接器）标记 ✅ 已完成。Phase 6（数据集）标记 🔄 进行中 ~70%。Phase 7（仪表盘）标记 🔄 进行中 ~40%。Phase 9（应用发布）标记 ✅ 已完成 ~95%。技术债清单 TD-5~TD-16 全部更新实际状态（7 项已修复 / 3 项部分修复 / 4 项未修复 / 1 项决策保留）。整体完成度从 ~40% 更新为 ~88%（飞书对齐度）。后续推进建议重排优先级：P0 建立测试基础设施 → P1 Phase 6/7 收尾 → P2 Phase 8 + 剩余技术债 + Phase 10。
 - 2026-08-22：**ROADMAP 第二次同步**——Phase 8（云函数）标记 ✅ 已完成 ~90%（isolated-vm 沙箱 + Monaco 编辑器 + 7 端点 + 流程节点执行器）。Phase 6 完成度 ~70%→~80%（join/filter 表单式 UI 已完成）。Phase 7 完成度 ~40%→~55%（后端聚合引擎已完成）。TD-5 从「核心零覆盖」更新为「12 spec / 376 测试 / 核心模块已覆盖」。整体完成度 ~88%→~90%。下一步优先级重排：移除已完成的 P0 测试基础设施和 P2 Phase 8/TD-11/12/13，新增 P1 E2E 测试 + P2 Tenant 隔离重构。
 - 2026-08-23：**Phase 7 仪表盘网格布局完成**——新增 DashboardGrid 组件类型（react-grid-layout 拖拽 + resize），更新仪表盘页面模板（DashboardGrid 替换 Grid + GridColumn），图表高度自适应（renderChart 从 props.style 读取高度），前后端模板同步。Phase 7 完成度 ~55%→~70%，整体完成度 ~90%→~91%。
+- 2026-08-23：**安全中间件 + 审计日志查询完成**——Phase 10.3 安全中间件（helmet HTTP 安全头 + @nestjs/throttler 限流 default 100/min auth 10/min + nestjs-pino 结构化 JSON 日志）。TD-6 审计日志查询完整修复（AuditLogService.query 分页+筛选 + AuditLogController GET /api/v1/audit-logs + AuditLogs 前端页面 Table+筛选+详情展开 + 路由 /platform/audit-logs + 导航入口）。整体完成度 ~91%→~92%。

@@ -1,12 +1,20 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger, VersioningType } from '@nestjs/common';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
+import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  // 结构化日志（pino JSON 格式，生产环境自动启用）
+  app.useLogger(app.get(Logger));
+
+  // HTTP 安全头
+  app.use(helmet());
 
   // 全局前缀
   app.setGlobalPrefix('api');
@@ -51,7 +59,9 @@ async function bootstrap() {
 
   const port = process.env.GATEWAY_PORT ?? '3000';
   await app.listen(port);
-  Logger.log(`🚀 API Gateway running on http://localhost:${port} (docs: /api/docs)`, 'Bootstrap');
+  app
+    .get(Logger)
+    .log(`🚀 API Gateway running on http://localhost:${port} (docs: /api/docs)`, 'Bootstrap');
 }
 
 void bootstrap();

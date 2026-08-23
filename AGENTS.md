@@ -188,7 +188,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 ## 当前阶段
 
-- ✅ Phase 0-5 + Phase 8 + Phase 9 核心功能已实现（整体飞书对齐度 ~91%）
+- ✅ Phase 0-5 + Phase 8 + Phase 9 核心功能已实现（整体飞书对齐度 ~92%）
 - ✅ 第一阶段阻断性技术债修复已完成（2026-08-03）
 - ✅ 第二阶段前端功能补全已完成（2026-08-22：事件配置 UI + 任务中心 + 租户管理 + 应用编辑入口 + 站内信 UI + 权限规则编辑器增强 + 图表组件骨架）
 - ✅ 工程化治理已完成（2026-08-06：测试基础设施 + Swagger + ESLint + 环境变量校验 + API 版本控制 + 全局错误处理 + 约束链 + 前端状态管理统一）
@@ -196,6 +196,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - ✅ Phase 8 云函数与扩展已完成（2026-08-22：isolated-vm 沙箱 + Monaco 编辑器 + 7 端点 CRUD/publish/invoke + 流程节点执行器）
 - ✅ 核心模块单元测试已建立（2026-08-22：12 spec / 376 测试 — process-engine / permission / record / dataflow-engine / object / cloud-function / connector / application）
 - ✅ ComponentRenderer 共享核心提取完成（2026-08-22：1112→269+185 行，消除重复代码）
+- ✅ Phase 7 仪表盘网格布局已完成（2026-08-23：react-grid-layout 拖拽 + resize + DashboardGrid 组件）
+- ✅ 安全中间件已完成（2026-08-23：helmet + @nestjs/throttler + nestjs-pino 结构化日志）
+- ✅ 审计日志查询已完成（2026-08-23：TD-6 修复 — 查询 API + 后台展示页面 + 路由 + 导航入口）
 - 🔄 Phase 6 数据集与数据流进行中（~80%：数据流引擎 + 物化存储 + 异步刷新 + 前端管理 UI + join/filter 表单式配置已完成，可视化画布待实现）
 - 🔄 Phase 7 仪表盘与报表进行中（~70%：图表骨架 + 数据源绑定 + 仪表盘页面模板 + 后端聚合引擎 + 网格拖拽布局已完成，运营报表待实现）
 - ⬜ Phase 10 打磨与集成（待开始：数据导入导出 / 批量操作 / 安全中间件 / E2E 测试）

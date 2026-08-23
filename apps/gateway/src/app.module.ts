@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module.js';
 import { ApplicationModule } from './application/application.module.js';
 import { ObjectModule } from './object/object.module.js';
@@ -21,6 +24,16 @@ import { envValidation } from './config/env.validation.js';
       isGlobal: true,
       validationSchema: envValidation,
     }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
+        level: process.env.LOG_LEVEL ?? 'info',
+      },
+    }),
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: 60_000, limit: 100 },
+      { name: 'auth', ttl: 60_000, limit: 10 },
+    ]),
     AuthModule,
     TenantModule,
     ApplicationModule,
@@ -35,5 +48,6 @@ import { envValidation } from './config/env.validation.js';
     CloudFunctionModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

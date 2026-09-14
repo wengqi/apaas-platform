@@ -31,10 +31,11 @@
 全局 ValidationPipe（whitelist+forbidNonWhitelisted）对 `RecordCreateDto`（无装饰属性 + index signature）校验时，任何动态字段均被判为非白名单 → 400 "property X should not exist"。自 08-23 DTO 规范化改造起，**运行时及 API 的记录创建全部失败**（种子数据走 prisma 直写所以未暴露）。
 **已修复**：create/update 参数类型改为 `Record<string, unknown>`（Object metatype 跳过全局校验），Swagger 文档经 @ApiBody 保留（record.controller.ts）。
 
-### P0 — 安全（1 个，待修复）
+### P0 — 安全（1 个，已修复 ✅ commit 8d17465）
 
 **P0-2 chart-data 聚合端点完全绕过 RBAC/ABAC（任意记录读取）**
-`chart-data.controller.ts` 仅 JwtAuthGuard：无 PermissionGuard、无 @RequirePermission、appId 参数被忽略（`_appId`）。`loadSourceData` 按 `{tenantId, objectId}` 直查且**不注入行级条件**，随后对调用方提供的**任意 JsonLogic filter 在内存中求值**。利用方式：END_USER 持"仅本人记录"规则，POST `{"==":[{"var":"id"},"<recordId>"]}` 过滤到单条 → avg 即该记录任意字段值。**ABAC 体系被整个旁路，需紧急修复**（补 PermissionGuard + 行条件注入 + appId 归属校验）。
+`chart-data.controller.ts` 仅 JwtAuthGuard：无 PermissionGuard、无 @RequirePermission、appId 参数被忽略（`_appId`）。`loadSourceData` 按 `{tenantId, objectId}` 直查且**不注入行级条件**，随后对调用方提供的**任意 JsonLogic filter 在内存中求值**。利用方式：END_USER 持"仅本人记录"规则，POST `{"==":[{"var":"id"},"<recordId>"]}` 过滤到单条 → avg 即该记录任意字段值。**ABAC 体系被整个旁路**。
+**已修复（三层防御）**：① 数据源归属校验（对象/数据集必须属于 appId）② ABAC 行级条件注入 findMany（调用方 filter 只能收窄）③ fieldScope 列级校验（分类/值字段须在白名单内）；控制器接入 PermissionGuard + RECORD:VIEW。配套 6 项安全单测（21→27），355 单测 + 48 E2E 全绿。
 
 ### P1 — 严重（后端 9 个）
 

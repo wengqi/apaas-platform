@@ -401,7 +401,14 @@ export class ProcessEngine {
     // 兼容 "approve"/"approved" 两种写法
     const isApproved = decisionUpper === 'APPROVED' || decisionUpper === 'APPROVE';
     const isRejected = decisionUpper === 'REJECTED' || decisionUpper === 'REJECT';
-    const taskStatus = isApproved ? 'APPROVED' : isRejected ? 'REJECTED' : 'DELEGATED';
+
+    // B4 修复：未知 decision 值此前被当作 DELEGATED 并继续推进流程，
+    // 拼写错误（如 "aprove"）会导致审批静默通过。
+    if (!isApproved && !isRejected) {
+      throw new BadRequestException(`无效的审批决策: "${decision}"，仅支持 approve/reject`);
+    }
+
+    const taskStatus = isApproved ? 'APPROVED' : 'REJECTED';
 
     // B2 防护：原子认领任务 — 仅当任务仍为 PENDING 时更新成功。
     // 并发/双击审批只有一个请求 count=1，其余拒绝，保证下游节点不重复执行。

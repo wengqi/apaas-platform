@@ -15,10 +15,12 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
+import { TriggerService } from './trigger.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
 
 // ---------------------------------------------------------------------------
@@ -61,9 +63,12 @@ export interface UpdateTemplateRequest {
 
 @Injectable()
 export class ProcessService {
+  private readonly logger = new Logger(ProcessService.name);
+
   constructor(
     private readonly engine: ProcessEngine,
     private readonly changeLogService: ChangeLogService,
+    private readonly triggerService: TriggerService,
   ) {}
 
   // ===========================================================================
@@ -153,6 +158,10 @@ export class ProcessService {
         where: { id: processId },
         data: { status: 'DRAFT' },
       });
+      // B3 修复：从已发布降级为草稿时取消定时触发器
+      void this.triggerService
+        .onProcessUnpublished(existing.id, existing.triggerType, existing.cron, existing.apiName)
+        .catch((err) => this.logger.error(`定时触发器取消失败: ${err.message}`));
     }
 
     const data: Prisma.ProcessDefUpdateInput = {};
@@ -231,6 +240,12 @@ export class ProcessService {
         version: { increment: 1 },
       },
     });
+
+    // B3 修复：发布后即时注册定时触发器（此前仅在启动时注册）
+    void this.triggerService
+      .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName)
+      .catch((err) => this.logger.error(`定时触发器注册失败: ${err.message}`));
+
     return this.toProcessDefDto(def);
   }
 

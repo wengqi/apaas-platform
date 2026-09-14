@@ -85,12 +85,18 @@ describe('DataFlowEngine', () => {
       prisma.datasetRow.deleteMany.mockResolvedValue({ count: 5 });
       prisma.datasetRow.createMany.mockResolvedValue({ count: 2 });
       prisma.dataset.update.mockResolvedValue({});
+      // B6: REFRESHING 守卫使用 updateMany
+      prisma.dataset.updateMany.mockResolvedValue({ count: 1 });
+      // B6: 物化在 $transaction 内执行，mock $transaction 直接调用回调
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+        await fn(prisma);
+      });
 
       const config = makeConfig();
       await engine.executeAndMaterialize('tenant-001', 'ds-001', config);
 
-      // 第一次 update 设为 REFRESHING
-      const refreshingCall = prisma.dataset.update.mock.calls.find(
+      // B6: REFRESHING 守卫通过 updateMany 设置（非 update）
+      const refreshingCall = prisma.dataset.updateMany.mock.calls.find(
         (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'REFRESHING',
       );
       expect(refreshingCall).toBeDefined();
@@ -102,7 +108,7 @@ describe('DataFlowEngine', () => {
       expect(readyCall).toBeDefined();
       expect(readyCall![0]!.data.rowCount).toBe(2);
 
-      // 旧行被清除
+      // 旧行被清除（在 $transaction 内通过 tx 调用）
       expect(prisma.datasetRow.deleteMany).toHaveBeenCalledWith({
         where: { datasetId: 'ds-001' },
       });
@@ -114,6 +120,12 @@ describe('DataFlowEngine', () => {
       // 无数据源触发 BadRequestException
       const config = makeConfig({ sources: [] });
       prisma.dataset.update.mockResolvedValue({});
+      // B6: REFRESHING 守卫使用 updateMany
+      prisma.dataset.updateMany.mockResolvedValue({ count: 1 });
+      // B6: 物化在 $transaction 内
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
+        await fn(prisma);
+      });
 
       await expect(engine.executeAndMaterialize('tenant-001', 'ds-001', config)).rejects.toThrow(
         BadRequestException,

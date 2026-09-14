@@ -19,6 +19,9 @@ import type {
 /** pipeline 中间数据行（键为字段 apiName 或 alias.field 形式）。 */
 type DataRow = Record<string, unknown>;
 
+/** 数据流单次加载源数据的最大行数（B7：防止大对象 OOM）。 */
+const DATAFLOW_MAX_ROWS = 10000;
+
 @Injectable()
 export class DataFlowEngine {
   private readonly logger = new Logger(DataFlowEngine.name);
@@ -50,12 +53,18 @@ export class DataFlowEngine {
     datasetId: string,
     config: DataFlowConfig,
   ): Promise<void> {
-    try {
-      await prisma.dataset.update({
-        where: { id: datasetId },
-        data: { status: 'REFRESHING', lastError: null },
-      });
+    // B6 修复：REFRESHING 守卫 — 防止并发刷新交错。
+    // 原子更新：仅当当前状态不是 REFRESHING 时才置为 REFRESHING。
+    const claimed = await prisma.dataset.updateMany({
+      where: { id: datasetId, status: { not: 'REFRESHING' } },
+      data: { status: 'REFRESHING', lastError: null },
+    });
+    if (claimed.count === 0) {
+      this.logger.warn(`数据集 ${datasetId} 已在刷新中，跳过重复刷新`);
+      return;
+    }
 
+    try {
       const rows = await this.executePipeline(config, tenantId);
       const columns = this.buildColumns(config);
 
@@ -127,11 +136,14 @@ export class DataFlowEngine {
 
   /**
    * 从 Record 表加载源数据。
+   *
+   * B7 修复：添加 take 上限，防止大对象 OOM（与 chart-data 的 10000 上限一致）。
    */
   private async loadSourceData(tenantId: string, source: DataSourceConfig): Promise<DataRow[]> {
     const records = await prisma.record.findMany({
       where: { tenantId, objectId: source.objectId },
       select: { data: true },
+      take: DATAFLOW_MAX_ROWS,
     });
     return records.map((r) => r.data as DataRow);
   }
@@ -308,26 +320,35 @@ export class DataFlowEngine {
   /**
    * 物化结果到 DatasetRow 表。
    */
+  /**
+   * 物化数据到 DatasetRow 表。
+   *
+   * B6 修复：
+   * - $transaction 包裹 deleteMany + createMany，中途崩溃不会留下空数据集
+   * - 此前无事务：deleteMany 后崩溃 → 数据集永久为空；重复刷新并发交错
+   */
   private async materialize(
     datasetId: string,
     tenantId: string,
     rows: DataRow[],
     _columns: DatasetColumn[],
   ): Promise<void> {
-    // 清空旧行
-    await prisma.datasetRow.deleteMany({ where: { datasetId } });
-
-    // 分批写入（每批 500 行）
     const BATCH_SIZE = 500;
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE);
-      await prisma.datasetRow.createMany({
-        data: batch.map((row) => ({
-          tenantId,
-          datasetId,
-          data: row as object,
-        })),
-      });
-    }
+
+    // 在事务中执行：先删旧行再写新行，保证原子性
+    await prisma.$transaction(async (tx) => {
+      await tx.datasetRow.deleteMany({ where: { datasetId } });
+
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const batch = rows.slice(i, i + BATCH_SIZE);
+        await tx.datasetRow.createMany({
+          data: batch.map((row) => ({
+            tenantId,
+            datasetId,
+            data: row as object,
+          })),
+        });
+      }
+    });
   }
 }

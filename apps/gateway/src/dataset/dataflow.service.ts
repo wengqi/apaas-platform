@@ -164,11 +164,9 @@ export class DataFlowService {
       });
     }
 
-    // 设置为 REFRESHING 状态（实际执行由 BullMQ worker 处理）
-    await prisma.dataset.update({
-      where: { id: dataset.id },
-      data: { status: 'REFRESHING' },
-    });
+    // B6 修复：不再在此处设置 REFRESHING — worker 的 executeAndMaterialize
+    // 通过 updateMany 原子守卫设置 REFRESHING（防止并发刷新）。
+    // 此处预设置会导致 worker 的守卫 count=0 而 skip，数据集永远卡在 REFRESHING。
 
     // 入队异步执行
     await this.datasetQueue.add('refresh', {

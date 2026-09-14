@@ -81,6 +81,11 @@ export class TriggerService implements OnModuleInit {
 
   /**
    * 注册单个定时触发流程为 BullMQ repeatable job。
+   *
+   * B3 修复：
+   * - removeRepeatable（非 removeRepeatableByKey）：传入 { pattern, jobId } 组合，
+   *   此前传 jobId 字符串给 removeRepeatableByKey 不匹配内部 repeatJobKey → 清理无效。
+   * - 此方法不仅启动时调用，也在 publishProcess 后调用（运行期发布的 SCHEDULED 流程即时生效）。
    */
   private async registerScheduledJob(
     processDefId: string,
@@ -90,8 +95,10 @@ export class TriggerService implements OnModuleInit {
     const jobId = `${SCHEDULED_JOB_PREFIX}${processDefId}`;
 
     try {
-      // 先移除旧的 repeatable job（避免重复注册）
-      await this.processQueue.removeRepeatableByKey(jobId);
+      // 先移除旧的 repeatable job（使用 removeRepeatable + repeat 配置匹配）
+      await this.processQueue.removeRepeatable('scheduled-trigger', {
+        pattern: cron,
+      });
 
       // 注册新的 repeatable job
       await this.processQueue.add(
@@ -109,6 +116,57 @@ export class TriggerService implements OnModuleInit {
         `注册定时触发 ${apiName} 失败: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  /**
+   * 取消注册定时触发流程（流程下线/删除时调用）。
+   */
+  private async unregisterScheduledJob(
+    processDefId: string,
+    cron: string,
+    apiName: string,
+  ): Promise<void> {
+    try {
+      await this.processQueue.removeRepeatable('scheduled-trigger', {
+        pattern: cron,
+      });
+      this.logger.log(`定时触发已取消: ${apiName}`);
+    } catch (err) {
+      // 重复取消或 job 不存在时静默忽略
+      this.logger.debug(
+        `取消定时触发 ${apiName} 时: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * 流程发布后调用 — 如果是 SCHEDULED 类型，即时注册 repeatable job。
+   *
+   * B3 修复：此前仅在 onModuleInit 注册，运行期发布的 SCHEDULED 流程永不执行。
+   */
+  async onProcessPublished(
+    processDefId: string,
+    triggerType: string | null,
+    cron: string | null,
+    apiName: string,
+  ): Promise<void> {
+    if (triggerType !== 'SCHEDULED' || !cron) return;
+    await this.registerScheduledJob(processDefId, cron, apiName);
+  }
+
+  /**
+   * 流程下线/删除后调用 — 取消 repeatable job，防止僵尸 job 每次报错。
+   *
+   * B3 修复：此前下线后 repeatable job 仍在 BullMQ 中，每次触发找不到流程定义报错。
+   */
+  async onProcessUnpublished(
+    processDefId: string,
+    triggerType: string | null,
+    cron: string | null,
+    apiName: string,
+  ): Promise<void> {
+    if (triggerType !== 'SCHEDULED' || !cron) return;
+    await this.unregisterScheduledJob(processDefId, cron, apiName);
   }
 
   /**

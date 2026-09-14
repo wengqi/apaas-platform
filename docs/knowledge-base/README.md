@@ -24,6 +24,10 @@
 | [STATUS-MATRIX-2026-08-22](./STATUS-MATRIX-2026-08-22.md) | 2026-08-22 | 功能完成度矩阵（24 模块逐项评估 + 连接器/数据集/仪表盘新增模块 + 测试基础设施风险 + 飞书对齐度 ~88%）|
 | [STATUS-MATRIX-2026-08-23](./STATUS-MATRIX-2026-08-23.md) | 2026-08-23 | 功能完成度矩阵（Phase 7 运营报表 + TD-17 租户隔离 $extends 重构 + 42 单元测试 + 飞书对齐度 ~96%）|
 | [TENANT-ISOLATION-EXTENDS-REFACTOR-2026-08-23](./TENANT-ISOLATION-EXTENDS-REFACTOR-2026-08-23.md) | 2026-08-23 | TD-17 租户隔离 $extends 重构（三层防御体系 Layer 2 — Prisma 自动注入 tenantId + AsyncLocalStorage 上下文 + BullMQ worker 修复 + 42 单元测试）|
+| [DEMO-APP-2026-08-23](./DEMO-APP-2026-08-23.md) | 2026-08-23 | Phase 10.4 完整 Demo 应用（资产管理系统 — 3 业务对象 + 7 页面 + 1 审批流程 + 24 示例记录 + 仪表盘 + 应用发布 + 12 E2E 验收测试）|
+| [CODE-REVIEW-2026-08-23](./CODE-REVIEW-2026-08-23.md) | 2026-08-23 | 全面代码审查报告（后端/前端/飞书对齐三维度 — 8 个 HIGH 缺陷修复 + 12 项 MEDIUM 修复 + 对齐度校准 ~97%→~68%）|
+| [CODE-REVIEW-2026-09-13](./CODE-REVIEW-2026-09-13.md) | 2026-09-13 | 专业代码审查报告（08-23 修复验证全通过 + 新发现 P0 安全缺陷 chart-data ABAC 旁路 + P1×11 + 架构评估 + 对齐度 ~68% 维持）|
+| [TEST-QUALITY-REPORT-2026-09-13](./TEST-QUALITY-REPORT-2026-09-13.md) | 2026-09-13 | 测试质量报告（单元 477 全过 + 覆盖率 40.55% + E2E 修复三层断裂后 48/48 全绿 + 捕获 P0 产品回归：记录创建 API 全量 400）|
 
 ## 文档维护规则
 

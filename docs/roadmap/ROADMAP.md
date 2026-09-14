@@ -176,12 +176,13 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | E2E 测试补齐 + PropertyPanel 拆分 | 4 新 E2E spec（连接器/数据集/云函数/应用发布）12 测试 + PropertyPanel 1178→231 行拆分 7 子文件 + vitest 覆盖率阈值启用(基线 39%/75%/61%) | 2026-08-23 |
 | Phase 10.1+10.2 数据导入导出+批量操作 | CSV 导入导出(csv-parse/csv-stringify) + 模板下载 + multer 文件上传 + batchCreate/batchUpdate/batchDelete + 前端行选择+批量操作浮动条+导入弹窗 + 10 单元测试 | 2026-08-23 |
 | TD-17 租户隔离 $extends 重构 | Prisma $extends 自动注入 tenantId（11 操作 × 24 模型白名单）+ AsyncLocalStorage 上下文 + HTTP 拦截器 + BullMQ worker 上下文修复（process-queue/delay-queue/dataset-queue/webhook/seed）+ DatasetRow 索引迁移 + 42 单元测试 | 2026-08-23 |
+| Phase 10.4 完整 Demo 应用 | 资产管理系统 — 3 业务对象（asset/borrow_request/asset_category）+ 7 页面（list/detail/form/dashboard）+ 1 审批流程（资产领用审批 start→user_task→condition→object_operation→notification→end）+ 24 示例记录 + 仪表盘（指标卡+柱状图+折线图+饼图）+ 应用发布（publishedSnapshot）+ 12 E2E 验收测试 | 2026-08-23 |
 
 ### 进行中 / 下一步优先级
 
 | 优先级 | 内容 | 说明 |
 |--------|------|------|
-| 🟢 P2 | Phase 10 打磨 | 完整Demo / 部署文档 + 性能优化 |
+| 🟢 P2 | Phase 10 打磨 | ~~完整Demo~~ ✅ / 部署文档 + 性能优化 |
 | ✅ 已完成 | TD-17 租户隔离 $extends 重构 | Prisma 自动注入 tenantId + ALS 上下文 + BullMQ worker 修复（2026-08-23） |
 | 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
 | 🟢 P2 | 覆盖率提升至 60% | 当前基线 39% → 目标 60%（补充 controller / node-executor 测试） |
@@ -289,7 +290,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 10.1 | 数据导入导出(CSV/Excel) | ✅ 完成（2026-08-23 — CSV 导入导出 + 模板下载 + csv-parse/csv-stringify + multer 文件上传 + 10 单元测试） |
 | 10.2 | 记录批量操作 | ✅ 完成（2026-08-23 — batchCreate/batchUpdate/batchDelete + 前端行选择 + 批量操作浮动条） |
 | 10.3 | 安全中间件（helmet + throttler + pino） | ✅ 完成（2026-08-23） |
-| 10.4 | 完整demo(资产管理系统，含对象/页面/流程/权限/仪表盘) | ⬜ 待开始 |
+| 10.4 | 完整demo(资产管理系统，含对象/页面/流程/权限/仪表盘) | ✅ 完成（2026-08-23 — 3 业务对象 + 7 页面 + 1 审批流程 + 24 示例记录 + 仪表盘 + 应用发布 + 12 E2E 测试） |
 | 10.5 | 部署文档 + 性能优化 | ⬜ 待开始 |
 
 **验收标准**：从零搭建含对象/页面/审批流程/权限/仪表盘的完整应用。
@@ -315,3 +316,5 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-23：**安全中间件 + 审计日志查询完成**——Phase 10.3 安全中间件（helmet HTTP 安全头 + @nestjs/throttler 限流 default 100/min auth 10/min + nestjs-pino 结构化 JSON 日志）。TD-6 审计日志查询完整修复（AuditLogService.query 分页+筛选 + AuditLogController GET /api/v1/audit-logs + AuditLogs 前端页面 Table+筛选+详情展开 + 路由 /platform/audit-logs + 导航入口）。整体完成度 ~91%→~92%。
 - 2026-08-23：**项目评审修复**——DTO 规范化（18 class-based DTO + class-validator，14 Controller 改造，ValidationPipe + Swagger 生效）+ 4 模块测试补齐（auth/notification/page/tenant，16 spec / 310 后端 + 86 前端 = 396 测试）+ component-renderer.tsx 拆分（1029→208+302+143+96+293+126 行，6 文件无循环依赖）+ Phase 5-8 PRD/DESIGN 闸门文档（7 个回溯编写）+ Prisma 规范修复（NotificationTemplate 补 Tenant 关系 + 3 个 JSON 字段补 @default + chart-data.service 签名修正）。整体完成度维持 ~92%。
 - 2026-08-23：**TD-17 租户隔离 $extends 重构完成**——Prisma `$extends` 查询扩展自动注入 tenantId（11 操作类型 × 24 模型白名单，基于 AsyncLocalStorage 上下文）+ HTTP 拦截器从 `req.user.tenantId` 设置 ALS + BullMQ worker 上下文修复（process-queue/delay-queue 从实例恢复 tenantId，dataset-queue 从 job.data 获取，webhook 从 connector.tenantId 恢复，seed 用 runAsSystem 包裹）+ DatasetRow 添加 `@@index([tenantId])` 迁移 + 42 单元测试（ALS 上下文 18 + 注入逻辑 24）。预存跨租户泄露 bug（auto-number.ts 跨租户扫描）自动修复。三层防御体系：Layer 1 手动 tenantId（保留）+ Layer 2 $extends 自动注入（新增）+ Layer 3 PostgreSQL RLS（未来）。整体完成度 ~95%→~96%。
+- 2026-08-23：**Phase 10.4 完整 Demo 应用完成**——资产管理系统种子数据（3 业务对象 asset/borrow_request/asset_category + 9+5+3 字段 + 7 页面 list/detail/form/dashboard + 1 审批流程 start→user_task→condition→object_operation→notification→end + 24 示例记录 + 仪表盘含指标卡+3图表 + 应用发布 publishedSnapshot）+ 12 E2E 验收测试（API 验证 + Studio UI 验证）。种子脚本 `packages/db/seed-demo.ts` 幂等可重跑。
+- 2026-08-23：**全面代码审查 + 整改（R1 安全 / R2 缺陷 / R3 对齐校准）**——三路深度审查发现 8 个 HIGH 缺陷并全部修复：S1 ABAC 行级条件注入单记录写操作、S2 凭证/云函数 CONNECTOR 权限授权、S3 delegateTask 成员校验、B1 流程引擎实例级串行锁、B2 审批原子认领（幂等）、B3 循环预算 1000 次、B4 WAITING 令牌跳过、F1 PageLoadEffect 死循环、F2 节点级错误边界、F3 DOMPurify XSS 消毒。R2 修复：异常过滤器顺序（P2002→409）、auto-number 原子计数器表（消除全表扫描+竞态）、object_operation merge 更新、边级条件 JsonLogic 求值、4 项性能索引迁移、env 限制接线、datetime→date_time 系统字段修正、动作链 vm getter、call_api token+状态检查、undo 栈上限 50、TaskCenter 缓存键统一+拒绝二次确认。**飞书对齐度校准：~97%（虚高）→ ~68%（按 A-K 功能清单逐项核对）**，工程完成度 ~90%，两维度分离。详见 `docs/knowledge-base/CODE-REVIEW-2026-08-23.md`。

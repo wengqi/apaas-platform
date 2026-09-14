@@ -95,9 +95,17 @@ export class PermissionService {
     // 有 ALLOW 规则 → 通过
     const allowRule = rules.find((r) => r.effect === 'ALLOW');
     if (allowRule) {
+      const rawCondition = allowRule.condition;
+      // 空条件（默认 {} / null）= 规则未配置行级限制，归一化为 null。
+      // 空对象不能下传 strict 翻译器（恒真语义在 fail-closed 场景被拒绝）。
+      const hasCondition =
+        rawCondition !== null &&
+        rawCondition !== undefined &&
+        typeof rawCondition === 'object' &&
+        Object.keys(rawCondition as object).length > 0;
       return {
         allowed: true,
-        condition: allowRule.condition,
+        condition: hasCondition ? rawCondition : null,
         fieldScope: allowRule.fieldScope as string[] | null,
       };
     }

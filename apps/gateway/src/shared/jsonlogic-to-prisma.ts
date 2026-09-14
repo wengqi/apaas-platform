@@ -18,30 +18,70 @@ import { Prisma } from '@apaas/db';
 /** 动态变量映射（如 { currentUser: 'user_xxx' }）。 */
 export type VariableMap = Record<string, string>;
 
+/** 翻译选项。 */
+export interface TranslateOptions {
+  /**
+   * 严格模式（fail-closed）：任何无法翻译的节点抛出 UntranslatableConditionError，
+   * 而非静默返回 null（= 无条件放行全部行）。
+   * 权限条件（ABAC）必须开启 — 静默放行会将"仅本人记录"类规则放大为全表访问。
+   */
+  strict?: boolean;
+}
+
+/** 权限条件包含无法翻译的操作符（strict 模式抛出）。 */
+export class UntranslatableConditionError extends Error {
+  constructor(detail: string) {
+    super(`权限条件无法翻译（fail-closed 拒绝执行）: ${detail}`);
+    this.name = 'UntranslatableConditionError';
+  }
+}
+
 /**
  * 将 JsonLogic 规则翻译为 Prisma RecordWhereInput。
  *
  * @param rule JsonLogic JSON 规则
  * @param variables 动态变量映射（如当前用户 ID）
+ * @param options strict=true 时不可翻译节点抛错（权限条件必须开启）
  * @returns Prisma where 片段，null 表示无条件（放行所有行）
  */
 export function jsonLogicToPrismaWhere(
   rule: unknown,
   variables?: VariableMap,
+  options?: TranslateOptions,
 ): Prisma.RecordWhereInput | null {
-  if (!rule || typeof rule !== 'object') return null;
-  const result = translateNode(rule, variables);
-  return result;
+  const strict = options?.strict ?? false;
+  if (rule === null || rule === undefined) return null;
+  if (typeof rule !== 'object') {
+    if (strict) throw new UntranslatableConditionError(`规则不是对象: ${typeof rule}`);
+    return null;
+  }
+  return translateNode(rule, variables, strict);
+}
+
+/**
+ * strict 模式下的失败处理：抛错或返回 null（宽松模式静默忽略）。
+ */
+function untranslatable(detail: string, strict: boolean): null {
+  if (strict) throw new UntranslatableConditionError(detail);
+  return null;
 }
 
 /**
  * 递归翻译 JsonLogic 节点。
  */
-function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhereInput | null {
-  if (!node || typeof node !== 'object') return null;
+function translateNode(
+  node: unknown,
+  variables: VariableMap | undefined,
+  strict: boolean,
+): Prisma.RecordWhereInput | null {
+  if (!node || typeof node !== 'object') {
+    return untranslatable(`节点不是对象: ${typeof node}`, strict);
+  }
 
   const entries = Object.entries(node);
-  if (entries.length === 0) return null;
+  if (entries.length === 0) {
+    return untranslatable('空条件节点 {}（语义为恒真，权限场景禁止）', strict);
+  }
 
   const firstEntry = entries[0];
   if (!firstEntry) return null;
@@ -50,22 +90,27 @@ function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhe
   switch (op) {
     case 'and': {
       const arr = toArray(value);
-      const parts = arr
-        .map((v) => translateNode(v, variables))
-        .filter((p): p is Prisma.RecordWhereInput => p !== null);
-      if (parts.length === 0) return null;
-      if (parts.length === 1) return parts[0] ?? null;
-      return { AND: parts };
+      const parts = arr.map((v) => translateNode(v, variables, strict));
+      if (strict && parts.some((p) => p === null)) {
+        // 丢弃分支会削弱限制（and 中丢失子条件 = 放宽），strict 下禁止
+        return untranslatable(`and 分支中包含不可翻译子条件: ${JSON.stringify(value)}`, strict);
+      }
+      const filtered = parts.filter((p): p is Prisma.RecordWhereInput => p !== null);
+      if (filtered.length === 0) return null;
+      if (filtered.length === 1) return filtered[0] ?? null;
+      return { AND: filtered };
     }
 
     case 'or': {
       const arr = toArray(value);
-      const parts = arr
-        .map((v) => translateNode(v, variables))
-        .filter((p): p is Prisma.RecordWhereInput => p !== null);
-      if (parts.length === 0) return null;
-      if (parts.length === 1) return parts[0] ?? null;
-      return { OR: parts };
+      const parts = arr.map((v) => translateNode(v, variables, strict));
+      if (strict && parts.some((p) => p === null)) {
+        return untranslatable(`or 分支中包含不可翻译子条件: ${JSON.stringify(value)}`, strict);
+      }
+      const filtered = parts.filter((p): p is Prisma.RecordWhereInput => p !== null);
+      if (filtered.length === 0) return null;
+      if (filtered.length === 1) return filtered[0] ?? null;
+      return { OR: filtered };
     }
 
     case '!': {
@@ -76,11 +121,13 @@ function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhe
         if (innerEntries.length === 1 && innerEntries[0]?.[0] === 'var') {
           return isEmptyCheck(innerEntries[0][1]);
         }
-        const inner = translateNode(value, variables);
-        if (!inner) return null;
+        const inner = translateNode(value, variables, strict);
+        if (!inner) {
+          return untranslatable(`! 操作数不可翻译: ${JSON.stringify(value)}`, strict);
+        }
         return { NOT: inner };
       }
-      return null;
+      return untranslatable(`! 操作数非法: ${JSON.stringify(value)}`, strict);
     }
 
     case '!!': {
@@ -91,7 +138,7 @@ function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhe
           return isNotEmptyCheck(innerEntries[0][1]);
         }
       }
-      return null;
+      return untranslatable(`!! 操作数非法: ${JSON.stringify(value)}`, strict);
     }
 
     case '>':
@@ -100,16 +147,16 @@ function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhe
     case '<=':
     case '==':
     case '!=':
-      return translateComparison(op, value, variables);
+      return translateComparison(op, value, variables, strict);
 
     case 'in':
-      return translateIn(value, variables);
+      return translateIn(value, variables, strict);
 
     case 'relative_date':
-      return translateRelativeDate(value, variables);
+      return translateRelativeDate(value, variables, strict);
 
     default:
-      return null;
+      return untranslatable(`不支持的操作符 "${op}"`, strict);
   }
 }
 
@@ -123,16 +170,21 @@ function translateNode(node: unknown, variables?: VariableMap): Prisma.RecordWhe
 function translateComparison(
   op: string,
   value: unknown,
-  variables?: VariableMap,
+  variables: VariableMap | undefined,
+  strict: boolean,
 ): Prisma.RecordWhereInput | null {
   const args = toArray(value);
-  if (args.length < 2) return null;
+  if (args.length < 2) {
+    return untranslatable(`${op} 操作数数量不足`, strict);
+  }
 
   const fieldArg = args[0];
   const valArg = args[1];
 
   const fieldName = extractVarName(fieldArg);
-  if (!fieldName) return null;
+  if (!fieldName) {
+    return untranslatable(`${op} 左侧不是字段引用: ${JSON.stringify(fieldArg)}`, strict);
+  }
 
   const resolvedValue = resolveValue(valArg, variables);
   const path = [fieldName];
@@ -174,9 +226,13 @@ function translateComparison(
  * - {"in": ["needle", {"var":"field"}]}  → 字符串包含（string_contains）
  * - {"in": [{"var":"field"}, [v1,v2]]}   → 属于集合（IN）
  */
-function translateIn(value: unknown, variables?: VariableMap): Prisma.RecordWhereInput | null {
+function translateIn(
+  value: unknown,
+  variables: VariableMap | undefined,
+  strict: boolean,
+): Prisma.RecordWhereInput | null {
   const args = toArray(value);
-  if (args.length < 2) return null;
+  if (args.length < 2) return untranslatable('in 操作数数量不足', strict);
 
   const first = args[0];
   const second = args[1];
@@ -221,20 +277,23 @@ function translateIn(value: unknown, variables?: VariableMap): Prisma.RecordWher
  */
 function translateRelativeDate(
   value: unknown,
-  _variables?: VariableMap,
+  _variables: VariableMap | undefined,
+  strict: boolean,
 ): Prisma.RecordWhereInput | null {
   const args = toArray(value);
-  if (args.length < 2) return null;
+  if (args.length < 2) return untranslatable('relative_date 操作数数量不足', strict);
 
   const fieldArg = args[0];
   const presetArg = args[1];
 
   const fieldName = extractVarName(fieldArg);
-  if (!fieldName) return null;
+  if (!fieldName) {
+    return untranslatable('relative_date 左侧不是字段引用', strict);
+  }
 
   const preset = typeof presetArg === 'string' ? presetArg : '';
   const range = computePrismaDateRange(preset);
-  if (!range) return null;
+  if (!range) return untranslatable(`未知日期预设: ${preset}`, strict);
 
   const [start, end] = range;
   const path = [fieldName];

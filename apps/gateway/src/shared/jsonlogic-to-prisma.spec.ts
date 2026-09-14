@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { jsonLogicToPrismaWhere, type VariableMap } from './jsonlogic-to-prisma.js';
+import {
+  jsonLogicToPrismaWhere,
+  UntranslatableConditionError,
+  type VariableMap,
+} from './jsonlogic-to-prisma.js';
 import { Prisma } from '@apaas/db';
 
 describe('jsonlogic-to-prisma', () => {
@@ -366,5 +370,62 @@ describe('jsonlogic-to-prisma', () => {
         jsonLogicToPrismaWhere({ relative_date: [{ var: 'createdAt' }] }, variables),
       ).toBeNull();
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // strict 模式（fail-closed — 权限条件专用，B5 修复）
+  // -------------------------------------------------------------------------
+
+  it('strict: 不支持的操作符抛出 UntranslatableConditionError', () => {
+    expect(() =>
+      jsonLogicToPrismaWhere({ startsWith: [{ var: 'name' }, 'A'] }, variables, { strict: true }),
+    ).toThrow(UntranslatableConditionError);
+  });
+
+  it('strict: and 分支含不可翻译子条件时抛错（防止丢弃分支削弱限制）', () => {
+    expect(() =>
+      jsonLogicToPrismaWhere(
+        {
+          and: [
+            { '==': [{ var: 'owner' }, { var: '__currentUser' }] },
+            { unsupported_op: [{ var: 'x' }, 1] },
+          ],
+        },
+        variables,
+        { strict: true },
+      ),
+    ).toThrow(UntranslatableConditionError);
+  });
+
+  it('strict: 规则不是对象时抛错', () => {
+    expect(() =>
+      jsonLogicToPrismaWhere('not an object' as unknown, variables, { strict: true }),
+    ).toThrow(UntranslatableConditionError);
+  });
+
+  it('strict: 空对象条件抛错（恒真语义在权限场景禁止）', () => {
+    expect(() => jsonLogicToPrismaWhere({}, variables, { strict: true })).toThrow(
+      UntranslatableConditionError,
+    );
+  });
+
+  it('strict: null/undefined 规则仍返回 null（表示无限制的规则配置）', () => {
+    expect(jsonLogicToPrismaWhere(null, variables, { strict: true })).toBeNull();
+    expect(jsonLogicToPrismaWhere(undefined, variables, { strict: true })).toBeNull();
+  });
+
+  it('strict: 合法条件正常翻译不抛错', () => {
+    const where = jsonLogicToPrismaWhere(
+      { '==': [{ var: 'owner' }, { var: '__currentUser' }] },
+      variables,
+      { strict: true },
+    );
+    expect(where).toEqual({
+      data: { path: ['owner'], equals: 'user_123' },
+    });
+  });
+
+  it('宽松模式（默认）行为不变：不支持的操作符返回 null', () => {
+    expect(jsonLogicToPrismaWhere({ startsWith: [{ var: 'name' }, 'A'] }, variables)).toBeNull();
   });
 });

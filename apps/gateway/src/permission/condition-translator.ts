@@ -18,10 +18,13 @@ export type { VariableMap };
  * @param condition JsonLogic JSON 规则
  * @param variables 动态变量映射（如 { currentUser: 'user_xxx' }）
  * @returns Prisma where 片段，null 表示无条件（放行所有行）
+ * @throws UntranslatableConditionError 条件包含无法翻译的操作符时抛出
+ *   （fail-closed：静默放行会将"仅本人记录"类规则放大为全表访问）
  */
 export function translateCondition(
   condition: unknown,
   variables: VariableMap,
 ): Prisma.RecordWhereInput | null {
-  return jsonLogicToPrismaWhere(condition, variables);
+  // 权限场景强制 strict — 不可翻译即拒绝，绝不退化为无条件放行
+  return jsonLogicToPrismaWhere(condition, variables, { strict: true });
 }

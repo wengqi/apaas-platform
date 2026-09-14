@@ -16,7 +16,11 @@ const { Text } = Typography;
 
 export default function PageView() {
   const { appId, slug } = useParams<{ appId: string; slug: string }>();
-  const { data: page, isLoading, error } = useQuery({
+  const {
+    data: page,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['page', appId, slug],
     queryFn: () => pagesApi.getBySlug(appId!, slug!),
     enabled: !!appId && !!slug,
@@ -50,10 +54,9 @@ export default function PageView() {
   }
 
   return (
-    <RuntimeStoreProvider
-      viewModel={schema.viewModel}
-      objectId={page.objectId}
-    >
+    // key=page.id：页面间导航时强制重挂载，清空上一页的 vm/变量状态，
+    // 并让 autoQuery 与 PageLoadEffect(onLoad) 在新页面重新触发
+    <RuntimeStoreProvider key={page.id} viewModel={schema.viewModel} objectId={page.objectId}>
       <ComponentRenderer node={schema.root} root={schema.root} isRoot />
     </RuntimeStoreProvider>
   );

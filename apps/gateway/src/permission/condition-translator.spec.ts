@@ -1,19 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { translateCondition, type VariableMap } from './condition-translator.js';
+import { UntranslatableConditionError } from '../shared/jsonlogic-to-prisma.js';
 import { Prisma } from '@apaas/db';
 
 describe('condition-translator', () => {
   const variables: VariableMap = { currentUser: 'user_123' };
 
   describe('translateCondition — 基础', () => {
-    it('空条件返回 null（放行所有行）', () => {
+    it('null/undefined 条件返回 null（规则未配置行级限制）', () => {
       expect(translateCondition(null, variables)).toBeNull();
       expect(translateCondition(undefined, variables)).toBeNull();
-      expect(translateCondition('not-an-object', variables)).toBeNull();
     });
 
-    it('空对象返回 null', () => {
-      expect(translateCondition({}, variables)).toBeNull();
+    it('fail-closed: 非对象与空对象条件抛错（B5 修复 — 不再静默放行全表）', () => {
+      expect(() => translateCondition('not-an-object', variables)).toThrow(
+        UntranslatableConditionError,
+      );
+      // 空对象（恒真语义）在权限场景被拒绝 — 由 permission.service 归一化为 null
+      expect(() => translateCondition({}, variables)).toThrow(UntranslatableConditionError);
     });
   });
 

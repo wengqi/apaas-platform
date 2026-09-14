@@ -10,7 +10,6 @@ import {
   UseGuards,
   Req,
   Res,
-  ValidationPipe,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -88,11 +87,16 @@ export class RecordController {
 
   @Post('objects/:objectId/records')
   @RequirePermission('RECORD', 'CREATE', 'objectId')
+  @ApiBody({
+    description: '记录字段键值对（动态 JSONB 结构，key 为字段 apiName）',
+    type: RecordCreateDto,
+  })
   async create(
     @Req() req: AuthenticatedRequest,
     @Param('objectId') objectId: string,
-    @Body(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }))
-    body: RecordCreateDto,
+    // 动态字段结构：参数类型为 Record（Object metatype），全局 ValidationPipe 跳过校验，
+    // 避免 whitelist 拒绝动态字段（记录字段值由 RecordService 依据 ObjectMeta 处理）
+    @Body() body: Record<string, unknown>,
   ) {
     const record = await this.recordService.create(
       requireTenantId(req),
@@ -105,17 +109,21 @@ export class RecordController {
 
   @Put('records/:recordId')
   @RequirePermission('RECORD', 'EDIT')
+  @ApiBody({
+    description: '更新的字段键值对（动态 JSONB 结构，key 为字段 apiName）',
+    type: RecordUpdateDto,
+  })
   async update(
     @Req() req: AuthenticatedRequest,
     @Param('recordId') recordId: string,
-    @Body(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }))
-    body: RecordUpdateDto,
+    @Body() body: Record<string, unknown>,
   ) {
     const record = await this.recordService.update(
       requireTenantId(req),
       recordId,
       req.user.id,
       body ?? {},
+      req.permissionContext,
     );
     return { ok: true as const, data: record };
   }
@@ -123,7 +131,7 @@ export class RecordController {
   @Delete('records/:recordId')
   @RequirePermission('RECORD', 'DELETE')
   async delete(@Req() req: AuthenticatedRequest, @Param('recordId') recordId: string) {
-    await this.recordService.delete(requireTenantId(req), recordId);
+    await this.recordService.delete(requireTenantId(req), recordId, req.permissionContext);
     return { ok: true as const, data: { deleted: true } };
   }
 
@@ -157,6 +165,7 @@ export class RecordController {
       body.recordIds,
       req.user.id,
       body.data,
+      req.permissionContext,
     );
     return { ok: true as const, data: result };
   }
@@ -165,7 +174,11 @@ export class RecordController {
   @RequirePermission('RECORD', 'DELETE')
   @ApiOperation({ summary: '批量删除记录' })
   async batchDelete(@Req() req: AuthenticatedRequest, @Body() body: BatchDeleteDto) {
-    const result = await this.recordService.batchDelete(requireTenantId(req), body.recordIds);
+    const result = await this.recordService.batchDelete(
+      requireTenantId(req),
+      body.recordIds,
+      req.permissionContext,
+    );
     return { ok: true as const, data: result };
   }
 

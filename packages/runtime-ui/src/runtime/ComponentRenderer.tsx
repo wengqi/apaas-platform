@@ -14,6 +14,7 @@
 
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { Statistic, Typography } from 'antd';
 import ReactECharts from 'echarts-for-react';
 import type { ComponentNode } from '../api/pages.js';
@@ -264,40 +265,43 @@ export default function ComponentRenderer({ node, root, isRoot: _isRoot }: Compo
   const queryData = useRuntimeCtx((s) => s.queryData);
   const executeAction = useRuntimeCtx((s) => s.executeAction);
 
-  const runtime: RuntimeState & { appId?: string } = {
-    vm,
-    setVariable,
-    executeActions,
-    queryData,
-    executeAction,
-    appId,
-  };
-
-  const ctx: RenderContext = {
-    mode: 'preview',
-    viewModel: { variables: {} },
-    selectedNodeId: null,
-    onSelect: () => {},
-    onAction: (nodeId: string, eventName: string) => {
-      const target = findNodeById(root, nodeId);
-      if (!target) {
-        console.warn(`[onAction] Node ${nodeId} not found in root`);
-        return;
-      }
-      const propValue = target.props[eventName];
-      const actions = extractActions(propValue);
-      if (actions.length > 0) {
-        void executeActions(actions);
-      } else {
-        console.warn(
-          `[onAction] No actions found for event ${eventName} on node ${nodeId}`,
-          propValue,
-        );
-      }
-    },
-    runtime,
-    vm,
-  };
+  // ctx 稳定化：zustand 动作引用稳定，vm 是渲染所需的唯一易变输入。
+  // useMemo 避免每次渲染创建新 ctx 对象（配合节点级 memo 降低全树重渲染）。
+  const ctx = useMemo<RenderContext>(() => {
+    const runtime: RuntimeState & { appId?: string } = {
+      vm,
+      setVariable,
+      executeActions,
+      queryData,
+      executeAction,
+      appId,
+    };
+    return {
+      mode: 'preview',
+      viewModel: { variables: {} },
+      selectedNodeId: null,
+      onSelect: () => {},
+      onAction: (nodeId: string, eventName: string) => {
+        const target = findNodeById(root, nodeId);
+        if (!target) {
+          console.warn(`[onAction] Node ${nodeId} not found in root`);
+          return;
+        }
+        const propValue = target.props[eventName];
+        const actions = extractActions(propValue);
+        if (actions.length > 0) {
+          void executeActions(actions);
+        } else {
+          console.warn(
+            `[onAction] No actions found for event ${eventName} on node ${nodeId}`,
+            propValue,
+          );
+        }
+      },
+      runtime,
+      vm,
+    };
+  }, [vm, appId, root, setVariable, executeActions, queryData, executeAction]);
 
   return <SharedRenderer node={node} ctx={ctx} />;
 }

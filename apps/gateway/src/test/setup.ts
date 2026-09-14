@@ -30,15 +30,34 @@ const transactionFn = vi.fn((arg: unknown) => {
 });
 
 /**
+ * 为 Prisma 查询类方法设置类型正确的默认返回值。
+ * 在 delegate 创建时和每次 mockReset 后调用（mockReset 会清除实现）。
+ */
+function applyDefaultImplementation(method: string, fn: ReturnType<typeof vi.fn>): void {
+  if (method === 'findMany' || method === 'groupBy') {
+    fn.mockResolvedValue([]);
+  } else if (method === 'findFirst' || method === 'findUnique') {
+    fn.mockResolvedValue(null);
+  } else if (method === 'count' || method === 'aggregate') {
+    fn.mockResolvedValue(0);
+  } else if (method === 'updateMany' || method === 'deleteMany' || method === 'createMany') {
+    fn.mockResolvedValue({ count: 1 });
+  }
+}
+
+/**
  * 为单个 Prisma model delegate 创建 Proxy。
  * 首次访问某方法时创建 vi.fn()，后续访问返回同一实例。
+ * 查询类方法设置类型正确的默认返回值（测试可覆盖）。
  */
 function createDelegate(model: string): Record<string, ReturnType<typeof vi.fn>> {
   return new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
     get(_target, method: string) {
       const key = `${model}.${method}`;
       if (!allFns.has(key)) {
-        allFns.set(key, vi.fn());
+        const fn = vi.fn();
+        applyDefaultImplementation(method, fn);
+        allFns.set(key, fn);
       }
       return allFns.get(key)!;
     },
@@ -87,9 +106,10 @@ vi.mock('@apaas/db', () => ({
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  // 重置所有 model delegate 的 vi.fn 调用记录和返回值
-  for (const fn of allFns.values()) {
+  // 重置所有 model delegate 的 vi.fn 调用记录和返回值，并重新应用默认实现
+  for (const [key, fn] of allFns.entries()) {
     fn.mockReset();
+    applyDefaultImplementation(key.split('.')[1] ?? '', fn);
   }
   // 重置 $transaction（支持数组形式和回调形式）
   transactionFn.mockReset();

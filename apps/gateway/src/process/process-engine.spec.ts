@@ -301,6 +301,83 @@ describe('ProcessEngine', () => {
       );
       expect(removeCall).toBeDefined();
     });
+
+    it('B3 循环预算：历史节点执行次数超上限时实例置 FAILED', async () => {
+      const schema = makeSimpleSchema();
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      // 模拟历史已执行 1001 次（超过 MAX_NODE_EXECUTIONS=1000）
+      prisma.nodeExecution.count.mockResolvedValue(1001);
+
+      const { engine } = createEngine();
+
+      await engine.executeNextNode('pi-001');
+
+      // 实例应被标记 FAILED 且携带循环检测错误信息
+      const failedUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(failedUpdate).toBeDefined();
+      expect(String(failedUpdate![0]!.data.error)).toContain('循环执行');
+    });
+
+    it('B4 WAITING 令牌跳过：所有令牌等待时不执行节点', async () => {
+      const schema = makeSimpleSchema();
+      const startExecutor = createMockExecutor('start', async () => ({
+        output: {},
+        completed: true,
+      }));
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      // 该节点的 NodeExecution 处于 WAITING（延时/人工等待中）
+      prisma.nodeExecution.findMany.mockResolvedValue([{ nodeId: 'node-start' }]);
+
+      const { engine } = createEngine([startExecutor]);
+
+      await engine.executeNextNode('pi-001');
+
+      // 不应执行任何节点（避免重复调度延时 job / 重复推进）
+      expect(startExecutor.execute).not.toHaveBeenCalled();
+    });
+
+    it('B4 WAITING 令牌跳过：等待令牌存在时执行第一个非等待令牌', async () => {
+      const schema = makeSimpleSchema();
+      const startExecutor = createMockExecutor('start', async () => ({
+        output: {},
+        completed: true,
+      }));
+      const endExecutor = createMockExecutor('end', async () => ({
+        output: {},
+        completed: true,
+      }));
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-waiting', 'node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      // 只有 node-waiting 处于 WAITING
+      prisma.nodeExecution.findMany.mockResolvedValue([{ nodeId: 'node-waiting' }]);
+      prisma.nodeExecution.create.mockResolvedValue(makeNodeExecution());
+      prisma.processInstance.update.mockImplementation(
+        async (args: { data: Record<string, unknown> }) => ({
+          ...instance,
+          ...args.data,
+        }),
+      );
+
+      const { engine } = createEngine([startExecutor, endExecutor]);
+
+      await engine.executeNextNode('pi-001');
+
+      // start executor 应被执行（跳过 WAITING 的 node-waiting）
+      expect(startExecutor.execute).toHaveBeenCalledTimes(1);
+    });
   });
 
   // =========================================================================
@@ -319,6 +396,8 @@ describe('ProcessEngine', () => {
 
     it('任务已完成时抛出 BadRequestException', async () => {
       prisma.processTask.findFirst.mockResolvedValue(makeProcessTask({ status: 'APPROVED' }));
+      // 原子认领失败（count=0）→ 任务已被处理
+      prisma.processTask.updateMany.mockResolvedValue({ count: 0 });
       const { engine } = createEngine();
 
       await expect(
@@ -339,7 +418,7 @@ describe('ProcessEngine', () => {
         }),
       });
       prisma.processTask.findFirst.mockResolvedValue(task);
-      prisma.processTask.update.mockResolvedValue(task);
+      prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
       prisma.processInstance.update.mockResolvedValue(
         makeProcessInstance({ status: 'RUNNING', activeNodeIds: ['node-end'] }),
       );
@@ -348,11 +427,12 @@ describe('ProcessEngine', () => {
 
       await engine.completeTask('task-001', 'user-001', 'approve', '同意', undefined);
 
-      // 任务状态应为 APPROVED
-      const taskUpdate = prisma.processTask.update.mock.calls[0]![0];
+      // 任务状态应为 APPROVED（原子认领 updateMany）
+      const taskUpdate = prisma.processTask.updateMany.mock.calls[0]![0];
       expect(taskUpdate.data.status).toBe('APPROVED');
       expect(taskUpdate.data.decision).toBe('APPROVE');
       expect(taskUpdate.data.comment).toBe('同意');
+      expect(taskUpdate.where).toEqual({ id: 'task-001', status: 'PENDING' });
       // 实例应恢复为 RUNNING
       const instUpdate = prisma.processInstance.update.mock.calls.find(
         (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'RUNNING',
@@ -382,7 +462,7 @@ describe('ProcessEngine', () => {
         }),
       });
       prisma.processTask.findFirst.mockResolvedValue(task);
-      prisma.processTask.update.mockResolvedValue(task);
+      prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
       prisma.processInstance.update.mockResolvedValue(makeProcessInstance({ status: 'RUNNING' }));
 
       const { engine } = createEngine();
@@ -412,13 +492,13 @@ describe('ProcessEngine', () => {
           }),
         });
         prisma.processTask.findFirst.mockResolvedValue(task);
-        prisma.processTask.update.mockResolvedValue(task);
+        prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
         prisma.processInstance.update.mockResolvedValue(makeProcessInstance());
 
         const { engine } = createEngine();
         await engine.completeTask('task-001', 'user-001', decision, undefined, undefined);
 
-        const taskUpdate = prisma.processTask.update.mock.calls.at(-1)![0];
+        const taskUpdate = prisma.processTask.updateMany.mock.calls.at(-1)![0];
         expect(taskUpdate.data.status).toBe('APPROVED');
       }
     });

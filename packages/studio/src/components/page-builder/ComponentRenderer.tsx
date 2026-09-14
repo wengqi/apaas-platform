@@ -12,7 +12,7 @@
  * ctx.renderDropzone 注入 DroppableArea 以支持编辑模式拖放。
  */
 
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Button, Popconfirm, Typography } from 'antd';
 import { CopyOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useDroppable } from '@dnd-kit/core';
@@ -233,42 +233,56 @@ export default function ComponentRenderer({ node, isRoot }: ComponentRendererPro
   const queryData = useRuntimeCtx((s) => s.queryData);
   const executeAction = useRuntimeCtx((s) => s.executeAction);
 
-  const runtime: RuntimeState = {
+  // ctx 稳定化：避免每次渲染创建新对象（配合 PageLoadEffect 的 ref 防重入，杜绝 onLoad 重跑）。
+  // DroppableArea 是纯展示组件，作为 renderDropzone 引用稳定即可。
+  const ctx = useMemo<RenderContext>(() => {
+    const runtime: RuntimeState = {
+      vm,
+      setVariable,
+      executeActions,
+      queryData,
+      executeAction,
+    };
+    return {
+      mode,
+      viewModel: schema?.viewModel ?? { variables: {} },
+      selectedNodeId,
+      onSelect: (id: string) => selectNode(id),
+      onAction: (nodeId: string, eventName: string) => {
+        if (mode !== 'preview') return;
+        const schemaState = usePageBuilderStore.getState().schema;
+        if (!schemaState) return;
+        const target = findNodeById(schemaState.root, nodeId);
+        if (!target) return;
+        const actions = extractActions(target.props[eventName]);
+        if (actions.length > 0) {
+          void executeActions(actions);
+        }
+      },
+      runtime,
+      vm: mode === 'preview' ? runtime.vm : {},
+      renderDropzone: (parentId, isEmpty, children) => (
+        <DroppableArea parentId={parentId} isEmpty={isEmpty}>
+          {children}
+        </DroppableArea>
+      ),
+      onLayoutChange: (nodeId, layout) => {
+        if (mode !== 'edit') return;
+        updateComponentProps(nodeId, { layout });
+      },
+    };
+  }, [
+    mode,
+    schema,
+    selectedNodeId,
+    selectNode,
+    updateComponentProps,
     vm,
     setVariable,
     executeActions,
     queryData,
     executeAction,
-  };
-
-  const ctx: RenderContext = {
-    mode,
-    viewModel: schema?.viewModel ?? { variables: {} },
-    selectedNodeId,
-    onSelect: (id: string) => selectNode(id),
-    onAction: (nodeId: string, eventName: string) => {
-      if (mode !== 'preview') return;
-      const schemaState = usePageBuilderStore.getState().schema;
-      if (!schemaState) return;
-      const target = findNodeById(schemaState.root, nodeId);
-      if (!target) return;
-      const actions = extractActions(target.props[eventName]);
-      if (actions.length > 0) {
-        void executeActions(actions);
-      }
-    },
-    runtime,
-    vm: mode === 'preview' ? runtime.vm : {},
-    renderDropzone: (parentId, isEmpty, children) => (
-      <DroppableArea parentId={parentId} isEmpty={isEmpty}>
-        {children}
-      </DroppableArea>
-    ),
-    onLayoutChange: (nodeId, layout) => {
-      if (mode !== 'edit') return;
-      updateComponentProps(nodeId, { layout });
-    },
-  };
+  ]);
 
   return <SharedRenderer node={node} ctx={ctx} isRoot={isRoot} />;
 }

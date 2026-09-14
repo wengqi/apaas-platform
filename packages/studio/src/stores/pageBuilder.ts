@@ -25,6 +25,14 @@ function cloneSchema(schema: PageSchema): PageSchema {
   return structuredClone(schema);
 }
 
+/** 历史栈上限 — 防止长编辑会话内存无限增长（与 processEditor 一致）。 */
+const MAX_HISTORY = 50;
+
+/** 推入历史栈（带上限截断）。 */
+function pushHistory(past: PageSchema[], schema: PageSchema): PageSchema[] {
+  return [...past, cloneSchema(schema)].slice(-MAX_HISTORY);
+}
+
 /** 创建一个新的组件节点(根据类型元数据填充默认值)。 */
 function createComponentNode(type: ComponentType): ComponentNode {
   const meta = COMPONENT_META[type];
@@ -236,7 +244,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     const state = get();
     if (!state.schema) return null;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     const parent = findNode(schema.root, parentId);
     if (!parent) return null;
@@ -264,7 +272,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     // 防止将节点移动到自身或其后代中
     if (id === newParentId || isAncestorOf(state.schema.root, id, newParentId)) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
 
     const oldParent = findParent(schema.root, id);
@@ -314,7 +322,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     // 根节点不可删除
     if (state.schema.root.id === id) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     const parent = findParent(schema.root, id);
     if (!parent || !parent.children) {
@@ -339,7 +347,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     // 根节点不可复制
     if (state.schema.root.id === id) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     const parent = findParent(schema.root, id);
     if (!parent || !parent.children) {
@@ -369,7 +377,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     const state = get();
     if (!state.schema) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     const node = findNode(schema.root, id);
     if (!node) {
@@ -385,7 +393,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     const state = get();
     if (!state.schema) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     const node = findNode(schema.root, id);
     if (!node) {
@@ -405,7 +413,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     if (!state.schema) return;
     if (key in state.schema.viewModel.variables) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     schema.viewModel.variables[key] = def;
     set({ schema, past, future: [] });
@@ -416,7 +424,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     if (!state.schema) return;
     if (!(key in state.schema.viewModel.variables)) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     delete schema.viewModel.variables[key];
     set({ schema, past, future: [] });
@@ -427,7 +435,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     if (!state.schema) return;
     if (!(oldKey in state.schema.viewModel.variables)) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     const variables = schema.viewModel.variables;
     // 重命名:删除旧 key,写入新 key
@@ -440,7 +448,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     const state = get();
     if (!state.schema) return;
 
-    const past = [...state.past, cloneSchema(state.schema)];
+    const past = pushHistory(state.past, state.schema);
     const schema = cloneSchema(state.schema);
     updater(schema.viewModel);
     set({ schema, past, future: [] });
@@ -482,7 +490,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     if (!next) return;
 
     const newFuture = state.future.slice(1);
-    const newPast = [...state.past, cloneSchema(state.schema)];
+    const newPast = pushHistory(state.past, state.schema);
 
     set({
       schema: next,

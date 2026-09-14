@@ -273,7 +273,11 @@ describe('RecordService', () => {
       const { service, autoNumberGenerator } = createService();
       await service.create('tenant-001', 'obj-001', 'user-001', { name: 'Test' });
 
-      expect(autoNumberGenerator.generate).toHaveBeenCalledWith('ORD-{seq:0000}', 'obj-001');
+      expect(autoNumberGenerator.generate).toHaveBeenCalledWith(
+        'ORD-{seq:0000}',
+        'obj-001',
+        'tenant-001',
+      );
     });
 
     it('Formula 字段自动计算', async () => {
@@ -414,6 +418,105 @@ describe('RecordService', () => {
 
       expect(formulaEngine.computeRecordFields).toHaveBeenCalled();
       expect(result.data.total).toBe(500);
+    });
+
+    it('S1: update 注入行级权限条件到 findFirst where', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: 'Old' }, object: { fields: [] } }),
+      );
+      prisma.record.update.mockResolvedValue(makeRecord({ data: { name: 'New' } }));
+
+      const { service } = createService();
+      const permissionContext = {
+        condition: { '==': [{ var: 'created_by' }, { currentUser: true }] },
+        fieldScope: null,
+        currentUserId: 'user-001',
+      };
+      await service.update('tenant-001', 'rec-001', 'user-001', { name: 'New' }, permissionContext);
+
+      // findFirst 的 where 应包含 AND（行级条件注入）
+      const findCall = prisma.record.findFirst.mock.calls[0]![0];
+      expect(findCall.where.AND).toBeDefined();
+      expect(Array.isArray(findCall.where.AND)).toBe(true);
+    });
+
+    it('S1: update 时 fieldScope 白名单过滤写入字段', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: 'Old', status: 'active' }, object: { fields: [] } }),
+      );
+      prisma.record.update.mockResolvedValue(
+        makeRecord({ data: { name: 'New', status: 'active' } }),
+      );
+
+      const { service } = createService();
+      const permissionContext = {
+        condition: null,
+        fieldScope: ['name'], // 仅允许写 name 字段
+        currentUserId: 'user-001',
+      };
+      await service.update(
+        'tenant-001',
+        'rec-001',
+        'user-001',
+        { name: 'New', status: 'hacked' },
+        permissionContext,
+      );
+
+      // status 不在 fieldScope 内，不应被写入
+      const updateCall = prisma.record.update.mock.calls[0]![0];
+      const writtenData = updateCall.data.data as Record<string, unknown>;
+      expect(writtenData.name).toBe('New');
+      expect(writtenData.status).toBe('active');
+    });
+  });
+
+  // =========================================================================
+  // S1 行级权限 — get / delete 条件注入
+  // =========================================================================
+
+  describe('S1 行级权限注入', () => {
+    const permissionContext = {
+      condition: { '==': [{ var: 'created_by' }, { currentUser: true }] },
+      fieldScope: null,
+      currentUserId: 'user-001',
+    };
+
+    it('get 注入行级条件到 findFirst where', async () => {
+      prisma.record.findFirst.mockResolvedValue(makeRecord({ data: { name: 'A' } }));
+
+      const { service } = createService();
+      await service.get('tenant-001', 'rec-001', permissionContext);
+
+      const findCall = prisma.record.findFirst.mock.calls[0]![0];
+      expect(findCall.where.id).toBe('rec-001');
+      expect(findCall.where.AND).toBeDefined();
+    });
+
+    it('delete 注入行级条件到 findFirst where', async () => {
+      prisma.record.findFirst.mockResolvedValue(makeRecord({ data: { name: 'A' } }));
+      prisma.record.deleteMany.mockResolvedValue({ count: 1 });
+
+      const { service } = createService();
+      await service.delete('tenant-001', 'rec-001', permissionContext);
+
+      const findCall = prisma.record.findFirst.mock.calls[0]![0];
+      expect(findCall.where.AND).toBeDefined();
+    });
+
+    it('batchDelete 仅删除通过条件校验的记录', async () => {
+      prisma.record.findMany.mockResolvedValue([makeRecord({ id: 'rec-001', data: {} })]);
+      prisma.record.deleteMany.mockResolvedValue({ count: 1 });
+
+      const { service, triggerService } = createService();
+      await service.batchDelete('tenant-001', ['rec-001', 'rec-002'], permissionContext);
+
+      // deleteMany 仅收到通过校验的 rec-001（rec-002 条件外被忽略）
+      const deleteCall = prisma.record.deleteMany.mock.calls[0]![0];
+      expect(deleteCall.where.id).toEqual({ in: ['rec-001'] });
+      // findMany 的 where 应包含行级条件
+      const findCall = prisma.record.findMany.mock.calls[0]![0];
+      expect(findCall.where.AND).toBeDefined();
+      expect(triggerService.onRecordEvent).toHaveBeenCalledTimes(1);
     });
   });
 

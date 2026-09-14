@@ -70,9 +70,20 @@ export class ObjectOperationExecutor implements NodeExecutor {
     const updateData: Record<string, unknown> = { ...ctx.inputs };
     delete updateData['recordId'];
 
+    // 与 RecordService.update 一致：先读现有 data 再 merge（部分更新），
+    // 避免 process 节点把未在 inputs 中的字段整体清空
+    const existing = await prisma.record.findFirst({
+      where: { id: recordId, tenantId: ctx.tenantId, objectId },
+      select: { data: true },
+    });
+    const mergedData: Record<string, unknown> = {
+      ...((existing?.data as Record<string, unknown>) ?? {}),
+      ...updateData,
+    };
+
     const result = await prisma.record.updateMany({
       where: { id: recordId, tenantId: ctx.tenantId, objectId },
-      data: { data: updateData as Prisma.InputJsonValue },
+      data: { data: mergedData as Prisma.InputJsonValue },
     });
     return { output: { affectedCount: result.count, recordId } };
   }

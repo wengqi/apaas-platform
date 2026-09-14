@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from 'react';
+import DOMPurify from 'dompurify';
 import { Button, Divider, Statistic, Typography } from 'antd';
 import ReactECharts from 'echarts-for-react';
 import type { ComponentNode } from './types.js';
@@ -115,7 +116,10 @@ export function renderChart(node: ComponentNode, ctx: RenderContext): ReactNode 
 export function renderRichTextDisplay(node: ComponentNode, ctx: RenderContext): ReactNode {
   const content = getPropAsString(node, 'content', ctx);
   if (content) {
-    return <div style={{ padding: 8 }} dangerouslySetInnerHTML={{ __html: content }} />;
+    // XSS 防护：Schema 内容（富文本 HTML）来自用户编写/外部导入，
+    // 渲染前必须消毒，移除 script/事件处理器/javascript: URL 等注入向量
+    const clean = DOMPurify.sanitize(content);
+    return <div style={{ padding: 8 }} dangerouslySetInnerHTML={{ __html: clean }} />;
   }
   return (
     <div

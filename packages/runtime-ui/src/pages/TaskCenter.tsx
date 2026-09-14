@@ -60,8 +60,10 @@ export default function TaskCenter() {
   });
 
   // 任务详情（审批时加载完整信息含流程变量）
+  // 注意 queryKey 必须与失效键一致：invalidateQueries(['tasks']) 会前缀匹配 ['tasks', ...]，
+  // 旧实现用 ['task', id]（单数）导致详情缓存永不失效（审批后重开显示旧状态）
   const { data: taskDetail, isLoading: detailLoading } = useQuery({
-    queryKey: ['task', selectedTask?.id],
+    queryKey: ['tasks', 'detail', selectedTask?.id],
     queryFn: () => tasksApi.get(selectedTask!.id),
     enabled: !!selectedTask?.id,
   });
@@ -266,7 +268,17 @@ export default function TaskCenter() {
                 danger
                 icon={<CloseOutlined />}
                 loading={completeMutation.isPending}
-                onClick={() => handleComplete('REJECTED')}
+                onClick={() => {
+                  // 拒绝不可逆 — 二次确认防误触
+                  Modal.confirm({
+                    title: '确认拒绝该申请？',
+                    content: '拒绝后流程将按驳回路径继续，此操作不可撤销。',
+                    okText: '确认拒绝',
+                    okType: 'danger',
+                    cancelText: '取消',
+                    onOk: () => handleComplete('REJECTED'),
+                  });
+                }}
               >
                 拒绝
               </Button>

@@ -48,7 +48,11 @@ export function createApiClient(token: string) {
   };
 }
 
-/** 通过 API 登录获取 JWT token。 */
+/** 通过 API 登录获取 JWT token。
+ *
+ * 2026-09-13 修复：admin@apaas.dev 是 demo 租户的租户管理员（非平台超管），
+ * 旧实现不传 tenantSlug 会命中"平台管理员登录"分支而 401。
+ */
 export async function loginViaApi(
   email = SUPERADMIN_EMAIL,
   password = SUPERADMIN_PASSWORD,
@@ -56,7 +60,7 @@ export async function loginViaApi(
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, tenantSlug: 'demo' }),
   });
   const json = await res.json();
   if (!json.ok) throw new Error(`Login failed: ${JSON.stringify(json)}`);

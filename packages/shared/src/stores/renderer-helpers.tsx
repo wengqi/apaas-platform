@@ -13,7 +13,7 @@
  * - 共享组件（renderContainerChildren / FormFieldItem / PageLoadEffect）
  */
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Form } from 'antd';
 import type { DescriptionsProps, TableProps } from 'antd';
 import type { ActionConfig, ComponentNode, PropValue, ViewModel } from './types.js';
@@ -295,8 +295,17 @@ export function FormFieldItem({
 
 /** 页面加载副作用 — 提取为独立组件以满足 React Hooks 规则。 */
 export function PageLoadEffect({ node, ctx }: { node: ComponentNode; ctx: RenderContext }) {
+  // ref 防重入：onLoad 每次挂载仅触发一次。
+  // ctx 是每次渲染重建的对象，绝不能进入 useEffect deps ——
+  // 否则 onLoad 写 vm → 顶层重渲染 → 新 ctx → effect 重跑 → 死循环。
+  const firedRef = useRef(false);
+  const ctxRef = useRef(ctx);
+  ctxRef.current = ctx;
+
   useEffect(() => {
-    if (ctx.mode === 'preview') ctx.onAction(node.id, 'onLoad');
-  }, [ctx, node.id]);
+    if (firedRef.current) return;
+    firedRef.current = true;
+    if (ctxRef.current.mode === 'preview') ctxRef.current.onAction(node.id, 'onLoad');
+  }, [node.id]);
   return null;
 }

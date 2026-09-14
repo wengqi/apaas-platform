@@ -19,7 +19,7 @@
  * - component-renderer.tsx（本文件）— re-export helpers + RENDERERS 注册表 + PreviewNode + 工厂函数
  */
 
-import type { ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 import type { ComponentNode, ComponentType } from './types.js';
 
 // 重新导出类型与辅助函数（保持 index.ts 的 export * 向后兼容）
@@ -109,6 +109,72 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
 };
 
 // ---------------------------------------------------------------------------
+// 错误边界 + 未知类型降级
+// ---------------------------------------------------------------------------
+
+/**
+ * 节点级错误边界 — 单个节点渲染失败仅降级该节点，不影响整页。
+ *
+ * 页面 Schema 内容是用户编写的（低代码平台），坏 schema/未知类型/坏属性
+ * 不应导致 Studio 预览或运行时整页白屏。
+ */
+class NodeErrorBoundary extends Component<
+  { node: ComponentNode; children: ReactNode },
+  { error: Error | null }
+> {
+  override state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(
+      `[ComponentRenderer] 节点渲染失败 type=${this.props.node.type} id=${this.props.node.id}:`,
+      error,
+      info.componentStack,
+    );
+  }
+
+  override render() {
+    if (this.state.error) {
+      return (
+        <div
+          style={{
+            border: '1px dashed #ffccc7',
+            background: '#fff1f0',
+            color: '#cf1322',
+            padding: '4px 8px',
+            fontSize: 12,
+            borderRadius: 4,
+          }}
+        >
+          组件渲染失败（{this.props.node.type}）
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** 未知节点类型的降级占位（Schema 可能来自旧版本/外部导入）。 */
+function renderUnknownType(node: ComponentNode): ReactNode {
+  return (
+    <div
+      style={{
+        border: '1px dashed #d9d9d9',
+        color: '#999',
+        padding: '4px 8px',
+        fontSize: 12,
+        borderRadius: 4,
+      }}
+    >
+      未知组件类型（{node.type}）
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PreviewNode 组件
 // ---------------------------------------------------------------------------
 
@@ -121,10 +187,12 @@ export interface PreviewNodeProps {
   renderers?: Record<ComponentType, RendererFn>;
 }
 
-/** 预览模式纯渲染：调用 RENDERERS[node.type]（或自定义覆盖）。 */
+/** 预览模式纯渲染：调用 RENDERERS[node.type]（或自定义覆盖）。未知类型降级占位。 */
 export function PreviewNode({ node, ctx, renderChild, renderers }: PreviewNodeProps): ReactNode {
   const registry = renderers ?? RENDERERS;
-  return registry[node.type](node, ctx, renderChild);
+  const renderer = registry[node.type];
+  if (!renderer) return renderUnknownType(node);
+  return renderer(node, ctx, renderChild);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +208,11 @@ export function createRenderer(
   renderers?: Record<ComponentType, RendererFn>,
 ): (node: ComponentNode, ctx: RenderContext, renderChild: RenderChild) => ReactNode {
   const registry = renderers ?? RENDERERS;
-  return (node, ctx, renderChild) => registry[node.type](node, ctx, renderChild);
+  return (node, ctx, renderChild) => {
+    const renderer = registry[node.type];
+    if (!renderer) return renderUnknownType(node);
+    return renderer(node, ctx, renderChild);
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +268,12 @@ export function createComponentRenderer(
       <ComponentRendererShared key={child.id} node={child} ctx={ctx} />
     );
 
-    const content = customRenderers[node.type](node, ctx, renderChild);
+    const renderer = customRenderers[node.type];
+    const content = (
+      <NodeErrorBoundary node={node}>
+        {renderer ? renderer(node, ctx, renderChild) : renderUnknownType(node)}
+      </NodeErrorBoundary>
+    );
 
     if (ctx.mode === 'edit' && wrapEdit) {
       return wrapEdit({ node, ctx, content, isRoot });

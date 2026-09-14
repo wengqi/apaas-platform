@@ -31,9 +31,19 @@ import { envValidation } from './config/env.validation.js';
         level: process.env.LOG_LEVEL ?? 'info',
       },
     }),
+    // 限流阈值从环境变量读取（THROTTLE_TTL_MS / THROTTLE_DEFAULT_LIMIT / THROTTLE_AUTH_LIMIT），
+    // E2E 测试等高吞吐场景可调高避免 429 干扰
     ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 100 },
-      { name: 'auth', ttl: 60_000, limit: 10 },
+      {
+        name: 'default',
+        ttl: Number(process.env.THROTTLE_TTL_MS) || 60_000,
+        limit: Number(process.env.THROTTLE_DEFAULT_LIMIT) || 100,
+      },
+      {
+        name: 'auth',
+        ttl: Number(process.env.THROTTLE_TTL_MS) || 60_000,
+        limit: Number(process.env.THROTTLE_AUTH_LIMIT) || 10,
+      },
     ]),
     AuthModule,
     TenantModule,

@@ -16,8 +16,8 @@ import { RecordService } from './record.service.js';
 import type { RecordQueryParams } from './record.service.js';
 import type { PermissionContext } from '../auth/authenticated-request.js';
 
-/** 导入最大行数。 */
-const IMPORT_MAX_ROWS = 5000;
+/** 导入最大行数（env.validation.ts 定义 IMPORT_MAX_ROWS，默认 5000）。 */
+const IMPORT_MAX_ROWS = Number(process.env.IMPORT_MAX_ROWS) || 5000;
 
 /** 导出每页查询行数。 */
 const EXPORT_PAGE_SIZE = 100;

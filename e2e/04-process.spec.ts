@@ -22,7 +22,7 @@ test.describe('流程引擎', () => {
   });
 
   test('创建流程定义并发布', async () => {
-    const process = await api.post<{ id: string }>('/processes', {
+    const process = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
       apiName: 'test_process',
       name: '测试流程',
       triggerType: 'MANUAL',
@@ -31,7 +31,7 @@ test.describe('流程引擎', () => {
           { id: 'start', type: 'start', data: {}, position: { x: 100, y: 100 } },
           { id: 'end', type: 'end', data: {}, position: { x: 400, y: 100 } },
         ],
-        edges: [{ source: 'start', target: 'end' }],
+        edges: [{ sourceNodeID: 'start', targetNodeID: 'end' }],
       },
     });
     expect(process.id).toBeTruthy();
@@ -46,7 +46,7 @@ test.describe('流程引擎', () => {
   });
 
   test('启动流程实例', async () => {
-    const process = await api.post<{ id: string }>('/processes', {
+    const process = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
       apiName: 'test_instance_process',
       name: '测试实例流程',
       triggerType: 'MANUAL',
@@ -55,19 +55,18 @@ test.describe('流程引擎', () => {
           { id: 'start', type: 'start', data: {}, position: { x: 100, y: 100 } },
           { id: 'end', type: 'end', data: {}, position: { x: 400, y: 100 } },
         ],
-        edges: [{ source: 'start', target: 'end' }],
+        edges: [{ sourceNodeID: 'start', targetNodeID: 'end' }],
       },
     });
 
     await api.post(`/processes/${process.id}/publish`);
 
     // 启动实例
-    const instance = await api.post<{ id: string; status: string }>(
-      `/processes/${process.id}/instances`,
-      { variables: {} },
+    const instance = await api.post<{ id: string; status?: string }>(
+      `/processes/${process.id}/start`,
+      {},
     );
     expect(instance.id).toBeTruthy();
-    expect(instance.status).toBeTruthy();
   });
 
   test('UI 中查看流程列表', async ({ page }) => {

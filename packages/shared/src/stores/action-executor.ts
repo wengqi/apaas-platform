@@ -10,6 +10,7 @@
  */
 
 import { Modal, message } from 'antd';
+import { useAuthStore } from './auth.js';
 import type { ActionConfig, ActionType, PropValue } from './types.js';
 import { evalExpr, resolvePropValue } from './expression-engine.js';
 import type { EvalContext } from './expression-engine.js';
@@ -271,13 +272,33 @@ export async function executeAction(
         message.warning('call_api 缺少 url');
         return;
       }
-      await fetch(url, {
+      // 注入认证 token + 状态检查：4xx/5xx 视为失败并 toast（fetch 对非 2xx 不 reject）
+      const token = useAuthStore.getState().token;
+      const res = await fetch(url, {
         method,
-        headers: Object.keys(headers).length
-          ? { 'Content-Type': 'application/json', ...headers }
-          : undefined,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...headers,
+        },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
+      if (!res.ok) {
+        message.error(`API 调用失败（${res.status}）`);
+        return;
+      }
+      // 响应捕获到变量（供后续动作通过 vm 引用），仅 JSON 响应
+      const responseVariable = paramAsString(params, 'responseVariable', context);
+      if (responseVariable) {
+        try {
+          const data = await res.json();
+          context.setVariable(responseVariable, data);
+        } catch {
+          // 非 JSON 响应，保持文本
+          const text = await res.text();
+          context.setVariable(responseVariable, text);
+        }
+      }
       return;
     }
 

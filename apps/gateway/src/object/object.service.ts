@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { randomUUID } from 'node:crypto';
 import { ChangeLogService } from '../application/changelog.service.js';
@@ -115,10 +111,30 @@ export class ObjectService {
     type: string;
     description: string;
   }> = [
-    { apiName: 'created_by', label: '创建人', type: 'user', description: '记录创建人，系统自动填充' },
-    { apiName: 'created_at', label: '创建时间', type: 'datetime', description: '记录创建时间，系统自动填充' },
-    { apiName: 'updated_by', label: '更新人', type: 'user', description: '最后更新人，系统自动填充' },
-    { apiName: 'updated_at', label: '更新时间', type: 'datetime', description: '最后更新时间，系统自动填充' },
+    {
+      apiName: 'created_by',
+      label: '创建人',
+      type: 'user',
+      description: '记录创建人，系统自动填充',
+    },
+    {
+      apiName: 'created_at',
+      label: '创建时间',
+      type: 'date_time',
+      description: '记录创建时间，系统自动填充',
+    },
+    {
+      apiName: 'updated_by',
+      label: '更新人',
+      type: 'user',
+      description: '最后更新人，系统自动填充',
+    },
+    {
+      apiName: 'updated_at',
+      label: '更新时间',
+      type: 'date_time',
+      description: '最后更新时间，系统自动填充',
+    },
     { apiName: 'owner', label: '拥有者', type: 'user', description: '记录拥有者，默认为创建人' },
   ];
 
@@ -198,12 +214,7 @@ export class ObjectService {
   /**
    * 创建对象（自动预置 6 个系统字段）。
    */
-  async create(
-    tenantId: string,
-    appId: string,
-    createdBy: string,
-    data: CreateObjectInput,
-  ) {
+  async create(tenantId: string, appId: string, createdBy: string, data: CreateObjectInput) {
     const obj = await prisma.objectMeta.create({
       data: {
         tenantId,
@@ -403,12 +414,7 @@ export class ObjectService {
   /**
    * 更新字段。
    */
-  async updateField(
-    tenantId: string,
-    objectId: string,
-    fieldId: string,
-    data: UpdateFieldInput,
-  ) {
+  async updateField(tenantId: string, objectId: string, fieldId: string, data: UpdateFieldInput) {
     const obj = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId },
     });
@@ -426,9 +432,7 @@ export class ObjectService {
       data.apiName !== existing.apiName &&
       fields.some((f) => f.apiName === data.apiName)
     ) {
-      throw new BadRequestException(
-        `字段 API 名称 "${data.apiName}" 已存在`,
-      );
+      throw new BadRequestException(`字段 API 名称 "${data.apiName}" 已存在`);
     }
 
     const updated: StoredField = {
@@ -440,10 +444,7 @@ export class ObjectService {
       required: data.required ?? existing.required,
       unique: data.unique ?? existing.unique,
       searchable: data.searchable ?? existing.searchable,
-      defaultValue:
-        data.defaultValue !== undefined
-          ? data.defaultValue
-          : existing.defaultValue,
+      defaultValue: data.defaultValue !== undefined ? data.defaultValue : existing.defaultValue,
       description: data.description ?? existing.description,
       updatedAt: new Date().toISOString(),
     };
@@ -461,11 +462,7 @@ export class ObjectService {
   /**
    * 删除字段（系统字段禁止删除）。
    */
-  async deleteField(
-    tenantId: string,
-    objectId: string,
-    fieldId: string,
-  ): Promise<void> {
+  async deleteField(tenantId: string, objectId: string, fieldId: string): Promise<void> {
     const obj = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId },
     });

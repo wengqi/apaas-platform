@@ -35,7 +35,7 @@ async function bootstrap() {
   );
 
   // 全局异常过滤器（Prisma 异常转译优先，兜底所有未捕获异常）
-  app.useGlobalFilters(new AllExceptionsFilter(), new PrismaExceptionFilter());
+  app.useGlobalFilters(new PrismaExceptionFilter(), new AllExceptionsFilter());
 
   // CORS（前端 Studio/Runtime UI 跨域）
   // Docker 部署通过 nginx 同源代理，不触发 CORS；此处保留 dev 模式默认值

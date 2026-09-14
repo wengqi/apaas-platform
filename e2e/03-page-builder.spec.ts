@@ -22,7 +22,7 @@ test.describe('页面搭建器', () => {
   });
 
   test('创建列表页并打开搭建器', async () => {
-    const page_meta = await api.post<{ id: string }>('/pages', {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_list_page',
       name: '测试列表页',
       type: 'list_page',
@@ -31,7 +31,7 @@ test.describe('页面搭建器', () => {
   });
 
   test('创建仪表盘页面（自动生成模板）', async () => {
-    const page_meta = await api.post<{ id: string }>('/pages', {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_dashboard',
       name: '测试仪表盘',
       type: 'dashboard',
@@ -53,7 +53,7 @@ test.describe('页面搭建器', () => {
   });
 
   test('更新页面 Schema', async () => {
-    const page_meta = await api.post<{ id: string }>('/pages', {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_schema_page',
       name: '测试Schema页面',
       type: 'custom',

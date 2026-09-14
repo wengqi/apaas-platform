@@ -32,7 +32,7 @@ test.describe('仪表盘与图表', () => {
   // -------------------------------------------------------------------------
 
   test('创建仪表盘页面自动生成 DashboardGrid 模板（含指标卡 + 趋势图）', async () => {
-    const page_meta = await api.post<{ id: string }>('/pages', {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_dashboard',
       name: 'E2E仪表盘',
       type: 'dashboard',
@@ -75,7 +75,7 @@ test.describe('仪表盘与图表', () => {
   });
 
   test('更新仪表盘网格布局', async () => {
-    const page_meta = await api.post<{ id: string }>('/pages', {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_dashboard_layout',
       name: 'E2E布局测试',
       type: 'dashboard',
@@ -118,10 +118,9 @@ test.describe('仪表盘与图表', () => {
 
   test('后端聚合 API：对象记录 sum/count/avg 聚合', async () => {
     // 创建对象 + 数值字段
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_chart_obj',
-      label: '图表测试对象',
-      labelPlural: '图表测试对象',
+      name: '图表测试对象',
       icon: 'bar_chart',
     });
 
@@ -145,7 +144,7 @@ test.describe('仪表盘与图表', () => {
       { category: 'C', amount: 300 },
     ];
     for (const r of records) {
-      await api.post('/records', { objectId: obj.id, data: r });
+      await api.post(`/objects/${obj.id}/records`, r);
     }
 
     // sum 聚合
@@ -197,10 +196,9 @@ test.describe('仪表盘与图表', () => {
   });
 
   test('后端聚合 API：时间分桶 day 粒度 + 时间排序', async () => {
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_chart_time',
-      label: '时间图表测试',
-      labelPlural: '时间图表测试',
+      name: '时间图表测试',
       icon: 'calendar',
     });
 
@@ -223,7 +221,7 @@ test.describe('仪表盘与图表', () => {
       { date: '2026-01-01', sales: 15 },
     ];
     for (const r of timeRecords) {
-      await api.post('/records', { objectId: obj.id, data: r });
+      await api.post(`/objects/${obj.id}/records`, r);
     }
 
     const result = await api.post<{
@@ -244,10 +242,9 @@ test.describe('仪表盘与图表', () => {
   });
 
   test('后端聚合 API：指标卡标量聚合（无 categoryField）', async () => {
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_chart_metric',
-      label: '指标卡测试',
-      labelPlural: '指标卡测试',
+      name: '指标卡测试',
       icon: 'dashboard',
     });
 
@@ -258,7 +255,7 @@ test.describe('仪表盘与图表', () => {
     });
 
     for (const amount of [100, 200, 300]) {
-      await api.post('/records', { objectId: obj.id, data: { amount } });
+      await api.post(`/objects/${obj.id}/records`, { amount });
     }
 
     // 标量 sum — 无 categoryField
@@ -294,10 +291,9 @@ test.describe('仪表盘与图表', () => {
 
   test('图表配置 + 运行时预览（创建仪表盘 → 配置图表 → 发布 → 访问运行时）', async () => {
     // 1. 创建测试对象 + 数据
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_preview_obj',
-      label: '预览测试对象',
-      labelPlural: '预览测试对象',
+      name: '预览测试对象',
       icon: 'bar_chart',
     });
 
@@ -317,11 +313,11 @@ test.describe('仪表盘与图表', () => {
       { category: 'Y', amount: 200 },
       { category: 'X', amount: 50 },
     ]) {
-      await api.post('/records', { objectId: obj.id, data: r });
+      await api.post(`/objects/${obj.id}/records`, r);
     }
 
     // 2. 创建仪表盘页面
-    const dashPage = await api.post<{ id: string; slug: string }>('/pages', {
+    const dashPage = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_preview_dash',
       name: '预览仪表盘',
       type: 'dashboard',
@@ -361,8 +357,12 @@ test.describe('仪表盘与图表', () => {
 
     await api.put(`/pages/${dashPage.id}`, { schema });
 
-    // 4. 发布页面
-    await api.post(`/pages/${dashPage.id}/publish`);
+    // 4. 发布应用（运行时 slug 端点读取应用级 publishedSnapshot，
+    //    页面级 isPublished 标志不会填充快照）
+    await api.post(`/apps/${appId}/publish`, {
+      version: `1.0.${Date.now() % 1000}`,
+      description: 'E2E 图表预览发布',
+    });
 
     // 5. 通过 slug 访问运行时页面
     const runtimePage = await api.get<{

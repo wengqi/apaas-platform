@@ -46,6 +46,11 @@ export const envValidation = Joi.object({
   IMPORT_MAX_ROWS: Joi.number().default(5000),
   IMPORT_FILE_MAX_SIZE_MB: Joi.number().default(10),
 
+  // ---- 限流（@nestjs/throttler）----
+  THROTTLE_TTL_MS: Joi.number().default(60_000),
+  THROTTLE_DEFAULT_LIMIT: Joi.number().default(100),
+  THROTTLE_AUTH_LIMIT: Joi.number().default(10),
+
   // ---- 日志 ----
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
 });

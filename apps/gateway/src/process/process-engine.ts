@@ -18,7 +18,7 @@ import { Queue } from 'bullmq';
 import { prisma, Prisma, runWithTenant } from '@apaas/db';
 import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
-import { resolveInputs, writeNodeOutput } from './process-utils.js';
+import { resolveInputs, writeNodeOutput, evaluateCondition } from './process-utils.js';
 import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
@@ -41,12 +41,46 @@ function findNodeInBlocks(blocks: WorkflowNode[], nodeId: string): WorkflowNode 
 export class ProcessEngine {
   private readonly logger = new Logger(ProcessEngine.name);
 
+  /** 单实例最大节点执行次数（循环预算）— 超过视为循环 Schema，实例置 FAILED。 */
+  private static readonly MAX_NODE_EXECUTIONS = 1000;
+
+  /**
+   * 进程内单实例串行锁：同一实例的令牌推进/任务完成/延时恢复互斥执行。
+   *
+   * 背景：worker concurrency=5，同一实例可能同时有多个 job（启动/审批完成/延时恢复），
+   * 并发读写 activeNodeIds 会丢失令牌导致实例卡死。此 Map 以 instanceId 为 key 串行化
+   * 同进程内的所有实例操作。多进程水平扩展时需升级为 Redis 分布式锁。
+   */
+  private readonly instanceLocks = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly registry: NodeExecutorRegistry,
     private readonly inAppMessageService: InAppMessageService,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
     @Inject(DELAY_QUEUE) private readonly delayQueue: Queue,
   ) {}
+
+  /**
+   * 在实例级互斥锁内执行 fn。
+   * 同一实例的操作按调用顺序串行；不同实例互不阻塞。
+   */
+  private async withInstanceLock<T>(instanceId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.instanceLocks.get(instanceId) ?? Promise.resolve();
+    const run = prev
+      .catch(() => {
+        /* 前序操作失败不阻断后续排队 */
+      })
+      .then(fn);
+    this.instanceLocks.set(instanceId, run);
+    try {
+      return await run;
+    } finally {
+      // 仅当仍是队尾时清理，避免误删后续排队的 promise
+      if (this.instanceLocks.get(instanceId) === run) {
+        this.instanceLocks.delete(instanceId);
+      }
+    }
+  }
 
   // ===========================================================================
   // 启动流程实例
@@ -157,6 +191,13 @@ export class ProcessEngine {
    * 实例本身的 tenantId 列确保了数据归属正确。
    */
   async executeNextNode(instanceId: string): Promise<void> {
+    await this.withInstanceLock(instanceId, () => this.executeNextNodeLocked(instanceId));
+  }
+
+  /**
+   * executeNextNode 的锁内实现（调用方必须持有实例锁）。
+   */
+  private async executeNextNodeLocked(instanceId: string): Promise<void> {
     // 重新加载实例（确保拿到最新状态）
     let instance = await prisma.processInstance.findFirst({
       where: { id: instanceId },
@@ -168,12 +209,37 @@ export class ProcessEngine {
       return;
     }
 
+    // 循环预算：统计该实例历史节点执行次数，超过上限视为循环 Schema（B3 防护）
+    const executedCount = await prisma.nodeExecution.count({ where: { instanceId } });
+    if (executedCount > ProcessEngine.MAX_NODE_EXECUTIONS) {
+      const errorMsg = `检测到循环执行：节点累计执行 ${executedCount} 次超过上限 ${ProcessEngine.MAX_NODE_EXECUTIONS}，请检查流程 Schema 是否存在环路`;
+      this.logger.error(`实例 ${instanceId} ${errorMsg}`);
+      await prisma.processInstance.update({
+        where: { id: instanceId },
+        data: { status: 'FAILED', error: errorMsg },
+      });
+      return;
+    }
+
     const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
     const variables = (instance.variables as Record<string, unknown>) ?? {};
 
     // 处理活跃令牌，逐个推进
     while (instance.activeNodeIds.length > 0 && instance.status === 'RUNNING') {
-      const nodeId = instance.activeNodeIds[0]!;
+      // B4 防护：跳过处于 WAITING 状态的令牌（延时/人工等待中，由恢复任务或审批驱动），
+      // 防止其他分支的 job 重复执行等待中的节点（重复调度延时 job / 重复推进）
+      const waitingExecutions = await prisma.nodeExecution.findMany({
+        where: { instanceId, status: 'WAITING' },
+        select: { nodeId: true },
+      });
+      const waitingNodeIds = new Set(waitingExecutions.map((w) => w.nodeId));
+      const nodeId = instance.activeNodeIds.find((id) => !waitingNodeIds.has(id));
+      if (!nodeId) {
+        // 所有令牌都在等待 — 退出，由延时恢复/审批完成驱动后续推进
+        this.logger.debug(`实例 ${instanceId} 所有活跃令牌均在等待中，退出本轮推进`);
+        return;
+      }
+
       const node = this.findNode(schema, nodeId);
       if (!node) {
         // 令牌指向不存在的节点，移除该令牌
@@ -191,7 +257,7 @@ export class ProcessEngine {
       }
 
       // 计算下一节点
-      const nextNodeIds = this.resolveNextNodes(node, result, schema);
+      const nextNodeIds = this.resolveNextNodes(node, result, schema, variables);
       // 移除当前令牌，添加下游令牌
       instance = await this.advanceTokens(instance, nodeId, nextNodeIds, variables);
     }
@@ -330,12 +396,6 @@ export class ProcessEngine {
       include: { instance: { include: { processDef: true } } },
     });
     if (!task) throw new NotFoundException('任务不存在');
-    if (task.status !== 'PENDING') {
-      throw new BadRequestException({
-        code: 'CONFLICT',
-        message: '任务已完成或已取消',
-      });
-    }
 
     const decisionUpper = decision.toUpperCase();
     // 兼容 "approve"/"approved" 两种写法
@@ -343,9 +403,10 @@ export class ProcessEngine {
     const isRejected = decisionUpper === 'REJECTED' || decisionUpper === 'REJECT';
     const taskStatus = isApproved ? 'APPROVED' : isRejected ? 'REJECTED' : 'DELEGATED';
 
-    // 更新任务
-    await prisma.processTask.update({
-      where: { id: taskId },
+    // B2 防护：原子认领任务 — 仅当任务仍为 PENDING 时更新成功。
+    // 并发/双击审批只有一个请求 count=1，其余拒绝，保证下游节点不重复执行。
+    const claimed = await prisma.processTask.updateMany({
+      where: { id: taskId, status: 'PENDING' },
       data: {
         status: taskStatus,
         decision: decisionUpper,
@@ -354,74 +415,85 @@ export class ProcessEngine {
         completedAt: new Date(),
       },
     });
-
-    // 写入任务决策到节点输出变量，供下游节点引用
-    const variables = (task.instance.variables as Record<string, unknown>) ?? {};
-    writeNodeOutput(variables, task.nodeId, {
-      decision: decisionUpper,
-      comment,
-      formData,
-      assignee: userId,
-    });
-
-    const schema = task.instance.processDef.workflowSchema as unknown as WorkflowSchema;
-    const currentActive = (task.instance.activeNodeIds as string[]) ?? [];
-
-    // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
-    // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
-    let nextNodeIds: string[];
-    if (isRejected) {
-      // 从节点 data 中读取 rejectToNodeId 配置
-      const currentNode = schema.nodes?.find((n) => n.id === task.nodeId);
-      const rejectToNodeId = currentNode?.data?.rejectToNodeId as string | undefined;
-      if (rejectToNodeId) {
-        // 驳回：跳回指定节点
-        nextNodeIds = [rejectToNodeId];
-        this.logger.log(`任务 ${taskId} 驳回，实例 ${task.instance.id} 跳回节点 ${rejectToNodeId}`);
-      } else {
-        // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
-        const outgoing = this.getOutgoingEdges(schema, task.nodeId);
-        nextNodeIds = outgoing.map((e) => e.targetNodeID);
-      }
-    } else {
-      // 正常推进：移除当前节点，添加下游节点
-      const outgoing = this.getOutgoingEdges(schema, task.nodeId);
-      nextNodeIds = outgoing.map((e) => e.targetNodeID);
+    if (claimed.count === 0) {
+      throw new BadRequestException({
+        code: 'CONFLICT',
+        message: '任务已完成或已取消',
+      });
     }
 
-    const updatedActive = [
-      ...new Set([...currentActive.filter((id) => id !== task.nodeId), ...nextNodeIds]),
-    ];
+    // 实例状态推进与 worker 的令牌推进互斥（同进程内）
+    await this.withInstanceLock(task.instance.id, async () => {
+      // 写入任务决策到节点输出变量，供下游节点引用
+      const variables = (task.instance.variables as Record<string, unknown>) ?? {};
+      writeNodeOutput(variables, task.nodeId, {
+        decision: decisionUpper,
+        comment,
+        formData,
+        assignee: userId,
+      });
 
-    // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
-    await prisma.$transaction([
-      prisma.processInstance.update({
-        where: { id: task.instance.id },
-        data: {
-          variables: variables as Prisma.InputJsonValue,
-          status: 'RUNNING',
-          activeNodeIds: updatedActive,
-        },
-      }),
-      prisma.nodeExecution.update({
-        where: { id: task.nodeExecutionId },
-        data: { status: 'COMPLETED', finishedAt: new Date() },
-      }),
-    ]);
+      const schema = task.instance.processDef.workflowSchema as unknown as WorkflowSchema;
+      const currentActive = (task.instance.activeNodeIds as string[]) ?? [];
 
-    this.logger.log(`任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`);
+      // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
+      // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
+      let nextNodeIds: string[];
+      if (isRejected) {
+        // 从节点 data 中读取 rejectToNodeId 配置
+        const currentNode = schema.nodes?.find((n) => n.id === task.nodeId);
+        const rejectToNodeId = currentNode?.data?.rejectToNodeId as string | undefined;
+        if (rejectToNodeId) {
+          // 驳回：跳回指定节点
+          nextNodeIds = [rejectToNodeId];
+          this.logger.log(
+            `任务 ${taskId} 驳回，实例 ${task.instance.id} 跳回节点 ${rejectToNodeId}`,
+          );
+        } else {
+          // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
+          nextNodeIds = this.resolveEdgeTargets(schema, task.nodeId, variables);
+        }
+      } else {
+        // 正常推进：移除当前节点，按边级条件求值添加下游节点
+        nextNodeIds = this.resolveEdgeTargets(schema, task.nodeId, variables);
+      }
 
-    // --- 抄送逻辑 ---
-    await this.sendCcNotification(
-      schema,
-      task.nodeId,
-      task.instance.tenantId,
-      task.instance.processDef.appId,
-      task.instance.processDef.name,
-      task.taskName,
-      decisionUpper,
-      comment,
-    );
+      const updatedActive = [
+        ...new Set([...currentActive.filter((id) => id !== task.nodeId), ...nextNodeIds]),
+      ];
+
+      // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
+      await prisma.$transaction([
+        prisma.processInstance.update({
+          where: { id: task.instance.id },
+          data: {
+            variables: variables as Prisma.InputJsonValue,
+            status: 'RUNNING',
+            activeNodeIds: updatedActive,
+          },
+        }),
+        prisma.nodeExecution.update({
+          where: { id: task.nodeExecutionId },
+          data: { status: 'COMPLETED', finishedAt: new Date() },
+        }),
+      ]);
+
+      this.logger.log(
+        `任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`,
+      );
+
+      // --- 抄送逻辑 ---
+      await this.sendCcNotification(
+        schema,
+        task.nodeId,
+        task.instance.tenantId,
+        task.instance.processDef.appId,
+        task.instance.processDef.name,
+        task.taskName,
+        decisionUpper,
+        comment,
+      );
+    });
 
     // 异步入队：由 BullMQ Worker 消费推进令牌
     await this.processQueue.add('execute', { instanceId: task.instance.id });
@@ -438,24 +510,26 @@ export class ProcessEngine {
    * @param tenantId 租户 ID（防御性校验，确保实例属于该租户）
    */
   async cancelProcess(instanceId: string, tenantId?: string): Promise<void> {
-    const instance = await prisma.processInstance.findFirst({
-      where: { id: instanceId, ...(tenantId ? { tenantId } : {}) },
+    await this.withInstanceLock(instanceId, async () => {
+      const instance = await prisma.processInstance.findFirst({
+        where: { id: instanceId, ...(tenantId ? { tenantId } : {}) },
+      });
+      if (!instance) throw new NotFoundException('流程实例不存在');
+
+      await prisma.$transaction([
+        // 取消所有待办任务
+        prisma.processTask.updateMany({
+          where: { instanceId, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        }),
+        prisma.processInstance.update({
+          where: { id: instanceId },
+          data: { status: 'TERMINATED', finishedAt: new Date() },
+        }),
+      ]);
+
+      this.logger.log(`流程实例 ${instanceId} 已取消`);
     });
-    if (!instance) throw new NotFoundException('流程实例不存在');
-
-    await prisma.$transaction([
-      // 取消所有待办任务
-      prisma.processTask.updateMany({
-        where: { instanceId, status: 'PENDING' },
-        data: { status: 'CANCELLED' },
-      }),
-      prisma.processInstance.update({
-        where: { id: instanceId },
-        data: { status: 'TERMINATED', finishedAt: new Date() },
-      }),
-    ]);
-
-    this.logger.log(`流程实例 ${instanceId} 已取消`);
   }
 
   // ===========================================================================
@@ -472,6 +546,13 @@ export class ProcessEngine {
    * @param nodeId 延时节点 ID
    */
   async resumeDelayedNode(instanceId: string, nodeId: string): Promise<void> {
+    await this.withInstanceLock(instanceId, () => this.resumeDelayedNodeLocked(instanceId, nodeId));
+  }
+
+  /**
+   * resumeDelayedNode 的锁内实现（调用方必须持有实例锁）。
+   */
+  private async resumeDelayedNodeLocked(instanceId: string, nodeId: string): Promise<void> {
     const instance = await prisma.processInstance.findFirst({
       where: { id: instanceId },
       include: { processDef: true },
@@ -481,6 +562,16 @@ export class ProcessEngine {
     // 也可能是 RUNNING（其他场景），两者都允许恢复
     if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
       this.logger.debug(`实例 ${instanceId} 状态为 ${instance.status}，延时恢复跳过`);
+      return;
+    }
+
+    // B4 防护：校验该节点的令牌仍然活跃且处于 WAITING —
+    // 重复投递的 delayed job（或已被取消的实例）不应再次推进令牌
+    const activeNodeIds = (instance.activeNodeIds as string[]) ?? [];
+    if (!activeNodeIds.includes(nodeId)) {
+      this.logger.debug(
+        `实例 ${instanceId} 节点 ${nodeId} 的令牌已不活跃（已推进或实例已变更），延时恢复跳过`,
+      );
       return;
     }
 
@@ -498,10 +589,13 @@ export class ProcessEngine {
       });
     }
 
-    // 推进令牌：移除当前延时节点的令牌，添加下游节点令牌
+    // 推进令牌：移除当前延时节点的令牌，按边级条件求值添加下游节点令牌
     const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
-    const outgoing = this.getOutgoingEdges(schema, nodeId);
-    const nextNodeIds = outgoing.map((e) => e.targetNodeID);
+    const nextNodeIds = this.resolveEdgeTargets(
+      schema,
+      nodeId,
+      (instance.variables as Record<string, unknown>) ?? {},
+    );
 
     await this.advanceTokens(
       instance,
@@ -576,21 +670,54 @@ export class ProcessEngine {
   }
 
   /**
+   * 按条件求值筛选节点的出边目标（B5：边级 condition 字段求值）。
+   *
+   * edge.condition 为 JsonLogic JSON（如 {"==":[{"var":"decision"},"APPROVED"]}）：
+   * - 有 condition 的边：对流程变量求值为 truthy 才通过
+   * - 无 condition 的边：无条件通过
+   * - 求值异常的边：跳过（保守，避免误触发下游副作用节点）
+   */
+  private resolveEdgeTargets(
+    schema: WorkflowSchema,
+    nodeId: string,
+    variables: Record<string, unknown>,
+  ): string[] {
+    const outgoing = this.getOutgoingEdges(schema, nodeId);
+    const matched: string[] = [];
+    for (const edge of outgoing) {
+      if (!edge.condition) {
+        matched.push(edge.targetNodeID);
+        continue;
+      }
+      try {
+        const rule =
+          typeof edge.condition === 'string' ? JSON.parse(edge.condition) : edge.condition;
+        if (evaluateCondition(rule, variables)) {
+          matched.push(edge.targetNodeID);
+        }
+      } catch {
+        this.logger.warn(`边 ${edge.sourceNodeID} → ${edge.targetNodeID} 条件解析失败，跳过`);
+      }
+    }
+    return matched;
+  }
+
+  /**
    * 计算节点的下一节点 ID 列表。
    * - 执行器显式返回 nextNodeIds：使用之（条件/并行节点）
-   * - 否则：取节点所有出边的 targetNodeID
+   * - 否则：按边级条件求值筛选出边（无条件的边直接通过）
    * - 空数组表示令牌终止（End 节点）
    */
   private resolveNextNodes(
     node: WorkflowNode,
     result: import('./types.js').NodeExecutionResult,
     schema: WorkflowSchema,
+    variables: Record<string, unknown>,
   ): string[] {
     if (result.nextNodeIds) {
       return result.nextNodeIds;
     }
-    const outgoing = this.getOutgoingEdges(schema, node.id);
-    return outgoing.map((e) => e.targetNodeID);
+    return this.resolveEdgeTargets(schema, node.id, variables);
   }
 
   /**

@@ -12,6 +12,7 @@
  */
 
 import { prisma, runAsSystem } from './src/index.js';
+import { seedDemoContent } from './seed-demo.js';
 import * as bcrypt from 'bcrypt';
 
 async function main() {
@@ -244,6 +245,9 @@ async function main() {
     },
   });
   console.log(`✅ 应用: ${app.name} (${app.id})`);
+
+  // 9. 填充 Demo 应用内容（对象/页面/流程/记录/发布）
+  await seedDemoContent(tenant.id, app.id, admin.id, admin.email);
 
   console.log('');
   console.log('📋 测试账号:');

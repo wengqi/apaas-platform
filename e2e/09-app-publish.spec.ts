@@ -28,10 +28,9 @@ test.describe('应用发布与版本管理', () => {
 
   test('应用预检 + 发布 + 版本列表', async () => {
     // 开发：添加对象 + 页面
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_publish_obj',
-      label: '发布测试对象',
-      labelPlural: '发布测试对象',
+      name: '发布测试对象',
       icon: 'box',
     });
 
@@ -42,7 +41,7 @@ test.describe('应用发布与版本管理', () => {
       required: true,
     });
 
-    const page = await api.post<{ id: string; slug: string }>('/pages', {
+    const page = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_publish_page',
       name: '发布测试页面',
       type: 'list_page',
@@ -60,30 +59,29 @@ test.describe('应用发布与版本管理', () => {
     // 发布
     const version = await api.post<{
       id: string;
-      version: string;
+      versionNumber: string;
       status: string;
     }>(`/apps/${appId}/publish`, {
       version: '1.0.0',
       description: 'E2E 首次发布',
     });
     expect(version.id).toBeTruthy();
-    expect(version.version).toBe('1.0.0');
+    expect(version.versionNumber).toBe('1.0.0');
     expect(version.status).toBe('PUBLISHED');
 
     // 版本列表
-    const versions = await api.get<Array<{ id: string; version: string }>>(
+    const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
       `/apps/${appId}/versions`,
     );
     expect(versions.length).toBeGreaterThanOrEqual(1);
-    expect(versions.some((v) => v.version === '1.0.0')).toBe(true);
+    expect(versions.some((v) => v.versionNumber === '1.0.0')).toBe(true);
   });
 
   test('运行态验证 — 发布后通过 slug 访问页面', async () => {
     // 确保有对象和页面（上一个测试已创建，但 E2E 测试间数据可能不共享——这里自建）
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_runtime_obj',
-      label: '运行态测试对象',
-      labelPlural: '运行态测试对象',
+      name: '运行态测试对象',
       icon: 'box',
     });
 
@@ -93,7 +91,7 @@ test.describe('应用发布与版本管理', () => {
       type: 'TEXT',
     });
 
-    const page = await api.post<{ id: string; slug: string }>('/pages', {
+    const page = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_runtime_page',
       name: '运行态页面',
       type: 'list_page',
@@ -119,10 +117,9 @@ test.describe('应用发布与版本管理', () => {
 
   test('版本回滚', async () => {
     // 确保有内容
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_rollback_obj',
-      label: '回滚测试对象',
-      labelPlural: '回滚测试对象',
+      name: '回滚测试对象',
       icon: 'box',
     });
 
@@ -132,7 +129,7 @@ test.describe('应用发布与版本管理', () => {
       type: 'TEXT',
     });
 
-    const _page = await api.post<{ id: string }>('/pages', {
+    const _page = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_rollback_page',
       name: '回滚测试页面',
       type: 'list_page',
@@ -159,7 +156,7 @@ test.describe('应用发布与版本管理', () => {
     expect(versions.length).toBeGreaterThanOrEqual(2);
 
     // 找到第一个版本（2.0.0）并回滚
-    const targetVersion = versions.find((v) => v.version === '2.0.0');
+    const targetVersion = versions.find((v) => v.versionNumber === '2.0.0');
     expect(targetVersion).toBeTruthy();
 
     const rollbackResult = await api.post<{

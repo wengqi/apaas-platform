@@ -187,20 +187,23 @@ export function createRuntimeStore(
     },
 
     executeAction: async (action) => {
-      const state = get();
+      // vm 用 getter 实时读取：动作链中前序 set_variable 的结果对后续动作可见
       const ctx: ActionContext = {
-        vm: state.vm,
-        setVariable: state.setVariable,
+        get vm() {
+          return get().vm;
+        },
+        setVariable: get().setVariable,
         objectId,
       };
       await runAction(action, ctx, adapter);
     },
 
     executeActions: async (actions) => {
-      const state = get();
       const ctx: ActionContext = {
-        vm: state.vm,
-        setVariable: state.setVariable,
+        get vm() {
+          return get().vm;
+        },
+        setVariable: get().setVariable,
         objectId,
       };
       await executeActionChain(actions, ctx, adapter);

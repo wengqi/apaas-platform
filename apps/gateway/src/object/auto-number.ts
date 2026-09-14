@@ -13,12 +13,10 @@
  *   `ORD-{seq:0000}`       → ORD-0001
  *   `INV-{yyyy}-{seq:000}` → INV-2026-007
  *
- * 序列号持久化策略（简单实现，不依赖 Redis）：
- *   通过查询当前对象下、以"当日已解析前缀"开头的记录数 +1 得到下一个序号。
- *   前缀中的日期占位符先按当日解析，使每天/每月/每年的序号可独立计数。
- *
- *   注：此实现存在并发竞态（两个并发请求可能拿到相同序号），
- *   生产环境应改为数据库序列或唯一约束 + 重试。当前满足 Phase 1 基本可用。
+ * 序列号持久化策略（原子计数器表）：
+ *   以"序号占位符之前的已解析前缀"（日期占位符按当日解析）为 key，
+ *   在 auto_number_counters 表按 (objectId, prefix) 唯一约束 upsert + 原子自增。
+ *   消除了旧实现的全表扫描（O(N)/次）与并发竞态（两个请求拿到相同序号）。
  */
 
 import { Injectable } from '@nestjs/common';
@@ -97,54 +95,43 @@ export class AutoNumberGenerator {
    * 生成自动编号。
    *
    * @param format   编号格式规则（如 `ORD-{seq:0000}`）
-   * @param objectId 所属对象 ID（用于序号计数范围）
+   * @param objectId 所属对象 ID（序号计数范围）
+   * @param tenantId 租户 ID（计数器行归属）
    * @returns 生成的编号字符串
    */
-  async generate(format: string, objectId: string): Promise<string> {
+  async generate(format: string, objectId: string, tenantId: string): Promise<string> {
     const now = new Date();
 
-    // 计算下一个序号：按已解析前缀统计同对象下的记录数
-    const seq = await this.nextSeq(format, objectId, now);
+    // 计算下一个序号：计数器表原子自增
+    const seq = await this.nextSeq(format, objectId, tenantId, now);
 
     return renderFormat(format, seq, now);
   }
 
   /**
-   * 计算下一个序号。
+   * 计算下一个序号（原子自增，并发安全）。
    *
-   * 策略：以"序号占位符之前的已解析前缀"作为 like 前缀，
-   * 统计同对象下 data 中以该前缀开头的记录数（通过扫描所有记录的 data）。
-   *
-   * 简单实现：因记录值存于 JSONB，且自动编号字段 apiName 未知，
-   * 这里采用扫描全部记录、在应用层匹配前缀的方式。对象记录量在 Phase 1
-   * 规模下可接受；后续可结合字段元数据优化为 JSONB path 查询。
+   * 以 (objectId, 已解析前缀) 为唯一 key upsert 计数器行并 increment，
+   * 由数据库唯一约束保证并发请求各获得不同序号。
    */
-  private async nextSeq(format: string, objectId: string, now: Date): Promise<number> {
-    const prefix = resolvePrefixBeforeSeq(format, now);
-
+  private async nextSeq(
+    format: string,
+    objectId: string,
+    tenantId: string,
+    now: Date,
+  ): Promise<number> {
     // 若格式不含序号占位符，直接返回 0（渲染时不会有 seq）
     if (!format.includes('{seq')) return 0;
 
-    // 拉取该对象下所有记录的 data，在应用层统计前缀匹配数
-    const records = await prisma.record.findMany({
-      where: { objectId },
-      select: { data: true },
+    const prefix = resolvePrefixBeforeSeq(format, now);
+
+    const counter = await prisma.autoNumberCounter.upsert({
+      where: { objectId_prefix: { objectId, prefix } },
+      update: { counter: { increment: 1 } },
+      create: { tenantId, objectId, prefix, counter: 1 },
     });
 
-    let count = 0;
-    for (const record of records) {
-      const data = record.data as Record<string, unknown> | null;
-      if (!data) continue;
-      // 遍历记录的所有字段值，查找以目标前缀开头的字符串值
-      for (const value of Object.values(data)) {
-        if (typeof value === 'string' && value.startsWith(prefix)) {
-          count++;
-          break; // 单条记录最多计一次（避免一条记录多个匹配字段重复计数）
-        }
-      }
-    }
-
-    return count + 1;
+    return counter.counter;
   }
 }
 

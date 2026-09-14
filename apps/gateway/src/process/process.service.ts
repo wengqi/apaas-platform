@@ -519,8 +519,74 @@ export class ProcessService {
     });
     if (!task) throw new NotFoundException('任务不存在');
 
-    // 权限校验：任务须属于当前用户（受理人或候选组——candidateGroups 存角色ID）
-    // assignee 可能存的是 userId 或邮箱，都需匹配
+    await this.assertTaskMembership(task, userId);
+
+    await this.engine.completeTask(taskId, userId, decision, comment, formData, tenantId);
+    return { completed: true };
+  }
+
+  /** 转办任务给他人。 */
+  async delegateTask(tenantId: string, taskId: string, userId: string, delegatedTo: string) {
+    const task = await prisma.processTask.findFirst({
+      where: { id: taskId, tenantId },
+    });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.status !== 'PENDING') {
+      throw new BadRequestException({
+        code: 'CONFLICT',
+        message: '任务已完成或已取消',
+      });
+    }
+
+    // 权限校验：仅任务受理人/候选组成员可转办
+    await this.assertTaskMembership(task, userId);
+
+    // 被转办人必须是同租户下的有效用户
+    const delegateUser = await prisma.user.findFirst({
+      where: { id: delegatedTo, tenantId, status: 'ACTIVE' },
+      select: { id: true, name: true, email: true },
+    });
+    if (!delegateUser) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '被转办人不存在或不属于当前租户',
+      });
+    }
+
+    await prisma.processTask.update({
+      where: { id: taskId },
+      data: {
+        status: 'DELEGATED',
+        delegatedTo,
+        comment: `由 ${userId} 转办给 ${delegatedTo}`,
+      },
+    });
+
+    // 创建新的待办任务给被转办人（保持流程继续）
+    await prisma.processTask.create({
+      data: {
+        tenantId,
+        instanceId: task.instanceId,
+        nodeExecutionId: task.nodeExecutionId,
+        nodeId: task.nodeId,
+        taskName: task.taskName,
+        assignee: delegatedTo,
+        candidateGroups: [],
+        status: 'PENDING',
+      },
+    });
+
+    return { delegated: true, delegatedTo };
+  }
+
+  /**
+   * 校验当前用户是否为任务的受理人或候选组成员。
+   * assignee 可能存 userId 或邮箱，均需匹配；candidateGroups 存角色 ID（含组织授权）。
+   */
+  private async assertTaskMembership(
+    task: { assignee: string | null; candidateGroups: string[]; tenantId: string },
+    userId: string,
+  ): Promise<void> {
     const user = await prisma.user.findFirst({
       where: { id: userId },
       select: { email: true },
@@ -556,48 +622,6 @@ export class ProcessService {
         message: '任务不属于当前用户',
       });
     }
-
-    await this.engine.completeTask(taskId, userId, decision, comment, formData, tenantId);
-    return { completed: true };
-  }
-
-  /** 转办任务给他人。 */
-  async delegateTask(tenantId: string, taskId: string, userId: string, delegatedTo: string) {
-    const task = await prisma.processTask.findFirst({
-      where: { id: taskId, tenantId },
-    });
-    if (!task) throw new NotFoundException('任务不存在');
-    if (task.status !== 'PENDING') {
-      throw new BadRequestException({
-        code: 'CONFLICT',
-        message: '任务已完成或已取消',
-      });
-    }
-
-    await prisma.processTask.update({
-      where: { id: taskId },
-      data: {
-        status: 'DELEGATED',
-        delegatedTo,
-        comment: `由 ${userId} 转办给 ${delegatedTo}`,
-      },
-    });
-
-    // 创建新的待办任务给被转办人（保持流程继续）
-    await prisma.processTask.create({
-      data: {
-        tenantId,
-        instanceId: task.instanceId,
-        nodeExecutionId: task.nodeExecutionId,
-        nodeId: task.nodeId,
-        taskName: task.taskName,
-        assignee: delegatedTo,
-        candidateGroups: [],
-        status: 'PENDING',
-      },
-    });
-
-    return { delegated: true, delegatedTo };
   }
 
   // ===========================================================================

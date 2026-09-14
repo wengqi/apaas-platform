@@ -51,6 +51,7 @@ model Tenant {
   dataFlows   DataFlow[]
   cloudFunctions CloudFunction[]
   notificationTemplates NotificationTemplate[]
+  autoNumberCounters AutoNumberCounter[]
 
   @@map("tenants")
 }
@@ -169,6 +170,7 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+  @@index([roleId])
   @@map("user_roles")
 }
 
@@ -204,6 +206,7 @@ model OrgMember {
   org  OrgNode @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@id([userId, orgId])
+  @@index([orgId])
   @@map("org_members")
 }
 
@@ -519,6 +522,7 @@ model ProcessTask {
   @@index([tenantId])
   @@index([instanceId])
   @@index([assignee])
+  @@index([instanceId, status])
   @@map("process_tasks")
 }
 
@@ -662,7 +666,7 @@ model Connector {
   credentialId  String?  @map("credential_id") // 关联凭证（可选）
   status        String   @default("ACTIVE") // ACTIVE | INACTIVE
   // Webhook 专用：生成的入站 token（用于验证请求合法性）
-  webhookToken  String?  @map("webhook_token")
+  webhookToken  String?  @unique @map("webhook_token")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -798,4 +802,21 @@ model CloudFunction {
   @@index([tenantId])
   @@index([appId])
   @@map("cloud_functions")
+}
+
+/// 自动编号计数器 — 按 (objectId, prefix) 原子自增，替代全表扫描计数（并发安全）。
+model AutoNumberCounter {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  objectId String @map("object_id")
+  prefix   String
+  counter  Int    @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([objectId, prefix])
+  @@index([tenantId])
+  @@map("auto_number_counters")
 }

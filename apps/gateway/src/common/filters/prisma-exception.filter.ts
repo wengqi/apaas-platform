@@ -7,17 +7,19 @@
  *   P2003 外键约束冲突 → 400 Bad Request
  *   其他               → 500 Internal Server Error
  *
- * 必须注册在 AllExceptionsFilter 之前（更具体的过滤器优先）。
+ * 注意：必须注册在 AllExceptionsFilter 之前（更具体的过滤器优先），
+ * 且直接写响应而非 rethrow（filter 内抛出的 HttpException 不会被其他 filter 再次拦截）。
  */
 
-import { ExceptionFilter, Catch, ArgumentsHost, HttpStatus, HttpException } from '@nestjs/common';
+import { ExceptionFilter, Catch, ArgumentsHost, HttpStatus } from '@nestjs/common';
+import type { Response } from 'express';
 import { Prisma } from '@apaas/db';
 
 @Catch(Prisma.PrismaClientKnownRequestError)
 export class PrismaExceptionFilter implements ExceptionFilter {
   catch(exception: Prisma.PrismaClientKnownRequestError, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
-    ctx.getResponse<Response>();
+    const response = ctx.getResponse<Response>();
 
     let status: HttpStatus;
     let message: string;
@@ -44,7 +46,9 @@ export class PrismaExceptionFilter implements ExceptionFilter {
         break;
     }
 
-    // 转译为 HttpException，交给 AllExceptionsFilter 统一格式化
-    throw new HttpException({ ok: false, error: { code: status, message } }, status);
+    response.status(status).json({
+      ok: false,
+      error: { code: status, message },
+    });
   }
 }

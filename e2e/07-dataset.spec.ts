@@ -44,10 +44,9 @@ test.describe('数据集与数据流', () => {
 
   test('创建数据流 + 预览（单表 + 分组汇总）', async () => {
     // 创建对象 + 字段 + 记录
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_orders',
-      label: 'E2E 订单',
-      labelPlural: 'E2E 订单',
+      name: 'E2E 订单',
       icon: 'shopping_cart',
     });
 
@@ -67,7 +66,7 @@ test.describe('数据集与数据流', () => {
       { category: 'A', amount: 200 },
       { category: 'B', amount: 150 },
     ]) {
-      await api.post('/records', { objectId: obj.id, data: r });
+      await api.post(`/objects/${obj.id}/records`, r);
     }
 
     // 创建数据流（单表 + 分组汇总）
@@ -77,12 +76,12 @@ test.describe('数据集与数据流', () => {
       config: {
         sources: [{ objectId: obj.id, alias: 'orders' }],
         outputFields: [
-          { alias: 'category', label: '类别', source: 'orders.category', type: 'string' },
-          { alias: 'total', label: '总额', source: 'orders.amount', type: 'number' },
+          { alias: 'category', label: '类别', source: 'category', type: 'string' },
+          { alias: 'total', label: '总额', source: 'total', type: 'number' },
         ],
         aggregation: {
-          groupBy: ['orders.category'],
-          metrics: [{ alias: 'total', label: '总额', field: 'orders.amount', function: 'sum' }],
+          groupBy: ['category'],
+          metrics: [{ alias: 'total', label: '总额', field: 'amount', function: 'sum' }],
         },
       },
     });
@@ -105,10 +104,9 @@ test.describe('数据集与数据流', () => {
   });
 
   test('执行数据流 + 查询数据集行', async () => {
-    const obj = await api.post<{ id: string }>('/objects', {
+    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_sales',
-      label: 'E2E 销售',
-      labelPlural: 'E2E 销售',
+      name: 'E2E 销售',
       icon: 'bar_chart',
     });
 
@@ -128,7 +126,7 @@ test.describe('数据集与数据流', () => {
       { region: 'west', revenue: 2000 },
       { region: 'east', revenue: 500 },
     ]) {
-      await api.post('/records', { objectId: obj.id, data: r });
+      await api.post(`/objects/${obj.id}/records`, r);
     }
 
     const flow = await api.post<{ id: string }>('/apps/' + appId + '/data-flows', {
@@ -137,16 +135,16 @@ test.describe('数据集与数据流', () => {
       config: {
         sources: [{ objectId: obj.id, alias: 'sales' }],
         outputFields: [
-          { alias: 'region', label: '区域', source: 'sales.region', type: 'string' },
-          { alias: 'total_revenue', label: '总收入', source: 'sales.revenue', type: 'number' },
+          { alias: 'region', label: '区域', source: 'region', type: 'string' },
+          { alias: 'total_revenue', label: '总收入', source: 'total_revenue', type: 'number' },
         ],
         aggregation: {
-          groupBy: ['sales.region'],
+          groupBy: ['region'],
           metrics: [
             {
               alias: 'total_revenue',
               label: '总收入',
-              field: 'sales.revenue',
+              field: 'revenue',
               function: 'sum',
             },
           ],

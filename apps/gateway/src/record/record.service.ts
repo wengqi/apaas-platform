@@ -92,6 +92,37 @@ export class RecordService {
   // ===========================================================================
 
   /**
+   * 将权限上下文中的 ABAC 行级条件翻译为 Prisma where 子句。
+   * 供 query/get/update/delete 统一注入，确保行级条件在所有读写路径上生效。
+   */
+  private buildConditionWhere(
+    permissionContext?: PermissionContext,
+  ): Prisma.RecordWhereInput | null {
+    if (!permissionContext?.condition) return null;
+    return translateCondition(permissionContext.condition, {
+      currentUser: permissionContext.currentUserId,
+    });
+  }
+
+  /**
+   * 按 fieldScope 白名单过滤写操作的字段（fieldScope=null 表示不限制）。
+   * 保证持有字段级受限规则的 EDIT 用户无法越权写入范围外字段。
+   */
+  private filterWritableFields(
+    data: Record<string, unknown>,
+    permissionContext?: PermissionContext,
+  ): Record<string, unknown> {
+    const fieldScope = permissionContext?.fieldScope;
+    if (!fieldScope) return data;
+    const allowed = new Set(fieldScope);
+    const filtered: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (allowed.has(key)) filtered[key] = value;
+    }
+    return filtered;
+  }
+
+  /**
    * 分页查询记录（支持筛选 / 排序 / 行级权限过滤 / 字段级投影）。
    * 用 Prisma 的 JSONB path 查询过滤 data JSON 内的字段值。
    *
@@ -116,16 +147,12 @@ export class RecordService {
     }
 
     // 注入行级权限条件
-    if (permissionContext?.condition) {
-      const conditionWhere = translateCondition(permissionContext.condition, {
-        currentUser: permissionContext.currentUserId,
-      });
-      if (conditionWhere) {
-        if (where.AND) {
-          (where.AND as Prisma.RecordWhereInput[]).push(conditionWhere);
-        } else {
-          where.AND = [conditionWhere];
-        }
+    const conditionWhere = this.buildConditionWhere(permissionContext);
+    if (conditionWhere) {
+      if (where.AND) {
+        (where.AND as Prisma.RecordWhereInput[]).push(conditionWhere);
+      } else {
+        where.AND = [conditionWhere];
       }
     }
 
@@ -151,17 +178,22 @@ export class RecordService {
   }
 
   /**
-   * 按 ID 查单条记录（支持字段级投影）。
+   * 按 ID 查单条记录（支持字段级投影 + 行级权限条件）。
    *
-   * @param permissionContext 权限上下文（fieldScope 投影 data 字段）
+   * @param permissionContext 权限上下文（condition 注入 where，fieldScope 投影 data 字段）
    */
   async get(
     tenantId: string,
     recordId: string,
     permissionContext?: PermissionContext,
   ): Promise<RecordResult> {
+    const conditionWhere = this.buildConditionWhere(permissionContext);
     const record = await prisma.record.findFirst({
-      where: { id: recordId, tenantId },
+      where: {
+        id: recordId,
+        tenantId,
+        ...(conditionWhere ? { AND: [conditionWhere] } : {}),
+      },
     });
     if (!record) throw new NotFoundException('记录不存在');
     return this.toResult(record, permissionContext?.fieldScope);
@@ -199,7 +231,11 @@ export class RecordService {
       const format = config?.autoNumber?.format;
       if (!format) continue;
       // 用户即便传了该字段值也以系统生成为准（自动编号由系统掌控）
-      computedData[field.apiName] = await this.autoNumberGenerator.generate(format, objectId);
+      computedData[field.apiName] = await this.autoNumberGenerator.generate(
+        format,
+        objectId,
+        tenantId,
+      );
     }
 
     // 2. 计算 Formula 字段（基于已含自动编号的 data）
@@ -242,9 +278,19 @@ export class RecordService {
     recordId: string,
     userId: string,
     data: Record<string, unknown>,
+    permissionContext?: PermissionContext,
   ): Promise<RecordResult> {
+    // fieldScope 写过滤：仅允许写入规则范围内的字段
+    const writableData = this.filterWritableFields(data, permissionContext);
+
+    // 行级条件注入 where（不满足条件的记录对当前用户不可见 → 404）
+    const conditionWhere = this.buildConditionWhere(permissionContext);
     const existing = await prisma.record.findFirst({
-      where: { id: recordId, tenantId },
+      where: {
+        id: recordId,
+        tenantId,
+        ...(conditionWhere ? { AND: [conditionWhere] } : {}),
+      },
       include: { object: { select: { fields: true } } },
     });
     if (!existing) throw new NotFoundException('记录不存在');
@@ -252,7 +298,7 @@ export class RecordService {
     const fields = this.parseFields(existing.object.fields);
 
     // 1. 剔除入参中的 AutoNumber 字段（自动编号不可更新）
-    const incoming: Record<string, unknown> = { ...data };
+    const incoming: Record<string, unknown> = { ...writableData };
     for (const field of fields) {
       if (field.type === FieldType.AutoNumber) {
         delete incoming[field.apiName];
@@ -291,12 +337,22 @@ export class RecordService {
   }
 
   /**
-   * 删除记录。
+   * 删除记录（行级权限条件注入 where）。
    */
-  async delete(tenantId: string, recordId: string): Promise<void> {
-    // 先查记录信息（删除后无法获取 appId/objectId）
+  async delete(
+    tenantId: string,
+    recordId: string,
+    permissionContext?: PermissionContext,
+  ): Promise<void> {
+    const conditionWhere = this.buildConditionWhere(permissionContext);
+
+    // 先查记录信息（删除后无法获取 appId/objectId）；条件不满足 → 视为不存在
     const existing = await prisma.record.findFirst({
-      where: { id: recordId, tenantId },
+      where: {
+        id: recordId,
+        tenantId,
+        ...(conditionWhere ? { AND: [conditionWhere] } : {}),
+      },
       select: { appId: true, objectId: true, data: true },
     });
     if (!existing) throw new NotFoundException('记录不存在');
@@ -357,13 +413,14 @@ export class RecordService {
     recordIds: string[],
     userId: string,
     data: Record<string, unknown>,
+    permissionContext?: PermissionContext,
   ): Promise<BatchUpdateResult> {
     const errors: ImportError[] = [];
     let updated = 0;
 
     for (let i = 0; i < recordIds.length; i++) {
       try {
-        await this.update(tenantId, recordIds[i]!, userId, data);
+        await this.update(tenantId, recordIds[i]!, userId, data, permissionContext);
         updated++;
       } catch (err) {
         errors.push({
@@ -380,10 +437,20 @@ export class RecordService {
    * 批量删除记录。
    *
    * 使用 deleteMany 一次查询删除所有匹配记录，触发删除事件。
+   * 行级权限条件注入 where — 条件外的记录不会被删除（计入 ignored）。
    */
-  async batchDelete(tenantId: string, recordIds: string[]): Promise<BatchDeleteResult> {
+  async batchDelete(
+    tenantId: string,
+    recordIds: string[],
+    permissionContext?: PermissionContext,
+  ): Promise<BatchDeleteResult> {
+    const conditionWhere = this.buildConditionWhere(permissionContext);
     const records = await prisma.record.findMany({
-      where: { id: { in: recordIds }, tenantId },
+      where: {
+        id: { in: recordIds },
+        tenantId,
+        ...(conditionWhere ? { AND: [conditionWhere] } : {}),
+      },
       select: { id: true, appId: true, objectId: true, data: true },
     });
 
@@ -391,8 +458,10 @@ export class RecordService {
       throw new BadRequestException('未找到要删除的记录');
     }
 
+    // 仅删除通过行级条件校验的记录（条件外的 ID 静默忽略）
+    const deletableIds = records.map((r) => r.id);
     const result = await prisma.record.deleteMany({
-      where: { id: { in: recordIds }, tenantId },
+      where: { id: { in: deletableIds }, tenantId },
     });
 
     // 按对象分组触发事件（非阻塞）

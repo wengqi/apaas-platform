@@ -7,10 +7,17 @@
  * - 复用 DataFlowEngine 的聚合逻辑
  */
 
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { prisma } from '@apaas/db';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { prisma, Prisma } from '@apaas/db';
 import jsonLogic from 'json-logic-js';
 import type { ChartAggregation, TimeGranularity } from '@apaas/shared';
+import { translateCondition } from '../permission/condition-translator.js';
+import type { PermissionContext } from '../auth/authenticated-request.js';
 
 /** 后端聚合最大加载行数（防御性，避免全表加载）。 */
 const CHART_DATA_MAX_ROWS = 10000;
@@ -58,13 +65,25 @@ export class ChartDataService {
    *
    * 当 categoryField 省略时，所有记录归入单组，返回标量值（指标卡用）。
    * 当 timeGranularity 存在时，categoryField 按时间分桶聚合。
+   *
+   * 安全（P0 修复）：
+   * - 数据源归属校验：对象/数据集必须属于 appId，防止跨应用读取
+   * - ABAC 行级条件注入：聚合范围与 record.query 一致，防止聚合端点旁路行权限
+   * - fieldScope 列级校验：分类/值字段必须在规则白名单内
    */
-  async aggregate(tenantId: string, request: ChartDataRequest): Promise<ChartDataResult> {
+  async aggregate(
+    tenantId: string,
+    appId: string,
+    request: ChartDataRequest,
+    permissionContext?: PermissionContext,
+  ): Promise<ChartDataResult> {
     if (request.aggregation !== 'count' && !request.valueField) {
       throw new BadRequestException('非 count 聚合必须指定值字段');
     }
 
-    let records = await this.loadSourceData(request, tenantId);
+    this.assertFieldsInScope(request, permissionContext);
+
+    let records = await this.loadSourceData(tenantId, appId, request, permissionContext);
 
     if (request.filter) {
       records = records.filter((r) => jsonLogic.apply(request.filter!, r) === true);
@@ -87,15 +106,65 @@ export class ChartDataService {
   }
 
   /**
-   * 从数据源加载记录。
+   * fieldScope 列级校验 — 分类/值字段必须在规则白名单内（fieldScope=null 不限制）。
+   * 防止持有列级受限规则的用户对范围外字段执行聚合读取。
+   */
+  private assertFieldsInScope(
+    request: ChartDataRequest,
+    permissionContext?: PermissionContext,
+  ): void {
+    const fieldScope = permissionContext?.fieldScope;
+    if (!fieldScope) return;
+
+    const allowed = new Set(fieldScope);
+    const denied: string[] = [];
+    if (request.categoryField && !allowed.has(request.categoryField)) {
+      denied.push(request.categoryField);
+    }
+    if (request.valueField && !allowed.has(request.valueField)) {
+      denied.push(request.valueField);
+    }
+    if (denied.length > 0) {
+      throw new ForbiddenException(`字段不在可访问范围内: ${denied.join(', ')}`);
+    }
+  }
+
+  /** 将权限上下文中的 ABAC 行级条件翻译为 Prisma where 片段。 */
+  private buildConditionWhere(
+    permissionContext?: PermissionContext,
+  ): Prisma.RecordWhereInput | null {
+    if (!permissionContext?.condition) return null;
+    return translateCondition(permissionContext.condition, {
+      currentUser: permissionContext.currentUserId,
+    });
+  }
+
+  /**
+   * 从数据源加载记录（含归属校验 + 行级条件注入）。
    */
   private async loadSourceData(
-    request: ChartDataRequest,
     tenantId: string,
+    appId: string,
+    request: ChartDataRequest,
+    permissionContext?: PermissionContext,
   ): Promise<Record<string, unknown>[]> {
     if (request.sourceType === 'object') {
+      // 归属校验：对象必须属于当前应用（防止凭 objectId 跨应用读取）
+      const obj = await prisma.objectMeta.findFirst({
+        where: { id: request.sourceId, tenantId, appId },
+        select: { id: true },
+      });
+      if (!obj) throw new NotFoundException('数据源对象不存在或不属于当前应用');
+
+      // ABAC 行级条件注入 — 调用方 filter 在此基础上收窄，无法越权放大范围
+      const conditionWhere = this.buildConditionWhere(permissionContext);
+
       const dbRecords = await prisma.record.findMany({
-        where: { tenantId, objectId: request.sourceId },
+        where: {
+          tenantId,
+          objectId: request.sourceId,
+          ...(conditionWhere ? { AND: [conditionWhere] } : {}),
+        },
         select: { data: true },
         take: CHART_DATA_MAX_ROWS,
       });
@@ -103,6 +172,13 @@ export class ChartDataService {
     }
 
     if (request.sourceType === 'dataset') {
+      // 归属校验：数据集必须属于当前应用
+      const dataset = await prisma.dataset.findFirst({
+        where: { id: request.sourceId, tenantId, appId },
+        select: { id: true },
+      });
+      if (!dataset) throw new NotFoundException('数据源数据集不存在或不属于当前应用');
+
       const dbRows = await prisma.datasetRow.findMany({
         where: { tenantId, datasetId: request.sourceId },
         select: { data: true },

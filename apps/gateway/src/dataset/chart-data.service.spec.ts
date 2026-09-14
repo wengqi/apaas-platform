@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ChartDataService } from './chart-data.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 
@@ -21,6 +21,7 @@ describe('ChartDataService', () => {
   const service = new ChartDataService();
 
   const TENANT_ID = 'tenant-1';
+  const APP_ID = 'app-1';
   const OBJECT_ID = 'obj-1';
   const DATASET_ID = 'ds-1';
 
@@ -33,6 +34,9 @@ describe('ChartDataService', () => {
     // 默认返回空数组，每个 test 按需 mock
     prisma.record.findMany.mockResolvedValue([]);
     prisma.datasetRow.findMany.mockResolvedValue([]);
+    // 归属校验默认通过（安全测试单独覆盖拒绝场景）
+    prisma.objectMeta.findFirst.mockResolvedValue({ id: OBJECT_ID });
+    prisma.dataset.findFirst.mockResolvedValue({ id: DATASET_ID });
   });
 
   // ---------------------------------------------------------------------------
@@ -46,7 +50,7 @@ describe('ChartDataService', () => {
       makeRecordData({ status: 'closed', amount: 50 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'status',
@@ -66,7 +70,7 @@ describe('ChartDataService', () => {
       makeRecordData({ status: 'closed', amount: 50 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'status',
@@ -84,7 +88,7 @@ describe('ChartDataService', () => {
       makeRecordData({ group: 'B', score: 100 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'group',
@@ -103,7 +107,7 @@ describe('ChartDataService', () => {
       makeRecordData({ group: 'B', score: 50 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'group',
@@ -122,7 +126,7 @@ describe('ChartDataService', () => {
       makeRecordData({ group: 'B', score: 50 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'group',
@@ -145,7 +149,7 @@ describe('ChartDataService', () => {
       makeRecordData({ amount: 300 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       valueField: 'amount',
@@ -164,7 +168,7 @@ describe('ChartDataService', () => {
       makeRecordData({ baz: 3 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       aggregation: 'count',
@@ -186,7 +190,7 @@ describe('ChartDataService', () => {
       makeRecordData({ region: 'east' }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'region',
@@ -199,7 +203,7 @@ describe('ChartDataService', () => {
 
   it('非 count 聚合缺失 valueField 报错', async () => {
     await expect(
-      service.aggregate(TENANT_ID, {
+      service.aggregate(TENANT_ID, APP_ID, {
         sourceType: 'object',
         sourceId: OBJECT_ID,
         categoryField: 'region',
@@ -220,7 +224,7 @@ describe('ChartDataService', () => {
       makeRecordData({ date: '2026-01-01', amount: 15 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'date',
@@ -240,7 +244,7 @@ describe('ChartDataService', () => {
       makeRecordData({ date: '2026-01-20', amount: 50 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'date',
@@ -263,7 +267,7 @@ describe('ChartDataService', () => {
       makeRecordData({ date: '2026-01-07', amount: 30 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'date',
@@ -283,7 +287,7 @@ describe('ChartDataService', () => {
       makeRecordData({ date: '2026-01-01', amount: 10 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'date',
@@ -304,7 +308,7 @@ describe('ChartDataService', () => {
       makeRecordData({ date: '2026-01-02T12:00:00', amount: 30 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'date',
@@ -328,7 +332,7 @@ describe('ChartDataService', () => {
       makeRecordData({ status: 'open', amount: 50 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'status',
@@ -349,7 +353,7 @@ describe('ChartDataService', () => {
       makeRecordData({ group: 'B', amount: 200 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'group',
@@ -373,7 +377,7 @@ describe('ChartDataService', () => {
       makeRecordData({ region: 'west', sales: 2000 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'dataset',
       sourceId: DATASET_ID,
       categoryField: 'region',
@@ -394,7 +398,7 @@ describe('ChartDataService', () => {
   it('空数据集返回空数组', async () => {
     prisma.record.findMany.mockResolvedValue([]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'status',
@@ -412,7 +416,7 @@ describe('ChartDataService', () => {
       makeRecordData({ status: 'closed', amount: 200 }),
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'status',
@@ -430,7 +434,7 @@ describe('ChartDataService', () => {
       makeRecordData({ status: 'open' }), // 无 amount
     ]);
 
-    const result = await service.aggregate(TENANT_ID, {
+    const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
       sourceId: OBJECT_ID,
       categoryField: 'status',
@@ -443,7 +447,7 @@ describe('ChartDataService', () => {
 
   it('不支持的数据源类型报错', async () => {
     await expect(
-      service.aggregate(TENANT_ID, {
+      service.aggregate(TENANT_ID, APP_ID, {
         sourceType: 'invalid' as 'object',
         sourceId: OBJECT_ID,
         categoryField: 'status',
@@ -451,5 +455,123 @@ describe('ChartDataService', () => {
         aggregation: 'sum',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // -------------------------------------------------------------------------
+  // 安全（P0 修复）：归属校验 / ABAC 行级条件 / fieldScope 列级校验
+  // -------------------------------------------------------------------------
+
+  it('安全: 对象不属于当前应用时拒绝（跨应用读取防护）', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(null); // 归属校验失败
+
+    await expect(
+      service.aggregate(TENANT_ID, APP_ID, {
+        sourceType: 'object',
+        sourceId: OBJECT_ID,
+        categoryField: 'status',
+        valueField: 'amount',
+        aggregation: 'sum',
+      }),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('安全: 数据集不属于当前应用时拒绝', async () => {
+    prisma.dataset.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.aggregate(TENANT_ID, APP_ID, {
+        sourceType: 'dataset',
+        sourceId: DATASET_ID,
+        categoryField: 'status',
+        valueField: 'amount',
+        aggregation: 'sum',
+      }),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('安全: ABAC 行级条件注入 findMany where', async () => {
+    prisma.record.findMany.mockResolvedValue([makeRecordData({ amount: 100 })]);
+
+    await service.aggregate(
+      TENANT_ID,
+      APP_ID,
+      {
+        sourceType: 'object',
+        sourceId: OBJECT_ID,
+        categoryField: 'status',
+        valueField: 'amount',
+        aggregation: 'sum',
+      },
+      {
+        condition: { '==': [{ var: 'created_by' }, { currentUser: true }] },
+        fieldScope: null,
+        currentUserId: 'user-001',
+      },
+    );
+
+    const call = prisma.record.findMany.mock.calls[0]![0];
+    expect(call.where.AND).toBeDefined();
+    expect(Array.isArray(call.where.AND)).toBe(true);
+  });
+
+  it('安全: fieldScope 拒绝白名单外的值字段', async () => {
+    await expect(
+      service.aggregate(
+        TENANT_ID,
+        APP_ID,
+        {
+          sourceType: 'object',
+          sourceId: OBJECT_ID,
+          categoryField: 'status',
+          valueField: 'salary', // 不在 fieldScope 内
+          aggregation: 'avg',
+        },
+        {
+          condition: null,
+          fieldScope: ['status', 'amount'],
+          currentUserId: 'user-001',
+        },
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('安全: fieldScope 拒绝白名单外的分类字段', async () => {
+    await expect(
+      service.aggregate(
+        TENANT_ID,
+        APP_ID,
+        {
+          sourceType: 'object',
+          sourceId: OBJECT_ID,
+          categoryField: 'secret_field',
+          valueField: 'amount',
+          aggregation: 'count',
+        },
+        {
+          condition: null,
+          fieldScope: ['status', 'amount'],
+          currentUserId: 'user-001',
+        },
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('安全: fieldScope=null 不限制字段', async () => {
+    prisma.record.findMany.mockResolvedValue([makeRecordData({ status: 'open', salary: 999 })]);
+
+    const result = await service.aggregate(
+      TENANT_ID,
+      APP_ID,
+      {
+        sourceType: 'object',
+        sourceId: OBJECT_ID,
+        categoryField: 'status',
+        valueField: 'salary',
+        aggregation: 'sum',
+      },
+      { condition: null, fieldScope: null, currentUserId: 'user-001' },
+    );
+
+    expect(result.totalRecords).toBe(1);
   });
 });

@@ -45,17 +45,43 @@ const { Text } = Typography;
 // 表单类渲染器
 // ---------------------------------------------------------------------------
 
+/**
+ * 表单渲染器组件 — 接线 onFinish/onReset 到 ctx.onAction。
+ *
+ * F-B2 修复：此前 Form 无 onFinish/onReset，EventsTab 配置的 onSubmit 动作永不触发。
+ * 现在通过 Form.useForm() 获取 form 实例，验证通过后触发 onSubmit 动作链。
+ */
+function FormRenderer({
+  node,
+  ctx,
+  renderChild,
+}: {
+  node: ComponentNode;
+  ctx: RenderContext;
+  renderChild: RenderChild;
+}) {
+  const [form] = Form.useForm();
+  const layout = getPropAsString(node, 'layout', ctx) || 'vertical';
+
+  return (
+    <Form
+      form={form}
+      layout={layout as 'vertical' | 'horizontal'}
+      component={false}
+      onFinish={() => ctx.onAction(node.id, 'onSubmit')}
+      onReset={() => ctx.onAction(node.id, 'onReset')}
+    >
+      {renderContainerChildren(node, ctx, renderChild)}
+    </Form>
+  );
+}
+
 export function renderForm(
   node: ComponentNode,
   ctx: RenderContext,
   renderChild: RenderChild,
 ): ReactNode {
-  const layout = getPropAsString(node, 'layout', ctx) || 'vertical';
-  return (
-    <Form layout={layout as 'vertical' | 'horizontal'} component={false}>
-      {renderContainerChildren(node, ctx, renderChild)}
-    </Form>
-  );
+  return <FormRenderer node={node} ctx={ctx} renderChild={renderChild} />;
 }
 
 export function renderTextInput(node: ComponentNode, ctx: RenderContext): ReactNode {

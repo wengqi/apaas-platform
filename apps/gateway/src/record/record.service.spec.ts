@@ -324,6 +324,41 @@ describe('RecordService', () => {
         expect.objectContaining({ id: 'rec-001' }),
       );
     });
+
+    it('B1: fieldScope 过滤创建时的写入字段', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta());
+      prisma.record.create.mockResolvedValue(makeRecord());
+
+      const { service } = createService();
+      await service.create(
+        'tenant-001',
+        'obj-001',
+        'user-001',
+        { name: 'Test', salary: 999 },
+        { condition: null, fieldScope: ['name'], currentUserId: 'user-001' },
+      );
+
+      // 验证 prisma.record.create 收到的 data 仅含 name（salary 被 fieldScope 过滤）
+      const createCall = prisma.record.create.mock.calls[0]![0];
+      expect(createCall.data.data).toEqual({ name: 'Test' });
+    });
+
+    it('B1: fieldScope=null 不限制创建字段', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta());
+      prisma.record.create.mockResolvedValue(makeRecord());
+
+      const { service } = createService();
+      await service.create(
+        'tenant-001',
+        'obj-001',
+        'user-001',
+        { name: 'Test', salary: 999 },
+        { condition: null, fieldScope: null, currentUserId: 'user-001' },
+      );
+
+      const createCall = prisma.record.create.mock.calls[0]![0];
+      expect(createCall.data.data).toEqual({ name: 'Test', salary: 999 });
+    });
   });
 
   // =========================================================================

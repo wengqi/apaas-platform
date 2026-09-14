@@ -66,6 +66,7 @@ export class ProcessController {
   // ===========================================================================
 
   @Get('apps/:appId/processes')
+  @RequirePermission('PROCESS', 'VIEW')
   async listProcesses(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const data = await this.processService.listProcesses(requireTenantId(req), appId);
     return { ok: true as const, data };
@@ -88,6 +89,7 @@ export class ProcessController {
   }
 
   @Get('processes/:processId')
+  @RequirePermission('PROCESS', 'VIEW')
   async getProcess(@Req() req: AuthenticatedRequest, @Param('processId') processId: string) {
     const data = await this.processService.getProcess(requireTenantId(req), processId);
     return { ok: true as const, data };
@@ -143,6 +145,7 @@ export class ProcessController {
   }
 
   @Get('processes/:processId/instances')
+  @RequirePermission('PROCESS', 'VIEW')
   async listInstances(
     @Req() req: AuthenticatedRequest,
     @Param('processId') processId: string,
@@ -162,12 +165,14 @@ export class ProcessController {
   }
 
   @Get('instances/:instanceId')
+  @RequirePermission('PROCESS', 'VIEW')
   async getInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
     const data = await this.processService.getInstance(requireTenantId(req), instanceId);
     return { ok: true as const, data };
   }
 
   @Get('instances/:instanceId/trace')
+  @RequirePermission('PROCESS', 'VIEW')
   async getTrace(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
     const data = await this.processService.getTrace(requireTenantId(req), instanceId);
     return { ok: true as const, data };
@@ -185,6 +190,7 @@ export class ProcessController {
   // ===========================================================================
 
   @Get('tasks')
+  @RequirePermission('PROCESS', 'VIEW')
   async listTasks(
     @Req() req: AuthenticatedRequest,
     @Query('status') status?: string,
@@ -203,12 +209,14 @@ export class ProcessController {
   }
 
   @Get('tasks/:taskId')
+  @RequirePermission('PROCESS', 'VIEW')
   async getTask(@Req() req: AuthenticatedRequest, @Param('taskId') taskId: string) {
-    const data = await this.processService.getTask(requireTenantId(req), taskId);
+    const data = await this.processService.getTask(requireTenantId(req), taskId, req.user.id);
     return { ok: true as const, data };
   }
 
   @Post('tasks/:taskId/complete')
+  @RequirePermission('PROCESS', 'EXECUTE')
   async completeTask(
     @Req() req: AuthenticatedRequest,
     @Param('taskId') taskId: string,
@@ -226,6 +234,7 @@ export class ProcessController {
   }
 
   @Post('tasks/:taskId/delegate')
+  @RequirePermission('PROCESS', 'EXECUTE')
   async delegateTask(
     @Req() req: AuthenticatedRequest,
     @Param('taskId') taskId: string,
@@ -245,12 +254,14 @@ export class ProcessController {
   // ===========================================================================
 
   @Get('apps/:appId/notification-templates')
+  @RequirePermission('PROCESS', 'VIEW')
   async listTemplates(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const data = await this.processService.listTemplates(requireTenantId(req), appId);
     return { ok: true as const, data };
   }
 
   @Post('apps/:appId/notification-templates')
+  @RequirePermission('PROCESS', 'EDIT')
   async createTemplate(
     @Req() req: AuthenticatedRequest,
     @Param('appId') appId: string,
@@ -261,6 +272,7 @@ export class ProcessController {
   }
 
   @Put('notification-templates/:templateId')
+  @RequirePermission('PROCESS', 'EDIT')
   async updateTemplate(
     @Req() req: AuthenticatedRequest,
     @Param('templateId') templateId: string,
@@ -271,6 +283,7 @@ export class ProcessController {
   }
 
   @Delete('notification-templates/:templateId')
+  @RequirePermission('PROCESS', 'EDIT')
   async deleteTemplate(@Req() req: AuthenticatedRequest, @Param('templateId') templateId: string) {
     const data = await this.processService.deleteTemplate(requireTenantId(req), templateId);
     return { ok: true as const, data };

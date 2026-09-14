@@ -114,6 +114,7 @@ export class RecordImportExportService {
     objectId: string,
     userId: string,
     csvContent: string,
+    permissionContext?: PermissionContext,
   ): Promise<ImportResult> {
     const obj = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId },
@@ -174,8 +175,14 @@ export class RecordImportExportService {
       return { total: totalRows, success: 0, errors };
     }
 
-    // 调用 batchCreate
-    const batchResult = await this.recordService.batchCreate(tenantId, objectId, userId, records);
+    // 调用 batchCreate（传递 permissionContext 以执行 fieldScope 列级过滤）
+    const batchResult = await this.recordService.batchCreate(
+      tenantId,
+      objectId,
+      userId,
+      records,
+      permissionContext,
+    );
 
     // 合并错误（列头错误 + 行创建错误）
     const allErrors = [...errors, ...batchResult.errors];

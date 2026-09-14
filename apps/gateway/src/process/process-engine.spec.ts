@@ -410,15 +410,15 @@ describe('ProcessEngine', () => {
         nodes: [makeNode('node-task', 'user_task'), makeNode('node-end', 'end')],
         edges: [{ sourceNodeID: 'node-task', targetNodeID: 'node-end' }],
       });
-      const task = makeProcessTask({
-        nodeId: 'node-task',
-        instance: makeProcessInstance({
-          activeNodeIds: ['node-task'],
-          processDef: makeProcessDef({ workflowSchema: schema }),
-        }),
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-task'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
       });
+      const task = makeProcessTask({ nodeId: 'node-task', instance });
       prisma.processTask.findFirst.mockResolvedValue(task);
       prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+      // B2: 锁内重载实例
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
       prisma.processInstance.update.mockResolvedValue(
         makeProcessInstance({ status: 'RUNNING', activeNodeIds: ['node-end'] }),
       );
@@ -454,15 +454,15 @@ describe('ProcessEngine', () => {
           { sourceNodeID: 'node-back', targetNodeID: 'node-task' },
         ],
       });
-      const task = makeProcessTask({
-        nodeId: 'node-task',
-        instance: makeProcessInstance({
-          activeNodeIds: ['node-task'],
-          processDef: makeProcessDef({ workflowSchema: schema }),
-        }),
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-task'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
       });
+      const task = makeProcessTask({ nodeId: 'node-task', instance });
       prisma.processTask.findFirst.mockResolvedValue(task);
       prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+      // B2: 锁内重载实例
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
       prisma.processInstance.update.mockResolvedValue(makeProcessInstance({ status: 'RUNNING' }));
 
       const { engine } = createEngine();
@@ -484,15 +484,15 @@ describe('ProcessEngine', () => {
       });
 
       for (const decision of ['approve', 'approved', 'APPROVE', 'APPROVED']) {
-        const task = makeProcessTask({
-          nodeId: 'node-task',
-          instance: makeProcessInstance({
-            activeNodeIds: ['node-task'],
-            processDef: makeProcessDef({ workflowSchema: schema }),
-          }),
+        const instance = makeProcessInstance({
+          activeNodeIds: ['node-task'],
+          processDef: makeProcessDef({ workflowSchema: schema }),
         });
+        const task = makeProcessTask({ nodeId: 'node-task', instance });
         prisma.processTask.findFirst.mockResolvedValue(task);
         prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+        // B2: 锁内重载实例
+        prisma.processInstance.findFirst.mockResolvedValue(instance);
         prisma.processInstance.update.mockResolvedValue(makeProcessInstance());
 
         const { engine } = createEngine();
@@ -501,6 +501,104 @@ describe('ProcessEngine', () => {
         const taskUpdate = prisma.processTask.updateMany.mock.calls.at(-1)![0];
         expect(taskUpdate.data.status).toBe('APPROVED');
       }
+    });
+
+    it('B2: 并发双 completeTask 同实例不同任务 — 令牌不丢失', async () => {
+      // 模拟并行分支：实例有两个活跃节点 node-a / node-b，
+      // 两个任务分别完成这两个节点。
+      // 修复前：两个任务锁外都读到 [node-a, node-b]，后写入者覆盖先写入者 → 令牌丢失。
+      // 修复后：锁内重载实例，第二个任务读到第一个任务写入后的 activeNodeIds。
+      const schema = makeSimpleSchema({
+        nodes: [
+          makeNode('node-a', 'user_task'),
+          makeNode('node-b', 'user_task'),
+          makeNode('node-end-a', 'end'),
+          makeNode('node-end-b', 'end'),
+        ],
+        edges: [
+          { sourceNodeID: 'node-a', targetNodeID: 'node-end-a' },
+          { sourceNodeID: 'node-b', targetNodeID: 'node-end-b' },
+        ],
+      });
+
+      const taskA = makeProcessTask({
+        id: 'task-a',
+        nodeId: 'node-a',
+        instance: makeProcessInstance({
+          id: 'pi-concurrent',
+          activeNodeIds: ['node-a', 'node-b'],
+          processDef: makeProcessDef({ workflowSchema: schema }),
+        }),
+      });
+      const taskB = makeProcessTask({
+        id: 'task-b',
+        nodeId: 'node-b',
+        instance: makeProcessInstance({
+          id: 'pi-concurrent',
+          activeNodeIds: ['node-a', 'node-b'],
+          processDef: makeProcessDef({ workflowSchema: schema }),
+        }),
+      });
+
+      // 模拟锁内重载：第一次返回原始状态（node-a + node-b），
+      // 第二次返回 taskA 写入后的状态（node-b + node-end-a）
+      let findFirstCallCount = 0;
+      prisma.processInstance.findFirst.mockImplementation(() => {
+        findFirstCallCount++;
+        if (findFirstCallCount === 1) {
+          // taskA 锁内重载：原始状态
+          return Promise.resolve(
+            makeProcessInstance({
+              id: 'pi-concurrent',
+              activeNodeIds: ['node-a', 'node-b'],
+              processDef: makeProcessDef({ workflowSchema: schema }),
+            }),
+          );
+        }
+        // taskB 锁内重载：taskA 已写入 — node-b 仍在 + node-end-a 新增
+        return Promise.resolve(
+          makeProcessInstance({
+            id: 'pi-concurrent',
+            activeNodeIds: ['node-b', 'node-end-a'],
+            processDef: makeProcessDef({ workflowSchema: schema }),
+          }),
+        );
+      });
+
+      // taskA 先执行
+      prisma.processTask.findFirst.mockResolvedValueOnce(taskA);
+      prisma.processTask.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      // taskA 的 instance.update 返回包含 node-end-a 的状态
+      prisma.processInstance.update.mockResolvedValueOnce(
+        makeProcessInstance({
+          id: 'pi-concurrent',
+          activeNodeIds: ['node-b', 'node-end-a'],
+          processDef: makeProcessDef({ workflowSchema: schema }),
+        }),
+      );
+
+      const { engine } = createEngine();
+      await engine.completeTask('task-a', 'user-001', 'approve', undefined, undefined);
+
+      // taskB 后执行
+      prisma.processTask.findFirst.mockResolvedValueOnce(taskB);
+      prisma.processTask.updateMany.mockResolvedValueOnce({ count: 1 });
+      prisma.processInstance.update.mockResolvedValueOnce(
+        makeProcessInstance({
+          id: 'pi-concurrent',
+          activeNodeIds: ['node-end-a', 'node-end-b'],
+          processDef: makeProcessDef({ workflowSchema: schema }),
+        }),
+      );
+
+      await engine.completeTask('task-b', 'user-001', 'approve', undefined, undefined);
+
+      // taskB 的 update 调用应同时包含 node-end-a（taskA 的下游）和 node-end-b（taskB 的下游）
+      // 修复前 taskB 读到 [node-a, node-b] → 写入 [node-a, node-end-b]，丢失 node-end-a
+      const lastUpdate = prisma.processInstance.update.mock.calls.at(-1)![0];
+      expect(lastUpdate.data.activeNodeIds).toContain('node-end-a');
+      expect(lastUpdate.data.activeNodeIds).toContain('node-end-b');
     });
   });
 

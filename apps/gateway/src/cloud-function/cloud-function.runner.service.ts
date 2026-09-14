@@ -51,8 +51,12 @@ export class CloudFunctionRunner {
     const startTime = Date.now();
     const logs: string[] = [];
 
+    // B8 修复：将 isolate 提升到 try 之外，确保 finally 能访问并释放。
+    // 此前 isolate 在 try 内 const 声明，失败路径 catch 无法 dispose → 每次失败泄漏 128MB。
+    let isolate: ivm.Isolate | undefined;
+
     try {
-      const isolate = new ivm.Isolate({ memoryLimit: this.memoryLimitMB });
+      isolate = new ivm.Isolate({ memoryLimit: this.memoryLimitMB });
       const context = isolate.createContextSync();
 
       // 注入 context 对象 — 只读的租户/应用信息（log 函数在包装代码中通过 __logRef 调用）
@@ -114,8 +118,6 @@ export class CloudFunctionRunner {
 
       const result = await Promise.race([resultPromise, timeoutPromise]);
 
-      isolate.dispose();
-
       const durationMs = Date.now() - startTime;
       this.logger.debug(`云函数执行完成，耗时 ${durationMs}ms`);
 
@@ -136,6 +138,11 @@ export class CloudFunctionRunner {
         logs,
         durationMs,
       };
+    } finally {
+      // B8 修复：无论成功还是失败，都释放 Isolate 资源。
+      // isolate.dispose() 会回收整个 V8 堆（含 context/script/ExternalCopy/Reference）。
+      // logRef 持有的宿主侧闭包在 isolate disposed 后自动失效，无需显式释放。
+      isolate?.dispose();
     }
   }
 }

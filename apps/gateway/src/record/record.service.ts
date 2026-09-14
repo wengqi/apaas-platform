@@ -204,14 +204,16 @@ export class RecordService {
    * appId 从对象元数据中获取（路由不含 appId）。
    *
    * 创建前处理：
-   *   1. 遍历对象 fields，为 AutoNumber 字段生成编号并写入 data
-   *   2. 遍历对象 fields，计算 Formula 字段并写入 data
+   *   1. fieldScope 列级过滤（B1 修复 — 持字段级受限规则的用户只能写白名单内字段）
+   *   2. 遍历对象 fields，为 AutoNumber 字段生成编号并写入 data
+   *   3. 遍历对象 fields，计算 Formula 字段并写入 data
    */
   async create(
     tenantId: string,
     objectId: string,
     userId: string,
     data: Record<string, unknown>,
+    permissionContext?: PermissionContext,
   ): Promise<RecordResult> {
     // 校验对象存在且属于该租户，同时获取 appId 与字段定义
     const obj = await prisma.objectMeta.findFirst({
@@ -221,8 +223,12 @@ export class RecordService {
 
     const fields = this.parseFields(obj.fields);
 
-    // 复制入参 data，避免修改调用方传入的对象
-    const computedData: Record<string, unknown> = { ...data };
+    // B1 修复：fieldScope 列级过滤（在 AutoNumber/Formula 计算前执行，
+    // 因为 AutoNumber/Formula 是系统计算字段，不受用户 fieldScope 限制）
+    const filteredData = this.filterWritableFields(data, permissionContext);
+
+    // 复制过滤后的 data，避免修改调用方传入的对象
+    const computedData: Record<string, unknown> = { ...filteredData };
 
     // 1. 生成 AutoNumber 字段编号
     for (const field of fields) {
@@ -384,13 +390,14 @@ export class RecordService {
     objectId: string,
     userId: string,
     records: Record<string, unknown>[],
+    permissionContext?: PermissionContext,
   ): Promise<BatchCreateResult> {
     const errors: ImportError[] = [];
     let created = 0;
 
     for (let i = 0; i < records.length; i++) {
       try {
-        await this.create(tenantId, objectId, userId, records[i]!);
+        await this.create(tenantId, objectId, userId, records[i]!, permissionContext);
         created++;
       } catch (err) {
         errors.push({

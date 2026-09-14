@@ -267,7 +267,12 @@ export function renderContainerChildren(
 // 表单字段包裹（Form.Item + 标签 + 必填）
 // ---------------------------------------------------------------------------
 
-/** 表单字段包裹组件：Form.Item + 标签 + 必填 + 禁用。 */
+/**
+ * 表单字段包裹组件：Form.Item + 标签 + 必填验证 + 禁用。
+ *
+ * F-B2 修复：此前 required 仅作红星装饰（无 rules），validateFields 永远通过。
+ * 现在生成 rules 数组让 AntD 表单验证生效，并补 name 属性以支持 form.getFieldsValue()。
+ */
 export function FormFieldItem({
   node,
   ctx,
@@ -280,8 +285,20 @@ export function FormFieldItem({
   const label = getPropAsString(node, 'label', ctx) || node.name || '';
   const required = getPropAsBool(node, 'required', ctx);
   const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
+
+  // F-B2: 生成验证规则 — required 时生成 required rule
+  const rules = required
+    ? [{ required: true, message: `${label || '该字段'}不能为空` }]
+    : undefined;
+
   return (
-    <Form.Item label={label || undefined} required={required} style={{ marginBottom: 16 }}>
+    <Form.Item
+      name={node.name || undefined}
+      label={label || undefined}
+      required={required}
+      rules={rules}
+      style={{ marginBottom: 16 }}
+    >
       <div style={{ pointerEvents: disabled ? 'none' : 'auto', opacity: disabled ? 0.6 : 1 }}>
         {children}
       </div>

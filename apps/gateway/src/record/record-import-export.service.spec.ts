@@ -179,6 +179,7 @@ describe('RecordImportExportService', () => {
           expect.objectContaining({ name: '记录1', amount: '100' }),
           expect.objectContaining({ name: '记录2', amount: '200' }),
         ]),
+        undefined, // permissionContext（导入测试不传权限上下文）
       );
     });
 

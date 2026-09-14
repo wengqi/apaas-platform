@@ -424,8 +424,17 @@ export class ProcessEngine {
 
     // 实例状态推进与 worker 的令牌推进互斥（同进程内）
     await this.withInstanceLock(task.instance.id, async () => {
+      // B2 修复：锁内重新加载实例，确保拿到最新 activeNodeIds/variables。
+      // 此前使用锁外读取的 task.instance.* 快照，并行双任务会读到相同快照
+      // 导致后写入者覆盖先写入者的令牌（令牌丢失 → 实例卡死）。
+      const instance = await prisma.processInstance.findFirst({
+        where: { id: task.instance.id },
+        include: { processDef: true },
+      });
+      if (!instance) throw new NotFoundException('流程实例不存在或已被删除');
+
       // 写入任务决策到节点输出变量，供下游节点引用
-      const variables = (task.instance.variables as Record<string, unknown>) ?? {};
+      const variables = (instance.variables as Record<string, unknown>) ?? {};
       writeNodeOutput(variables, task.nodeId, {
         decision: decisionUpper,
         comment,
@@ -433,8 +442,8 @@ export class ProcessEngine {
         assignee: userId,
       });
 
-      const schema = task.instance.processDef.workflowSchema as unknown as WorkflowSchema;
-      const currentActive = (task.instance.activeNodeIds as string[]) ?? [];
+      const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
+      const currentActive = (instance.activeNodeIds as string[]) ?? [];
 
       // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
       // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
@@ -446,9 +455,7 @@ export class ProcessEngine {
         if (rejectToNodeId) {
           // 驳回：跳回指定节点
           nextNodeIds = [rejectToNodeId];
-          this.logger.log(
-            `任务 ${taskId} 驳回，实例 ${task.instance.id} 跳回节点 ${rejectToNodeId}`,
-          );
+          this.logger.log(`任务 ${taskId} 驳回，实例 ${instance.id} 跳回节点 ${rejectToNodeId}`);
         } else {
           // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
           nextNodeIds = this.resolveEdgeTargets(schema, task.nodeId, variables);
@@ -465,7 +472,7 @@ export class ProcessEngine {
       // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
       await prisma.$transaction([
         prisma.processInstance.update({
-          where: { id: task.instance.id },
+          where: { id: instance.id },
           data: {
             variables: variables as Prisma.InputJsonValue,
             status: 'RUNNING',
@@ -478,17 +485,15 @@ export class ProcessEngine {
         }),
       ]);
 
-      this.logger.log(
-        `任务 ${taskId} 已完成（${decisionUpper}），实例 ${task.instance.id} 恢复执行`,
-      );
+      this.logger.log(`任务 ${taskId} 已完成（${decisionUpper}），实例 ${instance.id} 恢复执行`);
 
       // --- 抄送逻辑 ---
       await this.sendCcNotification(
         schema,
         task.nodeId,
-        task.instance.tenantId,
-        task.instance.processDef.appId,
-        task.instance.processDef.name,
+        instance.tenantId,
+        instance.processDef.appId,
+        instance.processDef.name,
         task.taskName,
         decisionUpper,
         comment,

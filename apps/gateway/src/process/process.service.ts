@@ -486,7 +486,7 @@ export class ProcessService {
   }
 
   /** 获取任务详情。 */
-  async getTask(tenantId: string, taskId: string) {
+  async getTask(tenantId: string, taskId: string, userId?: string) {
     const task = await prisma.processTask.findFirst({
       where: { id: taskId, tenantId },
       include: {
@@ -502,6 +502,13 @@ export class ProcessService {
       },
     });
     if (!task) throw new NotFoundException('任务不存在');
+
+    // B9 修复：getTask 返回 instance.variables + triggerContext 等敏感数据，
+    // 必须校验调用者是任务的 assignee 或 candidate-group 成员
+    if (userId) {
+      await this.assertTaskMembership(task, userId);
+    }
+
     return task;
   }
 

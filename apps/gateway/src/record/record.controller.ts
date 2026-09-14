@@ -103,6 +103,7 @@ export class RecordController {
       objectId,
       req.user.id,
       body ?? {},
+      req.permissionContext,
     );
     return { ok: true as const, data: record };
   }
@@ -152,6 +153,7 @@ export class RecordController {
       objectId,
       req.user.id,
       body.records,
+      req.permissionContext,
     );
     return { ok: true as const, data: result };
   }
@@ -234,6 +236,7 @@ export class RecordController {
       objectId,
       req.user.id,
       csvContent,
+      req.permissionContext,
     );
     return { ok: true as const, data: result };
   }

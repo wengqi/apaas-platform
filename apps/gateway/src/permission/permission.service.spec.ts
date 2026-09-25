@@ -161,7 +161,7 @@ describe('PermissionService', () => {
       prisma.orgRoleGrant.findMany.mockImplementation(
         async (args: { where: { orgId: { in: string[] } } }) => {
           const inScope = args.where.orgId.in;
-          const grants: Array<{ roleId: string }> = [];
+          const grants: Array<Record<string, unknown>> = [];
           if (inScope.includes('org-team-a1')) grants.push(makeOrgRoleGrant({ roleId: 'role-a1' }));
           if (inScope.includes('org-dept-b'))
             grants.push(makeOrgRoleGrant({ roleId: 'role-b', id: 'gr-2' }));

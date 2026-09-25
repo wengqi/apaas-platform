@@ -19,10 +19,11 @@ export default defineConfig({
       ],
       reporter: ['text', 'text-summary', 'lcov'],
       thresholds: {
-        statements: 34,
-        branches: 70,
-        functions: 55,
-        lines: 34,
+        // 2026-09-25 覆盖率冲刺后基线 60%/74%/74%，阈值锁定新地板（留小幅波动余量）
+        statements: 58,
+        branches: 72,
+        functions: 72,
+        lines: 58,
       },
     },
   },

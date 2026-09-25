@@ -77,18 +77,18 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 3.0 | 产品闸门: PRD-process.md (150+节点/触发器/单模式编辑器) | ✅ 完成 |
 | 3.1 | 设计闸门: DESIGN-process.md (流程编辑器画布/节点调色板/配置面板) | ✅ 完成 |
 | 3.2 | 后端-执行内核: 自研状态机引擎 + BullMQ异步队列 + NodeExecutor注册 | ✅ 完成（状态机引擎完整、crash 可恢复、BullMQ 异步队列驱动） |
-| 3.3 | 后端-节点执行器: 触发器/对象操作/条件/并行/循环/审批/通知/HTTP/赋值/延时/子流程 | ⚠️ 部分完成（14 种已实现：start/end/trigger/condition/parallel/delay/assign/notification/http-request/object-operation/user-task/sub-process/block/cloud-function；parallel join 简化、sub_process fire-and-forget；5 类型未实现: inclusive/loop/wait_for_condition/break/continue） |
+| 3.3 | 后端-节点执行器: 触发器/对象操作/条件/并行/循环/审批/通知/HTTP/赋值/延时/子流程 | ✅ 完成（**20 种节点执行器全量落地**：start/end/trigger/condition/parallel/inclusive/loop/break/continue/wait_for_condition/delay/assign/object_operation/batch_operation/user_task/notification/http_request/sub_process/cloud_function/block；2026-09-25 补齐 inclusive/loop/break/continue/wait_for_condition/batch_operation 6 种；parallel 严格 AND-join（汇聚等待+支配性收敛分析）；sub_process 默认同步等待，子实例失败同步失败父实例） |
 | 3.4 | 后端-通知模版管理: NotificationTemplate实体(模版名/渠道/标题/正文/变量) + 模版变量插值 | ✅ 完成（CRUD + 变量插值完整；email via nodemailer SMTP + in_app via InAppMessage 模型 + 前端 NotificationBell UI；webhook 可用） |
 | 3.5 | 后端-变量系统: 流程变量作用域链 + IFlowValue四态(constant/ref/expression/template) | ✅ 完成 |
 | 3.6 | 前端-流程编辑器: flowgram.ai fork (Fixed Layout + aPaaS业务节点物料) | ✅ 完成 |
 | 3.7 | 前端-通知模版管理UI + 流程监控: 运行实例列表 + 节点执行状态 + 人工任务处理(Tasklist) | ✅ 完成（ProcessMonitor 完整: 实例列表+节点状态+任务审批/委派；NotificationTemplateManager 已挂载到 /processes/notifications 路由） |
 | 3.8 | QA: 流程执行端到端 | ✅ 完成（process-engine.spec.ts + process-utils.spec.ts 单元测试） |
 
-> **完成度**: ~88%（08-01 评估 ~60%，后续修复 BullMQ + 自动触发器 + 通知 + 条件分支 + undo/redo + 导出后大幅提升）。状态机引擎、流程编辑器、流程监控、人工任务、条件分支、通知渠道（email/in_app/webhook）、流程 undo/redo、流程导出均完整。剩余缺口：子流程同步等待、严格 AND-join、5 种节点类型（inclusive/loop/wait_for_condition/break/continue）。
+> **完成度**: ~95%（08-01 评估 ~60%，后续修复 BullMQ + 自动触发器 + 通知 + 条件分支 + undo/redo + 导出后大幅提升）。状态机引擎、流程编辑器、流程监控、人工任务、条件分支、通知渠道（email/in_app/webhook）、流程 undo/redo、流程导出均完整。~~剩余缺口：子流程同步等待、严格 AND-join、5 种节点类型~~ → 已于 2026-09-25 全部补齐（见 3.3）。
 
 **验收标准**：
 - 自研引擎执行基本流程(触发→节点→分支→结束) — ✅
-- 流程编辑器画"创建记录触发通知"并执行 — ✅（email/in_app/webhook 三渠道均可实际发送）
+- 流程编辑器画"创建记录触发通知"并执行 — ✅（email/in_app/webhook 三渠道均可实际发送；2026-09-25 修复演示链路：通知收件人支持 `{{record.created_by}}` 模板解析，种子流程审批结果通知可达申请人）
 - 流程监控仪表盘 + 人工任务处理 — ✅
 
 ---
@@ -149,7 +149,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 
 > 基于代码审计结果 + 飞书 aPaaS 应用生命周期深度调研（RESEARCH-feishu-apaas-app-lifecycle.md）+ 模块依赖分析，建议按以下路线推进。终极目标: 完整对标飞书 aPaaS。
 >
-> **当前整体完成度**: ~96%（飞书对齐度）。Phase 0-9 已完成，Phase 10 部分完成（安全中间件 + 仪表盘运营报表 + 租户隔离 $extends 重构）。
+> **当前整体完成度**: 工程完成度 ~96%；飞书功能对齐度 ~72%（2026-09-25 R4 功能补全后校准，两维度分离口径见 2026-08-23 审查）。Phase 0-9 已完成，Phase 10 全部完成（部署文档 2026-09-25 补齐）。
 
 ### 已完成 ✅
 
@@ -291,7 +291,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 10.2 | 记录批量操作 | ✅ 完成（2026-08-23 — batchCreate/batchUpdate/batchDelete + 前端行选择 + 批量操作浮动条） |
 | 10.3 | 安全中间件（helmet + throttler + pino） | ✅ 完成（2026-08-23） |
 | 10.4 | 完整demo(资产管理系统，含对象/页面/流程/权限/仪表盘) | ✅ 完成（2026-08-23 — 3 业务对象 + 7 页面 + 1 审批流程 + 24 示例记录 + 仪表盘 + 应用发布 + 12 E2E 测试） |
-| 10.5 | 部署文档 + 性能优化 | ⬜ 待开始 |
+| 10.5 | 部署文档 + 性能优化 | ✅ 部署文档完成（2026-09-25 — `docs/DEPLOYMENT.md`：架构总览/本地开发/生产 Docker Compose 部署/环境变量/备份恢复/升级回滚/排障/安全基线；性能优化见优化索引） |
 
 **验收标准**：从零搭建含对象/页面/审批流程/权限/仪表盘的完整应用。
 
@@ -318,3 +318,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-23：**TD-17 租户隔离 $extends 重构完成**——Prisma `$extends` 查询扩展自动注入 tenantId（11 操作类型 × 24 模型白名单，基于 AsyncLocalStorage 上下文）+ HTTP 拦截器从 `req.user.tenantId` 设置 ALS + BullMQ worker 上下文修复（process-queue/delay-queue 从实例恢复 tenantId，dataset-queue 从 job.data 获取，webhook 从 connector.tenantId 恢复，seed 用 runAsSystem 包裹）+ DatasetRow 添加 `@@index([tenantId])` 迁移 + 42 单元测试（ALS 上下文 18 + 注入逻辑 24）。预存跨租户泄露 bug（auto-number.ts 跨租户扫描）自动修复。三层防御体系：Layer 1 手动 tenantId（保留）+ Layer 2 $extends 自动注入（新增）+ Layer 3 PostgreSQL RLS（未来）。整体完成度 ~95%→~96%。
 - 2026-08-23：**Phase 10.4 完整 Demo 应用完成**——资产管理系统种子数据（3 业务对象 asset/borrow_request/asset_category + 9+5+3 字段 + 7 页面 list/detail/form/dashboard + 1 审批流程 start→user_task→condition→object_operation→notification→end + 24 示例记录 + 仪表盘含指标卡+3图表 + 应用发布 publishedSnapshot）+ 12 E2E 验收测试（API 验证 + Studio UI 验证）。种子脚本 `packages/db/seed-demo.ts` 幂等可重跑。
 - 2026-08-23：**全面代码审查 + 整改（R1 安全 / R2 缺陷 / R3 对齐校准）**——三路深度审查发现 8 个 HIGH 缺陷并全部修复：S1 ABAC 行级条件注入单记录写操作、S2 凭证/云函数 CONNECTOR 权限授权、S3 delegateTask 成员校验、B1 流程引擎实例级串行锁、B2 审批原子认领（幂等）、B3 循环预算 1000 次、B4 WAITING 令牌跳过、F1 PageLoadEffect 死循环、F2 节点级错误边界、F3 DOMPurify XSS 消毒。R2 修复：异常过滤器顺序（P2002→409）、auto-number 原子计数器表（消除全表扫描+竞态）、object_operation merge 更新、边级条件 JsonLogic 求值、4 项性能索引迁移、env 限制接线、datetime→date_time 系统字段修正、动作链 vm getter、call_api token+状态检查、undo 栈上限 50、TaskCenter 缓存键统一+拒绝二次确认。**飞书对齐度校准：~97%（虚高）→ ~68%（按 A-K 功能清单逐项核对）**，工程完成度 ~90%，两维度分离。详见 `docs/knowledge-base/CODE-REVIEW-2026-08-23.md`。
+- 2026-09-25：**R4 功能补全批次落地（对齐缺口收口）**——① 流程引擎补齐 6 种节点执行器（inclusive/loop/break/continue/wait_for_condition/batch_operation，20 种全量）+ 严格 AND-join（汇聚等待注册/门控/支配性收敛分析，分支发散安全降级）+ 子流程默认同步等待（子实例完成/失败联动父实例）+ 等待条件 BullMQ 延迟轮询（timeout 出边路由）；② 演示审批链路修复：通知收件人支持 `{{record.created_by}}` 模板解析 + 记录事件载荷补充 created_by/updated_by 系统字段 + 种子流程收件人接通；③ 编辑器↔引擎类型调和：schema-serializer 序列化统一 snake_case（修复编辑器搭建流程运行时报 unsupported_node_type 的隐性缺陷），前端物料启用 parallel/inclusive/loop/wait_for_condition/sub_process/break/continue/batch_operation 并补齐配置面板；④ Rollup 字段从"死字段"转正：聚合计算（sum/avg/count/min/max）+ 子记录写入反向重算父记录 + Lookup 写约束（目标记录存在性校验）+ 字段配置 UI；⑤ runtime-ui ModalHost 落地 open_modal/close_modal（此前零消费方）；⑥ Phase 10.5 部署文档（docs/DEPLOYMENT.md）。测试 496→532（gateway 404 / db 42 / studio 86），build/typecheck/lint 全绿。

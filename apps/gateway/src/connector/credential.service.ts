@@ -13,17 +13,18 @@ import type {
   BasicCredentialData,
   ApiKeyCredentialData,
   BearerCredentialData,
+  OAuth2CredentialData,
 } from '@apaas/shared';
 
 export interface CreateCredentialInput {
   name: string;
   type: CredentialType;
-  data: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData;
+  data: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData | OAuth2CredentialData;
 }
 
 export interface UpdateCredentialInput {
   name?: string;
-  data?: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData;
+  data?: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData | OAuth2CredentialData;
 }
 
 @Injectable()
@@ -135,7 +136,7 @@ export class CredentialService {
   /** 校验凭证数据格式。 */
   private validateCredentialData(
     type: CredentialType,
-    data: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData,
+    data: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData | OAuth2CredentialData,
   ) {
     switch (type) {
       case 'BASIC': {
@@ -156,6 +157,13 @@ export class CredentialService {
         const d = data as BearerCredentialData;
         if (!d.token) {
           throw new BadRequestException('Bearer Token 凭证需要 token');
+        }
+        break;
+      }
+      case 'OAUTH2': {
+        const d = data as OAuth2CredentialData;
+        if (!d.tokenUrl || !d.clientId || !d.clientSecret) {
+          throw new BadRequestException('OAuth2 凭证需要 tokenUrl、clientId 和 clientSecret');
         }
         break;
       }

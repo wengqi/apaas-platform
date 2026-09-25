@@ -11,7 +11,7 @@ import type { ApiResponse } from './client.js';
 // ---------------------------------------------------------------------------
 
 export type ConnectorType = 'HTTP' | 'WEBHOOK';
-export type CredentialType = 'BASIC' | 'API_KEY' | 'BEARER';
+export type CredentialType = 'BASIC' | 'API_KEY' | 'BEARER' | 'OAUTH2';
 export type ConnectorStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface ConnectorOperation {

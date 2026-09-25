@@ -13,7 +13,7 @@
 export type ConnectorType = 'HTTP' | 'WEBHOOK';
 
 /** 凭证类型。 */
-export type CredentialType = 'BASIC' | 'API_KEY' | 'BEARER';
+export type CredentialType = 'BASIC' | 'API_KEY' | 'BEARER' | 'OAUTH2';
 
 /** 连接器状态。 */
 export type ConnectorStatus = 'ACTIVE' | 'INACTIVE';
@@ -80,6 +80,22 @@ export interface BearerCredentialData {
   token: string;
 }
 
+/** OAuth2 client_credentials 凭证数据。
+ *
+ * 适用服务端到服务端调用（无浏览器重定向）：调用时自动向 tokenUrl 换取
+ * access_token 并以 Bearer 注入，token 按 expires_in 内存缓存（提前 60s 过期）。
+ */
+export interface OAuth2CredentialData {
+  /** 令牌端点（POST 换取 access_token） */
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  /** 申请的权限范围（可选，空格分隔） */
+  scope?: string;
+  /** 客户端凭证传递方式：body（默认，表单字段）/ basic（HTTP Basic 头） */
+  authStyle?: 'body' | 'basic';
+}
+
 // ---------------------------------------------------------------------------
 // 实体接口
 // ---------------------------------------------------------------------------
@@ -144,13 +160,13 @@ export interface CreateCredentialRequest {
   name: string;
   type: CredentialType;
   /** 凭证数据（明文，后端加密后存储） */
-  data: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData;
+  data: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData | OAuth2CredentialData;
 }
 
 /** 更新凭证请求。 */
 export interface UpdateCredentialRequest {
   name?: string;
-  data?: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData;
+  data?: BasicCredentialData | ApiKeyCredentialData | BearerCredentialData | OAuth2CredentialData;
 }
 
 /** 测试/调用连接器请求。 */

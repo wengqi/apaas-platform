@@ -24,6 +24,7 @@ const CREDENTIAL_TYPES: { value: CredentialType; label: string }[] = [
   { value: 'BASIC', label: 'Basic Auth' },
   { value: 'API_KEY', label: 'API Key' },
   { value: 'BEARER', label: 'Bearer Token' },
+  { value: 'OAUTH2', label: 'OAuth2（client_credentials）' },
 ];
 
 export default function CredentialFormModal({
@@ -68,6 +69,14 @@ export default function CredentialFormModal({
         data.data = { headerName: values.headerName, apiKey: values.apiKey };
       } else if (values.type === 'BEARER') {
         data.data = { token: values.token };
+      } else if (values.type === 'OAUTH2') {
+        data.data = {
+          tokenUrl: values.tokenUrl,
+          clientId: values.clientId,
+          clientSecret: values.clientSecret,
+          ...(values.scope ? { scope: values.scope } : {}),
+          ...(values.authStyle ? { authStyle: values.authStyle } : {}),
+        };
       }
 
       if (editingCredential) {
@@ -133,6 +142,35 @@ export default function CredentialFormModal({
           <Form.Item label="Token" name="token" rules={[{ required: true }]}>
             <Input.Password placeholder="bearer-token" />
           </Form.Item>
+        )}
+
+        {credType === 'OAUTH2' && (
+          <>
+            <Form.Item
+              label="令牌端点 (Token URL)"
+              name="tokenUrl"
+              rules={[{ required: true, message: '请输入令牌端点' }]}
+            >
+              <Input placeholder="https://auth.example.com/oauth/token" />
+            </Form.Item>
+            <Form.Item label="Client ID" name="clientId" rules={[{ required: true }]}>
+              <Input placeholder="client-id" />
+            </Form.Item>
+            <Form.Item label="Client Secret" name="clientSecret" rules={[{ required: true }]}>
+              <Input.Password placeholder="client-secret" />
+            </Form.Item>
+            <Form.Item label="Scope" name="scope">
+              <Input placeholder="可选，空格分隔，如 read write" />
+            </Form.Item>
+            <Form.Item label="凭证传递方式" name="authStyle" initialValue="body">
+              <Select
+                options={[
+                  { value: 'body', label: '表单字段（默认）' },
+                  { value: 'basic', label: 'HTTP Basic 头' },
+                ]}
+              />
+            </Form.Item>
+          </>
         )}
 
         {editingCredential && (

@@ -70,6 +70,16 @@ export default function ProcessEditor() {
 
   const formOptions = (pages ?? []).map((p) => ({ label: p.name, value: p.id }));
 
+  /** 加载已发布流程列表（子流程节点选择用，排除自身防自引用）。 */
+  const { data: publishedProcesses } = useQuery({
+    queryKey: ['processes', appId],
+    queryFn: () => processesApi.list(appId as string),
+    enabled: !!appId,
+  });
+  const processOptions = (publishedProcesses ?? [])
+    .filter((p) => p.status === 'PUBLISHED' && p.id !== processId)
+    .map((p) => ({ label: p.name || p.apiName, value: p.apiName }));
+
   /** 流程加载成功 → 写入 store(仅当 processId 变化时)。 */
   useEffect(() => {
     if (processDef && processDef.id !== loadedRef.current) {
@@ -206,6 +216,7 @@ export default function ProcessEditor() {
           onSchemaChange={handleSchemaChange}
           objectOptions={objectOptions}
           formOptions={formOptions}
+          processOptions={processOptions}
           onHistoryReady={setHistoryApi}
         />
       </EditorErrorBoundary>

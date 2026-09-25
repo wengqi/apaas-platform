@@ -10,18 +10,33 @@ export function checkNodeIncomplete(type: string, data: Record<string, unknown>)
     case 'trigger':
       return !data.triggerType;
     case 'userTask':
+    case 'user_task':
       return !data.assigneeId || !data.approvalMode;
     case 'notification':
       return !data.channel || !data.recipient;
     case 'objectOperation':
+    case 'object_operation':
       return !data.operation || !data.objectId;
     case 'httpRequest':
+    case 'http_request':
       return !data.method || !data.url;
     case 'delay':
       return !data.duration;
+    case 'loop':
+      return !data.collection;
+    case 'wait_for_condition':
+      return !data.condition;
+    case 'sub_process':
+      return !data.subProcessKey && !data.subProcessDefId;
+    case 'batch_operation':
+      return !data.operation || !data.objectId;
     case 'start':
     case 'end':
     case 'assign':
+    case 'parallel':
+    case 'inclusive':
+    case 'break':
+    case 'continue':
       return false;
     default:
       return false;
@@ -73,6 +88,28 @@ export function getNodeSummary(type: string, data: Record<string, unknown>): str
     }
     case 'condition':
       return '条件分支';
+    case 'inclusive':
+      return '包容分支（满足条件的分支并行执行）';
+    case 'parallel':
+      return '并行分支（汇聚等待全部完成）';
+    case 'loop': {
+      const c = data.collection as string | undefined;
+      return c ? `遍历 ${c}` : '循环';
+    }
+    case 'wait_for_condition':
+      return '等待条件成立';
+    case 'break':
+      return '跳出循环';
+    case 'continue':
+      return '继续下一次循环';
+    case 'batch_operation': {
+      const o = data.operation as string | undefined;
+      return o ? `批量${o === 'create' ? '创建' : o === 'update' ? '更新' : '删除'}` : '批量操作';
+    }
+    case 'sub_process': {
+      const k = (data.subProcessKey as string) || (data.subProcessDefId as string);
+      return k ? `调用子流程 ${k}` : '调用子流程';
+    }
     case 'assign':
       return '变量赋值';
     default:

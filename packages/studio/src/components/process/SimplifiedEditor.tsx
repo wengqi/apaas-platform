@@ -48,6 +48,7 @@ export interface SimplifiedEditorProps {
   objectOptions?: { label: string; value: string }[];
   formOptions?: { label: string; value: string }[];
   templateOptions?: { label: string; value: string }[];
+  processOptions?: { label: string; value: string }[];
   onHistoryReady?: (api: HistoryApi) => void;
 }
 
@@ -58,6 +59,7 @@ export default function SimplifiedEditor({
   objectOptions = [],
   formOptions = [],
   templateOptions = [],
+  processOptions = [],
   onHistoryReady,
 }: SimplifiedEditorProps) {
   const initialDoc = useMemo<FlowDocumentJSON>(() => {
@@ -96,10 +98,11 @@ export default function SimplifiedEditor({
         objectOptions: typeof objectOptions;
         formOptions: typeof formOptions;
         templateOptions: typeof templateOptions;
+        processOptions: typeof processOptions;
       };
     };
-    w.__apaasConfigOptions = { objectOptions, formOptions, templateOptions };
-  }, [objectOptions, formOptions, templateOptions]);
+    w.__apaasConfigOptions = { objectOptions, formOptions, templateOptions, processOptions };
+  }, [objectOptions, formOptions, templateOptions, processOptions]);
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, background: '#f5f7fa' }}>

@@ -22,7 +22,7 @@ export function syncConditionBlockExtInfo(
   type: string,
   nodeId: string,
 ): void {
-  if (type !== 'condition') return;
+  if (type !== 'condition' && type !== 'inclusive') return;
   const ifBlockId = `ifBlock_${nodeId}`;
   const elseBlockId = `elseBlock_${nodeId}`;
   const sync = () => {
@@ -68,17 +68,17 @@ export function useCreateNode() {
       const nodeId = `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const nodeJSON: FlowNodeJSON = { id: nodeId, type, data: { title: meta.label } };
 
-      if (type === 'condition') {
-        nodeJSON.blocks = [
-          { id: `ifBlock_${nodeId}`, type: 'block', data: { title: '条件成立', isElse: false } },
-          { id: `elseBlock_${nodeId}`, type: 'block', data: { title: '默认分支', isElse: true } },
-        ];
+      // condition 与 inclusive 共用分支容器结构（inclusive 满足的多分支同时执行）
+      if (type === 'condition' || type === 'inclusive') {
+        const branchLabels = ['条件成立', '默认分支'];
+        nodeJSON.blocks = branchLabels.map((label, i) => ({
+          id: `${i === 0 ? 'ifBlock' : 'elseBlock'}_${nodeId}`,
+          type: 'block',
+          data: { title: label, isElse: i !== 0 },
+        }));
         nodeJSON.data = {
           title: meta.label,
-          conditions: [
-            { label: '条件成立', condition: null },
-            { label: '默认分支', condition: null },
-          ],
+          conditions: branchLabels.map((label) => ({ label, condition: null })),
         };
       }
 

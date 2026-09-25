@@ -20,6 +20,10 @@ import HttpRequestConfigForm from './configs/HttpRequestConfigForm.js';
 import AssignConfigForm from './configs/AssignConfigForm.js';
 import DelayConfigForm from './configs/DelayConfigForm.js';
 import EndConfigForm from './configs/EndConfigForm.js';
+import LoopConfigForm from './configs/LoopConfigForm.js';
+import WaitForConditionConfigForm from './configs/WaitForConditionConfigForm.js';
+import SubProcessConfigForm from './configs/SubProcessConfigForm.js';
+import BatchOperationConfigForm from './configs/BatchOperationConfigForm.js';
 
 const { Text: _Text, Title } = Typography;
 
@@ -36,6 +40,8 @@ export interface NodeConfigPanelProps {
   templateOptions?: { label: string; value: string }[];
   /** 流程中所有节点(驳回目标选择用) */
   nodeOptions?: { label: string; value: string }[];
+  /** 已发布流程候选(子流程节点用) */
+  processOptions?: { label: string; value: string }[];
   /** 流程 Schema（条件表达式变量解析用） */
   schema?: WorkflowSchema;
   /** 节点 data 变更回调 */
@@ -51,6 +57,7 @@ export default function NodeConfigPanel({
   formOptions = [],
   templateOptions = [],
   nodeOptions = [],
+  processOptions = [],
   schema,
   onNodeDataChange,
   onDeleteNode,
@@ -114,6 +121,7 @@ export default function NodeConfigPanel({
           formOptions,
           templateOptions,
           nodeOptions,
+          processOptions,
           schema,
           currentNodeId: node.id,
         })}
@@ -147,7 +155,11 @@ export default function NodeConfigPanel({
   );
 }
 
-/** 根据节点 type 渲染对应配置表单。 */
+/** 根据节点 type 渲染对应配置表单。
+ *
+ * type 为 SSOT 存储名（snake_case，由 schema-serializer 标准化）；
+ * 同时兼容驼峰名（历史流程 / 编辑会话中的画布节点）。
+ */
 function renderConfigForm(
   type: string,
   data: Record<string, unknown>,
@@ -158,6 +170,7 @@ function renderConfigForm(
     formOptions: { label: string; value: string }[];
     templateOptions: { label: string; value: string }[];
     nodeOptions: { label: string; value: string }[];
+    processOptions?: { label: string; value: string }[];
     schema?: WorkflowSchema;
     currentNodeId?: string;
   },
@@ -173,6 +186,7 @@ function renderConfigForm(
         />
       );
     case 'objectOperation':
+    case 'object_operation':
       return (
         <ObjectOperationConfigForm
           data={data as never}
@@ -182,6 +196,7 @@ function renderConfigForm(
         />
       );
     case 'condition':
+    case 'inclusive':
       return (
         <ConditionConfigForm
           data={data as never}
@@ -192,6 +207,7 @@ function renderConfigForm(
         />
       );
     case 'userTask':
+    case 'user_task':
       return (
         <UserTaskConfigForm
           data={data as never}
@@ -211,6 +227,7 @@ function renderConfigForm(
         />
       );
     case 'httpRequest':
+    case 'http_request':
       return (
         <HttpRequestConfigForm
           data={data as never}
@@ -225,6 +242,46 @@ function renderConfigForm(
     case 'delay':
       return (
         <DelayConfigForm data={data as never} onChange={onChange as never} disabled={readonly} />
+      );
+    case 'loop':
+      return <LoopConfigForm data={data} onChange={onChange} disabled={readonly} />;
+    case 'wait_for_condition':
+      return <WaitForConditionConfigForm data={data} onChange={onChange} disabled={readonly} />;
+    case 'sub_process':
+      return (
+        <SubProcessConfigForm
+          data={data}
+          onChange={onChange}
+          disabled={readonly}
+          processOptions={options.processOptions ?? []}
+        />
+      );
+    case 'batch_operation':
+      return (
+        <BatchOperationConfigForm
+          data={data}
+          onChange={onChange}
+          disabled={readonly}
+          objectOptions={options.objectOptions}
+        />
+      );
+    case 'break':
+      return (
+        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+          跳出循环：终止所在循环并继续循环后的流程。无需额外配置。
+        </Typography.Text>
+      );
+    case 'continue':
+      return (
+        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+          继续循环：跳过本次迭代剩余节点，直接回到循环节点。无需额外配置。
+        </Typography.Text>
+      );
+    case 'parallel':
+      return (
+        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+          并行分支：所有出边分支同时执行，汇聚点等待全部完成后继续（严格 AND-join）。
+        </Typography.Text>
       );
     case 'end':
       return (

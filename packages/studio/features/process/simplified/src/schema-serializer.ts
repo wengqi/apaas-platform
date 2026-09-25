@@ -29,6 +29,30 @@ function isSystemNode(node: FlowNodeJSON): boolean {
 }
 
 /**
+ * 节点类型标准化：flowgram 注册名（驼峰，如 userTask）→ 引擎/SSOT 名（snake_case，如 user_task）。
+ *
+ * 自研引擎按 snake_case 注册执行器（SimplifiedNodeType），而 flowgram 物料注册用驼峰名。
+ * 序列化到 SSOT 时统一转 snake_case，否则编辑器搭建的流程在引擎执行时报
+ * unsupported_node_type。已是 snake_case 的类型（引擎/种子数据）幂等不变。
+ */
+export function toEngineNodeType(type: string): string {
+  return type.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/**
+ * 引擎/SSOT 名（snake_case）→ flowgram 注册名（驼峰）。
+ * 仅映射仍以驼峰注册的历史物料；新物料（loop/inclusive 等）直接以 snake_case 注册，无需映射。
+ */
+export function toEditorNodeType(type: string): string {
+  const map: Record<string, string> = {
+    object_operation: 'objectOperation',
+    user_task: 'userTask',
+    http_request: 'httpRequest',
+  };
+  return map[type] ?? type;
+}
+
+/**
  * FlowDocumentJSON (flowgram fixed-layout 内部格式) → WorkflowSchema (SSOT)
  *
  * fixed-layout 的 toJSON() 只输出 { nodes: [...] },不含 edges。
@@ -170,7 +194,7 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
 
   return {
     id: node.id,
-    type: node.type as WorkflowNode['type'],
+    type: toEngineNodeType(node.type) as WorkflowNode['type'],
     meta: node.meta ?? {},
     data: {
       title: node.data?.title ?? node.type,
@@ -211,7 +235,7 @@ export function workflowToFlowSchema(schema: WorkflowSchema): FlowDocumentJSON {
 function workflowNodeToFlow(node: WorkflowNode): FlowNodeJSON {
   return {
     id: node.id,
-    type: node.type,
+    type: toEditorNodeType(node.type),
     meta: (node.meta ?? {}) as Record<string, unknown>,
     data: node.data as FlowNodeJSON['data'],
     blocks: node.blocks?.map(workflowNodeToFlow),

@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom';
 import { pagesApi } from '../api/pages';
 import { RuntimeStoreProvider } from '../runtime/RuntimeStore';
 import ComponentRenderer from '../runtime/ComponentRenderer';
+import ModalHost from '../runtime/ModalHost';
 
 const { Text } = Typography;
 
@@ -58,6 +59,8 @@ export default function PageView() {
     // 并让 autoQuery 与 PageLoadEffect(onLoad) 在新页面重新触发
     <RuntimeStoreProvider key={page.id} viewModel={schema.viewModel} objectId={page.objectId}>
       <ComponentRenderer node={schema.root} root={schema.root} isRoot />
+      {/* 弹窗宿主 — 消费 open_modal/close_modal 动作写入的 vm.modalVisible */}
+      <ModalHost appId={appId!} />
     </RuntimeStoreProvider>
   );
 }

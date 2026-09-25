@@ -33,7 +33,7 @@ export function EventBridge({
     const doc = ctx.document.toJSON() as FlowDocumentJSON;
     const schema = flowToWorkflowSchema(doc);
     for (const node of ctx.document.getAllNodes()) {
-      if (node.flowNodeType === 'condition') {
+      if (node.flowNodeType === 'condition' || node.flowNodeType === 'inclusive') {
         const extInfo = node.getExtInfo?.() ?? {};
         const conditions = extInfo.conditions;
         if (conditions) {
@@ -101,7 +101,7 @@ export function EventBridge({
 
     disposables.push(
       ctx.document.onNodeCreate(({ node }) => {
-        if (node.flowNodeType === 'condition') {
+        if (node.flowNodeType === 'condition' || node.flowNodeType === 'inclusive') {
           subscribeConditionNode(node);
         }
         const originParent = node.originParent;
@@ -151,7 +151,7 @@ export function EventBridge({
         updateTimer = setTimeout(() => {
           updateTimer = null;
           for (const node of ctx.document.getAllNodes()) {
-            if (node.flowNodeType === 'condition') {
+            if (node.flowNodeType === 'condition' || node.flowNodeType === 'inclusive') {
               const schema = exportSchema();
               const sig = JSON.stringify(schema);
               if (sig !== lastDocSig) {
@@ -167,7 +167,7 @@ export function EventBridge({
     );
 
     for (const node of ctx.document.getAllNodes()) {
-      if (node.flowNodeType === 'condition') {
+      if (node.flowNodeType === 'condition' || node.flowNodeType === 'inclusive') {
         subscribeConditionNode(node);
         reconcileConditionBranches(node, ctx.document, updateNodeData);
       }

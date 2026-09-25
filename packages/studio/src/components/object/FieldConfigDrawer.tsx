@@ -27,6 +27,7 @@ import {
   type UpdateFieldRequest,
 } from '../../api/objects.js';
 import { getFieldTypeMeta, type FieldType } from '../../constants/fieldTypes.js';
+import RollupConfigForm from './RollupConfigForm.js';
 
 const { Text } = Typography;
 
@@ -68,6 +69,11 @@ interface FieldFormValues {
   targetObjectId?: string;
   relationType?: string;
   inverseFieldName?: string;
+  rollup?: {
+    relationFieldId?: string;
+    targetFieldId?: string;
+    aggregate?: 'sum' | 'avg' | 'count' | 'min' | 'max';
+  };
 }
 
 interface FieldConfigDrawerProps {
@@ -292,6 +298,7 @@ export default function FieldConfigDrawer({
           options={options}
           setOptions={setOptions}
           objectList={objectList}
+          objectId={objectId}
         />
       </Form>
     </Drawer>
@@ -308,6 +315,8 @@ interface TypeSpecificConfigProps {
   options: SelectOption[];
   setOptions: React.Dispatch<React.SetStateAction<SelectOption[]>>;
   objectList?: { id: string; label: string; apiName: string }[];
+  /** 当前对象 ID（Rollup 关系字段候选需要） */
+  objectId: string;
 }
 
 /** 按字段类型渲染专属配置区块。 */
@@ -317,6 +326,7 @@ function TypeSpecificConfig({
   options,
   setOptions,
   objectList,
+  objectId,
 }: TypeSpecificConfigProps) {
   let body: React.ReactNode = null;
 
@@ -447,6 +457,13 @@ function TypeSpecificConfig({
             <Input placeholder="如:所属客户" />
           </Form.Item>
         </>
+      );
+      break;
+    case 'rollup':
+      body = (
+        <Form.Item label="汇总配置" name="rollup">
+          <RollupConfigForm objectId={objectId} />
+        </Form.Item>
       );
       break;
     default:
@@ -689,6 +706,9 @@ function computeInitialValues(type: FieldType, field?: Field): FieldFormValues {
         base.relationType = cfg.lookup?.relationType;
         base.inverseFieldName = cfg.lookup?.inverseFieldName;
         break;
+      case 'rollup':
+        base.rollup = cfg.rollup;
+        break;
     }
     return base;
   }
@@ -769,6 +789,13 @@ function buildConfig(type: FieldType, v: FieldFormValues, options: SelectOption[
         targetObjectId: v.targetObjectId ?? '',
         relationType: v.relationType ?? 'one_to_many',
         inverseFieldName: v.inverseFieldName,
+      };
+      break;
+    case 'rollup':
+      config.rollup = {
+        relationFieldId: v.rollup?.relationFieldId ?? '',
+        targetFieldId: v.rollup?.targetFieldId,
+        aggregate: v.rollup?.aggregate ?? 'sum',
       };
       break;
   }

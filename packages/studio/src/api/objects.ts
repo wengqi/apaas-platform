@@ -41,7 +41,11 @@ export interface FieldConfig {
   lookup?: { targetObjectId: string; relationType: string; inverseFieldName?: string };
   subForm?: { childObjectId: string; parentFieldId: string };
   formula?: { expression: string; returnType: string };
-  rollup?: { targetFieldId: string; aggregate: string };
+  rollup?: {
+    relationFieldId: string;
+    targetFieldId?: string;
+    aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max';
+  };
 }
 
 // ---------------------------------------------------------------------------

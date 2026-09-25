@@ -21,6 +21,11 @@ interface FormDataResult {
 }
 import { getBranchBlocks } from './conditionBranchUtils.js';
 
+/** 分支容器类节点（condition/inclusive 共用 block 结构与配置逻辑）。 */
+function isBranchingType(type: string | number | undefined): boolean {
+  return type === 'condition' || type === 'inclusive';
+}
+
 const { Text } = Typography;
 
 export function ConfigSidebar({ readonly }: { readonly: boolean }) {
@@ -45,7 +50,7 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
     const node = findNode(schema.nodes);
     if (!node) return null;
 
-    if (node.type === 'condition') {
+    if (isBranchingType(node.type)) {
       const flowNode = ctx.document.getNode(selectedNodeId);
       if (flowNode) {
         const extInfo = flowNode.getExtInfo?.() ?? {};
@@ -79,7 +84,7 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
       if (flowNode) {
         flowNode.updateExtInfo(data, true);
         updateNodeData(id, data);
-        if (flowNode.flowNodeType === 'condition' && Array.isArray(data.conditions)) {
+        if (isBranchingType(flowNode.flowNodeType) && Array.isArray(data.conditions)) {
           const conditions = data.conditions as Array<{
             label?: string;
             condition?: object | null;
@@ -292,12 +297,14 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
       objectOptions: { label: string; value: string }[];
       formOptions: { label: string; value: string }[];
       templateOptions: { label: string; value: string }[];
+      processOptions: { label: string; value: string }[];
     };
   };
   const options = w.__apaasConfigOptions ?? {
     objectOptions: [],
     formOptions: [],
     templateOptions: [],
+    processOptions: [],
   };
 
   const nodeOptions = (schema?.nodes ?? []).map((n) => ({
@@ -357,6 +364,7 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
           formOptions={options.formOptions}
           templateOptions={options.templateOptions}
           nodeOptions={nodeOptions}
+          processOptions={options.processOptions}
           schema={schema ?? undefined}
           onNodeDataChange={handleNodeDataChange}
           onDeleteNode={handleDeleteNode}

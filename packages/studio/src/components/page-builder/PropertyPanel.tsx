@@ -18,6 +18,7 @@ import { DataBindingTab } from './property-sections/DataBindingTab.js';
 import { ChartPropsSection } from './property-sections/ChartPropsSection.js';
 import { StatisticPropsSection } from './property-sections/StatisticPropsSection.js';
 import { DashboardGridPropsSection } from './property-sections/DashboardGridPropsSection.js';
+import { DataTablePropsSection } from './property-sections/DataTablePropsSection.js';
 import { FormField, panelStyle, headerStyle } from './property-sections/shared.js';
 
 const { Text, Title } = Typography;
@@ -213,6 +214,14 @@ function BasicPropsTab({ node }: { node: ComponentNode }) {
 
       {node.type === 'chart' && (
         <ChartPropsSection
+          node={node}
+          getStr={getStr}
+          updateComponentProps={updateComponentProps}
+        />
+      )}
+
+      {node.type === 'data_table' && (
+        <DataTablePropsSection
           node={node}
           getStr={getStr}
           updateComponentProps={updateComponentProps}

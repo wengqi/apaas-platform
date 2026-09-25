@@ -13,15 +13,23 @@ import type { RenderContext, TableRow } from './renderer-helpers.js';
 import {
   getPropAsBool,
   getPropAsNumber,
+  getPropAsString,
   extractTableColumns,
   extractDetailFields,
 } from './renderer-helpers.js';
+import { renderKanbanView, renderGalleryView, renderCalendarView } from './renderers-views.js';
 
 // ---------------------------------------------------------------------------
 // 数据类渲染器
 // ---------------------------------------------------------------------------
 
 export function renderDataTable(node: ComponentNode, ctx: RenderContext): ReactNode {
+  // 视图类型分派：table（默认）/ kanban / gallery / calendar（对齐飞书记录视图类型）
+  const viewType = getPropAsString(node, 'viewType', ctx) || 'table';
+  if (viewType === 'kanban') return renderKanbanView(node, ctx);
+  if (viewType === 'gallery') return renderGalleryView(node, ctx);
+  if (viewType === 'calendar') return renderCalendarView(node, ctx);
+
   const columns = extractTableColumns(node);
   const pagination = getPropAsBool(node, 'pagination', ctx);
   const pageSize = getPropAsNumber(node, 'pageSize', ctx) || 20;

@@ -6,11 +6,7 @@
  */
 
 import type { Prisma } from '@apaas/db';
-import type {
-  IFlowValue,
-  WorkflowEdge,
-  WorkflowNode,
-} from '@apaas/shared';
+import type { IFlowValue, WorkflowEdge, WorkflowNode, WorkflowSchema } from '@apaas/shared';
 
 /** 流程实例行（Prisma ProcessInstance，含 processDef 关联时使用）。 */
 export type InstanceRow = Prisma.ProcessInstanceGetPayload<{
@@ -35,6 +31,8 @@ export interface ExecutionContext {
   tenantId: string;
   /** 应用 ID（流程归属应用） */
   appId: string;
+  /** 流程 Schema（供循环节点做 body/done 边分类等图分析） */
+  schema: WorkflowSchema;
   /**
    * 启动子流程实例（供 SubProcessExecutor 递归调用，避免 DI 循环依赖）。
    * 返回子流程实例 ID。
@@ -45,13 +43,15 @@ export interface ExecutionContext {
   ) => Promise<string>;
 
   /**
-   * 调度延时恢复（供 DelayExecutor 调用 BullMQ delayed job，避免 DI 循环依赖）。
-   * 调用后实例令牌暂停，到时由 Worker 恢复推进。
+   * 调度延时恢复（供 DelayExecutor / WaitConditionExecutor 调用 BullMQ delayed job，
+   * 避免 DI 循环依赖）。调用后实例令牌暂停，到时由 Worker 恢复推进。
+   * kind 缺省为 'delay'（恢复即推进令牌）；'wait_condition' 由引擎重新求值等待条件。
    */
   scheduleDelay: (
     instanceId: string,
     nodeId: string,
     delayMs: number,
+    kind?: 'delay' | 'wait_condition',
   ) => Promise<void>;
 }
 

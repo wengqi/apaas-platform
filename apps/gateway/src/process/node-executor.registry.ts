@@ -22,6 +22,12 @@ import { HttpRequestExecutor } from './node-executors/http-request.executor.js';
 import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
 import { BlockExecutor } from './node-executors/block.executor.js';
 import { CloudFunctionExecutor } from './node-executors/cloud-function.executor.js';
+import { InclusiveExecutor } from './node-executors/inclusive.executor.js';
+import { LoopExecutor } from './node-executors/loop.executor.js';
+import { BreakExecutor } from './node-executors/break.executor.js';
+import { ContinueExecutor } from './node-executors/continue.executor.js';
+import { WaitForConditionExecutor } from './node-executors/wait-for-condition.executor.js';
+import { BatchOperationExecutor } from './node-executors/batch-operation.executor.js';
 
 @Injectable()
 export class NodeExecutorRegistry {
@@ -42,6 +48,12 @@ export class NodeExecutorRegistry {
     private readonly subProcessExecutor: SubProcessExecutor,
     private readonly blockExecutor: BlockExecutor,
     private readonly cloudFunctionExecutor: CloudFunctionExecutor,
+    private readonly inclusiveExecutor: InclusiveExecutor,
+    private readonly loopExecutor: LoopExecutor,
+    private readonly breakExecutor: BreakExecutor,
+    private readonly continueExecutor: ContinueExecutor,
+    private readonly waitConditionExecutor: WaitForConditionExecutor,
+    private readonly batchOperationExecutor: BatchOperationExecutor,
   ) {
     // 注册 MVP P0 + P1 节点执行器（对应 SimplifiedNodeType snake_case）
     this.register(this.startExecutor);
@@ -60,6 +72,14 @@ export class NodeExecutorRegistry {
     this.register(this.blockExecutor);
     // 云函数执行器
     this.register(this.cloudFunctionExecutor);
+    // 流程控制扩展节点（包容分支/循环/跳出/继续/等待条件）
+    this.register(this.inclusiveExecutor);
+    this.register(this.loopExecutor);
+    this.register(this.breakExecutor);
+    this.register(this.continueExecutor);
+    this.register(this.waitConditionExecutor);
+    // 批量操作节点
+    this.register(this.batchOperationExecutor);
   }
 
   /** 注册执行器。 */

@@ -33,16 +33,26 @@ export class NotificationExecutor implements NodeExecutor {
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
     const channel = (data['channel'] as string) ?? 'IN_APP';
-    const recipients =
-      (data['recipients'] as string[] | undefined) ??
-      (ctx.inputs['recipients'] as string[] | undefined) ??
-      [];
     const templateId =
       (data['templateId'] as string | undefined) ?? (data['template_id'] as string | undefined);
 
     // 构建渲染作用域：合并 global 到顶层，使 {{applicant}} 与 {{node.output.x}} 均可解析
     const globalVars = (ctx.variables['global'] as Record<string, unknown>) ?? {};
     const renderScope: Record<string, unknown> = { ...ctx.variables, ...globalVars };
+
+    const rawRecipients =
+      (data['recipients'] as string[] | undefined) ??
+      (ctx.inputs['recipients'] as string[] | undefined) ??
+      [];
+    // 收件人支持 {{var}} 模板引用（如 {{record.created_by}}），解析后剔除空项
+    const recipients = rawRecipients
+      .map((r) => renderTemplateDotted(r, renderScope).trim())
+      .filter((r) => r.length > 0);
+    if (recipients.length === 0) {
+      this.logger.warn(
+        `通知节点 ${ctx.node.id} 收件人列表为空（recipients 配置为空或模板引用解析为空），通知将不会送达`,
+      );
+    }
 
     let title: string;
     let body: string;

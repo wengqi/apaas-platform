@@ -88,12 +88,18 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
     });
     this.workers.push(processWorker);
 
-    // 延时恢复 Worker
+    // 延时恢复 Worker（kind 决定恢复语义：delay=推进令牌 / wait_condition=重新求值等待条件）
     const delayWorker = new Worker(
       DELAY_QUEUE,
       async (job: Job) => {
-        const { instanceId, nodeId } = job.data as { instanceId: string; nodeId: string };
-        this.logger.debug(`消费 delay job: instanceId=${instanceId}, nodeId=${nodeId}`);
+        const { instanceId, nodeId, kind } = job.data as {
+          instanceId: string;
+          nodeId: string;
+          kind?: string;
+        };
+        this.logger.debug(
+          `消费 delay job: instanceId=${instanceId}, nodeId=${nodeId}, kind=${kind ?? 'delay'}`,
+        );
         // 从实例恢复 tenantId（此查询在 ALS 上下文外 — 安全，instanceId 全局唯一）
         const instance = await prisma.processInstance.findFirst({
           where: { id: instanceId },
@@ -104,7 +110,9 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
         }
         // 在租户上下文中执行后续所有 DB 操作
         await runWithTenant(instance.tenantId, () =>
-          this.processEngine.resumeDelayedNode(instanceId, nodeId),
+          kind === 'wait_condition'
+            ? this.processEngine.resumeWaitCondition(instanceId, nodeId)
+            : this.processEngine.resumeDelayedNode(instanceId, nodeId),
         );
       },
       { connection: this.connection.duplicate(), concurrency: 5 },

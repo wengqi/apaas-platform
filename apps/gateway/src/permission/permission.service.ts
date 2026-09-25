@@ -7,7 +7,7 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
  *
  * 核心流程：
  *  1. 超级管理员短路 → 直接通过
- *  2. 查询用户的所有角色（直接角色 + 组织授权角色）
+ *  2. 查询用户的所有角色（直接角色 + 组织授权角色 + 组织授权扩散继承角色）
  *  3. 查询匹配的 PermissionRule（按 type + action + targetId）
  *  4. Deny-overrides：有 DENY 规则 → 拒绝
  *  5. 有 ALLOW 规则 → 通过，附带 condition/fieldScope 供行级过滤
@@ -16,12 +16,19 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 @Injectable()
 export class PermissionService {
   /**
-   * 获取用户的所有角色 ID（直接角色 + 组织授权角色）。
+   * 获取用户的所有角色 ID（直接角色 + 组织授权角色 + 组织授权扩散继承角色）。
    *
    * 通过关联表的 tenantId 进行防御性过滤：
    * - UserRole → role.tenantId（确保角色属于同一租户）
    * - OrgMember → org.tenantId（确保组织属于同一租户）
    * - OrgRoleGrant → org.tenantId（确保授权属于同一租户）
+   *
+   * 组织授权扩散（Phase 4.5，上级自动继承下级权限）：
+   * 角色授权给某组织节点后，该节点的全部祖先组织节点的成员自动继承该角色 —
+   * 即用户的有效授权范围 = 用户所属组织 ∪ 其全部后代组织上的授权。
+   * 场景：部门主管（挂在父节点）无需重复授权即可行使子部门的授权角色。
+   * 实现：租户内组织树一次载入（组织节点数量有界），BFS 收集用户组织的全部后代；
+   * 访问集防环，树深/环异常时安全终止。
    */
   async getUserRoleIds(userId: string, tenantId: string): Promise<string[]> {
     const [userRoles, orgMembers] = await Promise.all([
@@ -36,16 +43,57 @@ export class PermissionService {
     ]);
 
     let roleIds = userRoles.map((ur) => ur.roleId);
+    const userOrgIds = orgMembers.map((m) => m.orgId);
 
-    if (orgMembers.length > 0) {
+    if (userOrgIds.length > 0) {
+      // 组织授权扩散：收集用户所属组织的全部后代节点（上级继承下级授权）
+      const effectiveOrgIds = await this.getEffectiveOrgIds(tenantId, userOrgIds);
+
       const orgGrants = await prisma.orgRoleGrant.findMany({
-        where: { orgId: { in: orgMembers.map((m) => m.orgId) }, orgNode: { tenantId } },
+        where: { orgId: { in: effectiveOrgIds }, orgNode: { tenantId } },
         select: { roleId: true },
       });
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
     }
 
     return roleIds;
+  }
+
+  /**
+   * 计算用户的有效授权组织集合：所属组织 ∪ 全部后代组织（组织授权扩散）。
+   *
+   * 租户内组织树一次载入后内存 BFS；visited 集合防御脏数据成环。
+   */
+  async getEffectiveOrgIds(tenantId: string, userOrgIds: string[]): Promise<string[]> {
+    if (userOrgIds.length === 0) return [];
+
+    const nodes = await prisma.orgNode.findMany({
+      where: { tenantId },
+      select: { id: true, parentId: true },
+    });
+
+    // childrenMap: parentId → 子节点列表
+    const childrenMap = new Map<string, string[]>();
+    for (const node of nodes) {
+      if (!node.parentId) continue;
+      const bucket = childrenMap.get(node.parentId);
+      if (bucket) bucket.push(node.id);
+      else childrenMap.set(node.parentId, [node.id]);
+    }
+
+    // BFS 收集后代（含用户自身所属组织）
+    const effective = new Set<string>(userOrgIds);
+    const queue = [...userOrgIds];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined) break;
+      for (const child of childrenMap.get(current) ?? []) {
+        if (effective.has(child)) continue; // 防环 + 去重
+        effective.add(child);
+        queue.push(child);
+      }
+    }
+    return [...effective];
   }
 
   /**

@@ -69,6 +69,132 @@ describe('PermissionService', () => {
 
       expect(roleIds).toEqual(['role-001']);
     });
+
+    // =========================================================================
+    // 组织授权扩散（Phase 4.5）— 上级自动继承下级权限
+    // =========================================================================
+
+    /** 组织树 mock：root → dept-a / dept-b；dept-a → team-a1。 */
+    function mockOrgTree() {
+      prisma.orgNode.findMany.mockResolvedValue([
+        { id: 'org-root', parentId: null },
+        { id: 'org-dept-a', parentId: 'org-root' },
+        { id: 'org-dept-b', parentId: 'org-root' },
+        { id: 'org-team-a1', parentId: 'org-dept-a' },
+      ]);
+    }
+
+    it('父组织成员继承子组织的授权角色（上级继承下级）', async () => {
+      mockOrgTree();
+      // 用户属于父节点 org-dept-a；角色授权给了子节点 org-team-a1
+      prisma.userRole.findMany.mockResolvedValue([]);
+      prisma.orgMember.findMany.mockResolvedValue([makeOrgMember({ orgId: 'org-dept-a' })]);
+      prisma.orgRoleGrant.findMany.mockImplementation(
+        async (args: { where: { orgId: { in: string[] } } }) => {
+          const grantsOn = args.where.orgId.in;
+          return grantsOn.includes('org-team-a1')
+            ? [makeOrgRoleGrant({ roleId: 'role-child' })]
+            : [];
+        },
+      );
+
+      const roleIds = await service.getUserRoleIds('user-001', 'tenant-001');
+
+      expect(roleIds).toEqual(['role-child']);
+    });
+
+    it('多级嵌套：祖父节点成员继承孙子节点的授权角色', async () => {
+      mockOrgTree();
+      // 用户属于根节点；授权挂在 team-a1（root → dept-a → team-a1）
+      prisma.userRole.findMany.mockResolvedValue([]);
+      prisma.orgMember.findMany.mockResolvedValue([makeOrgMember({ orgId: 'org-root' })]);
+      prisma.orgRoleGrant.findMany.mockImplementation(
+        async (args: { where: { orgId: { in: string[] } } }) =>
+          args.where.orgId.in.includes('org-team-a1')
+            ? [makeOrgRoleGrant({ roleId: 'role-grandchild' })]
+            : [],
+      );
+
+      const roleIds = await service.getUserRoleIds('user-001', 'tenant-001');
+
+      expect(roleIds).toEqual(['role-grandchild']);
+    });
+
+    it('兄弟组织隔离：兄弟节点的授权不扩散', async () => {
+      mockOrgTree();
+      // 用户属于 dept-a；授权只挂在兄弟节点 dept-b
+      prisma.userRole.findMany.mockResolvedValue([]);
+      prisma.orgMember.findMany.mockResolvedValue([makeOrgMember({ orgId: 'org-dept-a' })]);
+      prisma.orgRoleGrant.findMany.mockImplementation(
+        async (args: { where: { orgId: { in: string[] } } }) =>
+          args.where.orgId.in.includes('org-dept-b')
+            ? [makeOrgRoleGrant({ roleId: 'role-sibling' })]
+            : [],
+      );
+
+      const roleIds = await service.getUserRoleIds('user-001', 'tenant-001');
+
+      expect(roleIds).toEqual([]);
+    });
+
+    it('扩散继承角色与直接角色合并去重', async () => {
+      mockOrgTree();
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole({ roleId: 'role-direct' })]);
+      prisma.orgMember.findMany.mockResolvedValue([makeOrgMember({ orgId: 'org-dept-a' })]);
+      prisma.orgRoleGrant.findMany.mockResolvedValue([
+        makeOrgRoleGrant({ roleId: 'role-direct' }),
+        makeOrgRoleGrant({ roleId: 'role-inherited', id: 'gr-2' }),
+      ]);
+
+      const roleIds = await service.getUserRoleIds('user-001', 'tenant-001');
+
+      expect(roleIds).toEqual(['role-direct', 'role-inherited']);
+    });
+
+    it('用户属于多个组织：有效授权范围为各组织后代的并集', async () => {
+      mockOrgTree();
+      prisma.userRole.findMany.mockResolvedValue([]);
+      prisma.orgMember.findMany.mockResolvedValue([
+        makeOrgMember({ orgId: 'org-dept-a', userId: 'user-001' }),
+        makeOrgMember({ orgId: 'org-dept-b', id: 'om-2', userId: 'user-001' }),
+      ]);
+      prisma.orgRoleGrant.findMany.mockImplementation(
+        async (args: { where: { orgId: { in: string[] } } }) => {
+          const inScope = args.where.orgId.in;
+          const grants: Array<{ roleId: string }> = [];
+          if (inScope.includes('org-team-a1')) grants.push(makeOrgRoleGrant({ roleId: 'role-a1' }));
+          if (inScope.includes('org-dept-b'))
+            grants.push(makeOrgRoleGrant({ roleId: 'role-b', id: 'gr-2' }));
+          return grants;
+        },
+      );
+
+      const roleIds = await service.getUserRoleIds('user-001', 'tenant-001');
+
+      expect(roleIds).toEqual(['role-a1', 'role-b']);
+    });
+
+    it('组织树含环（脏数据）：BFS 安全终止不死循环', async () => {
+      prisma.orgNode.findMany.mockResolvedValue([
+        { id: 'org-x', parentId: 'org-y' },
+        { id: 'org-y', parentId: 'org-x' },
+      ]);
+      prisma.userRole.findMany.mockResolvedValue([]);
+      prisma.orgMember.findMany.mockResolvedValue([makeOrgMember({ orgId: 'org-x' })]);
+      prisma.orgRoleGrant.findMany.mockResolvedValue([makeOrgRoleGrant({ roleId: 'role-cycle' })]);
+
+      const roleIds = await service.getUserRoleIds('user-001', 'tenant-001');
+
+      expect(roleIds).toEqual(['role-cycle']);
+    });
+
+    it('getEffectiveOrgIds：返回所属组织与全部后代组织', async () => {
+      mockOrgTree();
+
+      const ids = await service.getEffectiveOrgIds('tenant-001', ['org-root']);
+
+      expect(ids).toEqual(['org-root', 'org-dept-a', 'org-dept-b', 'org-team-a1']);
+    });
   });
 
   // =========================================================================

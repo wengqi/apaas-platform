@@ -3,18 +3,21 @@ import { LogoutOutlined, UserOutlined, HomeOutlined, CheckSquareOutlined } from 
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@apaas/shared/stores';
 import NotificationBell from '../components/NotificationBell';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
 
 /**
  * 运行时布局 — 顶部导航栏(应用名 + 导航 + 用户菜单) + 内容区(Outlet)。
+ * 移动端（<768px）：导航收起为纯图标、内容边距压缩（Phase 2.9 响应式适配）。
  */
 export default function RuntimeLayout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
 
   const handleLogout = () => {
     logout();
@@ -37,12 +40,12 @@ export default function RuntimeLayout() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 24px',
+          padding: isMobile ? '0 12px' : '0 24px',
           background: '#001529',
         }}
       >
-        <Space size="large" align="center">
-          <Title level={4} style={{ color: '#fff', margin: 0 }}>
+        <Space size={isMobile ? 'small' : 'large'} align="center">
+          <Title level={isMobile ? 5 : 4} style={{ color: '#fff', margin: 0 }}>
             aPaaS Runtime
           </Title>
           <Space size="small">
@@ -52,7 +55,7 @@ export default function RuntimeLayout() {
               style={navBtnStyle('/home')}
               onClick={() => navigate('/home')}
             >
-              我的应用
+              {!isMobile && '我的应用'}
             </Button>
             <Button
               type="text"
@@ -60,7 +63,7 @@ export default function RuntimeLayout() {
               style={navBtnStyle('/tasks')}
               onClick={() => navigate('/tasks')}
             >
-              任务中心
+              {!isMobile && '任务中心'}
             </Button>
           </Space>
         </Space>
@@ -85,12 +88,12 @@ export default function RuntimeLayout() {
           >
             <Space style={{ cursor: 'pointer', color: '#fff' }} align="center">
               <Avatar icon={<UserOutlined />} />
-              <span>{user?.name ?? '未登录'}</span>
+              {!isMobile && <span>{user?.name ?? '未登录'}</span>}
             </Space>
           </Dropdown>
         </Space>
       </Header>
-      <Content style={{ padding: 24 }}>
+      <Content style={{ padding: isMobile ? 12 : 24 }}>
         <Outlet />
       </Content>
     </Layout>

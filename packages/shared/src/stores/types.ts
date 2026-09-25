@@ -21,7 +21,8 @@ export type ActionType =
   | 'toast'
   | 'call_api'
   | 'trigger_process'
-  | 'set_variable';
+  | 'set_variable'
+  | 'run_script';
 
 /** 事件动作配置。 */
 export interface ActionConfig {

@@ -138,6 +138,8 @@ export enum ActionType {
   TriggerProcess = 'trigger_process',
   /** 设置视图模型变量 */
   SetVariable = 'set_variable',
+  /** 执行页面 JS 扩展脚本（Phase 2.10） */
+  RunScript = 'run_script',
 }
 
 // ---------------------------------------------------------------------------

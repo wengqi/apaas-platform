@@ -57,6 +57,7 @@ const ACTION_TYPE_OPTIONS: { value: ActionType; label: string; desc: string }[] 
   { value: 'update_record', label: '更新记录', desc: '更新一条记录' },
   { value: 'delete_record', label: '删除记录', desc: '删除一条记录' },
   { value: 'call_api', label: '调用 API', desc: '调用自定义 API' },
+  { value: 'run_script', label: 'JS 扩展', desc: '执行页面级 JavaScript 脚本（可读写 vm）' },
 ];
 
 /**
@@ -237,6 +238,27 @@ function ActionParamsEditor({
             value={(params.modalId as string) ?? ''}
             onChange={(e) => onChange({ ...params, modalId: e.target.value })}
           />
+        </Space>
+      );
+
+    case 'run_script':
+      return (
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            脚本代码（ctx 注入：vm / setVariable / objectId）
+          </Text>
+          <Input.TextArea
+            rows={6}
+            placeholder={
+              "// 示例：根据金额设置等级\nif ((ctx.vm.order?.amount ?? 0) > 1000) {\n  ctx.setVariable('vm.level', 'VIP');\n}"
+            }
+            value={(params.code as string) ?? ''}
+            onChange={(e) => onChange({ ...params, code: e.target.value })}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            脚本在终端用户浏览器中执行；写变量必须经 ctx.setVariable（vm 为只读快照）。
+          </Text>
         </Space>
       );
 

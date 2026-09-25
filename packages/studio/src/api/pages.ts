@@ -67,7 +67,8 @@ export type ActionType =
   | 'toast'
   | 'call_api'
   | 'trigger_process'
-  | 'set_variable';
+  | 'set_variable'
+  | 'run_script';
 
 /** 视图模型变量类型。 */
 export type VariableType = 'record' | 'record_list' | 'scalar' | 'object' | 'array';

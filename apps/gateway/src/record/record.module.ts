@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { RecordService } from './record.service.js';
 import { RecordImportExportService } from './record-import-export.service.js';
+import { RollupService } from './rollup.service.js';
 import { RecordController } from './record.controller.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -39,6 +40,7 @@ import { ProcessModule } from '../process/process.module.js';
     JwtStrategy,
     FormulaEngine,
     AutoNumberGenerator,
+    RollupService,
   ],
   exports: [RecordService, RecordImportExportService],
 })

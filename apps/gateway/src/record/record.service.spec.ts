@@ -43,12 +43,18 @@ function createService() {
   const formulaEngine = createMockFormulaEngine();
   const autoNumberGenerator = createMockAutoNumberGenerator();
   const triggerService = createMockTriggerService();
+  const rollupService = {
+    validateLookupWrites: vi.fn().mockResolvedValue(undefined),
+    computeRollupFields: vi.fn().mockResolvedValue({}),
+    recomputeParentsForChildRecord: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new RecordService(
     formulaEngine as unknown as ConstructorParameters<typeof RecordService>[0],
     autoNumberGenerator as unknown as ConstructorParameters<typeof RecordService>[1],
     triggerService as unknown as ConstructorParameters<typeof RecordService>[2],
+    rollupService as unknown as ConstructorParameters<typeof RecordService>[3],
   );
-  return { service, formulaEngine, autoNumberGenerator, triggerService };
+  return { service, formulaEngine, autoNumberGenerator, triggerService, rollupService };
 }
 
 describe('RecordService', () => {

@@ -167,7 +167,14 @@ export type FieldConfig =
   | { type: FieldType.Formula; formula: FormulaConfig }
   | {
       type: FieldType.Rollup;
-      rollup: { targetFieldId: FieldId; aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max' };
+      rollup: {
+        /** 关系字段（本对象上的 lookup / sub_form 字段 ID，确定聚合的关联记录范围） */
+        relationFieldId: FieldId;
+        /** 聚合目标字段（关联目标对象上的字段 ID；count 聚合时可省略） */
+        targetFieldId?: FieldId;
+        /** 聚合方式 */
+        aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max';
+      };
     };
 
 // ---------------------------------------------------------------------------

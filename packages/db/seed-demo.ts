@@ -457,7 +457,8 @@ function generateBorrowApprovalWorkflow(adminUserId: string): Record<string, unk
         data: {
           title: '通知申请人（已批准）',
           channel: 'IN_APP',
-          recipients: [],
+          // 模板引用：解析为记录创建人（申请人）的用户 ID
+          recipients: ['{{record.created_by}}'],
           title_template: '资产领用申请已批准',
           content: '您的资产领用申请已批准，请前往领取。',
         },
@@ -469,7 +470,8 @@ function generateBorrowApprovalWorkflow(adminUserId: string): Record<string, unk
         data: {
           title: '通知申请人（已拒绝）',
           channel: 'IN_APP',
-          recipients: [],
+          // 模板引用：解析为记录创建人（申请人）的用户 ID
+          recipients: ['{{record.created_by}}'],
           title_template: '资产领用申请被拒绝',
           content: '您的资产领用申请被拒绝，如有疑问请联系管理员。',
         },

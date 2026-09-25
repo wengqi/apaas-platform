@@ -1,4 +1,5 @@
 import {
+  Logger,
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -14,6 +15,7 @@ import type {
   ImportError,
 } from '@apaas/shared';
 import { FormulaEngine } from '../object/formula-engine.js';
+import { RollupService } from './rollup.service.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { TriggerService } from '../process/trigger.service.js';
 import { translateCondition } from '../permission/condition-translator.js';
@@ -81,11 +83,14 @@ interface AutoNumberFieldConfig {
  */
 @Injectable()
 export class RecordService {
+  private readonly logger = new Logger(RecordService.name);
+
   constructor(
     private readonly formulaEngine: FormulaEngine,
     private readonly autoNumberGenerator: AutoNumberGenerator,
     @Inject(forwardRef(() => TriggerService))
     private readonly triggerService: TriggerService,
+    private readonly rollupService: RollupService,
   ) {}
   // ===========================================================================
   // 查询
@@ -251,6 +256,17 @@ export class RecordService {
     );
     Object.assign(computedData, formulaResults);
 
+    // 3. Lookup 写约束：引用的目标记录必须存在且属于配置的目标对象
+    await this.rollupService.validateLookupWrites(tenantId, fields, computedData);
+
+    // 4. 计算 Rollup 字段（lookup 关系此时即可算；sub_form 子记录尚不存在，写入后异步补算）
+    const rollupResults = await this.rollupService.computeRollupFields(
+      tenantId,
+      fields,
+      computedData,
+    );
+    Object.assign(computedData, rollupResults);
+
     const record = await prisma.record.create({
       data: {
         tenantId,
@@ -262,12 +278,22 @@ export class RecordService {
       },
     });
 
-    // 触发记录创建事件（非阻塞）
+    // 触发记录创建事件（非阻塞）；created_by 供流程通知等节点引用（系统字段，置于展开后保证不被业务数据覆盖）
     const result = this.toResult(record);
     void this.triggerService.onRecordEvent(tenantId, obj.appId, objectId, 'created', {
       id: record.id,
       ...(record.data as Record<string, unknown>),
+      created_by: userId,
     });
+
+    // 本记录可能作为子记录被其他对象的 Rollup 聚合（异步反向重算，非阻塞）
+    void this.rollupService
+      .recomputeParentsForChildRecord(tenantId, obj.appId, objectId, record.id, computedData)
+      .catch((err) =>
+        this.logger.error(
+          `Rollup 父记录重算失败: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
 
     return result;
   }
@@ -324,6 +350,16 @@ export class RecordService {
     );
     Object.assign(mergedData, formulaResults);
 
+    // Lookup 写约束 + Rollup 重算（update 时 sub_form 子记录已存在，可同步算全）
+    await this.rollupService.validateLookupWrites(tenantId, fields, mergedData);
+    const rollupResults = await this.rollupService.computeRollupFields(
+      tenantId,
+      fields,
+      mergedData,
+      recordId,
+    );
+    Object.assign(mergedData, rollupResults);
+
     const record = await prisma.record.update({
       where: { id: recordId },
       data: {
@@ -332,12 +368,29 @@ export class RecordService {
       },
     });
 
-    // 触发记录更新事件（非阻塞）
+    // 触发记录更新事件（非阻塞）；系统字段置于展开后保证不被业务数据覆盖
     const result = this.toResult(record);
     void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'updated', {
       id: record.id,
       ...mergedData,
+      created_by: existing.createdBy,
+      updated_by: userId,
     });
+
+    // 本记录可能作为子记录被其他对象的 Rollup 聚合（异步反向重算，非阻塞）
+    void this.rollupService
+      .recomputeParentsForChildRecord(
+        tenantId,
+        existing.appId,
+        existing.objectId,
+        record.id,
+        mergedData,
+      )
+      .catch((err) =>
+        this.logger.error(
+          `Rollup 父记录重算失败: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
 
     return result;
   }
@@ -359,7 +412,7 @@ export class RecordService {
         tenantId,
         ...(conditionWhere ? { AND: [conditionWhere] } : {}),
       },
-      select: { appId: true, objectId: true, data: true },
+      select: { appId: true, objectId: true, data: true, createdBy: true },
     });
     if (!existing) throw new NotFoundException('记录不存在');
 
@@ -368,11 +421,27 @@ export class RecordService {
     });
     if (result.count === 0) throw new NotFoundException('记录不存在');
 
-    // 触发记录删除事件（非阻塞）
+    // 触发记录删除事件（非阻塞）；created_by 供流程节点引用
     void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'deleted', {
       id: recordId,
       ...(existing.data as Record<string, unknown>),
+      created_by: existing.createdBy,
     });
+
+    // 子记录删除 → 反向重算引用它的父记录 Rollup（异步，非阻塞）
+    void this.rollupService
+      .recomputeParentsForChildRecord(
+        tenantId,
+        existing.appId,
+        existing.objectId,
+        recordId,
+        (existing.data as Record<string, unknown>) ?? {},
+      )
+      .catch((err) =>
+        this.logger.error(
+          `Rollup 父记录重算失败: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
   }
 
   // ===========================================================================

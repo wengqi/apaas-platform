@@ -226,7 +226,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - ✅ Phase 10.4 完整 Demo 应用已完成（2026-08-23：资产管理系统 — 3 业务对象 + 7 页面 + 1 审批流程 + 24 示例记录 + 仪表盘 + 应用发布 + 12 E2E 验收测试）
 - ✅ 全面代码审查与整改已完成（2026-08-23：R1 修复 8 个 HIGH 缺陷 — ABAC 写操作执行/凭证云函数授权/审批幂等/引擎竞态锁/循环预算/WAITING 重复/onLoad 死循环/错误边界/XSS 消毒；R2 修复 12 项 MEDIUM — 原子计数器表/条件边求值/索引迁移/缓存键统一等；R3 飞书对齐度校准 ~97%→~68%（功能清单逐项核对口径））
 - ✅ P0/P1 审查缺陷全部修复（2026-09-13~09-25：2 P0 + 11 P1 — chart-data ABAC 旁路/引擎锁内重读/fieldScope 创建路径/isolate 清理/流程端点授权/表单提交接线/定时触发器生命周期/decision 枚举/物化事务/dataflow 上限/翻译器 fail-closed/运行时多页导航）
-- ✅ R4 功能补全批次已完成（2026-09-25：流程引擎 20 种节点执行器全量（含 inclusive/loop/break/continue/wait_for_condition/batch_operation）+ 严格 AND-join 汇聚门控 + 子流程同步等待 + 等待条件延迟轮询 + 编辑器↔引擎类型 snake_case 调和 + 演示审批通知链路修复（{{record.created_by}} 模板解析）+ Rollup 聚合计算/反向重算/Lookup 写约束 + open_modal/close_modal 落地 + Phase 10.5 部署文档 docs/DEPLOYMENT.md；单测 496→532 全绿）
-- ✅ Phase 10 打磨与集成（**全部完成**：安全中间件 + 数据导入导出 + 批量操作 + 租户隔离 $extends + 完整 Demo + 代码审查整改 R1-R3 + 部署文档）
-- ⬜ 剩余对齐缺口（下一批次）：组织授权扩散（Phase 4.5）/ 视图看板日历画廊渲染 / 连接器扩展（OAuth2/OpenAPI）/ 移动端适配 + JS 页面扩展 / 覆盖率提升至 60% / P2 缺陷清单消化
-- 🟡 当前主要风险：功能对齐度缺口（连接器 ~70% / 组织权限扩散缺失）+ 覆盖率基线 ~40% 距 60% 目标差距
+- ✅ R4 功能补全批次已完成（2026-09-25：流程引擎 20 种节点执行器全量（含 inclusive/loop/break/continue/wait_for_condition/batch_operation）+ 严格 AND-join 汇聚门控 + 子流程同步等待 + 等待条件延迟轮询 + 编辑器↔引擎类型 snake_case 调和 + 演示审批通知链路修复（{{record.created_by}} 模板解析）+ Rollup 聚合计算/反向重算/Lookup 写约束 + open_modal/close_modal 落地 + Phase 10.5 部署文档 docs/DEPLOYMENT.md）
+- ✅ 对齐收口第二批已完成（2026-09-25：Phase 4.5 组织授权扩散（上级自动继承下级权限）+ 看板/画廊/日历视图渲染 + 连接器 OAuth2 client_credentials + 覆盖率 40%→60%（gateway 492 测试，总 620，阈值锁定 58/72/72/58））
+- ✅ Phase 10 打磨与集成（**全部完成**：安全中间件 + 数据导入导出 + 批量操作 + 租户隔离 $extends + 完整 Demo + 代码审查整改 R1-R3 + 部署文档 + 覆盖率 60%）
+- ⬜ 剩余对齐缺口（下一批次）：移动端适配（Phase 2.9）/ JS 页面扩展（Phase 2.10）— ROADMAP 仅余未实现项；连接器 OpenAPI 导入与数据库连接器（对齐长尾）/ P2 缺陷清单消化（B10-B22 / F-B3~F-B10）
+- 🟡 当前主要风险：飞书对齐度长尾（移动端/JS扩展未实现，连接器 OpenAPI 导入缺失）+ P2 缺陷清单待消化

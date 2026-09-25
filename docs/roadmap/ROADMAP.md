@@ -101,7 +101,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 4.2 | 后端: 五级权限引擎(页面/记录/流程/数据模型/连接器) | ✅ 完成（PermissionService.check() 完整: RBAC+ABAC、deny-overrides、default-deny、super-admin 短路；PermissionGuard 挂载到 6 个业务控制器） |
 | 4.3 | 后端: 角色管理(租户级+应用级) + 组织架构(树形) + 用户-应用-角色三元 | ✅ 完成（RoleService/OrgService/UserService 全 CRUD + 组织角色授予） |
 | 4.4 | 后端: 记录级条件权限(行级过滤) + 字段级权限(列级) | ✅ 完成（condition + fieldScope 在权限引擎中实现，PermissionGuard 挂载后实际执行） |
-| 4.5 | 后端: 组织授权扩散(上级自动继承下级权限) | ⬜ 未实现 |
+| 4.5 | 后端: 组织授权扩散(上级自动继承下级权限) | ✅ 完成（2026-09-25 — getEffectiveOrgIds 租户组织树 BFS 收集后代，授权范围 = 所属组织 ∪ 全部后代；防环；7 项单测） |
 | 4.6 | 前端: 角色管理UI + 权限配置面板 + 组织树管理 | ✅ 完成（角色管理/组织树/用户管理完整；权限规则编辑器: fieldScope 列级编辑 + 动态目标选择 + 组织角色授权 UI） |
 | 4.7 | QA: 权限隔离E2E | ✅ 完成（permission.service.spec.ts + condition-translator.spec.ts 单元测试） |
 
@@ -185,7 +185,7 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 🟢 P2 | Phase 10 打磨 | ~~完整Demo~~ ✅ / 部署文档 + 性能优化 |
 | ✅ 已完成 | TD-17 租户隔离 $extends 重构 | Prisma 自动注入 tenantId + ALS 上下文 + BullMQ worker 修复（2026-08-23） |
 | 🟢 P2 | Phase 8 扩展 | 自定义组件注册 + 运行时加载 + JS 页面扩展 |
-| 🟢 P2 | 覆盖率提升至 60% | 当前基线 39% → 目标 60%（补充 controller / node-executor 测试） |
+| ✅ 已完成 | 覆盖率提升至 60% | 2026-09-25：statements 60% / branches 74.3% / functions 74%（阈值锁定 58/72/72/58） |
 
 ---
 
@@ -319,3 +319,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-23：**Phase 10.4 完整 Demo 应用完成**——资产管理系统种子数据（3 业务对象 asset/borrow_request/asset_category + 9+5+3 字段 + 7 页面 list/detail/form/dashboard + 1 审批流程 start→user_task→condition→object_operation→notification→end + 24 示例记录 + 仪表盘含指标卡+3图表 + 应用发布 publishedSnapshot）+ 12 E2E 验收测试（API 验证 + Studio UI 验证）。种子脚本 `packages/db/seed-demo.ts` 幂等可重跑。
 - 2026-08-23：**全面代码审查 + 整改（R1 安全 / R2 缺陷 / R3 对齐校准）**——三路深度审查发现 8 个 HIGH 缺陷并全部修复：S1 ABAC 行级条件注入单记录写操作、S2 凭证/云函数 CONNECTOR 权限授权、S3 delegateTask 成员校验、B1 流程引擎实例级串行锁、B2 审批原子认领（幂等）、B3 循环预算 1000 次、B4 WAITING 令牌跳过、F1 PageLoadEffect 死循环、F2 节点级错误边界、F3 DOMPurify XSS 消毒。R2 修复：异常过滤器顺序（P2002→409）、auto-number 原子计数器表（消除全表扫描+竞态）、object_operation merge 更新、边级条件 JsonLogic 求值、4 项性能索引迁移、env 限制接线、datetime→date_time 系统字段修正、动作链 vm getter、call_api token+状态检查、undo 栈上限 50、TaskCenter 缓存键统一+拒绝二次确认。**飞书对齐度校准：~97%（虚高）→ ~68%（按 A-K 功能清单逐项核对）**，工程完成度 ~90%，两维度分离。详见 `docs/knowledge-base/CODE-REVIEW-2026-08-23.md`。
 - 2026-09-25：**R4 功能补全批次落地（对齐缺口收口）**——① 流程引擎补齐 6 种节点执行器（inclusive/loop/break/continue/wait_for_condition/batch_operation，20 种全量）+ 严格 AND-join（汇聚等待注册/门控/支配性收敛分析，分支发散安全降级）+ 子流程默认同步等待（子实例完成/失败联动父实例）+ 等待条件 BullMQ 延迟轮询（timeout 出边路由）；② 演示审批链路修复：通知收件人支持 `{{record.created_by}}` 模板解析 + 记录事件载荷补充 created_by/updated_by 系统字段 + 种子流程收件人接通；③ 编辑器↔引擎类型调和：schema-serializer 序列化统一 snake_case（修复编辑器搭建流程运行时报 unsupported_node_type 的隐性缺陷），前端物料启用 parallel/inclusive/loop/wait_for_condition/sub_process/break/continue/batch_operation 并补齐配置面板；④ Rollup 字段从"死字段"转正：聚合计算（sum/avg/count/min/max）+ 子记录写入反向重算父记录 + Lookup 写约束（目标记录存在性校验）+ 字段配置 UI；⑤ runtime-ui ModalHost 落地 open_modal/close_modal（此前零消费方）；⑥ Phase 10.5 部署文档（docs/DEPLOYMENT.md）。测试 496→532（gateway 404 / db 42 / studio 86），build/typecheck/lint 全绿。
+- 2026-09-25（第二批）：**对齐收口第二批落地**——① Phase 4.5 组织授权扩散（上级自动继承下级权限：getEffectiveOrgIds 组织树 BFS + 防环 + 7 单测）；② 视图类型渲染补齐（看板/画廊/日历，data_table 按 viewType 分派，Studio 预览与 Runtime 共享渲染核心同步生效）；③ 连接器 OAuth2（client_credentials 自动换 token + 内存缓存 + authStyle + 前端凭证表单 + 8 单测）；④ 覆盖率 40%→60%（真实执行器/工具层/管理服务/发布支撑/env 校验共 +88 项测试，gateway 492 全绿，总 620；阈值锁定）。当前唯一剩余未实现项：Phase 2.9 移动端适配 / 2.10 JS 页面扩展（前端增强类，下一批次）。

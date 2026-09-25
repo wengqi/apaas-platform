@@ -228,6 +228,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - ✅ P0/P1 审查缺陷全部修复（2026-09-13~09-25：2 P0 + 11 P1 — chart-data ABAC 旁路/引擎锁内重读/fieldScope 创建路径/isolate 清理/流程端点授权/表单提交接线/定时触发器生命周期/decision 枚举/物化事务/dataflow 上限/翻译器 fail-closed/运行时多页导航）
 - ✅ R4 功能补全批次已完成（2026-09-25：流程引擎 20 种节点执行器全量（含 inclusive/loop/break/continue/wait_for_condition/batch_operation）+ 严格 AND-join 汇聚门控 + 子流程同步等待 + 等待条件延迟轮询 + 编辑器↔引擎类型 snake_case 调和 + 演示审批通知链路修复（{{record.created_by}} 模板解析）+ Rollup 聚合计算/反向重算/Lookup 写约束 + open_modal/close_modal 落地 + Phase 10.5 部署文档 docs/DEPLOYMENT.md）
 - ✅ 对齐收口第二批已完成（2026-09-25：Phase 4.5 组织授权扩散（上级自动继承下级权限）+ 看板/画廊/日历视图渲染 + 连接器 OAuth2 client_credentials + 覆盖率 40%→60%（gateway 492 测试，总 620，阈值锁定 58/72/72/58））
+- ✅ 对齐收口第三批已完成（2026-09-25：Phase 2.9 移动端响应式（matchMedia 事件驱动）+ Phase 2.10 JS 页面扩展（run_script 动作全链路+沙箱化作用域）+ Phase 2.11 QA E2E 覆盖确认 — **ROADMAP Phase 0-10 已无未实现项**）
 - ✅ Phase 10 打磨与集成（**全部完成**：安全中间件 + 数据导入导出 + 批量操作 + 租户隔离 $extends + 完整 Demo + 代码审查整改 R1-R3 + 部署文档 + 覆盖率 60%）
-- ⬜ 剩余对齐缺口（下一批次）：移动端适配（Phase 2.9）/ JS 页面扩展（Phase 2.10）— ROADMAP 仅余未实现项；连接器 OpenAPI 导入与数据库连接器（对齐长尾）/ P2 缺陷清单消化（B10-B22 / F-B3~F-B10）
-- 🟡 当前主要风险：飞书对齐度长尾（移动端/JS扩展未实现，连接器 OpenAPI 导入缺失）+ P2 缺陷清单待消化
+- ⬜ 对齐长尾（增强项，超出原始 10-Phase 范围）：连接器 OpenAPI 导入 / 数据库连接器 / 自定义组件注册 / P2 缺陷清单消化（B10-B22 / F-B3~F-B10）
+- 🟡 当前主要风险：对齐长尾增强项与 P2 缺陷清单为持续改进项；多进程水平扩展需 Redis 分布式锁（引擎内已标注）

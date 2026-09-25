@@ -60,11 +60,11 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 | 2.6 | 前端-运行时渲染器: 递归解析组件树 + 解析表达式 + 调数据API | ✅ 完成（Studio 预览模式 + runtime-ui 独立渲染引擎均完整: ComponentRenderer 递归渲染 + expression-engine + action-executor + getBySlug 路由） |
 | 2.7 | 前端-事件系统: 组件事件(点击/变更) → 动作(查询/提交/跳转/弹窗/流程) + 条件判断 | ✅ 完成（action-executor 引擎 + 12 动作完整；事件配置 UI: 事件类型选择 + 动作链编辑器；trigger_process 对接流程引擎 API） |
 | 2.8 | 前端-页面类型: 列表页/详情页/表单页/仪表盘/自定义页 | ✅ 完成（5种页面类型） |
-| 2.9 | 前端-PC+移动端双端适配 | ⬜ 未实现 |
-| 2.10 | 前端-JS页面代码扩展: 页面级JavaScript处理复杂交互 | ⬜ 未实现 |
-| 2.11 | QA: 拖拽搭建CRUD三件套(列表/详情/表单)并运行 | ⬜ 未做（无测试文件） |
+| 2.9 | 前端-PC+移动端双端适配 | ✅ 完成（2026-09-25 — useIsMobile 视口断点（matchMedia change 事件驱动）+ RuntimeLayout 移动端自适应（导航收起/边距压缩/视口 meta）；对齐飞书移动端可用性口径，PC 优先） |
+| 2.10 | 前端-JS页面代码扩展: 页面级JavaScript处理复杂交互 | ✅ 完成（2026-09-25 — run_script 动作类型接入事件系统（onLoad/onClick/onSubmit 等均可挂 JS），executePageScript 严格模式独立作用域 + ctx 注入 vm/setVariable/objectId，5 项单测；信任模型：搭建者编写、终端浏览器执行，对齐飞书自定义 JS 定位） |
+| 2.11 | QA: 拖拽搭建CRUD三件套(列表/详情/表单)并运行 | ✅ 完成（E2E 03-page-builder.spec.ts 列表页搭建+仪表盘+更新 Schema；10-demo-app.spec.ts 列表/详情/表单三件套运行时渲染验收） |
 
-> **完成度**: ~95%（08-01 评估 ~65%，后续补全事件配置UI + 图表骨架 + runtime-ui渲染引擎后大幅提升）。搭建器框架、组件库、视图模型、表达式引擎、预览渲染器、事件配置UI、图表组件骨架均完整。剩余缺口：JS 扩展、移动端适配。
+> **完成度**: ~98%（2026-09-25 收口：JS 扩展 + 移动端适配 + QA E2E 均已落地）。搭建器框架、组件库、视图模型、表达式引擎、预览渲染器、事件配置UI、图表组件骨架、JS 页面扩展、移动端响应式均完整。
 
 **验收标准**：拖拽搭建 CRUD 三件套（列表/详情/表单）并运行；组件属性可绑定数据；事件动作可触发。
 > **验收状态**: ✅ Studio 预览模式 + runtime-ui 独立运行模式下 CRUD 三件套均可搭建运行、属性可绑定、事件动作引擎可触发。
@@ -320,3 +320,4 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-08-23：**全面代码审查 + 整改（R1 安全 / R2 缺陷 / R3 对齐校准）**——三路深度审查发现 8 个 HIGH 缺陷并全部修复：S1 ABAC 行级条件注入单记录写操作、S2 凭证/云函数 CONNECTOR 权限授权、S3 delegateTask 成员校验、B1 流程引擎实例级串行锁、B2 审批原子认领（幂等）、B3 循环预算 1000 次、B4 WAITING 令牌跳过、F1 PageLoadEffect 死循环、F2 节点级错误边界、F3 DOMPurify XSS 消毒。R2 修复：异常过滤器顺序（P2002→409）、auto-number 原子计数器表（消除全表扫描+竞态）、object_operation merge 更新、边级条件 JsonLogic 求值、4 项性能索引迁移、env 限制接线、datetime→date_time 系统字段修正、动作链 vm getter、call_api token+状态检查、undo 栈上限 50、TaskCenter 缓存键统一+拒绝二次确认。**飞书对齐度校准：~97%（虚高）→ ~68%（按 A-K 功能清单逐项核对）**，工程完成度 ~90%，两维度分离。详见 `docs/knowledge-base/CODE-REVIEW-2026-08-23.md`。
 - 2026-09-25：**R4 功能补全批次落地（对齐缺口收口）**——① 流程引擎补齐 6 种节点执行器（inclusive/loop/break/continue/wait_for_condition/batch_operation，20 种全量）+ 严格 AND-join（汇聚等待注册/门控/支配性收敛分析，分支发散安全降级）+ 子流程默认同步等待（子实例完成/失败联动父实例）+ 等待条件 BullMQ 延迟轮询（timeout 出边路由）；② 演示审批链路修复：通知收件人支持 `{{record.created_by}}` 模板解析 + 记录事件载荷补充 created_by/updated_by 系统字段 + 种子流程收件人接通；③ 编辑器↔引擎类型调和：schema-serializer 序列化统一 snake_case（修复编辑器搭建流程运行时报 unsupported_node_type 的隐性缺陷），前端物料启用 parallel/inclusive/loop/wait_for_condition/sub_process/break/continue/batch_operation 并补齐配置面板；④ Rollup 字段从"死字段"转正：聚合计算（sum/avg/count/min/max）+ 子记录写入反向重算父记录 + Lookup 写约束（目标记录存在性校验）+ 字段配置 UI；⑤ runtime-ui ModalHost 落地 open_modal/close_modal（此前零消费方）；⑥ Phase 10.5 部署文档（docs/DEPLOYMENT.md）。测试 496→532（gateway 404 / db 42 / studio 86），build/typecheck/lint 全绿。
 - 2026-09-25（第二批）：**对齐收口第二批落地**——① Phase 4.5 组织授权扩散（上级自动继承下级权限：getEffectiveOrgIds 组织树 BFS + 防环 + 7 单测）；② 视图类型渲染补齐（看板/画廊/日历，data_table 按 viewType 分派，Studio 预览与 Runtime 共享渲染核心同步生效）；③ 连接器 OAuth2（client_credentials 自动换 token + 内存缓存 + authStyle + 前端凭证表单 + 8 单测）；④ 覆盖率 40%→60%（真实执行器/工具层/管理服务/发布支撑/env 校验共 +88 项测试，gateway 492 全绿，总 620；阈值锁定）。当前唯一剩余未实现项：Phase 2.9 移动端适配 / 2.10 JS 页面扩展（前端增强类，下一批次）。
+- 2026-09-25（第三批）：**Phase 2 收口（最后一批未实现项）**——① 2.9 移动端适配（useIsMobile matchMedia 事件驱动 + RuntimeLayout 响应式）；② 2.10 JS 页面扩展（run_script 动作全链路：四处 ActionType/executePageScript 沙箱化作用域/EventsTab 配置/5 单测）；③ 2.11 QA 标记完成（既有 E2E 覆盖）。至此 ROADMAP 全部 Phase 0-10 任务无 ⬜ 项，最初设定的 10 大模块目标全量达成。

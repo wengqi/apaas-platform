@@ -12,6 +12,7 @@ import { pagesApi } from '../api/pages';
 import { RuntimeStoreProvider } from '../runtime/RuntimeStore';
 import ComponentRenderer from '../runtime/ComponentRenderer';
 import ModalHost from '../runtime/ModalHost';
+import AppNavMenu from '../runtime/AppNavMenu';
 
 const { Text } = Typography;
 
@@ -58,6 +59,8 @@ export default function PageView() {
     // key=page.id：页面间导航时强制重挂载，清空上一页的 vm/变量状态，
     // 并让 autoQuery 与 PageLoadEffect(onLoad) 在新页面重新触发
     <RuntimeStoreProvider key={page.id} viewModel={schema.viewModel} objectId={page.objectId}>
+      {/* 应用内常驻页签导航（多页应用切换无需返回应用视图） */}
+      <AppNavMenu />
       <ComponentRenderer node={schema.root} root={schema.root} isRoot />
       {/* 弹窗宿主 — 消费 open_modal/close_modal 动作写入的 vm.modalVisible */}
       <ModalHost appId={appId!} />

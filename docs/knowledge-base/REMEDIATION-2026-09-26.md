@@ -181,11 +181,45 @@ ERROR: duplicate key value violates unique constraint "org_role_grants_global_sc
 仍依赖 `(tenant_id, object_id)` btree 收窄；若后续出现大表慢查，建议按对象维度增加
 表达式索引或引入物化列。
 
+## 五之四、流程写库复用记录写内核（P1-5）
+
+**缺陷**：对象操作/批量操作节点此前直接 `prisma.record.*` 写库，绕过
+RecordService 的字段校验、AutoNumber/Formula/Rollup 计算与
+`triggerService.onRecordEvent`——流程写入的记录缺编号/公式、父记录汇总不更新、
+且不触发其他 RECORD_* 流程（自动化链路静默断裂）。
+
+**修复**：
+- 两个执行器改为注入并调用 `RecordService`（create/update/delete/batchCreate/
+  batchUpdate/batchDelete），写路径与主 API 完全一致；批量写入的单条 merge
+  语义也由内核保证（替代此前执行器内自实现）。
+- 新增 `flow-actor.ts`：从触发上下文解析操作者（`triggeredByUser`/`startedBy`/
+  `created_by` → 全局变量），无用户上下文（定时/Webhook/子流程）时回落为
+  `system`，保证 createdBy/updatedBy 可追溯。
+- 保留原有防呆：更新未命中记录显式失败；筛选范围删除先解析受影响 ID（上限
+  BATCH_MAX_ROWS）；批量创建部分失败透出错误明细（不再"看似成功"）。
+- 批量更新兼容两种载荷形状（`inputs.data = {…}` 文档约定 与 扁平 inputs）。
+- DI：`ProcessModule` 以 `forwardRef` 引入 `RecordModule`（后者已 forwardRef
+  ProcessModule 取 TriggerService），执行器以 `@Inject(forwardRef(…))` 注入。
+
+**验证**：
+- 单测（513/513）：执行器单测断言"经写内核"且 `prisma.record.create/update/
+  deleteMany` **未被调用**；新增操作者解析（system / triggeredByUser）与扁平载荷
+  兼容用例。
+- 端到端（新增 `e2e/14-flow-record-writer.spec.ts`，真实引擎执行流程）：
+  * 流程创建记录 → `code = ORD-0001`（自动编号）、`total = 15`（公式 qty*price）、
+    `createdBy = 触发用户`；
+  * 同一记录创建**触发了应用内 RECORD_CREATED 联动流程**（实例数 0 → 1）；
+  * 流程批量更新 → 目标字段写入且 `code/qty/price/total` 全部保留（merge）。
+- 全量：gateway 单测 **513/513**、完整 e2e **55/55**、typecheck 11/11。
+
+**遗留（如实记录）**：流程读取（query 节点）仍为系统范围直读（流程上下文无终端
+用户行级条件），未接入 ABAC 条件注入；如后续需要"按发起人权限读"，可在 query
+节点传入发起人 PermissionContext。
+
 ## 六、仍未整改（明确留待下迭代）
 
 | 项 | 原因 / 后续 |
 |---|---|
-| 流程节点写库未复用 RecordService（P1-5） | 需抽 RecordWriter 内核，改造面大 |
 | 单文件 400 行、React Query key 治理、queryKeys 死代码、静态审计 UI 等 | P2/P3 债务，按迭代消化 |
 
 ---

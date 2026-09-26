@@ -236,7 +236,10 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
   委托不可靠），新增 e2e/12-process-sidebar.spec.ts 守护（含负向对照）
 - ✅ 数据层高严重度项已闭环：可空列 partial unique index（users/org_role_grants）、
   records JSONB 等值过滤改 `@>` 命中 GIN、业务字段排序按类型 cast（A-H1/A-H2）
-- ⬜ 残留（下迭代）：流程节点写库未复用 RecordService（P1-5）；单文件 400 行拆分；
-  React Query key 治理；LIKE/范围类条件无法用 GIN（需大表压测后另行评估）
+- ✅ 流程写库已复用记录写内核（P1-5）：对象/批量操作节点走 RecordService
+  （校验 + AutoNumber/Formula/Rollup + 记录事件触发），新增 e2e/14 回归
+- ⬜ 残留（下迭代 / 工程债务）：单文件 400 行拆分；React Query key 治理；
+  queryKeys 死代码；静态审计 UI；LIKE/范围类条件无法用 GIN（需大表压测后评估）；
+  流程 query 节点未接入发起人 ABAC 条件
 - 🟡 风险：多副本部署需确认 Redis 锁可用（已内置降级为进程内互斥）；
   水平扩展前建议压测 BullMQ 与 Redis 连接数

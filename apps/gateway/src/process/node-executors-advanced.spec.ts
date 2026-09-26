@@ -347,15 +347,22 @@ describe('WaitForConditionExecutor', () => {
 // ---------------------------------------------------------------------------
 
 describe('BatchOperationExecutor', () => {
-  const executor = new BatchOperationExecutor();
+  /** 记录写内核 mock（评审 P1-5：批量写必须经 RecordService） */
+  const recordService = {
+    batchCreate: vi.fn(),
+    batchUpdate: vi.fn(),
+    batchDelete: vi.fn(),
+  };
+  const executor = new BatchOperationExecutor(recordService as never);
   const prisma = getMockPrisma();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     prisma.objectMeta.findFirst.mockResolvedValue({ id: 'obj-1', tenantId: 't-1', appId: 'app-1' });
   });
 
-  it('批量创建：records 数组走 createMany', async () => {
-    prisma.record.createMany.mockResolvedValue({ count: 2 });
+  it('批量创建：经写内核（含校验/编号/公式/事件）', async () => {
+    recordService.batchCreate.mockResolvedValue({ created: 2, errors: [] });
     const ctx = makeCtx({
       node: {
         id: 'n0',
@@ -367,9 +374,11 @@ describe('BatchOperationExecutor', () => {
     });
     const result = await executor.execute(ctx);
     expect(result.output).toEqual({ createdCount: 2 });
-    expect(prisma.record.createMany).toHaveBeenCalledOnce();
-    const arg = prisma.record.createMany.mock.calls[0]?.[0] as { data: unknown[] };
-    expect(arg.data).toHaveLength(2);
+    expect(recordService.batchCreate).toHaveBeenCalledWith('t-1', 'obj-1', 'system', [
+      { name: 'a' },
+      { name: 'b' },
+    ]);
+    expect(prisma.record.createMany).not.toHaveBeenCalled();
   });
 
   it('records 不是数组：抛错', async () => {
@@ -385,13 +394,10 @@ describe('BatchOperationExecutor', () => {
     await expect(executor.execute(ctx)).rejects.toThrow('必须是数组');
   });
 
-  // 评审 P0-1：批量更新改为"读旧 data → merge → 逐条写回"，不再整列覆盖
-  it('批量更新（recordIds 范围）：逐条 merge 旧 data 后写回', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      { id: 'r1', data: { name: 'A', status: 'OPEN' } },
-      { id: 'r2', data: { name: 'B' } },
-    ]);
-    prisma.record.update.mockResolvedValue({});
+  // 评审 P0-1 + P1-5：merge 语义与公式/Rollup/事件统一由记录写内核负责
+  it('批量更新（recordIds 范围）：经写内核逐条 merge', async () => {
+    prisma.record.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    recordService.batchUpdate.mockResolvedValue({ updated: 2, errors: [] });
     const ctx = makeCtx({
       node: {
         id: 'n0',
@@ -410,23 +416,34 @@ describe('BatchOperationExecutor', () => {
     };
     expect(findArg.where.id.in).toEqual(['r1', 'r2']);
 
-    // 逐条更新：旧字段保留，仅 merge 更新字段
-    expect(prisma.record.update).toHaveBeenCalledTimes(2);
-    const first = prisma.record.update.mock.calls[0]?.[0] as {
-      where: { id: string };
-      data: { data: Record<string, unknown> };
-    };
-    expect(first.where.id).toBe('r1');
-    expect(first.data.data).toEqual({ name: 'A', status: 'DONE' });
-    const second = prisma.record.update.mock.calls[1]?.[0] as {
-      where: { id: string };
-      data: { data: Record<string, unknown> };
-    };
-    expect(second.data.data).toEqual({ name: 'B', status: 'DONE' });
+    // 逐条 merge 由内核完成（执行器不得直接写库）
+    expect(recordService.batchUpdate).toHaveBeenCalledWith('t-1', ['r1', 'r2'], 'system', {
+      status: 'DONE',
+    });
+    expect(prisma.record.update).not.toHaveBeenCalled();
   });
 
-  it('批量删除（filter 范围）：deleteMany 注入 JsonLogic 条件', async () => {
-    prisma.record.deleteMany.mockResolvedValue({ count: 1 });
+  it('批量更新：兼容扁平 inputs（未包在 data 下）', async () => {
+    prisma.record.findMany.mockResolvedValue([{ id: 'r9' }]);
+    recordService.batchUpdate.mockResolvedValue({ updated: 1, errors: [] });
+    const ctx = makeCtx({
+      node: {
+        id: 'n0',
+        type: 'batch_operation',
+        meta: {},
+        data: makeData({ operation: 'update', objectId: 'obj-1' }),
+      } as ExecutionContext['node'],
+      inputs: { recordIds: ['r9'], flag: 'x' },
+    });
+    const result = await executor.execute(ctx);
+    expect(result.output).toEqual({ affectedCount: 1 });
+    // recordIds 属于保留键，不作为字段写入
+    expect(recordService.batchUpdate).toHaveBeenCalledWith('t-1', ['r9'], 'system', { flag: 'x' });
+  });
+
+  it('批量删除（filter 范围）：JsonLogic 条件解析后经写内核删除', async () => {
+    prisma.record.findMany.mockResolvedValue([{ id: 'r-scrap' }]);
+    recordService.batchDelete.mockResolvedValue({ deleted: 1, errors: [] });
     const ctx = makeCtx({
       node: {
         id: 'n0',
@@ -441,7 +458,8 @@ describe('BatchOperationExecutor', () => {
     });
     const result = await executor.execute(ctx);
     expect(result.output).toEqual({ affectedCount: 1 });
-    expect(prisma.record.deleteMany).toHaveBeenCalledOnce();
+    expect(recordService.batchDelete).toHaveBeenCalledWith('t-1', ['r-scrap']);
+    expect(prisma.record.deleteMany).not.toHaveBeenCalled();
   });
 
   it('无 recordIds 且无 filter：拒绝全表操作', async () => {

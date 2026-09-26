@@ -36,7 +36,7 @@ import {
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthStore } from '@apaas/shared/stores';
+import { qk, useAuthStore } from '@apaas/shared/stores';
 import { appsApi, type AppSummary, type CreateAppRequest } from '../api/apps.js';
 
 const { Title, Paragraph, Text } = Typography;
@@ -78,7 +78,7 @@ export default function AppList() {
 
   /** 加载应用列表。 */
   const { data: apps, isLoading } = useQuery({
-    queryKey: ['apps'],
+    queryKey: qk.apps(),
     queryFn: () => appsApi.list(),
   });
 
@@ -87,7 +87,7 @@ export default function AppList() {
     mutationFn: (data: CreateAppRequest) => appsApi.create(data),
     onSuccess: () => {
       message.success('应用创建成功');
-      queryClient.invalidateQueries({ queryKey: ['apps'] });
+      queryClient.invalidateQueries({ queryKey: qk.apps() });
       setCreateOpen(false);
       form.resetFields();
     },
@@ -105,7 +105,7 @@ export default function AppList() {
     mutationFn: (appId: string) => appsApi.delete(appId),
     onSuccess: () => {
       message.success('应用已删除');
-      queryClient.invalidateQueries({ queryKey: ['apps'] });
+      queryClient.invalidateQueries({ queryKey: qk.apps() });
     },
     onError: (err) => {
       const axErr = err as {
@@ -126,7 +126,7 @@ export default function AppList() {
     mutationFn: (appId: string) => appsApi.archive(appId),
     onSuccess: () => {
       message.success('应用已归档');
-      queryClient.invalidateQueries({ queryKey: ['apps'] });
+      queryClient.invalidateQueries({ queryKey: qk.apps() });
     },
     onError: (err) => {
       const axErr = err as {
@@ -148,7 +148,7 @@ export default function AppList() {
       appsApi.update(appId, data),
     onSuccess: () => {
       message.success('应用信息已更新');
-      queryClient.invalidateQueries({ queryKey: ['apps'] });
+      queryClient.invalidateQueries({ queryKey: qk.apps() });
       setEditingApp(null);
       form.resetFields();
     },
@@ -420,7 +420,7 @@ export default function AppList() {
           <Space>
             <Button
               icon={<ReloadOutlined />}
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['apps'] })}
+              onClick={() => queryClient.invalidateQueries({ queryKey: qk.apps() })}
             >
               刷新
             </Button>

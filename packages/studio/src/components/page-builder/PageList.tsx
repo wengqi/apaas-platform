@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { pagesApi, type PageMeta, type PageType } from '../../api/pages.js';
 import { objectsApi } from '../../api/objects.js';
 import { createDefaultSchema } from '../../stores/pageBuilder.js';
@@ -79,7 +80,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
 
   /** 加载页面列表。 */
   const { data: pages, isLoading } = useQuery({
-    queryKey: ['pages', appId],
+    queryKey: qk.appPages(appId!),
     queryFn: () => pagesApi.list(appId as string),
     enabled: !!appId,
   });
@@ -113,7 +114,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     },
     onSuccess: (page) => {
       message.success('页面创建成功');
-      queryClient.invalidateQueries({ queryKey: ['pages', appId] });
+      queryClient.invalidateQueries({ queryKey: qk.appPages(appId!) });
       setCreateOpen(false);
       form.resetFields();
       navigate(`/app/${appId}/pages/${page.id}`);
@@ -132,7 +133,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     mutationFn: (pageId: string) => pagesApi.delete(pageId),
     onSuccess: () => {
       message.success('页面已删除');
-      queryClient.invalidateQueries({ queryKey: ['pages', appId] });
+      queryClient.invalidateQueries({ queryKey: qk.appPages(appId!) });
     },
     onError: (err) => {
       const axErr = err as {
@@ -359,7 +360,7 @@ function CreatePageModal({
 }) {
   /** 加载对象列表(供关联对象选择)。 */
   const { data: objects } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId!),
     queryFn: () => objectsApi.list(appId as string),
     enabled: open && !!appId,
   });
@@ -422,18 +423,12 @@ function CreatePageModal({
               ? '列表/详情/表单页需要关联一个对象,将自动生成模板'
               : '自定义页可不关联对象'
           }
-          rules={
-            requiresObject
-              ? [{ required: true, message: '该页面类型需要关联对象' }]
-              : []
-          }
+          rules={requiresObject ? [{ required: true, message: '该页面类型需要关联对象' }] : []}
         >
           <Select
             showSearch
             allowClear
-            placeholder={
-              requiresObject ? '选择对象(必选)' : '选择对象(可选)'
-            }
+            placeholder={requiresObject ? '选择对象(必选)' : '选择对象(可选)'}
             optionFilterProp="label"
             options={objectOptions}
             notFoundContent={objects ? '暂无对象' : '加载中...'}

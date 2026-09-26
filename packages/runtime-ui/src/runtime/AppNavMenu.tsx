@@ -7,6 +7,7 @@
 
 import { Menu } from 'antd';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useNavigate, useParams } from 'react-router-dom';
 import { pagesApi } from '../api/pages';
 
@@ -15,7 +16,7 @@ export default function AppNavMenu() {
   const navigate = useNavigate();
 
   const { data: pages } = useQuery({
-    queryKey: ['app-pages', appId],
+    queryKey: qk.appPages(appId!),
     queryFn: () => pagesApi.list(appId!),
     enabled: !!appId,
   });

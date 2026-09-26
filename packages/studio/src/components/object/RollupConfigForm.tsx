@@ -9,6 +9,7 @@
 import { useMemo } from 'react';
 import { Form, Select } from 'antd';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { objectsApi } from '../../api/objects.js';
 
 /** 关系字段（lookup / sub_form）的最小视图。 */
@@ -51,7 +52,7 @@ export default function RollupConfigForm({ value, onChange, objectId }: RollupCo
 
   /** 当前对象字段（查 lookup / sub_form 关系字段候选）。 */
   const { data: currentObject } = useQuery({
-    queryKey: ['object', objectId],
+    queryKey: qk.object(objectId),
     queryFn: () => objectsApi.get(objectId),
     enabled: !!objectId,
   });
@@ -70,7 +71,7 @@ export default function RollupConfigForm({ value, onChange, objectId }: RollupCo
 
   /** 目标对象字段（聚合目标候选）。 */
   const { data: targetObject } = useQuery({
-    queryKey: ['object', targetObjectId],
+    queryKey: qk.object(targetObjectId!),
     queryFn: () => objectsApi.get(targetObjectId!),
     enabled: !!targetObjectId,
   });

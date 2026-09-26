@@ -33,6 +33,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { processesApi, type ProcessDef, type WorkflowSchema } from '../api/processes.js';
 import { objectsApi } from '../api/objects.js';
 import { pagesApi } from '../api/pages.js';
@@ -68,7 +69,7 @@ export default function ProcessEditor() {
 
   /** 加载对象列表(配置面板用)。 */
   const { data: objects } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId!),
     queryFn: () => objectsApi.list(appId as string),
     enabled: !!appId,
   });
@@ -77,7 +78,7 @@ export default function ProcessEditor() {
 
   /** 加载页面列表(任务表单选择用)。 */
   const { data: pages } = useQuery({
-    queryKey: ['pages', appId],
+    queryKey: qk.appPages(appId!),
     queryFn: () => pagesApi.list(appId as string),
     enabled: !!appId,
   });

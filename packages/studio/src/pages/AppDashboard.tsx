@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { appsApi } from '../api/apps.js';
 
 const { Title, Paragraph, Text } = Typography;
@@ -34,7 +35,7 @@ export default function AppDashboard() {
   const navigate = useNavigate();
 
   const { data: app, isLoading } = useQuery({
-    queryKey: ['app', appId],
+    queryKey: qk.app(appId!),
     queryFn: () => appsApi.get(appId as string),
     enabled: !!appId,
   });
@@ -105,7 +106,7 @@ export default function AppDashboard() {
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            boxShadow: `0 6px 16px ${(app.color ?? '#1677ff')}30`,
+            boxShadow: `0 6px 16px ${app.color ?? '#1677ff'}30`,
           }}
         >
           {app.icon ?? '📦'}
@@ -118,10 +119,7 @@ export default function AppDashboard() {
             <Text type="secondary" style={{ fontSize: 13 }}>
               {app.apiName}
             </Text>
-            <Tag
-              color={STATUS_COLOR[app.status] ?? 'default'}
-              style={{ margin: 0, fontSize: 12 }}
-            >
+            <Tag color={STATUS_COLOR[app.status] ?? 'default'} style={{ margin: 0, fontSize: 12 }}>
               {STATUS_LABEL[app.status] ?? app.status}
             </Tag>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -137,9 +135,7 @@ export default function AppDashboard() {
       {/* ── 资源统计 ── */}
       <Row gutter={16} style={{ marginBottom: 32 }}>
         <Col span={8}>
-          <Card
-            style={{ borderRadius: 10, border: 'none', background: '#fafbfc' }}
-          >
+          <Card style={{ borderRadius: 10, border: 'none', background: '#fafbfc' }}>
             <Statistic
               title="对象"
               value={stats.objects}
@@ -148,9 +144,7 @@ export default function AppDashboard() {
           </Card>
         </Col>
         <Col span={8}>
-          <Card
-            style={{ borderRadius: 10, border: 'none', background: '#fafbfc' }}
-          >
+          <Card style={{ borderRadius: 10, border: 'none', background: '#fafbfc' }}>
             <Statistic
               title="页面"
               value={stats.pages}
@@ -159,9 +153,7 @@ export default function AppDashboard() {
           </Card>
         </Col>
         <Col span={8}>
-          <Card
-            style={{ borderRadius: 10, border: 'none', background: '#fafbfc' }}
-          >
+          <Card style={{ borderRadius: 10, border: 'none', background: '#fafbfc' }}>
             <Statistic
               title="流程"
               value={stats.processes}

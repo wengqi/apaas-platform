@@ -26,6 +26,7 @@ import {
   ExportOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import {
   objectsApi,
   type Field,
@@ -198,7 +199,7 @@ export default function RecordList({ object }: RecordListProps) {
     mutationFn: (recordId: string) => objectsApi.records.delete(recordId),
     onSuccess: () => {
       message.success('记录已删除');
-      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
     },
     onError: (err) => showError(err),
   });
@@ -209,7 +210,7 @@ export default function RecordList({ object }: RecordListProps) {
     onSuccess: (result) => {
       message.success(`已删除 ${result.deleted} 条记录`);
       setSelectedRowKeys([]);
-      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
     },
     onError: (err) => showError(err),
   });
@@ -626,7 +627,7 @@ export default function RecordList({ object }: RecordListProps) {
         onClose={() => setImportOpen(false)}
         onImported={() => {
           setImportOpen(false);
-          queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+          queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
         }}
       />
     </div>

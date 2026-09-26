@@ -216,11 +216,40 @@ RecordService 的字段校验、AutoNumber/Formula/Rollup 计算与
 用户行级条件），未接入 ABAC 条件注入；如后续需要"按发起人权限读"，可在 query
 节点传入发起人 PermissionContext。
 
+## 五之五、React Query key 治理（P2-1）
+
+**缺陷**：
+1. `packages/shared/src/stores/query-client.ts` 的 `queryKeys` 注册表 **0 引用**（死代码），
+   且其声明的键形状与实际用法不一致（`objects.byApp` 声明 `['objects','app',appId]`，
+   实际全仓用 `['objects', appId]`）——迁移反而会改变 key 语义；
+2. objects/pages 存在 `'app-objects'` / `'app-pages'` 别名 key（9 处）：同一数据双缓存，
+   且对规范 key 的失效无法刷新别名订阅者；
+3. 发布/回滚成功后**不做任何缓存失效**（PublishWizard 只跳转；VersionHistory 仅失效
+   app-versions/app），已挂载的对象/页面/版本/变更视图保持陈旧。
+
+**修复**：
+- 删除死注册表；新增 `packages/shared/src/stores/query-keys.ts`，构造器与**既有事实键**
+  形状一致（`qk.appObjects(appId) = ['objects', appId]` 等），并导出
+  `publishAffectedKeys(appId)`（app/appObjects/appPages/appVersions/publishChanges）。
+- 全量迁移读写点至构造器（studio 20+ 文件与 runtime-ui 2 文件），**读什么 key 就失效什么 key**；
+  别名 key 清零。
+- 发布向导与版本回滚成功后统一失效 `publishAffectedKeys` 集合。
+
+**验证**：
+- 新增守卫测试 `packages/studio/src/api/query-keys.spec.ts`（5 用例，静态一致性）：
+  ① 别名 key 不得复活；② 规范键形状唯一且被多方使用；③ `qk` 每个构造器不得成为死代码
+  （历史教训即注册表零引用）；④ 原 `queryKeys` 注册表不得再被引用；
+  ⑤ `publishAffectedKeys` 覆盖 5 个键且 PublishWizard/VersionHistory 均调用。
+- **负向对照**：临时新增一个含 `['app-objects', …]` 的文件 → 守卫立即失败并指名该文件；
+  删除后恢复通过。
+- 用户可见回归：浏览器经 UI 发布新版本（0.2.0）→ 进入版本页显示最新版本列表；
+- 全量：studio 单测 96/96、gateway 513/513、完整 e2e **55/55**、typecheck 11/11。
+
 ## 六、仍未整改（明确留待下迭代）
 
 | 项 | 原因 / 后续 |
 |---|---|
-| 单文件 400 行、React Query key 治理、queryKeys 死代码、静态审计 UI 等 | P2/P3 债务，按迭代消化 |
+| 单文件 400 行拆分、静态审计 UI（ROADMAP 9.9） | P2/P3 债务，按迭代消化 |
 
 ---
 

@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Form, Input, Select, Button, Space, Typography, Divider, message } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useParams } from 'react-router-dom';
 import { objectsApi } from '../../api/objects.js';
 import {
@@ -54,7 +55,7 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
   const [hasFilter, setHasFilter] = useState(false);
 
   const { data: objects } = useQuery({
-    queryKey: ['app-objects', appId],
+    queryKey: qk.appObjects(appId!),
     queryFn: () => objectsApi.list(appId!),
     enabled: !!appId,
   });

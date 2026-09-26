@@ -1,6 +1,7 @@
 import { Card, Row, Col, Typography, Spin, Empty } from 'antd';
 import { AppstoreOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useNavigate } from 'react-router-dom';
 import { appsApi, type AppSummary } from '../api/apps';
 
@@ -9,7 +10,7 @@ const { Title, Paragraph, Text } = Typography;
 export default function Home() {
   const navigate = useNavigate();
   const { data: apps, isLoading } = useQuery({
-    queryKey: ['apps'],
+    queryKey: qk.apps(),
     queryFn: appsApi.list,
   });
 

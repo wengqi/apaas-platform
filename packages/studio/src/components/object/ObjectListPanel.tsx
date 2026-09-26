@@ -16,6 +16,7 @@ import {
 import { PlusOutlined, DatabaseOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { objectsApi, type CreateObjectRequest, type ObjectInfo } from '../../api/objects.js';
 
 const { Text } = Typography;
@@ -46,7 +47,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
 
   /** 加载对象列表。 */
   const { data: objects, isLoading } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId),
     queryFn: () => objectsApi.list(appId),
   });
 
@@ -65,7 +66,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
     mutationFn: (data: CreateObjectRequest) => objectsApi.create(appId, data),
     onSuccess: (obj) => {
       message.success('对象创建成功');
-      queryClient.invalidateQueries({ queryKey: ['objects', appId] });
+      queryClient.invalidateQueries({ queryKey: qk.appObjects(appId) });
       setCreateOpen(false);
       form.resetFields();
       // 创建后自动选中并进入详情
@@ -100,7 +101,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
     mutationFn: (objectId: string) => objectsApi.delete(objectId),
     onSuccess: () => {
       message.success('对象已删除');
-      queryClient.invalidateQueries({ queryKey: ['objects', appId] });
+      queryClient.invalidateQueries({ queryKey: qk.appObjects(appId) });
       // 如果删除的是当前选中的对象，返回对象列表
       if (objectId) {
         navigate(`/app/${appId}/objects`, { replace: true });

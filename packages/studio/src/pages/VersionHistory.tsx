@@ -2,6 +2,7 @@ import { Card, Table, Tag, Button, Typography, Space, Popconfirm, message } from
 import { RollbackOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { publishAffectedKeys, qk } from '@apaas/shared/stores';
 import { publishApi } from '../api/publish.js';
 import type { AppVersionSummary } from '@apaas/shared';
 
@@ -17,7 +18,7 @@ export default function VersionHistory() {
 
   /** 获取版本列表 */
   const { data: versions, isLoading } = useQuery({
-    queryKey: ['app-versions', appId],
+    queryKey: qk.appVersions(appId!),
     queryFn: () => publishApi.listVersions(appId!),
     enabled: !!appId,
   });
@@ -27,8 +28,10 @@ export default function VersionHistory() {
     mutationFn: (versionId: string) => publishApi.rollback(appId!, versionId),
     onSuccess: () => {
       message.success('回滚成功');
-      queryClient.invalidateQueries({ queryKey: ['app-versions', appId] });
-      queryClient.invalidateQueries({ queryKey: ['app', appId] });
+      // 评审 P2-1：回滚会改写发布快照与页面/对象的发布状态，统一失效受影响键
+      for (const key of publishAffectedKeys(appId!)) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
     },
     onError: () => message.error('回滚失败'),
   });
@@ -92,15 +95,21 @@ export default function VersionHistory() {
 
   return (
     <Card>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
         <Space>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/app/${appId}/dashboard`)}
-          >
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/app/${appId}/dashboard`)}>
             返回
           </Button>
-          <Title level={4} style={{ margin: 0 }}>发布历史</Title>
+          <Title level={4} style={{ margin: 0 }}>
+            发布历史
+          </Title>
         </Space>
         <Button type="primary" onClick={() => navigate(`/app/${appId}/publish`)}>
           发布新版本

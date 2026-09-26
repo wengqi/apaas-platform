@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import {
   objectsApi,
   type CreateFieldRequest,
@@ -115,7 +116,7 @@ export default function FieldConfigDrawer({
 
   /** Lookup 目标对象候选(同应用对象列表)。 */
   const { data: objectList } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId),
     queryFn: () => objectsApi.list(appId),
     enabled: !!appId && currentType === 'lookup',
   });
@@ -125,7 +126,7 @@ export default function FieldConfigDrawer({
     mutationFn: (data: CreateFieldRequest) => objectsApi.addField(objectId, data),
     onSuccess: () => {
       message.success('字段已添加');
-      queryClient.invalidateQueries({ queryKey: ['object', objectId] });
+      queryClient.invalidateQueries({ queryKey: qk.object(objectId) });
       onClose();
     },
     onError: (err) => showError(err),
@@ -139,7 +140,7 @@ export default function FieldConfigDrawer({
     },
     onSuccess: () => {
       message.success('字段已更新');
-      queryClient.invalidateQueries({ queryKey: ['object', objectId] });
+      queryClient.invalidateQueries({ queryKey: qk.object(objectId) });
       onClose();
     },
     onError: (err) => showError(err),

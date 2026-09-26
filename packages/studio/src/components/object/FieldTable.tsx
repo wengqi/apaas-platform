@@ -21,6 +21,7 @@ import {
   HolderOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import {
   DndContext,
   closestCenter,
@@ -65,9 +66,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
   const [drawerFieldType, setDrawerFieldType] = useState<FieldType | undefined>(undefined);
   const [drawerField, setDrawerField] = useState<Field | undefined>(undefined);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   /**
    * 系统字段置顶,其余按 order(无值则按原始数组索引)排序;再按关键字过滤。
@@ -96,7 +95,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
     mutationFn: (fieldId: string) => objectsApi.deleteField(object.id, fieldId),
     onSuccess: () => {
       message.success('字段已删除');
-      queryClient.invalidateQueries({ queryKey: ['object', object.id] });
+      queryClient.invalidateQueries({ queryKey: qk.object(object.id) });
     },
     onError: (err) => showError(err),
   });
@@ -106,11 +105,11 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
     mutationFn: ({ fieldId, data }: { fieldId: string; data: { required?: boolean } }) =>
       objectsApi.updateField(object.id, fieldId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['object', object.id] });
+      queryClient.invalidateQueries({ queryKey: qk.object(object.id) });
     },
     onError: (err) => {
       showError(err);
-      queryClient.invalidateQueries({ queryKey: ['object', object.id] });
+      queryClient.invalidateQueries({ queryKey: qk.object(object.id) });
     },
   });
 
@@ -193,9 +192,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
     });
 
     // 逐个持久化变更的 order(仅自定义字段)
-    const changed = object.fields.filter(
-      (f) => !f.isSystem && newOrderMap.get(f.id) !== f.order,
-    );
+    const changed = object.fields.filter((f) => !f.isSystem && newOrderMap.get(f.id) !== f.order);
     try {
       for (const f of changed) {
         const newOrder = newOrderMap.get(f.id);
@@ -338,7 +335,10 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
 
       {/* 字段表格(可拖拽排序) */}
       {fields.length === 0 ? (
-        <Empty description={keyword ? '未找到匹配字段' : '还没有字段'} style={{ padding: '60px 0' }}>
+        <Empty
+          description={keyword ? '未找到匹配字段' : '还没有字段'}
+          style={{ padding: '60px 0' }}
+        >
           {!keyword && (
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAddClick}>
               添加第一个字段
@@ -346,11 +346,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
           )}
         </Empty>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={fields.map((f) => f.id)} strategy={verticalListSortingStrategy}>
             <Table<Field>
               rowKey="id"
@@ -403,7 +399,9 @@ interface RowDragContextValue {
 const RowDragContext = createContext<RowDragContextValue>({});
 
 /** AntD Table 自定义行:绑定 useSortable,通过 Context 暴露手柄事件。 */
-function SortableRow(props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string }) {
+function SortableRow(
+  props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string },
+) {
   const id = props['data-row-key'] as string | undefined;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: id ?? '',

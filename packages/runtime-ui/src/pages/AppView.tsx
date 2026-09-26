@@ -5,6 +5,7 @@
 import { Card, Typography, Spin, Tag, List, Empty } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useParams, useNavigate } from 'react-router-dom';
 import { appsApi } from '../api/apps';
 import { pagesApi } from '../api/pages';
@@ -16,13 +17,13 @@ export default function AppView() {
   const navigate = useNavigate();
 
   const { data: app, isLoading: appLoading } = useQuery({
-    queryKey: ['app', appId],
+    queryKey: qk.app(appId!),
     queryFn: () => appsApi.get(appId!),
     enabled: !!appId,
   });
 
   const { data: pages, isLoading: pagesLoading } = useQuery({
-    queryKey: ['app-pages', appId],
+    queryKey: qk.appPages(appId!),
     queryFn: () => pagesApi.list(appId!),
     enabled: !!appId,
   });
@@ -54,13 +55,21 @@ export default function AppView() {
             </Tag>
             <Tag>v{app.version}</Tag>
             <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-              {app.stats ? `${app.stats.objects} 对象 · ${app.stats.pages} 页面 · ${app.stats.processes} 流程` : app.apiName}
+              {app.stats
+                ? `${app.stats.objects} 对象 · ${app.stats.pages} 页面 · ${app.stats.processes} 流程`
+                : app.apiName}
             </Text>
           </div>
         )}
       </Card>
 
-      <Card title={<><FileTextOutlined /> 已发布页面</>}>
+      <Card
+        title={
+          <>
+            <FileTextOutlined /> 已发布页面
+          </>
+        }
+      >
         {pagesLoading ? (
           <div style={{ textAlign: 'center', padding: 24 }}>
             <Spin />

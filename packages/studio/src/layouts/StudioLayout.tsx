@@ -32,7 +32,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '@apaas/shared/stores';
+import { qk, useAuthStore } from '@apaas/shared/stores';
 import { appsApi } from '../api/apps.js';
 import CheckPanel from '../components/publish/CheckPanel.js';
 
@@ -58,7 +58,7 @@ export default function StudioLayout() {
 
   /** 获取当前应用信息(侧边栏顶部展示名称+图标)。 */
   const { data: app, isLoading: appLoading } = useQuery({
-    queryKey: ['app', appId],
+    queryKey: qk.app(appId!),
     queryFn: () => appsApi.get(appId as string),
     enabled: !!appId,
   });

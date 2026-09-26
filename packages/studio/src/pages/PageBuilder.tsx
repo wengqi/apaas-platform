@@ -12,6 +12,7 @@ import {
 } from '@dnd-kit/core';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { usePageBuilderStore } from '../stores/pageBuilder.js';
 import { pagesApi, type ComponentType } from '../api/pages.js';
 import { getComponentMeta } from '../constants/pageComponents.js';
@@ -47,7 +48,7 @@ export default function PageBuilder() {
     isError,
     refetch,
   } = useQuery({
-    queryKey: ['page', pageId],
+    queryKey: qk.page(pageId!),
     queryFn: () => pagesApi.get(pageId as string),
     enabled: !!pageId,
     retry: 1,

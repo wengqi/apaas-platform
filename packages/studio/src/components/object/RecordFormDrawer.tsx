@@ -13,6 +13,7 @@ import {
   message,
 } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import dayjs from 'dayjs';
 import { objectsApi, type Field, type RecordItem } from '../../api/objects.js';
 import { getFieldTypeMeta } from '../../constants/fieldTypes.js';
@@ -66,7 +67,7 @@ export default function RecordFormDrawer({
     mutationFn: (data: Record<string, unknown>) => objectsApi.records.create(object.id, data),
     onSuccess: () => {
       message.success('记录已创建');
-      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
       onClose();
     },
     onError: (err) => showError(err),
@@ -80,7 +81,7 @@ export default function RecordFormDrawer({
     },
     onSuccess: () => {
       message.success('记录已更新');
-      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
       onClose();
     },
     onError: (err) => showError(err),

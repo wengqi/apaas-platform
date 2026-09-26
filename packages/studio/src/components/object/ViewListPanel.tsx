@@ -23,6 +23,7 @@ import {
   SortAscendingOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import {
   objectsApi,
   type CreateViewRequest,
@@ -70,7 +71,7 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
 
   /** 加载视图列表。 */
   const { data: views, isLoading } = useQuery({
-    queryKey: ['object', objectId, 'views'],
+    queryKey: qk.objectViews(objectId),
     queryFn: () => objectsApi.listViews(objectId),
   });
 
@@ -79,7 +80,7 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
     mutationFn: (data: CreateViewRequest) => objectsApi.createView(objectId, data),
     onSuccess: () => {
       message.success('视图创建成功');
-      queryClient.invalidateQueries({ queryKey: ['object', objectId, 'views'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectViews(objectId) });
       setCreateOpen(false);
       form.resetFields();
     },
@@ -91,7 +92,7 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
     mutationFn: (viewId: string) => objectsApi.deleteView(viewId),
     onSuccess: () => {
       message.success('视图已删除');
-      queryClient.invalidateQueries({ queryKey: ['object', objectId, 'views'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectViews(objectId) });
     },
     onError: (err) => showError(err),
   });

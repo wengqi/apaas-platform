@@ -17,14 +17,11 @@ import {
 } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useParams } from 'react-router-dom';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { objectsApi } from '../../api/objects.js';
-import type {
-  PropValue,
-  VariableDef,
-  VariableType,
-} from '../../api/pages.js';
+import type { PropValue, VariableDef, VariableType } from '../../api/pages.js';
 
 const { Text } = Typography;
 
@@ -110,7 +107,7 @@ export default function ViewModelPanel() {
 
   /** 加载对象列表(供数据源 objectId 选择)。 */
   const { data: objects } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId!),
     queryFn: () => objectsApi.list(appId as string),
     enabled: open && !!appId,
   });
@@ -144,10 +141,7 @@ export default function ViewModelPanel() {
       }
     >
       {varEntries.length === 0 ? (
-        <Empty
-          description="暂无变量,点击「添加变量」创建"
-          style={{ padding: '60px 0' }}
-        />
+        <Empty description="暂无变量,点击「添加变量」创建" style={{ padding: '60px 0' }} />
       ) : (
         <Collapse
           ghost
@@ -155,21 +149,13 @@ export default function ViewModelPanel() {
           defaultActiveKey={varEntries[0]?.[0]}
           items={varEntries.map(([key, def]) => ({
             key,
-            label: (
-              <VariableHeader
-                varKey={key}
-                def={def}
-                onDelete={() => removeVariable(key)}
-              />
-            ),
+            label: <VariableHeader varKey={key} def={def} onDelete={() => removeVariable(key)} />,
             children: (
               <VariableEditor
                 varKey={key}
                 def={def}
                 objectOptions={objectOptions}
-                onSave={(oldKey, newKey, newDef) =>
-                  updateVariable(oldKey, newKey, newDef)
-                }
+                onSave={(oldKey, newKey, newDef) => updateVariable(oldKey, newKey, newDef)}
               />
             ),
           }))}
@@ -454,18 +440,10 @@ function AddVariableModal({
 // 通用表单字段:标签 + 控件
 // ---------------------------------------------------------------------------
 
-function FormField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.88)', marginBottom: 4 }}>
-        {label}
-      </div>
+      <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.88)', marginBottom: 4 }}>{label}</div>
       {children}
     </div>
   );

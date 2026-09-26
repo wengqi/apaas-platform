@@ -232,8 +232,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
     脏状态与加载失败显式化 / 全局 ErrorBoundary
   - 质量：新增真实 UI 路径 e2e（e2e/11-ui-user-paths.spec.ts）；
     本地 e2e 50/50、单测 492/492 通过
-- ⬜ 残留（下迭代）：流程配置侧栏刷新后交互冻结（BUG-05，未定位根因）；
-  records JSONB 的 GIN 索引与查询算子错配；可空列唯一约束；流程节点写库
-  未复用 RecordService；单文件 400 行拆分；React Query key 治理
+- ✅ BUG-05 已闭环：流程配置侧栏改为在应用 root 内渲染（原 body portal 事件
+  委托不可靠），新增 e2e/12-process-sidebar.spec.ts 守护（含负向对照）
+- ⬜ 残留（下迭代）：records JSONB 的 GIN 索引与查询算子错配；可空列唯一约束；
+  流程节点写库未复用 RecordService；单文件 400 行拆分；React Query key 治理
 - 🟡 风险：多副本部署需确认 Redis 锁可用（已内置降级为进程内互斥）；
   水平扩展前建议压测 BullMQ 与 Redis 连接数

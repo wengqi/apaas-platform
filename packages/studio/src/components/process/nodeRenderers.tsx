@@ -339,6 +339,10 @@ function BusinessNodeRenderer({
 
   return (
     <div
+      // 测试钩子（评审整改）：供 e2e 精确定位画布节点，避免与左侧节点面板按钮混淆
+      data-testid="flow-node"
+      data-node-id={node.id}
+      data-node-type={type}
       onMouseDown={startDrag}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}

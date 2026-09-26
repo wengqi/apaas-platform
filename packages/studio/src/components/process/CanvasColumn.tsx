@@ -4,7 +4,6 @@
  * 从 SimplifiedEditor.tsx 提取。
  */
 
-import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import { EditorRenderer, usePlaygroundTools } from '@flowgram.ai/fixed-layout-editor';
 import { Button, Space } from 'antd';
@@ -80,7 +79,14 @@ export function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
       `}</style>
       <EditorRenderer />
       {!readonly && <ZoomToolbar />}
-      {createPortal(<ConfigSidebar readonly={readonly} />, document.body)}
+      {/*
+        评审 BUG-05 修复：此前用 createPortal 把配置侧栏挂到 document.body。
+        portal 跨出 React root 容器后，事件委托依赖 React 在 body 上的监听，
+        在本应用（flowgram 画布存在全局 capture 监听）下不可靠——刷新/恢复页面后
+        侧栏内所有 AntD Select/Input 表现为"事件到达但不更新"。
+        改为在应用 root 内渲染（position: fixed 不受画布 overflow:hidden 裁剪）。
+      */}
+      <ConfigSidebar readonly={readonly} />
       <EventBridge onSchemaChange={onSchemaChange} />
     </div>
   );

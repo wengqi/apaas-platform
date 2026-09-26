@@ -1,42 +1,38 @@
+/**
+ * 记录列表（数据表格）。
+ *
+ * 根据对象字段动态生成列，支持分页 / 筛选 / 排序 / 新增 / 编辑 / 删除 / 批量删除 / 导入导出。
+ *
+ * 拆分说明（AGENTS.md「单文件最大 400 行」）：筛选逻辑（filter-logic.ts）、
+ * 筛选栏（FilterBar.tsx）、筛选值输入（FilterValueInput.tsx）、工具栏（RecordToolbar.tsx）、
+ * 单元格值渲染（RecordCellValue.tsx）、格式化与错误提示（utils.ts）已按职责抽出。
+ */
+
 import { useMemo, useState } from 'react';
 import {
   Button,
   Empty,
-  Input,
-  InputNumber,
   Popconfirm,
-  Select,
   Skeleton,
   Space,
   Table,
-  Tag,
   Tooltip,
   Typography,
   message,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  SearchOutlined,
-  FilterOutlined,
-  ReloadOutlined,
-  ImportOutlined,
-  ExportOutlined,
-} from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
-import {
-  objectsApi,
-  type Field,
-  type FilterOperator,
-  type ObjectWithFields,
-  type RecordItem,
-} from '../../api/objects.js';
-import { type FieldType } from '../../constants/fieldTypes.js';
+import { objectsApi, type ObjectWithFields, type RecordItem } from '../../api/objects.js';
 import RecordFormDrawer from './RecordFormDrawer.js';
 import ImportRecordsModal from './ImportRecordsModal.js';
+import FilterBar from './record-list/FilterBar.js';
+import RecordToolbar from './record-list/RecordToolbar.js';
+import RecordCellValue from './record-list/RecordCellValue.js';
+import { buildFilterStr, type FilterRow, type SortState } from './record-list/filter-logic.js';
+import { showError } from './record-list/utils.js';
+import { buildSystemColumns } from './record-list/systemColumns.js';
 
 const { Text } = Typography;
 
@@ -44,92 +40,6 @@ interface RecordListProps {
   object: ObjectWithFields;
 }
 
-/** 操作符 → 中文标签。 */
-const OPERATOR_LABEL: Record<FilterOperator, string> = {
-  eq: '等于',
-  ne: '不等于',
-  contains: '包含',
-  not_contains: '不包含',
-  starts_with: '开头是',
-  ends_with: '结尾是',
-  gt: '大于',
-  gte: '大于等于',
-  lt: '小于',
-  lte: '小于等于',
-  is_empty: '为空',
-  is_not_empty: '不为空',
-  in: '属于',
-  not_in: '不属于',
-};
-
-/** 无需输入值的操作符。 */
-const NO_VALUE_OPERATORS: FilterOperator[] = ['is_empty', 'is_not_empty'];
-
-/** 系统字段列定义(直接从记录列读取,非 data JSON)。 */
-interface SystemColumn {
-  key: string;
-  title: string;
-  width: number;
-  render: (record: RecordItem) => React.ReactNode;
-}
-
-/** 排序状态(field apiName + 方向)。 */
-interface SortState {
-  field: string;
-  order: 'asc' | 'desc';
-}
-
-/** 筛选行状态。 */
-interface FilterRow {
-  field: string; // apiName
-  operator: FilterOperator;
-  value: unknown;
-}
-
-/**
- * 将单个筛选行转换为 JsonLogic 规则。
- * field 为字段 apiName，operator 为旧操作符名。
- */
-function filterRowToJsonLogic(field: string, operator: FilterOperator, value?: unknown): object {
-  const varRef = { var: field };
-  switch (operator) {
-    case 'eq':
-      return { '==': [varRef, value] };
-    case 'ne':
-      return { '!=': [varRef, value] };
-    case 'contains':
-      return { in: [String(value), varRef] };
-    case 'not_contains':
-      return { '!': { in: [String(value), varRef] } };
-    case 'starts_with':
-      return { in: [String(value), varRef] }; // 注: starts_with 简化为 contains，后端 JSONB 仅支持 string_contains
-    case 'ends_with':
-      return { in: [String(value), varRef] }; // 注: ends_with 简化为 contains
-    case 'gt':
-      return { '>': [varRef, value] };
-    case 'gte':
-      return { '>=': [varRef, value] };
-    case 'lt':
-      return { '<': [varRef, value] };
-    case 'lte':
-      return { '<=': [varRef, value] };
-    case 'is_empty':
-      return { '!': varRef };
-    case 'is_not_empty':
-      return { '!!': varRef };
-    case 'in':
-      return { in: [varRef, Array.isArray(value) ? value : [value]] };
-    case 'not_in':
-      return { '!': { in: [varRef, Array.isArray(value) ? value : [value]] } };
-    default:
-      return { '==': [varRef, value] };
-  }
-}
-
-/**
- * 记录列表(数据表格)。
- * 根据对象字段动态生成列,支持分页 / 筛选 / 排序 / 新增 / 编辑 / 删除。
- */
 export default function RecordList({ object }: RecordListProps) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -153,28 +63,10 @@ export default function RecordList({ object }: RecordListProps) {
   );
 
   /** 构建筛选 JsonLogic JSON 字符串(field 用 apiName)。 */
-  const filterStr = useMemo(() => {
-    const rules: object[] = [];
-
-    // 全文搜索(对第一个文本字段 contains)
-    if (appliedSearch && firstTextField) {
-      rules.push({ in: [appliedSearch, { var: firstTextField.apiName }] });
-    }
-
-    // 筛选行(忽略无值且需要值的条件)
-    for (const row of appliedFilter) {
-      if (NO_VALUE_OPERATORS.includes(row.operator)) {
-        rules.push(filterRowToJsonLogic(row.field, row.operator));
-      } else if (row.value !== undefined && row.value !== '' && row.value !== null) {
-        rules.push(filterRowToJsonLogic(row.field, row.operator, row.value));
-      }
-    }
-
-    if (rules.length === 0) return undefined;
-    // AND 组合所有条件
-    const logic = rules.length === 1 ? rules[0]! : { and: rules };
-    return JSON.stringify(logic);
-  }, [appliedFilter, appliedSearch, firstTextField]);
+  const filterStr = useMemo(
+    () => buildFilterStr(appliedFilter, appliedSearch, firstTextField),
+    [appliedFilter, appliedSearch, firstTextField],
+  );
 
   /** 排序字符串(field:order)。 */
   const sortStr = useMemo(() => {
@@ -234,39 +126,8 @@ export default function RecordList({ object }: RecordListProps) {
   // 列定义
   // -------------------------------------------------------------------------
 
-  /** 系统字段列(创建时间 / 更新时间 / 创建人)。 */
-  const systemColumns: SystemColumn[] = [
-    {
-      key: 'createdAt',
-      title: '创建时间',
-      width: 160,
-      render: (r) => (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {formatDateTime(r.createdAt)}
-        </Text>
-      ),
-    },
-    {
-      key: 'updatedAt',
-      title: '更新时间',
-      width: 160,
-      render: (r) => (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {formatDateTime(r.updatedAt)}
-        </Text>
-      ),
-    },
-    {
-      key: 'createdBy',
-      title: '创建人',
-      width: 120,
-      render: (r) => (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {r.createdBy ?? '—'}
-        </Text>
-      ),
-    },
-  ];
+  /** 系统字段列（创建时间/更新时间/创建人，直接从记录列读取）。 */
+  const systemColumns = buildSystemColumns();
 
   /**
    * 业务字段列(根据字段类型渲染值)。
@@ -408,134 +269,27 @@ export default function RecordList({ object }: RecordListProps) {
 
   return (
     <div>
-      {/* 工具栏 */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
-        }}
-      >
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          共 {total} 条记录
-        </Text>
-        <Space>
-          {firstTextField && (
-            <Input
-              allowClear
-              size="small"
-              placeholder={`搜索${firstTextField.label}`}
-              prefix={<SearchOutlined />}
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              onPressEnter={handleSearch}
-              style={{ width: 200 }}
-            />
-          )}
-          <Tooltip title="导入 CSV">
-            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
-              导入
-            </Button>
-          </Tooltip>
-          <Tooltip title="导出当前视图为 CSV">
-            <Button
-              icon={<ExportOutlined />}
-              loading={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-            >
-              导出
-            </Button>
-          </Tooltip>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-            新增记录
-          </Button>
-        </Space>
-      </div>
+      <RecordToolbar
+        total={total}
+        firstTextField={firstTextField}
+        searchKeyword={searchKeyword}
+        exportPending={exportMutation.isPending}
+        onSearchKeywordChange={setSearchKeyword}
+        onSearch={handleSearch}
+        onOpenImport={() => setImportOpen(true)}
+        onExport={() => exportMutation.mutate()}
+        onAdd={handleAdd}
+      />
 
-      {/* 筛选栏 */}
-      <div
-        style={{
-          background: '#fafbfc',
-          borderRadius: 8,
-          padding: 12,
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {filterRows.map((row, index) => {
-            const field = object.fields.find((f) => f.apiName === row.field);
-            const operators: FilterOperator[] = field
-              ? getOperatorsForType(field.type)
-              : ['eq', 'ne'];
-            const needValue = !NO_VALUE_OPERATORS.includes(row.operator);
-            return (
-              <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Select
-                  size="small"
-                  value={row.field || undefined}
-                  onChange={(v) => {
-                    const newField = object.fields.find((f) => f.apiName === v);
-                    updateFilterRow(index, {
-                      field: v,
-                      operator: newField ? getDefaultOperator(newField.type) : 'eq',
-                      value: '',
-                    });
-                  }}
-                  style={{ width: 140 }}
-                  showSearch
-                  optionFilterProp="label"
-                  placeholder="选择字段"
-                  options={object.fields.map((f) => ({ value: f.apiName, label: f.label }))}
-                />
-                <Select
-                  size="small"
-                  value={row.operator}
-                  onChange={(v) => updateFilterRow(index, { operator: v, value: '' })}
-                  style={{ width: 110 }}
-                  options={operators.map((op) => ({ value: op, label: OPERATOR_LABEL[op] }))}
-                />
-                {needValue ? (
-                  <FilterValueInput
-                    field={field}
-                    value={row.value}
-                    onChange={(v) => updateFilterRow(index, { value: v })}
-                  />
-                ) : (
-                  <Text type="secondary" style={{ fontSize: 12, flex: 1 }}>
-                    —
-                  </Text>
-                )}
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => removeFilterRow(index)}
-                />
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
-          <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addFilterRow}>
-            添加筛选
-          </Button>
-          <Space>
-            <Button size="small" icon={<ReloadOutlined />} onClick={handleResetFilter}>
-              重置
-            </Button>
-            <Button
-              type="primary"
-              size="small"
-              icon={<FilterOutlined />}
-              onClick={handleApplyFilter}
-            >
-              筛选
-            </Button>
-          </Space>
-        </div>
-      </div>
+      <FilterBar
+        object={object}
+        rows={filterRows}
+        onAddRow={addFilterRow}
+        onUpdateRow={updateFilterRow}
+        onRemoveRow={removeFilterRow}
+        onApply={handleApplyFilter}
+        onReset={handleResetFilter}
+      />
 
       {/* 数据表格 */}
       {isLoading ? (
@@ -632,218 +386,4 @@ export default function RecordList({ object }: RecordListProps) {
       />
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// 单元格值渲染
-// ---------------------------------------------------------------------------
-
-/** 按字段类型渲染记录值。 */
-function RecordCellValue({ field, value }: { field: Field; value: unknown }) {
-  if (value === undefined || value === null || value === '') {
-    return <Text type="secondary">—</Text>;
-  }
-
-  const type = field.type;
-
-  if (type === 'single_select') {
-    // 评审整改：存储值可能是 value 或历史 label，两者都反查展示文案
-    const opt = (field.config.options ?? []).find(
-      (o) => o.label === value || (o.value ?? o.label) === value,
-    );
-    return <Tag color={opt?.color ?? 'default'}>{String(value)}</Tag>;
-  }
-  if (type === 'multi_select') {
-    const arr = Array.isArray(value) ? value : [value];
-    return (
-      <Space size={4} wrap>
-        {arr.map((v, i) => {
-          const opt = (field.config.options ?? []).find(
-            (o) => o.label === v || (o.value ?? o.label) === v,
-          );
-          return (
-            <Tag key={i} color={opt?.color ?? 'default'} style={{ margin: 0 }}>
-              {String(v)}
-            </Tag>
-          );
-        })}
-      </Space>
-    );
-  }
-  if (type === 'checkbox') {
-    return value === true || value === 'true' ? <Tag color="green">是</Tag> : <Tag>否</Tag>;
-  }
-  if (type === 'date') {
-    return <Text style={{ fontSize: 13 }}>{formatDate(String(value))}</Text>;
-  }
-  if (type === 'date_time') {
-    return <Text style={{ fontSize: 13 }}>{formatDateTime(String(value))}</Text>;
-  }
-  if (type === 'currency') {
-    const code = field.config.currency?.code ?? '';
-    return (
-      <Text style={{ fontSize: 13 }}>
-        {code} {String(value)}
-      </Text>
-    );
-  }
-  if (type === 'percent') {
-    return <Text style={{ fontSize: 13 }}>{String(value)}%</Text>;
-  }
-  if (['number'].includes(type)) {
-    return <Text style={{ fontSize: 13 }}>{String(value)}</Text>;
-  }
-
-  return <Text style={{ fontSize: 13 }}>{String(value)}</Text>;
-}
-
-// ---------------------------------------------------------------------------
-// 筛选值输入
-// ---------------------------------------------------------------------------
-
-function FilterValueInput({
-  field,
-  value,
-  onChange,
-}: {
-  field: Field | undefined;
-  value: unknown;
-  onChange: (v: unknown) => void;
-}) {
-  if (!field) {
-    return <Input size="small" style={{ flex: 1 }} placeholder="值" />;
-  }
-  const type = field.type;
-
-  if (type === 'single_select' || type === 'multi_select') {
-    const options = (field.config.options ?? []).filter((o) => !!o.label);
-    return (
-      <Select
-        size="small"
-        mode={type === 'multi_select' ? 'multiple' : undefined}
-        allowClear
-        value={value as string | string[] | undefined}
-        onChange={(v) => onChange(v)}
-        style={{ flex: 1, minWidth: 140 }}
-        placeholder="选择值"
-        // 评审整改：筛选条件按存储值（value）比较，与记录存储一致
-        options={options.map((o) => ({ value: o.value ?? o.label, label: o.label }))}
-      />
-    );
-  }
-  if (type === 'checkbox') {
-    return (
-      <Select
-        size="small"
-        value={value as string | undefined}
-        onChange={(v) => onChange(v)}
-        style={{ flex: 1 }}
-        options={[
-          { value: 'true', label: '是' },
-          { value: 'false', label: '否' },
-        ]}
-      />
-    );
-  }
-  if (['number', 'currency', 'percent'].includes(type)) {
-    return (
-      <InputNumber
-        size="small"
-        value={value as number | undefined}
-        onChange={(v) => onChange(v ?? '')}
-        style={{ flex: 1 }}
-        placeholder="数值"
-      />
-    );
-  }
-  return (
-    <Input
-      size="small"
-      value={value as string | undefined}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ flex: 1 }}
-      placeholder="值"
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 操作符工具
-// ---------------------------------------------------------------------------
-
-/** 按字段类型返回可用操作符。 */
-function getOperatorsForType(type: FieldType): FilterOperator[] {
-  switch (type) {
-    case 'text':
-    case 'long_text':
-    case 'rich_text':
-    case 'auto_number':
-      return [
-        'eq',
-        'ne',
-        'contains',
-        'not_contains',
-        'starts_with',
-        'ends_with',
-        'is_empty',
-        'is_not_empty',
-      ];
-    case 'number':
-    case 'currency':
-    case 'percent':
-      return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'];
-    case 'single_select':
-      return ['eq', 'ne', 'is_empty', 'is_not_empty', 'in'];
-    case 'multi_select':
-      return ['contains', 'is_empty', 'is_not_empty'];
-    case 'date':
-    case 'date_time':
-      return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty'];
-    case 'checkbox':
-      return ['eq'];
-    default:
-      return ['eq', 'ne', 'is_empty', 'is_not_empty'];
-  }
-}
-
-/** 字段类型的默认操作符。 */
-function getDefaultOperator(type: FieldType): FilterOperator {
-  switch (type) {
-    case 'text':
-    case 'long_text':
-    case 'rich_text':
-    case 'auto_number':
-      return 'contains';
-    case 'multi_select':
-      return 'contains';
-    default:
-      return 'eq';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 日期格式化(无 dayjs 依赖,纯字符串处理)
-// ---------------------------------------------------------------------------
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const date = formatDate(iso);
-  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return `${date} ${time}`;
-}
-
-/** 统一错误提示。 */
-function showError(err: unknown) {
-  const axErr = err as {
-    response?: { data?: { error?: { message?: string } }; message?: string };
-    message?: string;
-  };
-  message.error(axErr.response?.data?.error?.message ?? axErr.message ?? '操作失败,请重试');
 }

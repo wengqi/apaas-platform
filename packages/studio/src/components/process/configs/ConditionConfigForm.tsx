@@ -7,51 +7,30 @@
  * 数据流：
  *   可视化 → exportToJsonLogic → JsonLogic → 存储
  *   后端 → jsonLogic.apply(rule, data) → boolean
+ *
+ * 子模块拆分见 ./condition-config/（AGENTS.md 单文件 400 行规范）：
+ * - types.ts：类型契约
+ * - ConditionEditor.tsx：单分支条件编辑器
+ * - styles.ts：RAQB 自定义样式
  */
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { Button, Divider, Form, Input, Popconfirm, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import type { WorkflowSchema } from '@apaas/shared';
-import { Query, Builder } from '@react-awesome-query-builder/antd';
-import type { ImmutableTree, BuilderProps } from '@react-awesome-query-builder/antd';
-import '@react-awesome-query-builder/antd/css/styles.css';
 
 import { resolveVariables } from './variable-resolver.js';
-import { buildQbConfig, loadFromJsonLogic, exportToJsonLogic } from './query-builder-config.js';
+import { buildQbConfig } from './query-builder-config.js';
+import { ConditionEditor } from './condition-config/ConditionEditor.js';
+import { CONDITION_FORM_STYLES } from './condition-config/styles.js';
+import type { ConditionBranchItem, ConditionConfigFormProps } from './condition-config/types.js';
+
+export type {
+  ConditionBranchItem,
+  ConditionConfigData,
+  ConditionConfigFormProps,
+} from './condition-config/types.js';
 
 const { Text } = Typography;
-
-// ---------------------------------------------------------------------------
-// 类型定义
-// ---------------------------------------------------------------------------
-
-export interface ConditionBranchItem {
-  /** 分支唯一标识（用于 React key，避免删除/添加时复用错误的编辑器实例） */
-  id?: string;
-  label: string;
-  /** JsonLogic JSON 规则（空 = else/default） */
-  condition?: object | null;
-}
-
-export interface ConditionConfigData {
-  conditions?: ConditionBranchItem[];
-  title?: string;
-}
-
-export interface ConditionConfigFormProps {
-  data: ConditionConfigData;
-  onChange: (data: ConditionConfigData) => void;
-  disabled?: boolean;
-  schema?: WorkflowSchema;
-  currentNodeId?: string;
-}
-
-// ---------------------------------------------------------------------------
-// renderBuilder — 用 createElement 调用 Builder 组件
-// ---------------------------------------------------------------------------
-
-const renderBuilder = (props: BuilderProps) => createElement(Builder, props);
 
 // ---------------------------------------------------------------------------
 // 主组件
@@ -233,209 +212,7 @@ export default function ConditionConfigForm({
         </Button>
       </Space>
       {/* RAQB + 自定义规则样式 — 飞书 aPaaS 风格 */}
-      <style>{`
-        /* === Group 容器 === */
-        .group { background: transparent; border: none; border-radius: 0; }
-        .group--header {
-          padding: 0 0 8px 0;
-          border: none;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .group--children { padding: 0 !important; }
-        /* 隐藏拖拽手柄（6 点图标）— 本平台不支持拖拽排序 */
-        .group--drag-handler, .qb-drag-handler { display: none !important; }
-
-        /* === 连接词按钮（And/Or/Not）=== */
-        .group--conjunctions .ant-btn-group {
-          display: flex;
-          gap: 2px;
-        }
-        .group--conjunctions .ant-btn {
-          font-size: 11px;
-          height: 22px;
-          line-height: 20px;
-          padding: 0 10px;
-          border-radius: 11px;
-          border: none;
-          font-weight: 500;
-        }
-        .group--conjunctions .ant-btn-primary {
-          background: #e8f3ff;
-          color: #1677ff;
-        }
-        .group--conjunctions .ant-btn-default {
-          background: #f5f5f5;
-          color: rgba(0,0,0,0.45);
-        }
-        .group--conjunctions .ant-btn-default:hover {
-          background: #eef0f4;
-          color: rgba(0,0,0,0.65);
-        }
-
-        /* === 操作按钮（Add rule/group）=== */
-        .group--actions { margin-left: auto; }
-        .group--actions .ant-btn-group {
-          display: flex;
-          gap: 2px;
-        }
-        .group--actions .ant-btn {
-          font-size: 11px;
-          height: 22px;
-          padding: 0 6px;
-          border: none;
-          background: transparent;
-          box-shadow: none;
-          color: rgba(0,0,0,0.45);
-          border-radius: 4px;
-        }
-        .group--actions .ant-btn:hover {
-          color: #1677ff;
-          background: #f0f5ff;
-        }
-        .group--actions .ant-btn .anticon {
-          font-size: 10px;
-          margin-right: 2px;
-        }
-
-        /* === 嵌套组容器 — 浅色背景卡片区分层级 === */
-        .group-or-rule-container.group-container {
-          margin-bottom: 6px;
-          padding: 6px 8px 4px;
-          background: #f9fafb;
-          border-radius: 6px;
-        }
-        .group-or-rule-container.group-container:last-child {
-          margin-bottom: 0;
-        }
-        /* 嵌套组内的子组用白色背景，与父组的灰色形成对比 */
-        .group-or-rule-container.group-container .group-or-rule-container.group-container {
-          background: #ffffff;
-          border: 1px solid #eef0f4;
-        }
-
-        /* === 自定义规则行 — 横向四列栅格 === */
-        .custom-rule-row {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-bottom: 6px;
-        }
-        .rule-grid { display: flex; gap: 4px; flex: 1; min-width: 0; }
-        .rule-cell { flex: 1; min-width: 0; }
-        .rule-cell .ant-select { width: 100% !important; }
-        .rule-cell .ant-select-selector {
-          border-radius: 4px !important;
-          font-size: 12px;
-          border-color: #e8eaed !important;
-        }
-        .rule-cell .ant-select-selector:hover {
-          border-color: #d0d4d9 !important;
-        }
-        .rule-cell .ant-select-selection-item { font-size: 12px; line-height: 20px; }
-        .rule-cell .ant-input {
-          width: 100% !important;
-          font-size: 12px;
-          border-radius: 4px !important;
-          border-color: #e8eaed !important;
-        }
-        .rule-cell .ant-input:hover {
-          border-color: #d0d4d9 !important;
-        }
-        .rule-cell .ant-input-sm { height: 24px; }
-        /* 字段为空时红框高亮 */
-        .rule-field-empty .rule-cell:first-child .ant-select-selector {
-          border-color: #ff4d4f !important;
-          box-shadow: 0 0 0 2px rgba(255,77,79,0.1);
-        }
-        .rule-error { color: #ff4d4f; font-size: 11px; margin-bottom: 4px; }
-
-        /* === 删除按钮 === */
-        .rule-delete { flex-shrink: 0; }
-        .rule-delete.ant-btn {
-          font-size: 12px;
-          height: 24px;
-          width: 24px;
-          min-width: 24px;
-          padding: 0;
-          border: none;
-          background: transparent;
-          box-shadow: none;
-          border-radius: 4px;
-        }
-        .rule-delete.ant-btn:hover {
-          background: #fff1f0;
-          color: #ff4d4f;
-        }
-      `}</style>
+      <style>{CONDITION_FORM_STYLES}</style>
     </Form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 条件编辑器（可视化模式 — 对齐飞书 aPaaS）
-// ---------------------------------------------------------------------------
-
-interface ConditionEditorProps {
-  condition: object | null;
-  onChange: (condition: object | null) => void;
-  qbConfig: ReturnType<typeof buildQbConfig>;
-  isElse?: boolean;
-}
-
-function ConditionEditor({ condition, onChange, qbConfig, isElse = false }: ConditionEditorProps) {
-  const [tree, setTree] = useState<ImmutableTree>(() => loadFromJsonLogic(condition, qbConfig));
-
-  // 跟踪内部变更，避免用户输入时 useEffect 覆盖正在编辑的 tree
-  const internalChangeRef = useRef(false);
-  // 缓存上次 condition 的序列化值，用于检测实质变化（而非引用变化）
-  const lastConditionRef = useRef<string>(JSON.stringify(condition ?? null));
-
-  // 当 condition prop 实质内容变化时（如删除分支导致编辑器复用），
-  // 重新同步内部 tree 状态。
-  useEffect(() => {
-    const condStr = JSON.stringify(condition ?? null);
-    if (condStr === lastConditionRef.current) return;
-    lastConditionRef.current = condStr;
-
-    if (internalChangeRef.current) {
-      internalChangeRef.current = false;
-      return;
-    }
-    setTree(loadFromJsonLogic(condition, qbConfig));
-  }, [condition, qbConfig]);
-
-  const onQbChange = useCallback(
-    (immutableTree: ImmutableTree) => {
-      setTree(immutableTree);
-      const logic = exportToJsonLogic(immutableTree, qbConfig);
-      // 标记为内部变更，避免 useEffect 重新加载 tree 覆盖正在编辑的状态
-      internalChangeRef.current = true;
-      lastConditionRef.current = JSON.stringify(logic ?? null);
-      onChange(logic);
-    },
-    [qbConfig, onChange],
-  );
-
-  return (
-    <>
-      {isElse && !condition && (
-        <Text
-          type="secondary"
-          style={{ fontSize: 11, display: 'block', marginBottom: 6, color: 'rgba(0,0,0,0.4)' }}
-        >
-          空条件 = 否则(default)，添加规则后将变为条件分支
-        </Text>
-      )}
-      <div style={{ minHeight: 60 }}>
-        {createElement(Query, {
-          ...qbConfig,
-          value: tree,
-          onChange: onQbChange,
-          renderBuilder: renderBuilder,
-        })}
-      </div>
-    </>
   );
 }

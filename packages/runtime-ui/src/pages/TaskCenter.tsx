@@ -3,42 +3,16 @@
  */
 
 import { useState } from 'react';
-import {
-  Card,
-  Typography,
-  Table,
-  Tag,
-  Button,
-  Modal,
-  Input,
-  Space,
-  Tabs,
-  Descriptions,
-  Spin,
-  message,
-} from 'antd';
-import { CheckSquareOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { Card, Typography, Table, Modal, Tabs, Spin, message } from 'antd';
+import { CheckSquareOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { tasksApi, type ProcessTask } from '../api/tasks';
-import TraceViewer from '../components/TraceViewer';
+import { tasksApi, type ProcessTask } from '../api/tasks.js';
+import { buildColumns } from './task-center/columns.js';
+import { normalizeItems } from './task-center/utils.js';
+import { TaskDetailTabs } from './task-center/TaskDetailTabs.js';
+import { TaskModalFooter } from './task-center/TaskModalFooter.js';
 
-const { Title, Paragraph, Text } = Typography;
-
-const STATUS_COLORS: Record<string, string> = {
-  PENDING: 'orange',
-  APPROVED: 'green',
-  REJECTED: 'red',
-  DELEGATED: 'blue',
-  CANCELLED: 'default',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: '待处理',
-  APPROVED: '已批准',
-  REJECTED: '已拒绝',
-  DELEGATED: '已转办',
-  CANCELLED: '已取消',
-};
+const { Title, Paragraph } = Typography;
 
 export default function TaskCenter() {
   const queryClient = useQueryClient();
@@ -112,99 +86,9 @@ export default function TaskCenter() {
     ? Object.entries(triggerContext).filter(([key]) => key !== 'global' && !key.startsWith('_'))
     : [];
 
-  const columns = [
-    {
-      title: '流程名称',
-      key: 'processName',
-      width: 180,
-      render: (_: unknown, record: ProcessTask) =>
-        (record as { instance?: { processDef?: { name: string } } }).instance?.processDef?.name ??
-        '—',
-    },
-    {
-      title: '任务',
-      dataIndex: 'taskName',
-      key: 'taskName',
-      width: 140,
-      render: (v: string) => v ?? '审批任务',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => (
-        <Tag color={STATUS_COLORS[status] ?? 'default'}>{STATUS_LABELS[status] ?? status}</Tag>
-      ),
-    },
-    ...(activeTab === 'completed'
-      ? [
-          {
-            title: '审批结果',
-            dataIndex: 'decision',
-            key: 'decision',
-            width: 100,
-            render: (v: string) =>
-              v ? (
-                <Tag color={v === 'APPROVED' ? 'green' : 'red'}>
-                  {v === 'APPROVED' ? '批准' : '拒绝'}
-                </Tag>
-              ) : (
-                '—'
-              ),
-          },
-          {
-            title: '审批意见',
-            dataIndex: 'comment',
-            key: 'comment',
-            width: 200,
-            ellipsis: true,
-            render: (v: string) => v ?? '—',
-          },
-        ]
-      : []),
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 180,
-      render: (v: string) => new Date(v).toLocaleString('zh-CN'),
-    },
-    ...(activeTab === 'completed'
-      ? [
-          {
-            title: '完成时间',
-            dataIndex: 'completedAt',
-            key: 'completedAt',
-            width: 180,
-            render: (v: string) => (v ? new Date(v).toLocaleString('zh-CN') : '—'),
-          },
-        ]
-      : []),
-    {
-      title: '操作',
-      key: 'action',
-      width: 100,
-      render: (_: unknown, record: ProcessTask) =>
-        activeTab === 'pending' ? (
-          <Button type="link" size="small" onClick={() => openTaskModal(record)}>
-            处理
-          </Button>
-        ) : (
-          <Button type="link" size="small" onClick={() => openTaskModal(record)}>
-            查看
-          </Button>
-        ),
-    },
-  ];
+  const columns = buildColumns(activeTab, openTaskModal);
 
   // API 返回 data 为数组（非分页对象），统一转为 items 数组
-  const normalizeItems = (data: unknown): ProcessTask[] => {
-    if (Array.isArray(data)) return data as ProcessTask[];
-    if (data && typeof data === 'object' && 'items' in data)
-      return (data as { items: ProcessTask[] }).items;
-    return [];
-  };
   const pendingItems = normalizeItems(pendingData);
   const completedItems = normalizeItems(completedData);
   const currentData = activeTab === 'pending' ? pendingItems : completedItems;
@@ -262,38 +146,12 @@ export default function TaskCenter() {
         onCancel={() => setModalOpen(false)}
         width={640}
         footer={
-          activeTab === 'pending' ? (
-            <Space>
-              <Button
-                danger
-                icon={<CloseOutlined />}
-                loading={completeMutation.isPending}
-                onClick={() => {
-                  // 拒绝不可逆 — 二次确认防误触
-                  Modal.confirm({
-                    title: '确认拒绝该申请？',
-                    content: '拒绝后流程将按驳回路径继续，此操作不可撤销。',
-                    okText: '确认拒绝',
-                    okType: 'danger',
-                    cancelText: '取消',
-                    onOk: () => handleComplete('REJECTED'),
-                  });
-                }}
-              >
-                拒绝
-              </Button>
-              <Button
-                type="primary"
-                icon={<CheckOutlined />}
-                loading={completeMutation.isPending}
-                onClick={() => handleComplete('APPROVED')}
-              >
-                批准
-              </Button>
-            </Space>
-          ) : (
-            <Button onClick={() => setModalOpen(false)}>关闭</Button>
-          )
+          <TaskModalFooter
+            activeTab={activeTab}
+            isPending={completeMutation.isPending}
+            onClose={() => setModalOpen(false)}
+            onComplete={handleComplete}
+          />
         }
       >
         {detailLoading ? (
@@ -303,102 +161,15 @@ export default function TaskCenter() {
         ) : (
           selectedTask &&
           taskDetail && (
-            <Tabs
-              defaultActiveKey="detail"
-              items={[
-                {
-                  key: 'detail',
-                  label: '任务详情',
-                  children: (
-                    <div>
-                      <Descriptions column={2} size="small" bordered style={{ marginBottom: 16 }}>
-                        <Descriptions.Item label="流程名称" span={2}>
-                          {taskDetail.instance?.processDef?.name ?? '—'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="任务 ID">{taskDetail.id}</Descriptions.Item>
-                        <Descriptions.Item label="状态">
-                          <Tag color={STATUS_COLORS[taskDetail.status] ?? 'default'}>
-                            {STATUS_LABELS[taskDetail.status] ?? taskDetail.status}
-                          </Tag>
-                        </Descriptions.Item>
-                        {taskDetail.decision && (
-                          <Descriptions.Item label="审批结果">
-                            <Tag color={taskDetail.decision === 'APPROVED' ? 'green' : 'red'}>
-                              {taskDetail.decision === 'APPROVED' ? '批准' : '拒绝'}
-                            </Tag>
-                          </Descriptions.Item>
-                        )}
-                        {taskDetail.comment && (
-                          <Descriptions.Item label="审批意见">
-                            {taskDetail.comment}
-                          </Descriptions.Item>
-                        )}
-                        <Descriptions.Item label="创建时间">
-                          {new Date(taskDetail.createdAt).toLocaleString('zh-CN')}
-                        </Descriptions.Item>
-                        {taskDetail.completedAt && (
-                          <Descriptions.Item label="完成时间">
-                            {new Date(taskDetail.completedAt).toLocaleString('zh-CN')}
-                          </Descriptions.Item>
-                        )}
-                      </Descriptions>
-
-                      {triggerData.length > 0 && (
-                        <div style={{ marginBottom: 16 }}>
-                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                            申请内容
-                          </Text>
-                          <Descriptions column={1} size="small" bordered>
-                            {triggerData.map(([key, value]) => (
-                              <Descriptions.Item key={key} label={key}>
-                                {typeof value === 'object'
-                                  ? JSON.stringify(value, null, 2)
-                                  : String(value ?? '—')}
-                              </Descriptions.Item>
-                            ))}
-                          </Descriptions>
-                        </div>
-                      )}
-
-                      {formData.length > 0 && (
-                        <div style={{ marginBottom: 16 }}>
-                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                            流程变量
-                          </Text>
-                          <Descriptions column={1} size="small" bordered>
-                            {formData.map(([key, value]) => (
-                              <Descriptions.Item key={key} label={key}>
-                                {typeof value === 'object'
-                                  ? JSON.stringify(value, null, 2)
-                                  : String(value ?? '—')}
-                              </Descriptions.Item>
-                            ))}
-                          </Descriptions>
-                        </div>
-                      )}
-
-                      {activeTab === 'pending' && (
-                        <div>
-                          <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                            审批意见
-                          </Text>
-                          <Input.TextArea
-                            placeholder="请输入审批意见（可选）"
-                            rows={3}
-                            value={comment}
-                            onChange={(e) => setComment(e.target.value)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ),
-                },
-                {
-                  key: 'trace',
-                  label: '流程轨迹',
-                  children: <TraceViewer trace={traceData ?? null} loading={traceLoading} />,
-                },
-              ]}
+            <TaskDetailTabs
+              taskDetail={taskDetail}
+              triggerData={triggerData}
+              formData={formData}
+              activeTab={activeTab}
+              comment={comment}
+              onCommentChange={setComment}
+              traceData={traceData ?? null}
+              traceLoading={traceLoading}
             />
           )
         )}

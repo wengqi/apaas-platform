@@ -1,215 +1,29 @@
+/**
+ * 页面搭建器 Zustand Store —— 组件树编辑 / 视图模型 / 撤销重做。
+ *
+ * 拆分说明（AGENTS.md 单文件 400 行规范）：
+ * - 纯工具（快照 / ID 生成 / 树操作 / Schema 工厂）位于 ./page-builder/utils.js
+ * - 状态与动作类型位于 ./page-builder/types.js
+ * 本文件保持原有导出面（usePageBuilderStore + createDefaultSchema）不变。
+ */
+
 import { create } from 'zustand';
-import type {
-  ComponentNode,
-  ComponentProps,
-  ComponentType,
-  PageMeta,
-  PageSchema,
-  PageType,
-  VariableDef,
-  ViewModel,
-} from '../api/pages.js';
+import type { ComponentProps, PageSchema } from '../api/pages.js';
 import { COMPONENT_META } from '../constants/pageComponents.js';
+import type { PageBuilderState } from './page-builder/types.js';
+import {
+  cloneSchema,
+  createComponentNode,
+  createDefaultSchema,
+  deepCloneWithNewIds,
+  findNode,
+  findParent,
+  isAncestorOf,
+  pushHistory,
+  snapshotOf,
+} from './page-builder/utils.js';
 
-/** 评审 P2-5：当前可保存内容的快照（schema + 可保存元数据） */
-function snapshotOf(state: { schema: PageSchema | null; currentPage: PageMeta | null }): string {
-  return JSON.stringify({
-    schema: state.schema,
-    name: state.currentPage?.name ?? null,
-    apiName: state.currentPage?.apiName ?? null,
-    type: state.currentPage?.type ?? null,
-    objectId: state.currentPage?.objectId ?? null,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// 辅助函数:ID 生成 / 深拷贝 / 树操作
-// ---------------------------------------------------------------------------
-
-/** 生成组件节点唯一 ID。 */
-function generateNodeId(type: ComponentType): string {
-  return `${type}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** 深拷贝 Schema(用于历史栈快照)。 */
-function cloneSchema(schema: PageSchema): PageSchema {
-  return structuredClone(schema);
-}
-
-/** 历史栈上限 — 防止长编辑会话内存无限增长（与 processEditor 一致）。 */
-const MAX_HISTORY = 50;
-
-/** 推入历史栈（带上限截断）。 */
-function pushHistory(past: PageSchema[], schema: PageSchema): PageSchema[] {
-  return [...past, cloneSchema(schema)].slice(-MAX_HISTORY);
-}
-
-/** 创建一个新的组件节点(根据类型元数据填充默认值)。 */
-function createComponentNode(type: ComponentType): ComponentNode {
-  const meta = COMPONENT_META[type];
-  return {
-    id: generateNodeId(type),
-    type,
-    name: meta.label,
-    props: { ...meta.defaultProps } as ComponentProps,
-    children: meta.isContainer ? [] : undefined,
-  };
-}
-
-/** 在树中按 ID 查找节点(递归)。 */
-function findNode(node: ComponentNode, id: string): ComponentNode | undefined {
-  if (node.id === id) return node;
-  if (node.children) {
-    for (const child of node.children) {
-      const found = findNode(child, id);
-      if (found) return found;
-    }
-  }
-  return undefined;
-}
-
-/** 在树中查找节点的父节点(递归)。 */
-function findParent(node: ComponentNode, id: string): ComponentNode | undefined {
-  if (node.children) {
-    for (const child of node.children) {
-      if (child.id === id) return node;
-      const found = findParent(child, id);
-      if (found) return found;
-    }
-  }
-  return undefined;
-}
-
-/** 检查 ancestorId 是否是 descendantId 的祖先(用于循环检测)。 */
-function isAncestorOf(node: ComponentNode, ancestorId: string, descendantId: string): boolean {
-  if (node.id === ancestorId) {
-    return containsId(node, descendantId);
-  }
-  if (node.children) {
-    for (const child of node.children) {
-      if (isAncestorOf(child, ancestorId, descendantId)) return true;
-    }
-  }
-  return false;
-}
-
-/** 检查 node 的子树中是否包含指定 ID。 */
-function containsId(node: ComponentNode, id: string): boolean {
-  if (node.id === id) return true;
-  if (node.children) {
-    for (const child of node.children) {
-      if (containsId(child, id)) return true;
-    }
-  }
-  return false;
-}
-
-/** 深拷贝节点(递归),并为所有节点重新生成 ID。 */
-function deepCloneWithNewIds(node: ComponentNode): ComponentNode {
-  return {
-    ...node,
-    id: generateNodeId(node.type),
-    props: { ...node.props },
-    children: node.children?.map((child) => deepCloneWithNewIds(child)),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Schema 工厂
-// ---------------------------------------------------------------------------
-
-/** 创建默认空页面 Schema(仅含根 Page 节点)。 */
-export function createDefaultSchema(pageType: PageType): PageSchema {
-  return {
-    version: '1',
-    pageType,
-    viewModel: { variables: {} },
-    root: {
-      id: generateNodeId('page'),
-      type: 'page',
-      name: '页面',
-      props: {},
-      children: [],
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Store 类型
-// ---------------------------------------------------------------------------
-
-interface PageBuilderState {
-  /** 评审 P2-5：已保存快照（schema+元数据 JSON），用于派生脏标记 */
-  savedSnapshot: string | null;
-  /** 评审 P2-5：当前内容是否与已保存快照一致 */
-  isDirty: () => boolean;
-  /** 当前编辑的页面元数据 */
-  currentPage: PageMeta | null;
-  /** 当前页面 Schema(工作副本) */
-  schema: PageSchema | null;
-  /** 选中的组件节点 ID */
-  selectedNodeId: string | null;
-  /** 编辑 / 预览模式 */
-  mode: 'edit' | 'preview';
-  /** 视图模型面板是否展开 */
-  vmPanelOpen: boolean;
-  /** 撤销栈 */
-  past: PageSchema[];
-  /** 重做栈 */
-  future: PageSchema[];
-
-  // —— 页面级动作 ——
-  /** 加载页面(设置 currentPage + schema,重置历史) */
-  loadPage: (page: PageMeta) => void;
-  /** 加载 Schema(重置历史) */
-  loadSchema: (schema: PageSchema) => void;
-  /** 评审 P2-5：保存/加载成功后刷新快照 */
-  markSaved: () => void;
-  /** 获取当前 Schema(命令式,用于保存) */
-  getSchema: () => PageSchema | null;
-  /** 更新页面元数据(名称/apiName/类型等) */
-  updatePageMeta: (
-    updates: Partial<Pick<PageMeta, 'name' | 'apiName' | 'type' | 'objectId' | 'published'>>,
-  ) => void;
-
-  // —— 组件树动作 ——
-  /** 添加组件到指定父节点的 children */
-  addComponent: (type: ComponentType, parentId: string, index?: number) => string | null;
-  /** 移动组件到新的父节点和位置 */
-  moveComponent: (id: string, newParentId: string, newIndex: number) => void;
-  /** 删除组件 */
-  removeComponent: (id: string) => void;
-  /** 复制组件(同层级,新 ID) */
-  duplicateNode: (id: string) => void;
-  /** 更新组件 props(浅合并) */
-  updateComponentProps: (id: string, props: Record<string, unknown>) => void;
-  /** 更新节点顶层字段(name/hidden) */
-  updateNode: (id: string, updates: Partial<Pick<ComponentNode, 'name' | 'hidden'>>) => void;
-
-  // —— 视图模型动作 ——
-  /** 添加视图模型变量(key 冲突时忽略) */
-  addVariable: (key: string, def: VariableDef) => void;
-  /** 删除视图模型变量 */
-  removeVariable: (key: string) => void;
-  /** 更新视图模型变量(可重命名 key) */
-  updateVariable: (oldKey: string, newKey: string, def: VariableDef) => void;
-  /** 通用视图模型更新(接受 mutator 直接修改副本) */
-  updateViewModel: (updater: (vm: ViewModel) => void) => void;
-
-  // —— 选择 / 模式 ——
-  /** 选中组件(传 null 取消选中) */
-  selectNode: (id: string | null) => void;
-  /** 切换编辑/预览模式 */
-  setMode: (mode: 'edit' | 'preview') => void;
-  /** 切换视图模型面板展开 */
-  setVmPanelOpen: (open: boolean) => void;
-
-  // —— 历史 ——
-  /** 撤销 */
-  undo: () => void;
-  /** 重做 */
-  redo: () => void;
-}
+export { createDefaultSchema } from './page-builder/utils.js';
 
 // ---------------------------------------------------------------------------
 // Store 实现

@@ -269,11 +269,51 @@ RecordService 的字段校验、AutoNumber/Formula/Rollup 计算与
   历史条目按设计被排除）。
 - 全量：gateway 单测 **517/517**、studio 96/96、完整 e2e **58/58**、typecheck 11/11。
 
+## 五之七、单文件 400 行规范拆分（AGENTS.md 前端组件规范）
+
+**背景**：独立评审指出 19 个前端文件超出 AGENTS.md「单文件最大 400 行（含注释）」上限。
+
+**做法**：纯搬移式重构（不改任何行为、不改测试）——按职责抽出同级子模块（纯逻辑/常量/类型抽 `.ts`，
+子组件抽 `.tsx`），主文件保留组合与状态；对已有外部调用的模块（`api/objects.ts`、`stores/pageBuilder.ts`、
+`constants/process.ts`、`templates.ts`、`shared/stores/action-executor.ts`、`nodeRenderers.tsx`）
+通过 re-export 保持既有导入路径与导出名 100% 兼容，调用点零改动。
+
+**结果**：20 个文件拆分完毕，**前端源码已无 > 400 行文件**（最大 383 行）。拆分清单（原行数 → 主文件行数 + 新增子模块）：
+
+| 主文件 | 行数变化 | 新增子模块（行数） |
+|---|---|---|
+| components/object/RecordList.tsx | 850 → 383 | record-list/：filter-logic.ts 173（+其 12 项单测 112）、FilterBar.tsx 113、RecordToolbar.tsx 77、FilterValueInput.tsx 78、RecordCellValue.tsx 74、systemColumns.tsx 56、utils.ts 30 |
+| components/object/FieldConfigDrawer.tsx | 822 → 288 | field-config/：TypeSpecificConfig.tsx 190、utils.ts 186、OptionManager.tsx 130、DefaultValueItem.tsx 58、FieldTypeBadge.tsx 20 |
+| pages/AppList.tsx | 702 → 314 | app-list/：AppCard.tsx 176、AppHeader.tsx 170、AppFormModals.tsx 137、constants.ts 26 |
+| components/process/ProcessMonitor.tsx | 635 → 238 | process-monitor/：columns.tsx 145、TaskProcessPanel.tsx 127、InstanceDetail.tsx 88、InstanceListTab.tsx 68、formatDuration.ts 16 |
+| pages/ProcessEditor.tsx | 543 → 244 | process-editor/：ProcessEditorToolbar.tsx 147、TriggerConfigModal.tsx 90、EditorErrorBoundary.tsx 68 |
+| pages/ProcessList.tsx | 500 → 221 | process-list/：ProcessCard.tsx 205、CreateProcessModal.tsx 80 |
+| components/process/nodeRenderers.tsx | 443 → 145 | node-renderers/：BusinessNodeRenderer.tsx 163、BlockOrderIconLabel.tsx 160 |
+| components/process/configs/ConditionConfigForm.tsx | 442 → 218 | condition-config/：styles.ts 143、ConditionEditor.tsx 94、types.ts 26 |
+| components/process/configs/CustomRule.tsx | 437 → 221 | custom-rule/：ValueInputs.tsx 112、rule-helpers.ts 78、operators.ts 58 |
+| components/object/FieldTable.tsx | 446 → 262 | field-table/：fieldColumns.tsx 125、SortableRow.tsx 58、utils.ts 39 |
+| components/object/ViewConfigurator.tsx | 418 → 312 | view-configurator/：SortRow.tsx 68、SortableFieldRow.tsx 58、SectionHeader.tsx 19、helpers.ts 15 |
+| components/page-builder/EventsTab.tsx | 441 → 59 | events-tab/：ActionParamsEditor.tsx 178、EventEditor.tsx 151、actionProps.ts 50、constants.ts 30 |
+| components/page-builder/PageList.tsx | 446 → 188 | page-list/：PageListItem.tsx 141、CreatePageModal.tsx 123 |
+| components/page-builder/ViewModelPanel.tsx | 451 → 168 | view-model-panel/：VariableEditor.tsx 181、variableMeta.ts 67、VariableHeader.tsx 54 |
+| components/page-builder/templates.ts | 457 → 23 | templates/：object-page-templates.ts 189、helpers.ts 160、dashboard-template.ts 73、dispatch.ts 47 |
+| constants/process.ts | 472 → 42 | process/：node-meta.ts 256、status-meta.ts 99、trigger-meta.ts 84、types.ts 56 |
+| api/objects.ts | 440 → 143 | objects/：types.ts 260、records.ts 98 |
+| stores/pageBuilder.ts | 535 → 348 | page-builder/：utils.ts 145、types.ts 87 |
+| shared/stores/action-executor.ts | 410 → 70 | action-executor/：actions.ts 238、types.ts 52、params.ts 45、script.ts 30、interrupt.ts 12 |
+| runtime-ui/pages/TaskCenter.tsx | 409 → 179 | task-center/：TaskDetailTabs.tsx 132、columns.tsx 101、TaskModalFooter.tsx 56、constants.ts 20、utils.ts 14 |
+
+**验证**：
+- 行数审计：`find … | awk '$1>400'` 前端源码为空（最大 383 行）。
+- `pnpm typecheck` 11/11 通过；单测 gateway **517/517**、studio **108/108**（含新增 filter-logic 12 项）。
+- 构建：studio / runtime-ui / shared 均构建成功。
+- **完整 e2e 58/58 通过**（含 UI 全路径、对象/字段/记录/视图/页面搭建器/流程监控/任务中心等被拆分模块的界面）。
+- 未修改任何测试文件；未改变任何行为（仅搬移 + props 接线 + re-export）。
+
 ## 六、仍未整改（明确留待下迭代）
 
 | 项 | 原因 / 后续 |
 |---|---|
-| 单文件 400 行拆分 | P3 工程债务，按迭代消化 |
 
 ---
 

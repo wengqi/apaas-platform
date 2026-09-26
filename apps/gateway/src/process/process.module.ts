@@ -39,6 +39,12 @@ import { HttpRequestExecutor } from './node-executors/http-request.executor.js';
 import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
 import { BlockExecutor } from './node-executors/block.executor.js';
 import { CloudFunctionExecutor } from './node-executors/cloud-function.executor.js';
+import { InclusiveExecutor } from './node-executors/inclusive.executor.js';
+import { LoopExecutor } from './node-executors/loop.executor.js';
+import { BreakExecutor } from './node-executors/break.executor.js';
+import { ContinueExecutor } from './node-executors/continue.executor.js';
+import { WaitForConditionExecutor } from './node-executors/wait-for-condition.executor.js';
+import { BatchOperationExecutor } from './node-executors/batch-operation.executor.js';
 import { TriggerService } from './trigger.service.js';
 
 @Module({
@@ -79,6 +85,13 @@ import { TriggerService } from './trigger.service.js';
     SubProcessExecutor,
     BlockExecutor,
     CloudFunctionExecutor,
+    // 流程控制扩展节点（R4：包容分支/循环/跳出/继续/等待条件/批量操作）
+    InclusiveExecutor,
+    LoopExecutor,
+    BreakExecutor,
+    ContinueExecutor,
+    WaitForConditionExecutor,
+    BatchOperationExecutor,
     // JWT 策略
     JwtStrategy,
     // 触发器服务

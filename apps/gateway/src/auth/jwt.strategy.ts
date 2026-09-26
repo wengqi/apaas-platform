@@ -31,11 +31,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // 从 DB 验证用户状态（防止已禁用的用户仍持有有效 token）
     const dbUser = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, tenantId: true, email: true, isPlatformAdmin: true, status: true },
+      select: {
+        id: true,
+        tenantId: true,
+        email: true,
+        isPlatformAdmin: true,
+        status: true,
+        tenant: { select: { status: true } },
+      },
     });
 
     if (!dbUser || dbUser.status !== 'ACTIVE') {
       throw new UnauthorizedException('用户不存在或已禁用');
+    }
+
+    // 评审 H-4：租户挂起后存量 JWT 仍有效最长 7 天——每请求联查租户状态
+    if (dbUser.tenant && dbUser.tenant.status !== 'ACTIVE') {
+      throw new UnauthorizedException('租户已被挂起或归档');
     }
 
     // 平台超管：跳过角色加载，直接返回

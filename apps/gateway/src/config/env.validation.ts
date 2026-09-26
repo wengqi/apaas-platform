@@ -18,7 +18,16 @@ export const envValidation = Joi.object({
   REDIS_URL: Joi.string().required(),
 
   // ---- 认证 (JWT) ----
-  JWT_SECRET: Joi.string().min(16).required(),
+  JWT_SECRET: Joi.string()
+    .min(16)
+    .required()
+    .custom((value: string, helpers) => {
+      // 生产环境拒绝已知弱密钥（评审 C-1：默认密钥可离线签发任意租户 JWT）
+      if (process.env.NODE_ENV === 'production' && /^(dev-secret|change-me|test)/i.test(value)) {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    }, 'production-weak-secret'),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
 
   // ---- CORS ----
@@ -35,11 +44,32 @@ export const envValidation = Joi.object({
   SMTP_FROM: Joi.string().optional(),
 
   // ---- 连接器凭证加密 ----
-  CONNECTOR_ENCRYPTION_KEY: Joi.string().hex().length(64).required(),
+  CONNECTOR_ENCRYPTION_KEY: Joi.string()
+    .hex()
+    .length(64)
+    .required()
+    .custom((value: string, helpers) => {
+      // 生产环境拒绝全零密钥（评审 C-1：已知密钥可解密全部租户凭证）
+      if (process.env.NODE_ENV === 'production' && /^0+$/.test(value)) {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    }, 'production-zero-key'),
+
+  // ---- 生产部署种子保护（评审 C-1）----
+  // 生产环境首次启动创建种子账号必须显式提供口令；未提供则跳过账号种子
+  SEED_BOOTSTRAP_PASSWORD: Joi.string().min(8).optional(),
 
   // ---- 云函数沙箱 ----
   CLOUD_FUNCTION_MEMORY_LIMIT_MB: Joi.number().default(128),
   CLOUD_FUNCTION_TIMEOUT_MS: Joi.number().default(5000),
+  // 进程内并发 Isolate 上限（评审 M-8：无预算时 50 并发 × 128MB = OOM）
+  CLOUD_FUNCTION_MAX_CONCURRENT: Joi.number().default(4),
+
+  // ---- 出站请求（SSRF 防护）----
+  OUTBOUND_HTTP_TIMEOUT_MS: Joi.number().default(10_000),
+  // 允许出站访问私网地址（仅限开发/联调，生产必须为 false）
+  OUTBOUND_ALLOW_PRIVATE: Joi.boolean().default(false),
 
   // ---- 记录批量操作 / 导入导出 ----
   BATCH_MAX_ROWS: Joi.number().default(500),

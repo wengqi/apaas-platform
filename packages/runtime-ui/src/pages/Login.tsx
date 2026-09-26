@@ -99,15 +99,6 @@ export default function Login() {
             </Button>
           </Form.Item>
         </Form>
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            测试账号（租户标识: demo）
-          </Text>
-          <br />
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            admin@apaas.dev / admin123 · builder@apaas.dev / builder123 · user@apaas.dev / user123
-          </Text>
-        </div>
       </Card>
     </div>
   );

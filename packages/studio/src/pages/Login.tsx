@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Form, Input, Button, message, Typography, Space } from 'antd';
+import { Form, Input, Button, message, Typography } from 'antd';
 import { LockOutlined, MailOutlined, ThunderboltFilled, GlobalOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import client, { type ApiResponse } from '../api/client.js';
@@ -177,29 +177,6 @@ export default function Login() {
             </Button>
           </Form.Item>
         </Form>
-
-        {/* 测试账号提示 */}
-        <div
-          style={{
-            marginTop: 24,
-            padding: '12px 16px',
-            background: '#f6f8fa',
-            borderRadius: 8,
-            textAlign: 'center',
-          }}
-        >
-          <Space direction="vertical" size={2}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              平台超管: superadmin@apaas.dev / superadmin123（无需租户标识）
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              租户管理员: admin@apaas.dev / admin123（租户标识: demo）
-            </Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              搭建者: builder@apaas.dev / builder123（租户标识: demo）
-            </Text>
-          </Space>
-        </div>
       </div>
     </div>
   );

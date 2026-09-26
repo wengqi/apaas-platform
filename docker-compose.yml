@@ -53,11 +53,11 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://apaas:apaas@postgres:5432/apaas?schema=public
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-in-production-use-long-random-string}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置强随机 JWT_SECRET（评审 C-1）}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       GATEWAY_PORT: '3000'
       CORS_ORIGINS: 'http://localhost:8080,http://localhost:8081'
-      CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY:?请在 .env 中设置 64 位十六进制 CONNECTOR_ENCRYPTION_KEY（评审 C-1）}
       CLOUD_FUNCTION_MEMORY_LIMIT_MB: ${CLOUD_FUNCTION_MEMORY_LIMIT_MB:-128}
       CLOUD_FUNCTION_TIMEOUT_MS: ${CLOUD_FUNCTION_TIMEOUT_MS:-5000}
     ports:

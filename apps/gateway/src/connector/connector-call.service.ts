@@ -8,6 +8,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { CredentialService } from './credential.service.js';
 import { renderTemplateDotted } from '../process/process-utils.js';
+import { OutboundUrlBlockedError, safeFetch } from '../common/net/ssrf-guard.js';
 import type { ConnectorOperation, HttpConnectorConfig } from '@apaas/shared';
 import type { ConnectorCallResult, InvokeConnectorRequest } from '@apaas/shared';
 
@@ -107,7 +108,7 @@ export class ConnectorCallService {
 
     try {
       this.logger.log(`调用连接器 ${connector.id}: ${method} ${url}`);
-      const resp = await fetch(url, {
+      const resp = await safeFetch(url, {
         method,
         headers,
         body: bodyStr,
@@ -136,6 +137,9 @@ export class ConnectorCallService {
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new BadRequestException(`连接器调用超时（${timeout}ms）`);
+      }
+      if (err instanceof OutboundUrlBlockedError) {
+        throw new BadRequestException(err.message);
       }
       throw err;
     } finally {
@@ -205,7 +209,7 @@ export class ConnectorCallService {
     let resp: Response;
     try {
       this.logger.log(`获取 OAuth2 access token: POST ${data.tokenUrl}`);
-      resp = await fetch(data.tokenUrl, {
+      resp = await safeFetch(data.tokenUrl, {
         method: 'POST',
         headers: tokenHeaders,
         body: form.toString(),

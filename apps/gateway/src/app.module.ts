@@ -29,6 +29,10 @@ import { envValidation } from './config/env.validation.js';
       pinoHttp: {
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
         level: process.env.LOG_LEVEL ?? 'info',
+        // 评审 M-5：webhook 路径含长期 token，访问日志不记录该路径
+        autoLogging: {
+          ignore: (req) => Boolean(req.url?.includes('/webhooks/')),
+        },
       },
     }),
     // 限流阈值从环境变量读取（THROTTLE_TTL_MS / THROTTLE_DEFAULT_LIMIT / THROTTLE_AUTH_LIMIT），

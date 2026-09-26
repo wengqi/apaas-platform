@@ -412,6 +412,7 @@ export class ApplicationService {
       action: 'APP_PUBLISH',
       resource: 'APPLICATION',
       resourceId: appId,
+      appId,
       detail: { version: version.versionNumber },
     });
 

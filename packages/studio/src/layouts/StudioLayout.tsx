@@ -29,6 +29,7 @@ import {
   ApiOutlined,
   FundProjectionScreenOutlined,
   CloudOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -75,6 +76,7 @@ export default function StudioLayout() {
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
       { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },
       { key: 'cloud-functions', icon: <CloudOutlined />, label: '云函数' },
+      { key: 'audit-logs', icon: <FileSearchOutlined />, label: '审计日志' },
     ],
     [],
   );

@@ -245,11 +245,35 @@ RecordService 的字段校验、AutoNumber/Formula/Rollup 计算与
 - 用户可见回归：浏览器经 UI 发布新版本（0.2.0）→ 进入版本页显示最新版本列表；
 - 全量：studio 单测 96/96、gateway 513/513、完整 e2e **55/55**、typecheck 11/11。
 
+## 五之六、应用级审计日志 UI（ROADMAP 9.9）
+
+**缺口**：ROADMAP 9.9「应用管理后台 = 概览 + 环境信息 + 审计日志」此前为部分完成——
+审计查询只有平台级页面（`/platform/audit-logs`），应用内无视图；且审计记录本身不带
+应用维度，无法按应用过滤。
+
+**修复**：
+- 数据层：`audit_logs` 增加 `app_id`（可空，平台级事件为 NULL）+ `@@index([tenantId, appId])`，
+  迁移 `20260927010000_add_audit_log_app_id`。
+- 写入：`writeAudit` 支持 `appId`，并在记录增删改、应用发布、流程发布处透传；
+  权限守卫的 PERMISSION_CHECK/DENIED 也带上路由 `appId`（存在时）。
+- 查询：`AuditLogService.query` 与控制器支持 `appId` 过滤；DTO 透出 appId。
+- 前端：新增应用内页面 `/app/:appId/audit-logs`（操作类型/资源类型/用户筛选 + 分页 +
+  详情 JSON），侧边栏新增「审计日志」入口。
+
+**验证**：
+- 单测：新增 `audit-log.service.spec.ts`（4 用例）——appId 过滤下推、平台级不注入该条件、
+  写入 appId/null、DTO 透出。
+- e2e：新增 `e2e/15-app-audit-logs.spec.ts`（3 用例）——侧边栏入口可见、应用级列表展示
+  RECORD_CREATE、平台级接口按 appId 过滤仅返回本应用事件。
+- 浏览器实测：应用内写入记录后，审计页按 appId 正确显示该 RECORD_CREATE（无 appId 的
+  历史条目按设计被排除）。
+- 全量：gateway 单测 **517/517**、studio 96/96、完整 e2e **58/58**、typecheck 11/11。
+
 ## 六、仍未整改（明确留待下迭代）
 
 | 项 | 原因 / 后续 |
 |---|---|
-| 单文件 400 行拆分、静态审计 UI（ROADMAP 9.9） | P2/P3 债务，按迭代消化 |
+| 单文件 400 行拆分 | P3 工程债务，按迭代消化 |
 
 ---
 

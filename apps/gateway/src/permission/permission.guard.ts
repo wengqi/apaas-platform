@@ -75,6 +75,7 @@ export class PermissionGuard extends JwtAuthGuard {
         action: 'PERMISSION_CHECK',
         resource: permission.type,
         resourceId: targetId,
+        appId: (request.params?.appId as string | undefined) ?? null,
         detail: { action: permission.action, result: 'ALLOWED_SUPERADMIN' },
         ip: request.ip,
       });
@@ -108,6 +109,7 @@ export class PermissionGuard extends JwtAuthGuard {
         action: 'PERMISSION_CHECK',
         resource: permission.type,
         resourceId: targetId,
+        appId: (request.params?.appId as string | undefined) ?? null,
         detail: { action: permission.action, result: 'ALLOWED' },
         ip: request.ip,
       });
@@ -121,6 +123,7 @@ export class PermissionGuard extends JwtAuthGuard {
         action: 'PERMISSION_DENIED',
         resource: permission.type,
         resourceId: targetId,
+        appId: (request.params?.appId as string | undefined) ?? null,
         detail: {
           action: permission.action,
           reason: err instanceof Error ? err.message : String(err),

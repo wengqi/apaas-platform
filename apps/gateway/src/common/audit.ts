@@ -17,6 +17,8 @@ export interface BusinessAuditParams {
   action: string;
   resource: string;
   resourceId?: string | null;
+  /** 应用维度（ROADMAP 9.9 应用级审计 UI）；平台级事件可省略 */
+  appId?: string | null;
   detail?: Record<string, unknown>;
 }
 
@@ -27,6 +29,7 @@ export function writeAudit(params: BusinessAuditParams): void {
         data: {
           tenantId: params.tenantId,
           userId: params.userId,
+          appId: params.appId ?? null,
           action: params.action,
           resource: params.resource,
           resourceId: params.resourceId ?? null,

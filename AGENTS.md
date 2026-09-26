@@ -240,7 +240,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
   （校验 + AutoNumber/Formula/Rollup + 记录事件触发），新增 e2e/14 回归
 - ✅ React Query key 治理（P2-1）：删除零引用注册表、建立与事实键一致的
   `qk` 构造器并全量迁移读写点、发布/回滚统一失效，附静态守卫测试与负向对照
-- ⬜ 残留（下迭代 / 工程债务）：单文件 400 行拆分；静态审计 UI（ROADMAP 9.9）；
+- ✅ 应用级审计 UI（ROADMAP 9.9）：audit_logs 增加 appId 维度 + 应用内审计页与
+  侧边栏入口 + 按 appId 过滤查询（e2e/15 覆盖）
+- ⬜ 残留（下迭代 / 工程债务）：单文件 400 行拆分；
   LIKE/范围类条件无法用 GIN（需大表压测后评估）；流程 query 节点未接入发起人 ABAC 条件
 - 🟡 风险：多副本部署需确认 Redis 锁可用（已内置降级为进程内互斥）；
   水平扩展前建议压测 BullMQ 与 Redis 连接数

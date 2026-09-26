@@ -257,6 +257,7 @@ export class ProcessService {
       action: 'PROCESS_PUBLISH',
       resource: 'PROCESS',
       resourceId: def.id,
+      appId: def.appId,
       detail: { apiName: def.apiName, version: def.version },
     });
 

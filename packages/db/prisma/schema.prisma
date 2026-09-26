@@ -281,6 +281,8 @@ model AuditLog {
   id        String   @id @default(cuid())
   tenantId  String   @map("tenant_id")
   userId    String   @map("user_id")
+  // 应用维度（ROADMAP 9.9 应用级审计 UI）：平台级事件为空
+  appId     String?  @map("app_id")
   action    String                              // CREATE_ROLE | UPDATE_PERMISSION | DELETE_USER | ...
   resource  String?                              // 操作资源类型
   resourceId String?  @map("resource_id")       // 资源 ID
@@ -293,6 +295,7 @@ model AuditLog {
   @@index([tenantId])
   @@index([userId])
   @@index([tenantId, action])
+  @@index([tenantId, appId])
   @@map("audit_logs")
 }
 

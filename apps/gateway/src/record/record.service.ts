@@ -423,7 +423,8 @@ export class RecordService {
       action: 'RECORD_CREATE',
       resource: 'RECORD',
       resourceId: record.id,
-      detail: { objectId, appId: obj.appId },
+      appId: obj.appId,
+      detail: { objectId },
     });
 
     // 触发记录创建事件（非阻塞）；created_by 供流程通知等节点引用（系统字段，置于展开后保证不被业务数据覆盖）
@@ -523,7 +524,8 @@ export class RecordService {
       action: 'RECORD_UPDATE',
       resource: 'RECORD',
       resourceId: recordId,
-      detail: { objectId: existing.objectId, appId: existing.appId },
+      appId: existing.appId,
+      detail: { objectId: existing.objectId },
     });
 
     // 触发记录更新事件（非阻塞）；系统字段置于展开后保证不被业务数据覆盖
@@ -587,7 +589,8 @@ export class RecordService {
       action: 'RECORD_DELETE',
       resource: 'RECORD',
       resourceId: recordId,
-      detail: { objectId: existing.objectId, appId: existing.appId },
+      appId: existing.appId,
+      detail: { objectId: existing.objectId },
     });
 
     // 触发记录删除事件（非阻塞）；created_by 供流程节点引用

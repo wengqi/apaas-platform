@@ -85,6 +85,11 @@ export class ObjectOperationExecutor implements NodeExecutor {
       where: { id: recordId, tenantId: ctx.tenantId, objectId },
       data: { data: mergedData as Prisma.InputJsonValue },
     });
+    // 评审整改：更新 0 行（recordId/objectId 不匹配等）此前静默 COMPLETED，
+    // 流程看似成功但业务数据未变更——显式失败以便发现配置错误。
+    if (result.count === 0) {
+      throw new Error('对象更新节点未命中任何记录（recordId 或 objectId 不匹配）');
+    }
     return { output: { affectedCount: result.count, recordId } };
   }
 

@@ -22,6 +22,7 @@ import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
 import { TriggerService } from './trigger.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
+import { writeAudit } from '../common/audit.js';
 
 // ---------------------------------------------------------------------------
 // DTO 类型（创建/更新请求体）
@@ -38,6 +39,7 @@ export interface UpdateProcessDefRequest {
   name?: string;
   workflowSchema?: unknown;
   triggerType?: string;
+  cron?: string;
 }
 
 export interface StartInstanceRequest {
@@ -170,6 +172,7 @@ export class ProcessService {
       data.workflowSchema = req.workflowSchema as Prisma.InputJsonValue;
     }
     if (req.triggerType !== undefined) data.triggerType = req.triggerType;
+    if (req.cron !== undefined) data.cron = req.cron;
 
     await prisma.processDef.update({ where: { id: processId }, data });
 
@@ -219,7 +222,7 @@ export class ProcessService {
   }
 
   /** 发布流程（版本自增，状态→PUBLISHED）。 */
-  async publishProcess(tenantId: string, processId: string) {
+  async publishProcess(tenantId: string, processId: string, userId?: string) {
     const existing = await prisma.processDef.findFirst({
       where: { id: processId, tenantId },
     });
@@ -245,6 +248,16 @@ export class ProcessService {
     void this.triggerService
       .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName)
       .catch((err) => this.logger.error(`定时触发器注册失败: ${err.message}`));
+
+    // 评审整改：业务动作级审计
+    writeAudit({
+      tenantId,
+      userId: userId ?? '',
+      action: 'PROCESS_PUBLISH',
+      resource: 'PROCESS',
+      resourceId: def.id,
+      detail: { apiName: def.apiName, version: def.version },
+    });
 
     return this.toProcessDefDto(def);
   }

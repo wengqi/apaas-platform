@@ -21,6 +21,7 @@ import { TriggerService } from '../process/trigger.service.js';
 import { translateCondition } from '../permission/condition-translator.js';
 import { jsonLogicToPrismaWhere } from '../shared/jsonlogic-to-prisma.js';
 import type { PermissionContext } from '../auth/authenticated-request.js';
+import { writeAudit } from '../common/audit.js';
 
 /**
  * 存储在 ObjectMeta.fields JSON 数组中的字段定义（与 object.service.ts 的 StoredField 一致）。
@@ -278,6 +279,16 @@ export class RecordService {
       },
     });
 
+    // 评审整改：业务动作级审计
+    writeAudit({
+      tenantId,
+      userId,
+      action: 'RECORD_CREATE',
+      resource: 'RECORD',
+      resourceId: record.id,
+      detail: { objectId, appId: obj.appId },
+    });
+
     // 触发记录创建事件（非阻塞）；created_by 供流程通知等节点引用（系统字段，置于展开后保证不被业务数据覆盖）
     const result = this.toResult(record);
     void this.triggerService.onRecordEvent(tenantId, obj.appId, objectId, 'created', {
@@ -368,6 +379,16 @@ export class RecordService {
       },
     });
 
+    // 评审整改：业务动作级审计
+    writeAudit({
+      tenantId,
+      userId,
+      action: 'RECORD_UPDATE',
+      resource: 'RECORD',
+      resourceId: recordId,
+      detail: { objectId: existing.objectId, appId: existing.appId },
+    });
+
     // 触发记录更新事件（非阻塞）；系统字段置于展开后保证不被业务数据覆盖
     const result = this.toResult(record);
     void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'updated', {
@@ -402,6 +423,7 @@ export class RecordService {
     tenantId: string,
     recordId: string,
     permissionContext?: PermissionContext,
+    userId?: string,
   ): Promise<void> {
     const conditionWhere = this.buildConditionWhere(permissionContext);
 
@@ -420,6 +442,16 @@ export class RecordService {
       where: { id: recordId, tenantId },
     });
     if (result.count === 0) throw new NotFoundException('记录不存在');
+
+    // 评审整改：业务动作级审计（删除前已查到 existing.appId/objectId）
+    writeAudit({
+      tenantId,
+      userId: userId ?? existing.createdBy ?? 'unknown',
+      action: 'RECORD_DELETE',
+      resource: 'RECORD',
+      resourceId: recordId,
+      detail: { objectId: existing.objectId, appId: existing.appId },
+    });
 
     // 触发记录删除事件（非阻塞）；created_by 供流程节点引用
     void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'deleted', {

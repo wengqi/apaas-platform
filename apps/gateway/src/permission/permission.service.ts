@@ -140,22 +140,35 @@ export class PermissionService {
       throw new ForbiddenException('权限规则拒绝此操作');
     }
 
-    // 有 ALLOW 规则 → 通过
-    const allowRule = rules.find((r) => r.effect === 'ALLOW');
-    if (allowRule) {
-      const rawCondition = allowRule.condition;
+    // 有 ALLOW 规则 → 通过（评审 P1-4：多角色命中多条 ALLOW 时不再依赖
+    // findMany 的无序"第一条"，改为确定性合并——condition 取 OR 并集、
+    // fieldScope 取并集（任一规则为全字段 null 则整体为 null））
+    const allowRules = rules.filter((r) => r.effect === 'ALLOW');
+    if (allowRules.length > 0) {
+      const conditions = allowRules
+        .map((r) => r.condition)
+        .filter(
+          (c) =>
+            c !== null &&
+            c !== undefined &&
+            typeof c === 'object' &&
+            Object.keys(c as object).length > 0,
+        ) as Array<Record<string, unknown>>;
       // 空条件（默认 {} / null）= 规则未配置行级限制，归一化为 null。
-      // 空对象不能下传 strict 翻译器（恒真语义在 fail-closed 场景被拒绝）。
-      const hasCondition =
-        rawCondition !== null &&
-        rawCondition !== undefined &&
-        typeof rawCondition === 'object' &&
-        Object.keys(rawCondition as object).length > 0;
-      return {
-        allowed: true,
-        condition: hasCondition ? rawCondition : null,
-        fieldScope: allowRule.fieldScope as string[] | null,
-      };
+      // 任一 ALLOW 规则无行级限制 → 合并后无限制。
+      const condition =
+        conditions.length === 0
+          ? null
+          : conditions.length === 1
+            ? conditions[0]
+            : { or: conditions };
+
+      const scopes = allowRules.map((r) => r.fieldScope as string[] | null);
+      const fieldScope = scopes.some((s) => s === null || s === undefined)
+        ? null
+        : (Array.from(new Set(scopes.flat())) as string[]);
+
+      return { allowed: true, condition, fieldScope };
     }
 
     // 无匹配规则 → 默认拒绝

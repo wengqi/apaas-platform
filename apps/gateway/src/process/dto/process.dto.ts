@@ -41,9 +41,22 @@ export class UpdateProcessDefDto {
   @IsOptional()
   @IsString()
   triggerType?: string;
+
+  @ApiPropertyOptional({ example: '0 9 * * 1-5', description: 'Cron 表达式（SCHEDULED 触发器）' })
+  @IsOptional()
+  @IsString()
+  cron?: string;
 }
 
 export class StartInstanceDto {
+  @ApiPropertyOptional({
+    example: 'customer_approval',
+    description: '流程 API 名称（可省略；与路径 processId 对应，兼容前端契约）',
+  })
+  @IsOptional()
+  @IsString()
+  processKey?: string;
+
   @ApiPropertyOptional({ description: '流程变量（键值对）' })
   @IsOptional()
   @IsObject()

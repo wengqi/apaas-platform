@@ -82,11 +82,26 @@ export class BatchOperationExecutor implements NodeExecutor {
     }
 
     const where = await this.buildScopeWhere(ctx, objectId);
-    const result = await prisma.record.updateMany({
+
+    // 评审 P0-1：updateMany 直接整列覆盖 JSONB 会清空记录其余字段。
+    // 改为逐条"读旧 data → 字段级 merge → 写回"，与 RecordService/单对象操作语义一致。
+    const targets = await prisma.record.findMany({
       where,
-      data: { data: updateData as Prisma.InputJsonValue },
+      select: { id: true, data: true },
     });
-    return { output: { affectedCount: result.count } };
+    let affected = 0;
+    for (const record of targets) {
+      const merged = {
+        ...((record.data ?? {}) as Record<string, unknown>),
+        ...(updateData as Record<string, unknown>),
+      };
+      await prisma.record.update({
+        where: { id: record.id },
+        data: { data: merged as Prisma.InputJsonValue },
+      });
+      affected += 1;
+    }
+    return { output: { affectedCount: affected } };
   }
 
   /** 批量删除：范围 = inputs.recordIds 或 data.filter。 */

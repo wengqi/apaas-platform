@@ -438,15 +438,18 @@ function generateBorrowApprovalWorkflow(adminUserId: string): Record<string, unk
         type: 'object_operation',
         meta: { position: { x: 850, y: 100 } },
         data: {
-          title: '更新资产状态',
+          title: '更新申请状态',
           operation: 'update',
-          objectId: '__ASSET_OBJECT_ID__',
-          inputs: {
-            type: 'object',
-            properties: {
-              recordId: { type: 'string' },
-              status: { type: 'string' },
-            },
+          // 评审整改：对象操作的 objectId 必须是"领用申请"对象
+          //（原误指向资产对象 → 条件命中后更新 0 行且无告警）
+          objectId: '__BORROW_OBJECT_ID__',
+          // 评审整改：此前误把 inputs 写成 JSON-Schema 描述（引擎实际消费
+          // inputsValues 四态值），导致条件分支命中后对象更新节点报
+          // "缺少 recordId"、下游通知永不执行。此处在条件命中的"已批准"分支
+          // 里把申请记录状态置为 APPROVED。
+          inputsValues: {
+            recordId: { type: 'ref', content: ['recordId'] },
+            status: { type: 'constant', content: 'APPROVED' },
           },
         },
       },
@@ -461,6 +464,20 @@ function generateBorrowApprovalWorkflow(adminUserId: string): Record<string, unk
           recipients: ['{{record.created_by}}'],
           title_template: '资产领用申请已批准',
           content: '您的资产领用申请已批准，请前往领取。',
+        },
+      },
+      {
+        id: 'object_op_reject',
+        type: 'object_operation',
+        meta: { position: { x: 850, y: 300 } },
+        data: {
+          title: '更新申请状态（已拒绝）',
+          operation: 'update',
+          objectId: '__BORROW_OBJECT_ID__',
+          inputsValues: {
+            recordId: { type: 'ref', content: ['recordId'] },
+            status: { type: 'constant', content: 'REJECTED' },
+          },
         },
       },
       {
@@ -494,10 +511,11 @@ function generateBorrowApprovalWorkflow(adminUserId: string): Record<string, unk
       },
       {
         sourceNodeID: 'condition_0',
-        targetNodeID: 'notification_rejected',
+        targetNodeID: 'object_op_reject',
         label: 'REJECTED',
         condition: '{"==":[{"var":"decision"},"REJECTED"]}',
       },
+      { sourceNodeID: 'object_op_reject', targetNodeID: 'notification_rejected' },
       { sourceNodeID: 'object_op_update', targetNodeID: 'notification_approved' },
       { sourceNodeID: 'notification_approved', targetNodeID: 'end_0' },
       { sourceNodeID: 'notification_rejected', targetNodeID: 'end_0' },
@@ -534,10 +552,10 @@ export async function seedDemoContent(
       'single_select',
       {
         options: [
-          { id: 'IT', label: 'IT设备' },
-          { id: 'OFFICE', label: '办公用品' },
-          { id: 'FURNITURE', label: '家具' },
-          { id: 'VEHICLE', label: '车辆' },
+          { id: 'IT', value: 'IT', label: 'IT设备' },
+          { id: 'OFFICE', value: 'OFFICE', label: '办公用品' },
+          { id: 'FURNITURE', value: 'FURNITURE', label: '家具' },
+          { id: 'VEHICLE', value: 'VEHICLE', label: '车辆' },
         ],
       },
       { required: true },
@@ -549,10 +567,10 @@ export async function seedDemoContent(
       'single_select',
       {
         options: [
-          { id: 'IN_STOCK', label: '在库' },
-          { id: 'IN_USE', label: '使用中' },
-          { id: 'UNDER_REPAIR', label: '维修中' },
-          { id: 'SCRAPPED', label: '已报废' },
+          { id: 'IN_STOCK', value: 'IN_STOCK', label: '在库' },
+          { id: 'IN_USE', value: 'IN_USE', label: '使用中' },
+          { id: 'UNDER_REPAIR', value: 'UNDER_REPAIR', label: '维修中' },
+          { id: 'SCRAPPED', value: 'SCRAPPED', label: '已报废' },
         ],
       },
       { required: true },
@@ -598,8 +616,8 @@ export async function seedDemoContent(
       'single_select',
       {
         options: [
-          { id: 'BORROW', label: '领用' },
-          { id: 'RETURN', label: '归还' },
+          { id: 'BORROW', value: 'BORROW', label: '领用' },
+          { id: 'RETURN', value: 'RETURN', label: '归还' },
         ],
       },
       { required: true },
@@ -611,10 +629,10 @@ export async function seedDemoContent(
       'single_select',
       {
         options: [
-          { id: 'PENDING', label: '待审批' },
-          { id: 'APPROVED', label: '已批准' },
-          { id: 'REJECTED', label: '已拒绝' },
-          { id: 'COMPLETED', label: '已完成' },
+          { id: 'PENDING', value: 'PENDING', label: '待审批' },
+          { id: 'APPROVED', value: 'APPROVED', label: '已批准' },
+          { id: 'REJECTED', value: 'REJECTED', label: '已拒绝' },
+          { id: 'COMPLETED', value: 'COMPLETED', label: '已完成' },
         ],
       },
       { required: true },
@@ -785,8 +803,8 @@ export async function seedDemoContent(
   // ========================================================================
 
   let workflowSchema = generateBorrowApprovalWorkflow(adminUserId);
-  // 替换占位符为实际 asset 对象 ID
-  const workflowStr = JSON.stringify(workflowSchema).replace('__ASSET_OBJECT_ID__', assetDbId);
+  // 替换占位符为实际对象 ID（申请状态回写作用于领用申请对象）
+  const workflowStr = JSON.stringify(workflowSchema).replaceAll('__BORROW_OBJECT_ID__', borrowDbId);
   workflowSchema = JSON.parse(workflowStr);
 
   await prisma.processDef.upsert({

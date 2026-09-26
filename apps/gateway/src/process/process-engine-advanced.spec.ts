@@ -35,11 +35,15 @@ function createEngine(executors: NodeExecutor[] = []) {
   const registry = createMockRegistry(executors);
   const processQueue = createMockQueue();
   const delayQueue = createMockQueue();
+  const redisLock = {
+    withLock: (_key: string, fn: () => Promise<unknown>) => fn(),
+  } as unknown as ConstructorParameters<typeof ProcessEngine>[2];
   const engine = new ProcessEngine(
     registry as unknown as ConstructorParameters<typeof ProcessEngine>[0],
     { create: vi.fn() } as unknown as ConstructorParameters<typeof ProcessEngine>[1],
-    processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[2],
-    delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+    redisLock,
+    processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+    delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
   );
   return { engine, processQueue, delayQueue };
 }
@@ -252,7 +256,11 @@ describe('ProcessEngine 子流程同步等待', () => {
       status: 'COMPLETED',
     });
     // 父实例重新入队推进
-    expect(processQueue.add).toHaveBeenCalledWith('execute', { instanceId: 'pi-parent' });
+    expect(processQueue.add).toHaveBeenCalledWith(
+      'execute',
+      { instanceId: 'pi-parent' },
+      expect.objectContaining({ attempts: 3 }),
+    );
   });
 
   it('子实例失败时父实例同步置 FAILED（不永久挂起）', async () => {
@@ -395,7 +403,11 @@ describe('ProcessEngine 等待条件节点恢复', () => {
     const after = getStoredInstance(store, 'pi-wc');
     expect(after?.['status']).toBe('RUNNING');
     expect(after?.['activeNodeIds']).toEqual(['after-1']);
-    expect(processQueue.add).toHaveBeenCalledWith('execute', { instanceId: 'pi-wc' });
+    expect(processQueue.add).toHaveBeenCalledWith(
+      'execute',
+      { instanceId: 'pi-wc' },
+      expect.objectContaining({ attempts: 3 }),
+    );
   });
 
   it('超时且配置 timeout 出边：路由到 timeout 分支', async () => {

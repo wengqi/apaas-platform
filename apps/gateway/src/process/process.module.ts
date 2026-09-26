@@ -46,6 +46,7 @@ import { ContinueExecutor } from './node-executors/continue.executor.js';
 import { WaitForConditionExecutor } from './node-executors/wait-for-condition.executor.js';
 import { BatchOperationExecutor } from './node-executors/batch-operation.executor.js';
 import { TriggerService } from './trigger.service.js';
+import { RedisLockService } from '../common/redis/redis-lock.service.js';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { TriggerService } from './trigger.service.js';
     ProcessService,
     ProcessEngine,
     NodeExecutorRegistry,
+    RedisLockService,
     // 节点执行器
     StartExecutor,
     EndExecutor,

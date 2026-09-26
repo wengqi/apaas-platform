@@ -385,8 +385,13 @@ describe('BatchOperationExecutor', () => {
     await expect(executor.execute(ctx)).rejects.toThrow('必须是数组');
   });
 
-  it('批量更新（recordIds 范围）：updateMany 带 id in', async () => {
-    prisma.record.updateMany.mockResolvedValue({ count: 2 });
+  // 评审 P0-1：批量更新改为"读旧 data → merge → 逐条写回"，不再整列覆盖
+  it('批量更新（recordIds 范围）：逐条 merge 旧 data 后写回', async () => {
+    prisma.record.findMany.mockResolvedValue([
+      { id: 'r1', data: { name: 'A', status: 'OPEN' } },
+      { id: 'r2', data: { name: 'B' } },
+    ]);
+    prisma.record.update.mockResolvedValue({});
     const ctx = makeCtx({
       node: {
         id: 'n0',
@@ -398,12 +403,26 @@ describe('BatchOperationExecutor', () => {
     });
     const result = await executor.execute(ctx);
     expect(result.output).toEqual({ affectedCount: 2 });
-    const arg = prisma.record.updateMany.mock.calls[0]?.[0] as {
+
+    // 查询范围 = recordIds
+    const findArg = prisma.record.findMany.mock.calls[0]?.[0] as {
       where: { id: { in: string[] } };
-      data: { data: unknown };
     };
-    expect(arg.where.id.in).toEqual(['r1', 'r2']);
-    expect(arg.data.data).toEqual({ status: 'DONE' });
+    expect(findArg.where.id.in).toEqual(['r1', 'r2']);
+
+    // 逐条更新：旧字段保留，仅 merge 更新字段
+    expect(prisma.record.update).toHaveBeenCalledTimes(2);
+    const first = prisma.record.update.mock.calls[0]?.[0] as {
+      where: { id: string };
+      data: { data: Record<string, unknown> };
+    };
+    expect(first.where.id).toBe('r1');
+    expect(first.data.data).toEqual({ name: 'A', status: 'DONE' });
+    const second = prisma.record.update.mock.calls[1]?.[0] as {
+      where: { id: string };
+      data: { data: Record<string, unknown> };
+    };
+    expect(second.data.data).toEqual({ name: 'B', status: 'DONE' });
   });
 
   it('批量删除（filter 范围）：deleteMany 注入 JsonLogic 条件', async () => {

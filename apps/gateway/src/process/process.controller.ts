@@ -125,7 +125,11 @@ export class ProcessController {
   @Post('processes/:processId/publish')
   @RequirePermission('PROCESS', 'EDIT', 'processId')
   async publishProcess(@Req() req: AuthenticatedRequest, @Param('processId') processId: string) {
-    const data = await this.processService.publishProcess(requireTenantId(req), processId);
+    const data = await this.processService.publishProcess(
+      requireTenantId(req),
+      processId,
+      req.user.id,
+    );
     return { ok: true as const, data };
   }
 

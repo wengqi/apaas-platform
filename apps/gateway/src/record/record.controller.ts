@@ -132,7 +132,12 @@ export class RecordController {
   @Delete('records/:recordId')
   @RequirePermission('RECORD', 'DELETE')
   async delete(@Req() req: AuthenticatedRequest, @Param('recordId') recordId: string) {
-    await this.recordService.delete(requireTenantId(req), recordId, req.permissionContext);
+    await this.recordService.delete(
+      requireTenantId(req),
+      recordId,
+      req.permissionContext,
+      req.user.id,
+    );
     return { ok: true as const, data: { deleted: true } };
   }
 

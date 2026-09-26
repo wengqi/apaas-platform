@@ -44,6 +44,9 @@ function createService() {
     snapshotService as unknown as ConstructorParameters<typeof ApplicationService>[0],
     checkService as unknown as ConstructorParameters<typeof ApplicationService>[1],
     changeLogService as unknown as ConstructorParameters<typeof ApplicationService>[2],
+    {
+      onProcessPublished: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ConstructorParameters<typeof ApplicationService>[3],
   );
   return { service, snapshotService, checkService, changeLogService };
 }

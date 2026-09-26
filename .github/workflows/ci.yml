@@ -35,6 +35,10 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm db:generate
 
+      # @apaas/shared 类型入口指向 dist/index.d.ts，lint/typecheck 前必须先构建
+      - name: Build shared package
+        run: pnpm --filter @apaas/shared run build
+
       - name: Lint
         run: pnpm lint
 
@@ -95,6 +99,10 @@ jobs:
 
       - name: Generate Prisma Client
         run: pnpm db:generate
+
+      # gateway 测试运行时解析 @apaas/shared 需要 dist 产物
+      - name: Build shared package
+        run: pnpm --filter @apaas/shared run build
 
       - name: Test
         run: pnpm test
@@ -196,6 +204,10 @@ jobs:
 
       - name: Run database migrations
         run: pnpm db:migrate
+
+      # e2e 测试与 dev server 运行时解析 @apaas/shared 需要 dist 产物
+      - name: Build shared package
+        run: pnpm --filter @apaas/shared run build
 
       - name: Seed database
         run: pnpm db:seed

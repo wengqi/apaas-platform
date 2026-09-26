@@ -8,6 +8,7 @@ import App from './App';
 import './index.css';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import GlobalErrorBoundary from './components/GlobalErrorBoundary.js';
 
 // 从 URL hash 读取 token（SSO / 测试场景）
 initAuthFromHash();
@@ -23,9 +24,11 @@ createRoot(rootEl).render(
   <StrictMode>
     <ConfigProvider locale={zhCN}>
       <AntApp>
-        <QueryClientProvider client={queryClient}>
-          <App />
-        </QueryClientProvider>
+        <GlobalErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <App />
+          </QueryClientProvider>
+        </GlobalErrorBoundary>
       </AntApp>
     </ConfigProvider>
   </StrictMode>,

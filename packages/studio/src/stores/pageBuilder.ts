@@ -228,7 +228,10 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   // —— 页面级动作 ——
 
   loadPage: (page) => {
-    const schema = page.schema ?? createDefaultSchema(page.type);
+    // 评审整改：API 创建的页面可能带空 schema（{}），缺 root 时直接使用会
+    // 让 Canvas 读取 schema.root.children 崩溃（整页白屏）。此处规范化。
+    const incoming = page.schema as PageSchema | undefined;
+    const schema = incoming?.root ? incoming : createDefaultSchema(page.type);
     set({
       currentPage: page,
       schema,

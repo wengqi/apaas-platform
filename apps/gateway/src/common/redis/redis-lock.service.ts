@@ -25,7 +25,14 @@ export class RedisLockService implements OnModuleDestroy {
   constructor() {
     const url = process.env.REDIS_URL;
     try {
-      this.client = url ? new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 2 }) : null;
+      this.client = url
+        ? new Redis(url, {
+            lazyConnect: false,
+            maxRetriesPerRequest: 2,
+            // 连接失败不无限重连：交由 withLock 降级为进程内互斥
+            retryStrategy: (times) => (times <= 3 ? Math.min(times * 200, 1_000) : null),
+          })
+        : null;
       this.client?.on('error', () => {
         if (!this.degradedWarned) {
           this.degradedWarned = true;

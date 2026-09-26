@@ -171,14 +171,18 @@ export class ProcessController {
   @Get('instances/:instanceId')
   @RequirePermission('PROCESS', 'VIEW')
   async getInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
-    const data = await this.processService.getInstance(requireTenantId(req), instanceId);
+    const data = await this.processService.getInstance(
+      requireTenantId(req),
+      instanceId,
+      req.user.id,
+    );
     return { ok: true as const, data };
   }
 
   @Get('instances/:instanceId/trace')
   @RequirePermission('PROCESS', 'VIEW')
   async getTrace(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
-    const data = await this.processService.getTrace(requireTenantId(req), instanceId);
+    const data = await this.processService.getTrace(requireTenantId(req), instanceId, req.user.id);
     return { ok: true as const, data };
   }
 

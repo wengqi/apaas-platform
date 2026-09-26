@@ -30,7 +30,15 @@
 | M-5 | webhook 可选 HMAC-SHA256 签名 + 5 分钟时间戳防重放；webhook 路径访问日志脱敏 | 代码 + 单测 |
 | M-6 | 生产环境不挂载 Swagger | 实测：`/api/docs` → 404 |
 | M-8 | 云函数并发 Isolate 信号量（`CLOUD_FUNCTION_MAX_CONCURRENT`，排队超时 429） | 代码 + 单测 |
+| M-2 | 流程实例详情/轨迹增加**实例级授权**（超管 / 发起人 / 任务参与人），非参与人 403 | 实测：管理员 200，终端用户 403 |
+| M-3 | 前端静态服务加 CSP（`script-src 'self'` 等，禁止内联脚本）+ nosniff + Referrer-Policy | 实测：响应头存在，页面渲染正常且无 CSP 违规 |
+| M-7 | 生产 compose 端口收口到 `127.0.0.1`（PG/Redis 不再暴露公网）；PG 口令走 `POSTGRES_PASSWORD`（必填）；Redis 支持 `REDIS_PASSWORD` | 实测：5432/6379 仅 localhost 监听 |
 | — | 密码哈希 cost 10→12；`IMPORT_FILE_MAX_SIZE_MB` 接线；`AuditLogService` 注入缺失显式告警 | 代码 |
+
+> ⚠️ 整改过程中的一次自引入回归（已修复并回归）：compose 的 `REDIS_URL` 曾改为从 .env
+> 取值，而 .env 面向宿主（localhost），导致容器内 BullMQ 连不上 Redis、`POST /processes/:id/start`
+> 挂起。现容器内地址固定走 compose 网络，锁客户端限制重连次数并快速降级。
+> 另外：M-3 的"token 移出 localStorage"（真正的根治）仍建议后续迭代完成，CSP 只是纵深防御。
 
 新增环境变量（已同步 `.env.example` 与 compose 透传）：`SEED_BOOTSTRAP_PASSWORD`、`OUTBOUND_HTTP_TIMEOUT_MS`、`OUTBOUND_ALLOW_PRIVATE`、`CLOUD_FUNCTION_MAX_CONCURRENT`、`THROTTLE_*`（compose 可调）。
 

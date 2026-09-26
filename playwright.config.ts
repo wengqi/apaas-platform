@@ -43,6 +43,7 @@ export default defineConfig({
     command: 'pnpm dev',
     url: 'http://localhost:3000/api/v1/health',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    // CI 2 核 runner 上全栈冷启动较慢，预留更长健康检查窗口
+    timeout: 180_000,
   },
 });

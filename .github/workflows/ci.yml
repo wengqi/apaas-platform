@@ -173,6 +173,9 @@ jobs:
       GATEWAY_PORT: '3000'
       NODE_ENV: 'test'
       CONNECTOR_ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+      # e2e 套件 40+ 测试各调一次登录，localhost 上远超默认认证限流（10 次/60s），会全量 429
+      THROTTLE_AUTH_LIMIT: '10000'
+      THROTTLE_DEFAULT_LIMIT: '10000'
       CI: 'true'
 
     steps:

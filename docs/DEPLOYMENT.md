@@ -38,7 +38,7 @@
 ## 2. 前置要求
 
 - Docker Engine ≥ 24 + Docker Compose v2
-- Node.js ≥ 20 + pnpm ≥ 9（仅本地开发/调试需要）
+- Node.js ≥ 24 + pnpm ≥ 9（仅本地开发/调试需要；isolated-vm@7 要求 Node ≥ 24）
 - 内存 ≥ 4 GB（isolated-vm 云函数沙箱每个 Isolate 上限 128MB，见 `CLOUD_FUNCTION_MEMORY_LIMIT_MB`）
 
 ## 3. 本地开发环境

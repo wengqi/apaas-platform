@@ -5,7 +5,7 @@
 # ============================================================
 
 # ---- Base: Node.js 20 + pnpm ----
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 RUN apk add --no-cache libc6-compat openssl
 RUN corepack enable
 WORKDIR /app

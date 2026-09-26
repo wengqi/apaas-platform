@@ -41,6 +41,8 @@ export interface ProcessDef {
   status: ProcessStatus;
   /** 触发器类型 */
   triggerType?: TriggerType;
+  /** Cron 表达式（仅 SCHEDULED 触发器使用，评审整改补全） */
+  cron?: string | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

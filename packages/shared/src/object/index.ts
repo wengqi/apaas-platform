@@ -72,9 +72,31 @@ export type FieldValue = string | number | boolean | null | string[] | Record<st
 export interface SelectOption {
   id: string;
   label: string;
+  /**
+   * 存储值（评审整改）。
+   * 未配置时回退为 label。配置后记录存 value、界面显示 label——
+   * 避免流程条件分支 / 连接器集成因展示文案调整而断裂。
+   */
+  value?: string;
   color?: string;
   /** 是否默认选中（单选仅一个可为 true） */
   isDefault?: boolean;
+}
+
+/** 取选项的存储值（value 优先，回退 label）。 */
+export function optionStoredValue(option: { label: string; value?: string }): string {
+  return option.value ?? option.label;
+}
+
+/** 按存储值反查展示文案（找不到则原样返回，保证老数据可读）。 */
+export function optionDisplayLabel(
+  options: Array<{ label: string; value?: string }> | undefined,
+  stored: unknown,
+): string {
+  if (stored === null || stored === undefined) return '';
+  const text = String(stored);
+  const hit = (options ?? []).find((o) => optionStoredValue(o) === text);
+  return hit?.label ?? text;
 }
 
 /** 关联字段配置。 */

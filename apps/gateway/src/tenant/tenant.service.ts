@@ -18,11 +18,7 @@ export class TenantService {
   private readonly logger = new Logger(TenantService.name);
 
   /** 创建租户并初始化内置角色与权限规则。 */
-  async create(data: {
-    name: string;
-    slug: string;
-    description?: string;
-  }) {
+  async create(data: { name: string; slug: string; description?: string }) {
     // 校验 slug 唯一
     const existing = await prisma.tenant.findUnique({
       where: { slug: data.slug },
@@ -134,7 +130,9 @@ export class TenantService {
       })),
     });
 
-    this.logger.log(`租户 ${tenantId} 内置角色初始化完成 (TENANT_ADMIN/BUILDER/END_USER + 23 条权限规则)`);
+    this.logger.log(
+      `租户 ${tenantId} 内置角色初始化完成 (TENANT_ADMIN/BUILDER/END_USER + 23 条权限规则)`,
+    );
   }
 
   /** 查询租户列表（含用户数、应用数统计）。 */
@@ -242,10 +240,7 @@ export class TenantService {
   }
 
   /** 为租户分配管理员（创建用户 + TENANT_ADMIN 角色）。 */
-  async assignAdmin(
-    tenantId: string,
-    data: { email: string; name: string; password: string },
-  ) {
+  async assignAdmin(tenantId: string, data: { email: string; name: string; password: string }) {
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) {
       throw new NotFoundException('租户不存在');
@@ -268,7 +263,7 @@ export class TenantService {
     }
 
     // 创建用户并分配角色
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await bcrypt.hash(data.password, 12);
     const user = await prisma.user.create({
       data: {
         tenantId,

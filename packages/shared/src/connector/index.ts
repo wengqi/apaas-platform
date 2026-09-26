@@ -56,6 +56,12 @@ export interface WebhookConnectorConfig {
   allowedMethods: string[];
   /** 自定义验证头名（可选，默认通过 URL token 验证） */
   verifyHeader?: string;
+  /**
+   * HMAC-SHA256 签名密钥（可选，评审 M-5）。
+   * 配置后，入站请求必须携带 X-Apaas-Signature: hex(hmac-sha256(rawBody, secret))
+   * 并通过校验，同时拒绝 5 分钟外的时间戳重放。
+   */
+  webhookSecret?: string;
 }
 
 // ---------------------------------------------------------------------------

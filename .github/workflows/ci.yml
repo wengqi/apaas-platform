@@ -212,6 +212,12 @@ jobs:
       - name: Seed database
         run: pnpm db:seed
 
+      # webServer 消费构建产物（gateway node dist / studio vite preview），需先构建
+      - name: Build studio & gateway
+        run: |
+          pnpm --filter @apaas/studio run build
+          pnpm --filter @apaas/gateway run build
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 

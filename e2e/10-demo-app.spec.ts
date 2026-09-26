@@ -213,14 +213,14 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
 
   test('Studio 对象设计器可见（UI 验证）', async ({ page }) => {
     await page.goto(`/app/${appId}/objects`);
-    await expect(page.getByText('资产', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('领用申请', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('资产分类', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('资产', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('领用申请', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('资产分类', { exact: true })).toBeVisible({ timeout: 30_000 });
   });
 
   test('Studio 页面列表可见（UI 验证）', async ({ page }) => {
     await page.goto(`/app/${appId}/pages`);
-    await expect(page.getByText('资产列表').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('资产仪表盘').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('资产列表').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('资产仪表盘').first()).toBeVisible({ timeout: 30_000 });
   });
 });

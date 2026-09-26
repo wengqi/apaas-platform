@@ -4,8 +4,12 @@ import { defineConfig, devices } from '@playwright/test';
  * Playwright E2E 测试配置。
  *
  * 测试策略：真实端到端（启动 PostgreSQL + Redis + Gateway + Studio）。
- * webServer 自动启动 dev server 并等待健康检查通过。
- * 本地开发时 reuseExistingServer=true，复用已运行的服务。
+ * webServer 仅启动 e2e 需要的两个服务，且都消费预构建产物，避免 dev 模式
+ * 的冷编译/按需优化窗口导致偶发超时（CI 2 核 runner 上尤其明显）：
+ *   - Gateway：node dist/main.js；CI e2e job 需先 `pnpm --filter @apaas/gateway run build`
+ *   - Studio：vite preview 服务 build 产物（preview.proxy 继承 server.proxy）；
+ *     CI e2e job 需先 `pnpm --filter @apaas/studio run build`
+ * 本地开发时 reuseExistingServer=true，复用已运行的服务（如 Docker 部署的 Gateway）。
  */
 export default defineConfig({
   testDir: './e2e',
@@ -39,11 +43,18 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:3000/api/v1/health',
-    reuseExistingServer: !process.env.CI,
-    // CI 2 核 runner 上全栈冷启动较慢，预留更长健康检查窗口
-    timeout: 180_000,
-  },
+  webServer: [
+    {
+      command: 'node apps/gateway/dist/main.js',
+      url: 'http://localhost:3000/api/v1/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+    {
+      command: 'pnpm --filter @apaas/studio exec vite preview --port 5173 --strictPort',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+    },
+  ],
 });

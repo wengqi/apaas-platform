@@ -101,10 +101,17 @@ export const useProcessEditorStore = create<ProcessEditorState>((set, _get) => (
       if (!state.schema) return {};
       const schema = deepClone(state.schema);
       // 递归搜索节点（含嵌套在 condition blocks 内的节点）
+      let changed = false;
       const findAndUpdate = (nodes: WorkflowNode[]): boolean => {
         for (const n of nodes) {
           if (n.id === nodeId) {
-            n.data = { ...n.data, ...data };
+            const merged = { ...n.data, ...data };
+            // 评审 P1-1：内容无变化时不置脏、不推撤销栈
+            //（挂载期 reconcile 会对条件节点做等值回写，此前每次都产生假脏 + 历史污染）
+            if (JSON.stringify(merged) !== JSON.stringify(n.data)) {
+              n.data = merged;
+              changed = true;
+            }
             return true;
           }
           if (n.blocks) {
@@ -114,6 +121,7 @@ export const useProcessEditorStore = create<ProcessEditorState>((set, _get) => (
         return false;
       };
       if (!findAndUpdate(schema.nodes)) return {}; // 未找到不覆盖
+      if (!changed) return {};
       return {
         schema,
         past: [...state.past, deepClone(state.schema as WorkflowSchema)].slice(-50),

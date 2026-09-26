@@ -11,6 +11,17 @@ import type {
 } from '../api/pages.js';
 import { COMPONENT_META } from '../constants/pageComponents.js';
 
+/** 评审 P2-5：当前可保存内容的快照（schema + 可保存元数据） */
+function snapshotOf(state: { schema: PageSchema | null; currentPage: PageMeta | null }): string {
+  return JSON.stringify({
+    schema: state.schema,
+    name: state.currentPage?.name ?? null,
+    apiName: state.currentPage?.apiName ?? null,
+    type: state.currentPage?.type ?? null,
+    objectId: state.currentPage?.objectId ?? null,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // 辅助函数:ID 生成 / 深拷贝 / 树操作
 // ---------------------------------------------------------------------------
@@ -128,6 +139,10 @@ export function createDefaultSchema(pageType: PageType): PageSchema {
 // ---------------------------------------------------------------------------
 
 interface PageBuilderState {
+  /** 评审 P2-5：已保存快照（schema+元数据 JSON），用于派生脏标记 */
+  savedSnapshot: string | null;
+  /** 评审 P2-5：当前内容是否与已保存快照一致 */
+  isDirty: () => boolean;
   /** 当前编辑的页面元数据 */
   currentPage: PageMeta | null;
   /** 当前页面 Schema(工作副本) */
@@ -148,6 +163,8 @@ interface PageBuilderState {
   loadPage: (page: PageMeta) => void;
   /** 加载 Schema(重置历史) */
   loadSchema: (schema: PageSchema) => void;
+  /** 评审 P2-5：保存/加载成功后刷新快照 */
+  markSaved: () => void;
   /** 获取当前 Schema(命令式,用于保存) */
   getSchema: () => PageSchema | null;
   /** 更新页面元数据(名称/apiName/类型等) */
@@ -206,6 +223,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   vmPanelOpen: false,
   past: [],
   future: [],
+  savedSnapshot: null,
 
   // —— 页面级动作 ——
 
@@ -219,8 +237,19 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
       past: [],
       future: [],
     });
+    // 评审 P2-5：加载完成即记录快照
+    set({ savedSnapshot: snapshotOf(get()) });
   },
 
+  markSaved: () =>
+    set((state) => ({
+      savedSnapshot: snapshotOf(state),
+    })),
+  isDirty: () => {
+    const state = get();
+    if (!state.savedSnapshot || !state.currentPage) return false;
+    return snapshotOf(state) !== state.savedSnapshot;
+  },
   loadSchema: (schema) => {
     set({
       schema,

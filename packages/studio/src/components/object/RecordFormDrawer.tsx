@@ -51,8 +51,15 @@ export default function RecordFormDrawer({
 
   const isEdit = mode === 'edit';
 
-  /** 仅可编辑的业务字段(排除只读类型)。 */
-  const editableFields = fields.filter((f) => !isReadonlyType(f.type));
+  /**
+   * 表单可见字段：排除 isSystem 系统字段。
+   * 评审整改：created_by/created_at/updated_by/updated_at 等系统字段由后端自动维护，
+   * 不应出现在新增/编辑表单中让用户手填。
+   */
+  const visibleFields = fields.filter((f) => !f.isSystem);
+
+  /** 仅可编辑的业务字段(排除系统字段与只读类型)。 */
+  const editableFields = fields.filter((f) => !f.isSystem && !isReadonlyType(f.type));
 
   /** 新增记录。 */
   const createMutation = useMutation({
@@ -135,10 +142,11 @@ export default function RecordFormDrawer({
       }
     >
       <Form form={form} layout="vertical" preserve={false}>
-        {fields.map((field) => (
+        {/* 评审整改：渲染 visibleFields 而非全量 fields，系统字段不进入表单 */}
+        {visibleFields.map((field) => (
           <FieldFormItem key={field.id} field={field} />
         ))}
-        {fields.length === 0 && <Text type="secondary">该对象暂无字段</Text>}
+        {visibleFields.length === 0 && <Text type="secondary">该对象暂无字段</Text>}
       </Form>
     </Drawer>
   );
@@ -245,8 +253,10 @@ function FieldControl({
         <Select
           allowClear
           placeholder={`请选择${field.label}`}
+          // 评审整改：存 value（未配置时回退 label），界面显示 label——
+          // 使流程条件/集成依据稳定编码而非展示文案
           options={options.map((o) => ({
-            value: o.label,
+            value: optionsStored(o),
             label: o.label,
           }))}
           value={typeof value === 'string' ? value : undefined}
@@ -262,7 +272,7 @@ function FieldControl({
           allowClear
           placeholder={`请选择${field.label}`}
           options={options.map((o) => ({
-            value: o.label,
+            value: optionsStored(o),
             label: o.label,
           }))}
           value={Array.isArray(value) ? (value as string[]) : undefined}
@@ -300,6 +310,11 @@ function FieldControl({
         />
       );
   }
+}
+
+/** 评审整改：选项存储值（value 优先，未配置回退 label）。 */
+function optionsStored(option: { label: string; value?: string }): string {
+  return option.value ?? option.label;
 }
 
 /** narrows an unknown form value to a Dayjs instance (DatePicker 受控值). */

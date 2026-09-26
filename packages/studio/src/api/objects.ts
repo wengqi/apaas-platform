@@ -18,6 +18,8 @@ import type { FieldType } from '../constants/fieldTypes.js';
 
 /** 单选项定义。 */
 export interface SelectOption {
+  /** 评审整改：存储值（留空回退 label），使流程条件/集成依据稳定编码 */
+  value?: string;
   id: string;
   label: string;
   color?: string;

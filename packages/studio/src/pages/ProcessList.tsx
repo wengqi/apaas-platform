@@ -30,6 +30,7 @@ import {
   EyeOutlined,
   MoreOutlined,
   DeleteOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -115,6 +116,23 @@ export default function ProcessList() {
     onError: () => message.error('删除失败'),
   });
 
+  /** 评审整改：手动触发流程此前无任何 UI 启动入口（后端 start 端点无消费方）。 */
+  const startMutation = useMutation({
+    mutationFn: (proc: ProcessDef) =>
+      processesApi.start(proc.id, { processKey: proc.apiName, variables: {} }),
+    onSuccess: (instance) => {
+      message.success(`流程已启动（实例 ${instance.id.slice(0, 8)}…）`);
+      void queryClient.invalidateQueries({ queryKey: ['processes', appId] });
+    },
+    onError: (err) => {
+      const axErr = err as {
+        response?: { data?: { error?: { message?: string } }; message?: string };
+        message?: string;
+      };
+      message.error(axErr.response?.data?.error?.message ?? axErr.message ?? '启动失败，请重试');
+    },
+  });
+
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
@@ -198,6 +216,8 @@ export default function ProcessList() {
                 onEdit={() => navigate(`/app/${appId}/processes/${proc.id}`)}
                 onMonitor={() => navigate(`/app/${appId}/processes/monitor?processId=${proc.id}`)}
                 onDelete={() => deleteMutation.mutate(proc.id)}
+                onStart={() => startMutation.mutate(proc)}
+                starting={startMutation.isPending}
                 deleting={deleteMutation.isPending}
               />
             </Col>
@@ -226,12 +246,16 @@ function ProcessCard({
   onEdit,
   onMonitor,
   onDelete,
+  onStart,
+  starting,
   deleting,
 }: {
   process: ProcessDef;
   onEdit: () => void;
   onMonitor: () => void;
   onDelete: () => void;
+  onStart: () => void;
+  starting: boolean;
   deleting: boolean;
 }) {
   const triggerMeta = getTriggerMeta(process.triggerType as string | undefined);
@@ -331,6 +355,16 @@ function ProcessCard({
           <Dropdown
             menu={{
               items: [
+                // 评审整改：手动触发流程的 UI 启动入口
+                ...(process.triggerType === 'MANUAL' && process.status === 'PUBLISHED'
+                  ? [
+                      {
+                        key: 'start',
+                        label: '启动实例',
+                        icon: <PlayCircleOutlined />,
+                      },
+                    ]
+                  : []),
                 { key: 'export-schema', label: '导出 Schema', icon: <ApartmentOutlined /> },
                 { type: 'divider' as const },
                 { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
@@ -359,6 +393,15 @@ function ProcessCard({
                       message.error('导出失败');
                     });
                 }
+                if (key === 'start') {
+                  Modal.confirm({
+                    title: '启动流程实例',
+                    content: `以手动触发方式启动流程「${process.name}」，是否继续？`,
+                    okText: '启动',
+                    cancelText: '取消',
+                    onOk: onStart,
+                  });
+                }
                 if (key === 'delete') {
                   Modal.confirm({
                     title: '删除流程',
@@ -372,7 +415,12 @@ function ProcessCard({
               },
             }}
           >
-            <Button type="text" size="small" icon={<MoreOutlined />} loading={deleting} />
+            <Button
+              type="text"
+              size="small"
+              icon={<MoreOutlined />}
+              loading={deleting || starting}
+            />
           </Dropdown>
         </div>
       </Space>

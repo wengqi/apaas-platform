@@ -8,7 +8,21 @@
  */
 
 import { useEffect, useRef, useState, Component, type ReactNode } from 'react';
-import { Button, Modal, Popconfirm, Skeleton, Space, Tag, Typography, message } from 'antd';
+import {
+  Alert,
+  Button,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Skeleton,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import {
   ArrowLeftOutlined,
   EyeOutlined,
@@ -23,7 +37,7 @@ import { processesApi, type ProcessDef, type WorkflowSchema } from '../api/proce
 import { objectsApi } from '../api/objects.js';
 import { pagesApi } from '../api/pages.js';
 import { useProcessEditorStore } from '../stores/processEditor.js';
-import { getProcessStatusMeta, getTriggerMeta } from '../constants/process.js';
+import { getProcessStatusMeta, getTriggerMeta, TRIGGER_OPTIONS } from '../constants/process.js';
 import SimplifiedEditor from '../components/process/SimplifiedEditor.js';
 
 const { Title } = Typography;
@@ -91,6 +105,9 @@ export default function ProcessEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processDef]);
 
+  /** 评审整改：触发器配置弹窗开关 */
+  const [triggerOpen, setTriggerOpen] = useState(false);
+
   /** store 是否已加载当前流程。 */
   const storeLoaded = store.processDef?.id === processId;
 
@@ -128,6 +145,15 @@ export default function ProcessEditor() {
       const currentSchema = store.schema ?? processDef?.workflowSchema;
       if (currentSchema?.edges && currentSchema.edges.length > 0) {
         finalSchema = { ...schema, edges: currentSchema.edges };
+      }
+    }
+    // 评审 P1-1：打开已保存流程时，挂载期 reconcile 的首次导出若与已保存
+    // 基线内容一致，则不置脏（此前"打开即脏"+撤销栈被污染）
+    if (!store.dirty) {
+      const baseline = JSON.stringify(processDef?.workflowSchema ?? null);
+      if (JSON.stringify(finalSchema) === baseline) {
+        store.markSaved();
+        return;
       }
     }
     store.setSchema(finalSchema, { skipHistory: true });
@@ -206,6 +232,16 @@ export default function ProcessEditor() {
         canRedo={historyApi?.canRedo ?? false}
         onUndo={() => historyApi?.undo()}
         onRedo={() => historyApi?.redo()}
+        onConfigureTrigger={() => setTriggerOpen(true)}
+      />
+      <TriggerConfigModal
+        open={triggerOpen}
+        processDef={processDef}
+        onClose={() => setTriggerOpen(false)}
+        onSaved={() => {
+          setTriggerOpen(false);
+          void queryClient.invalidateQueries({ queryKey: ['process', processId] });
+        }}
       />
       {/* 编辑器主体 — key={processId} 确保切换流程时组件重新挂载 */}
       <EditorErrorBoundary key={processId}>
@@ -241,6 +277,8 @@ interface ProcessEditorToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  /** 评审整改：触发器配置入口（此前创建后无法配置触发器） */
+  onConfigureTrigger: () => void;
 }
 
 function ProcessEditorToolbar({
@@ -256,6 +294,7 @@ function ProcessEditorToolbar({
   canRedo,
   onUndo,
   onRedo,
+  onConfigureTrigger,
 }: ProcessEditorToolbarProps) {
   const statusMeta = getProcessStatusMeta(processDef.status);
   const triggerMeta = getTriggerMeta(processDef.triggerType as string | undefined);
@@ -299,6 +338,11 @@ function ProcessEditorToolbar({
             {processDef.name}
           </Title>
           <Tag color={statusMeta.tagColor}>{statusMeta.label}</Tag>
+          <Tooltip title="配置触发器">
+            <Tag color="blue" style={{ cursor: 'pointer', margin: 0 }} onClick={onConfigureTrigger}>
+              {triggerMeta.label}
+            </Tag>
+          </Tooltip>
           {dirty && <Tag color="orange">未保存</Tag>}
         </Space>
       </Space>
@@ -410,4 +454,88 @@ export class EditorErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
     }
     return this.props.children;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 触发器配置弹窗（评审整改：此前"创建后再配置"没有配置界面）
+// ---------------------------------------------------------------------------
+
+function TriggerConfigModal({
+  open,
+  processDef,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  processDef: ProcessDef;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form] = Form.useForm<{ triggerType: string; cron?: string }>();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      form.setFieldsValue({
+        triggerType: processDef.triggerType ?? 'MANUAL',
+        cron: processDef.cron ?? undefined,
+      });
+    }
+  }, [open, processDef, form]);
+
+  const triggerType = Form.useWatch('triggerType', form);
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
+      setSaving(true);
+      await processesApi.update(processDef.id, {
+        triggerType: values.triggerType,
+        ...(values.triggerType === 'SCHEDULED' ? { cron: values.cron } : {}),
+      } as never);
+      message.success('触发器已更新；已发布流程将回退为草稿，请重新发布');
+      onSaved();
+    } catch (err) {
+      if (err && typeof err === 'object' && 'errorFields' in err) {
+        return; // 校验错误由 Form 展示
+      }
+      message.error('触发器更新失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="触发器配置"
+      open={open}
+      onCancel={onClose}
+      onOk={handleOk}
+      confirmLoading={saving}
+      okText="保存"
+      cancelText="取消"
+      destroyOnClose
+    >
+      <Form form={form} layout="vertical">
+        <Form.Item name="triggerType" label="触发类型" rules={[{ required: true }]}>
+          <Select options={TRIGGER_OPTIONS} />
+        </Form.Item>
+        {triggerType === 'SCHEDULED' && (
+          <Form.Item
+            name="cron"
+            label="Cron 表达式"
+            rules={[{ required: true, message: '请输入 Cron 表达式' }]}
+            tooltip="五段式，如 0 9 * * 1-5 表示工作日 9 点"
+          >
+            <Input placeholder="0 9 * * 1-5" />
+          </Form.Item>
+        )}
+      </Form>
+      <Alert
+        type="info"
+        showIcon
+        message="修改触发器后流程会回退为草稿状态，需重新发布才会生效。"
+      />
+    </Modal>
+  );
 }

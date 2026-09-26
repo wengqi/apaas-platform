@@ -518,7 +518,7 @@ function DefaultValueItem({
           disabled={isSystem}
           options={options
             .filter((o) => !!o.label)
-            .map((o) => ({ value: o.label, label: o.label }))}
+            .map((o) => ({ value: o.value ?? o.label, label: o.label }))}
         />
       </Form.Item>
     );
@@ -617,6 +617,14 @@ function OptionManager({
               placeholder="选项名称"
               size="small"
               style={{ flex: 1 }}
+            />
+            {/* 评审整改：存储值（留空则用选项名称）——供流程条件/集成使用稳定编码 */}
+            <Input
+              value={opt.value ?? ''}
+              onChange={(e) => updateOption(opt.id, { value: e.target.value || undefined })}
+              placeholder="存储值(可选)"
+              size="small"
+              style={{ width: 120, fontFamily: 'monospace' }}
             />
             {/* 默认 */}
             <Tooltip title={multiple ? '设为默认' : '设为默认(单选互斥)'}>

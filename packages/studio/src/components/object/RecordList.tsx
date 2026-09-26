@@ -267,18 +267,24 @@ export default function RecordList({ object }: RecordListProps) {
     },
   ];
 
-  /** 业务字段列(根据字段类型渲染值)。 */
-  const businessColumns: ColumnsType<RecordItem> = object.fields.map((field) => ({
-    title: field.label,
-    key: field.apiName,
-    width: 160,
-    sorter: true,
-    sortOrder:
-      sort?.field === field.apiName ? (sort.order === 'asc' ? 'ascend' : 'descend') : undefined,
-    render: (_: unknown, record: RecordItem) => (
-      <RecordCellValue field={field} value={record.data[field.apiName]} />
-    ),
-  }));
+  /**
+   * 业务字段列(根据字段类型渲染值)。
+   * 评审整改：排除 isSystem 系统字段(创建人/创建时间/更新人/更新时间/拥有者)，
+   * 其已由下方 systemColumns 从记录顶层字段统一渲染，避免同一系统字段出现两列。
+   */
+  const businessColumns: ColumnsType<RecordItem> = object.fields
+    .filter((field) => !field.isSystem)
+    .map((field) => ({
+      title: field.label,
+      key: field.apiName,
+      width: 160,
+      sorter: true,
+      sortOrder:
+        sort?.field === field.apiName ? (sort.order === 'asc' ? 'ascend' : 'descend') : undefined,
+      render: (_: unknown, record: RecordItem) => (
+        <RecordCellValue field={field} value={record.data[field.apiName]} />
+      ),
+    }));
 
   /** 操作列。 */
   const actionColumn: ColumnsType<RecordItem>[number] = {
@@ -640,7 +646,10 @@ function RecordCellValue({ field, value }: { field: Field; value: unknown }) {
   const type = field.type;
 
   if (type === 'single_select') {
-    const opt = (field.config.options ?? []).find((o) => o.label === value);
+    // 评审整改：存储值可能是 value 或历史 label，两者都反查展示文案
+    const opt = (field.config.options ?? []).find(
+      (o) => o.label === value || (o.value ?? o.label) === value,
+    );
     return <Tag color={opt?.color ?? 'default'}>{String(value)}</Tag>;
   }
   if (type === 'multi_select') {
@@ -648,7 +657,9 @@ function RecordCellValue({ field, value }: { field: Field; value: unknown }) {
     return (
       <Space size={4} wrap>
         {arr.map((v, i) => {
-          const opt = (field.config.options ?? []).find((o) => o.label === v);
+          const opt = (field.config.options ?? []).find(
+            (o) => o.label === v || (o.value ?? o.label) === v,
+          );
           return (
             <Tag key={i} color={opt?.color ?? 'default'} style={{ margin: 0 }}>
               {String(v)}
@@ -714,7 +725,8 @@ function FilterValueInput({
         onChange={(v) => onChange(v)}
         style={{ flex: 1, minWidth: 140 }}
         placeholder="选择值"
-        options={options.map((o) => ({ value: o.label, label: o.label }))}
+        // 评审整改：筛选条件按存储值（value）比较，与记录存储一致
+        options={options.map((o) => ({ value: o.value ?? o.label, label: o.label }))}
       />
     );
   }

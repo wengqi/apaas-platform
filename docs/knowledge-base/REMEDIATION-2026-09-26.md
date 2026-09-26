@@ -126,12 +126,65 @@
 可确证的失效路径，修复即消除该路径。若后续再次出现同类现象，可先用"把侧栏节点移入 `#root`
 后点击"这一判定手法快速二分（已写入本节）。
 
+## 五之三、数据层高严重度项闭环（A-H1 / A-H2）
+
+### A-H2 可空列唯一约束失效 → partial unique index
+
+**缺陷**：PostgreSQL 中 NULL 互不相等，使既有唯一约束在参与列为 NULL 时完全失效——
+`org_role_grants(org_id, role_id, app_id IS NULL)` 可无限重复插入；
+`users(tenant_id IS NULL)` 平台超管同邮箱可重复创建。
+
+**修复**（迁移 `20260926190000_partial_unique_indexes_nullable_columns`，Prisma schema 无法
+表达 partial unique，手写迁移并保留原约束覆盖 NOT NULL 场景）：
+- `users_platform_email_unique`：`UNIQUE (email) WHERE tenant_id IS NULL`
+- `org_role_grants_global_scope_unique`：`UNIQUE (org_id, role_id) WHERE app_id IS NULL`
+- 附带 `org_role_grants_app_scope_idx`（app_id 非空的查询路径）
+- 迁移内含历史重复行清理（保留 id 最小者）
+
+**验证**（事务内插入重复行后回滚，不留数据）：
+```
+ERROR: duplicate key value violates unique constraint "users_platform_email_unique"
+ERROR: duplicate key value violates unique constraint "org_role_grants_global_scope_unique"
+```
+
+### A-H1 records JSONB 查询算子与 GIN 错配 + 业务字段排序语义错误
+
+**缺陷**：
+1. 过滤条件编译为 `data->'f' = x` / `data->>'f' LIKE ...`，**无法命中 GIN**
+   （默认 jsonb_ops 仅加速 `@>`/`?`/`?|`/`?&`）；
+2. 业务字段排序退化为**整列 JSONB 排序**（按 JSON 二进制序），与用户语义不符。
+
+**修复**：
+- 新增 `apps/gateway/src/record/record-query.ts`（纯函数，17 项单测）：
+  `extractContainmentFilter`（AND 树内的 `==` 提取为 jsonb 包含对象）、
+  `parseSortSpec`（兼容 `asc/desc` 与 AntD 的 `ascend/descend`）、
+  `buildFieldOrderSql`（字段白名单校验 + 数值字段 `::numeric` + `NULLS LAST`）、
+  `compareFieldValues`（不支持下推时的内存比较器）。
+- `RecordService.query` 新增两条业务字段排序子路径：
+  a) **GIN 下推**：条件可完整表达为包含（`rest === null`）且无行级权限条件时，
+     raw SQL 完成 `data @> $::jsonb` + `ORDER BY <typed expr>` + `LIMIT/OFFSET` + `COUNT`，
+     再按 id 取回记录；b) **回退**：其余情况取有界候选（5000）× 内存排序，语义同样正确。
+- 过滤（无排序或系统列排序）保持 Prisma path 查询语义不变。
+
+**验证**：
+- GIN 可用性（EXPLAIN，硬证据）：
+  `Bitmap Index Scan on records_data_idx` / `Index Cond: (data @> '{"status":"OPEN"}'::jsonb)`；
+  对照旧算子 `(data->>'status') = 'OPEN'` → **Seq Scan（无索引可用）**。
+- 排序语义（API + UI 双层）：
+  `sort=amount:desc` → `1000,200,10,9,2`；`asc` → `2,9,10,200,1000`（旧实现会按 JSON 序错排）。
+  业务数据对照（borrow_request）：旧 `ORDER BY data` 时"按 status 排序"被 asset_name 主导，
+  新实现严格按 status 排序。
+- 新增 `e2e/13-record-sort.spec.ts`：**真实 UI** 点击"金额"列头升/降序并校验行顺序（2 用例）。
+- 全量：gateway 单测 **508/508**、完整 e2e **53/53**、typecheck 11/11。
+
+**遗留（如实记录）**：LIKE/范围/OR 类条件本质上无法用 GIN 加速（jsonb_ops 不支持），
+仍依赖 `(tenant_id, object_id)` btree 收窄；若后续出现大表慢查，建议按对象维度增加
+表达式索引或引入物化列。
+
 ## 六、仍未整改（明确留待下迭代）
 
 | 项 | 原因 / 后续 |
 |---|---|
-| records JSONB GIN 索引与查询算子错配 | 需改查询构造为 `@>` 承载或加表达式索引，涉及翻译器与回归面较大，建议独立排期 + 压测 |
-| 可空列唯一约束失效（OrgRoleGrant / 平台超管邮箱） | 需 partial unique index（手写迁移），低风险但需专门验证 |
 | 流程节点写库未复用 RecordService（P1-5） | 需抽 RecordWriter 内核，改造面大 |
 | 单文件 400 行、React Query key 治理、queryKeys 死代码、静态审计 UI 等 | P2/P3 债务，按迭代消化 |
 

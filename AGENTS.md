@@ -234,7 +234,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
     本地 e2e 50/50、单测 492/492 通过
 - ✅ BUG-05 已闭环：流程配置侧栏改为在应用 root 内渲染（原 body portal 事件
   委托不可靠），新增 e2e/12-process-sidebar.spec.ts 守护（含负向对照）
-- ⬜ 残留（下迭代）：records JSONB 的 GIN 索引与查询算子错配；可空列唯一约束；
-  流程节点写库未复用 RecordService；单文件 400 行拆分；React Query key 治理
+- ✅ 数据层高严重度项已闭环：可空列 partial unique index（users/org_role_grants）、
+  records JSONB 等值过滤改 `@>` 命中 GIN、业务字段排序按类型 cast（A-H1/A-H2）
+- ⬜ 残留（下迭代）：流程节点写库未复用 RecordService（P1-5）；单文件 400 行拆分；
+  React Query key 治理；LIKE/范围类条件无法用 GIN（需大表压测后另行评估）
 - 🟡 风险：多副本部署需确认 Redis 锁可用（已内置降级为进程内互斥）；
   水平扩展前建议压测 BullMQ 与 Redis 连接数

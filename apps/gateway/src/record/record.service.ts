@@ -20,6 +20,13 @@ import { AutoNumberGenerator } from '../object/auto-number.js';
 import { TriggerService } from '../process/trigger.service.js';
 import { translateCondition } from '../permission/condition-translator.js';
 import { jsonLogicToPrismaWhere } from '../shared/jsonlogic-to-prisma.js';
+import {
+  buildFieldOrderSql,
+  compareFieldValues,
+  extractContainmentFilter,
+  parseSortSpec,
+  type SortSpec,
+} from './record-query.js';
 import type { PermissionContext } from '../auth/authenticated-request.js';
 import { writeAudit } from '../common/audit.js';
 
@@ -65,6 +72,12 @@ export interface PaginatedRecords {
 
 /** 系统字段（直接存于 records 表列，非 data JSON）。 */
 const SYSTEM_SORT_FIELDS = new Set(['id', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy']);
+
+/**
+ * 评审 A-H1：GIN 下推路径的候选行上限。
+ * 超过该规模时放弃 raw 排序下推，改走内存排序（有界），避免一次性载入过多行。
+ */
+const RAW_SORT_CANDIDATE_CAP = 5000;
 
 /** 自动编号配置的最小结构。 */
 interface AutoNumberFieldConfig {
@@ -162,24 +175,148 @@ export class RecordService {
       }
     }
 
-    // 构建 orderBy
-    const orderBy = this.buildOrderBy(params.sort);
+    // 排序计划（评审 A-H1）：系统列排序走 Prisma；业务字段排序需 raw/内存排序
+    const sortSpec = parseSortSpec(params.sort);
+    const isBusinessSort = Boolean(sortSpec && !SYSTEM_SORT_FIELDS.has(sortSpec.field));
 
-    const [records, total] = await Promise.all([
-      prisma.record.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.record.count({ where }),
-    ]);
+    const pageResult = isBusinessSort
+      ? await this.queryWithBusinessSort({
+          tenantId,
+          objectId,
+          where,
+          filterRule: this.parseFilterRule(params.filter),
+          sortSpec: sortSpec!,
+          hasPermissionCondition: Boolean(this.buildConditionWhere(permissionContext)),
+          page,
+          pageSize,
+          fieldScope: permissionContext?.fieldScope,
+        })
+      : await this.queryWithColumnSort({ where, sort: params.sort, page, pageSize });
 
     return {
-      items: records.map((r) => this.toResult(r, permissionContext?.fieldScope)),
-      total,
+      items: pageResult.records.map((r) => this.toResult(r, permissionContext?.fieldScope)),
+      total: pageResult.total,
       page,
       pageSize,
+    };
+  }
+
+  /** 系统列排序路径（Prisma 原生分页，性能与语义均正确）。 */
+  private async queryWithColumnSort(params: {
+    where: Prisma.RecordWhereInput;
+    sort?: string;
+    page: number;
+    pageSize: number;
+  }): Promise<{
+    records: Prisma.RecordGetPayload<Record<string, never>>[];
+    total: number;
+  }> {
+    const { where, sort, page, pageSize } = params;
+    const orderBy = this.buildOrderBy(sort);
+    const [records, total] = await Promise.all([
+      prisma.record.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.record.count({ where }),
+    ]);
+    return { records, total };
+  }
+
+  /**
+   * 业务字段排序路径（评审 A-H1）。
+   *
+   * 两条子路径：
+   *  a) **GIN 下推**：过滤条件可完整表达为 jsonb 包含（AND 树内的 == ）且无行级权限
+   *     条件时，用 raw SQL 完成 `data @> $::jsonb`（命中 records_data_idx 的 GIN 索引）
+   *     + ORDER BY（按字段类型 cast） + LIMIT/OFFSET + COUNT，随后按 id 取回记录。
+   *  b) **回退**：其余情况（LIKE/比较/OR/权限条件等）走 Prisma 取候选（有界），
+   *     按字段类型在内存中排序后分页，保证排序语义正确（此前退化为整列 JSONB 序）。
+   */
+  private async queryWithBusinessSort(params: {
+    tenantId: string;
+    objectId: string;
+    where: Prisma.RecordWhereInput;
+    filterRule: unknown;
+    sortSpec: SortSpec;
+    hasPermissionCondition: boolean;
+    page: number;
+    pageSize: number;
+    fieldScope?: string[] | null;
+  }): Promise<{
+    records: Prisma.RecordGetPayload<Record<string, never>>[];
+    total: number;
+  }> {
+    const {
+      tenantId,
+      objectId,
+      where,
+      filterRule,
+      sortSpec,
+      hasPermissionCondition,
+      page,
+      pageSize,
+    } = params;
+
+    const obj = await prisma.objectMeta.findFirst({ where: { id: objectId, tenantId } });
+    const fields = this.parseFields(obj?.fields).map((f) => ({ apiName: f.apiName, type: f.type }));
+
+    const extraction = extractContainmentFilter(filterRule);
+    const canPushDown = Boolean(extraction) && extraction!.rest === null && !hasPermissionCondition;
+
+    if (canPushDown && extraction) {
+      const orderSql = buildFieldOrderSql([sortSpec], fields);
+      if (orderSql) {
+        const containmentJson = JSON.stringify(extraction.containment);
+        const offset = (page - 1) * pageSize;
+
+        const ids = await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT r.id FROM records r
+          WHERE r.tenant_id = ${tenantId}
+            AND r.object_id = ${objectId}
+            AND r.data @> ${containmentJson}::jsonb
+          ORDER BY ${Prisma.raw(orderSql)}
+          LIMIT ${pageSize} OFFSET ${offset}
+        `;
+        const countRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+          SELECT count(*)::bigint AS count FROM records r
+          WHERE r.tenant_id = ${tenantId}
+            AND r.object_id = ${objectId}
+            AND r.data @> ${containmentJson}::jsonb
+        `;
+
+        const orderedIds = ids.map((r) => r.id);
+        const rows = orderedIds.length
+          ? await prisma.record.findMany({ where: { id: { in: orderedIds }, tenantId, objectId } })
+          : [];
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        return {
+          records: orderedIds.map((id) => byId.get(id)).filter(Boolean) as typeof rows,
+          total: Number(countRows[0]?.count ?? 0),
+        };
+      }
+    }
+
+    // 回退：Prisma 取候选（有界）→ 按字段类型内存排序 → 分页
+    const candidates = await prisma.record.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: RAW_SORT_CANDIDATE_CAP,
+    });
+    const total = await prisma.record.count({ where });
+
+    const sorted = [...candidates].sort((a, b) => {
+      const av = ((a.data ?? {}) as Record<string, unknown>)[sortSpec.field];
+      const bv = ((b.data ?? {}) as Record<string, unknown>)[sortSpec.field];
+      const cmp = compareFieldValues(
+        av,
+        bv,
+        fields.find((f) => f.apiName === sortSpec.field)?.type ?? 'text',
+      );
+      if (cmp !== 0) return sortSpec.dir === 'asc' ? cmp : -cmp;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0; // 稳定排序
+    });
+
+    return {
+      records: sorted.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+      total,
     };
   }
 
@@ -643,6 +780,17 @@ export class RecordService {
    * 解析 filter 查询参数（JsonLogic JSON 字符串）为 Prisma where 片段。
    * 接受格式：JsonLogic JSON 对象，如 {"==": [{"var":"status"}, "active"]}
    */
+  /** 解析 filter 原始 JsonLogic 规则（评审 A-H1：containment 提取需要原始规则）。 */
+  private parseFilterRule(filterStr?: string): unknown {
+    if (!filterStr) return null;
+    try {
+      const parsed = JSON.parse(filterStr);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
   private parseFilter(filterStr?: string): Prisma.RecordWhereInput | null {
     if (!filterStr) return null;
     try {

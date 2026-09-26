@@ -148,6 +148,8 @@ export interface ViewConfig {
   filters?: object | null;
   sorts?: ViewSortConfig[];
   fields?: ViewFieldConfig[];
+  /** 默认视图标记（后端无独立列，存于 config JSON） */
+  isDefault?: boolean;
 }
 
 /** 视图信息(列表/详情)。 */
@@ -171,19 +173,19 @@ export interface ViewInfo {
 // 请求体
 // ---------------------------------------------------------------------------
 
+/** 与后端 CreateObjectDto 对齐：字段名为 name（非 label）。 */
 export interface CreateObjectRequest {
   apiName: string;
-  label: string;
+  name: string;
   description?: string;
   icon?: string;
 }
 
+/** 与后端 UpdateObjectDto 对齐：字段名为 name（非 label）。 */
 export interface UpdateObjectRequest {
-  label?: string;
+  name?: string;
   description?: string;
   icon?: string;
-  nameFieldId?: string;
-  recordLevelSecurity?: boolean;
 }
 
 export interface CreateFieldRequest {
@@ -214,7 +216,6 @@ export interface UpdateFieldRequest {
 export interface CreateViewRequest {
   name: string;
   type: ViewType;
-  isDefault?: boolean;
   config?: ViewConfig;
 }
 
@@ -278,29 +279,19 @@ export const objectsApi = {
       return { ...data, label: data.label ?? data.name };
     }),
 
-  /** 创建对象 — 前端用 label，后端用 name，双向转换 */
+  /** 创建对象 — 请求字段与后端 CreateObjectDto 一致（name）；响应统一补 label 便于展示 */
   create: (appId: string, data: CreateObjectRequest) =>
-    client
-      .post<ApiResponse<ObjectInfo>>(`/api/apps/${appId}/objects`, {
-        ...data,
-        name: data.label,
-      })
-      .then((res) => {
-        const d = res.data.data as ObjectInfo;
-        return { ...d, label: d.label ?? d.name };
-      }),
+    client.post<ApiResponse<ObjectInfo>>(`/api/apps/${appId}/objects`, data).then((res) => {
+      const d = res.data.data as ObjectInfo;
+      return { ...d, label: d.label ?? d.name };
+    }),
 
-  /** 更新对象 — 前端用 label，后端用 name，双向转换 */
+  /** 更新对象 — 请求字段与后端 UpdateObjectDto 一致（name）；响应统一补 label 便于展示 */
   update: (objectId: string, data: UpdateObjectRequest) =>
-    client
-      .put<ApiResponse<ObjectInfo>>(`/api/objects/${objectId}`, {
-        ...data,
-        ...(data.label !== undefined && { name: data.label }),
-      })
-      .then((res) => {
-        const d = res.data.data as ObjectInfo;
-        return { ...d, label: d.label ?? d.name };
-      }),
+    client.put<ApiResponse<ObjectInfo>>(`/api/objects/${objectId}`, data).then((res) => {
+      const d = res.data.data as ObjectInfo;
+      return { ...d, label: d.label ?? d.name };
+    }),
 
   /** 删除对象 */
   delete: (objectId: string) =>
@@ -326,17 +317,21 @@ export const objectsApi = {
       .delete<ApiResponse<{ deleted: boolean }>>(`/api/objects/${objectId}/fields/${fieldId}`)
       .then((res) => res.data.data as { deleted: boolean }),
 
-  /** 视图列表 */
+  /** 视图列表 — isDefault 存于 config JSON，统一映射到顶层便于展示 */
   listViews: (objectId: string) =>
-    client
-      .get<ApiResponse<ViewInfo[]>>(`/api/objects/${objectId}/views`)
-      .then((res) => res.data.data as ViewInfo[]),
+    client.get<ApiResponse<ViewInfo[]>>(`/api/objects/${objectId}/views`).then((res) =>
+      (res.data.data as ViewInfo[]).map((v) => ({
+        ...v,
+        isDefault: v.config?.isDefault === true,
+      })),
+    ),
 
   /** 创建视图 */
   createView: (objectId: string, data: CreateViewRequest) =>
-    client
-      .post<ApiResponse<ViewInfo>>(`/api/objects/${objectId}/views`, data)
-      .then((res) => res.data.data as ViewInfo),
+    client.post<ApiResponse<ViewInfo>>(`/api/objects/${objectId}/views`, data).then((res) => {
+      const v = res.data.data as ViewInfo;
+      return { ...v, isDefault: v.config?.isDefault === true };
+    }),
 
   /** 更新视图 */
   updateView: (viewId: string, data: UpdateViewRequest) =>
@@ -365,16 +360,16 @@ export const objectsApi = {
         })
         .then((res) => res.data.data as PaginatedRecords),
 
-    /** 创建记录 */
+    /** 创建记录 — 后端契约：body 即字段键值对（key 为 apiName），不要再包一层 data */
     create: (objectId: string, data: Record<string, unknown>) =>
       client
-        .post<ApiResponse<RecordItem>>(`/api/objects/${objectId}/records`, { data })
+        .post<ApiResponse<RecordItem>>(`/api/objects/${objectId}/records`, data)
         .then((res) => res.data.data as RecordItem),
 
-    /** 更新记录(部分更新) */
+    /** 更新记录(部分更新) — 同创建契约，body 即字段键值对 */
     update: (recordId: string, data: Record<string, unknown>) =>
       client
-        .put<ApiResponse<RecordItem>>(`/api/records/${recordId}`, { data })
+        .put<ApiResponse<RecordItem>>(`/api/records/${recordId}`, data)
         .then((res) => res.data.data as RecordItem),
 
     /** 删除记录 */

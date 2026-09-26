@@ -179,28 +179,64 @@ function FieldFormItem({ field }: { field: Field }) {
   );
 }
 
-/** 按字段类型渲染表单控件。 */
-function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) {
+/**
+ * 按字段类型渲染表单控件。
+ * Form.Item 会向直接子组件注入 value/onChange（受控绑定）——必须接收并透传给
+ * 实际的 AntD 控件，否则输入值不会进入 form store，必填校验永远失败。
+ */
+function FieldControl({
+  field,
+  disabled,
+  value,
+  onChange,
+}: {
+  field: Field;
+  disabled: boolean;
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+}) {
   const type = field.type;
 
   if (disabled) {
-    // 只读字段:展示为禁用 Input
-    return <Input disabled placeholder="系统自动生成" />;
+    // 只读字段:展示为禁用 Input(仅需 value 展示,无需 onChange)
+    return (
+      <Input
+        disabled
+        placeholder="系统自动生成"
+        value={typeof value === 'string' ? value : undefined}
+      />
+    );
   }
 
   switch (type) {
     case 'long_text':
     case 'rich_text':
-      return <Input.TextArea rows={3} placeholder={`请输入${field.label}`} />;
+      return (
+        <Input.TextArea
+          rows={3}
+          placeholder={`请输入${field.label}`}
+          value={typeof value === 'string' ? value : undefined}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      );
     case 'number':
     case 'percent':
-      return <InputNumber style={{ width: '100%' }} placeholder={`请输入${field.label}`} />;
+      return (
+        <InputNumber
+          style={{ width: '100%' }}
+          placeholder={`请输入${field.label}`}
+          value={typeof value === 'number' ? value : undefined}
+          onChange={(v) => onChange?.(v ?? null)}
+        />
+      );
     case 'currency':
       return (
         <InputNumber
           style={{ width: '100%' }}
           placeholder={`请输入${field.label}`}
           addonAfter={field.config.currency?.code ?? 'CNY'}
+          value={typeof value === 'number' ? value : undefined}
+          onChange={(v) => onChange?.(v ?? null)}
         />
       );
     case 'single_select': {
@@ -213,6 +249,8 @@ function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) 
             value: o.label,
             label: o.label,
           }))}
+          value={typeof value === 'string' ? value : undefined}
+          onChange={(v) => onChange?.(v)}
         />
       );
     }
@@ -227,18 +265,51 @@ function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) 
             value: o.label,
             label: o.label,
           }))}
+          value={Array.isArray(value) ? (value as string[]) : undefined}
+          onChange={(v) => onChange?.(v)}
         />
       );
     }
     case 'date':
-      return <DatePicker style={{ width: '100%' }} placeholder={`请选择${field.label}`} />;
+      return (
+        <DatePicker
+          style={{ width: '100%' }}
+          placeholder={`请选择${field.label}`}
+          value={isDayjs(value) ? value : undefined}
+          onChange={(d) => onChange?.(d)}
+        />
+      );
     case 'date_time':
-      return <DatePicker showTime style={{ width: '100%' }} placeholder={`请选择${field.label}`} />;
+      return (
+        <DatePicker
+          showTime
+          style={{ width: '100%' }}
+          placeholder={`请选择${field.label}`}
+          value={isDayjs(value) ? value : undefined}
+          onChange={(d) => onChange?.(d)}
+        />
+      );
     case 'checkbox':
-      return <Switch />;
+      return <Switch checked={value === true} onChange={(v) => onChange?.(v)} />;
     default:
-      return <Input placeholder={`请输入${field.label}`} />;
+      return (
+        <Input
+          placeholder={`请输入${field.label}`}
+          value={typeof value === 'string' ? value : undefined}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      );
   }
+}
+
+/** narrows an unknown form value to a Dayjs instance (DatePicker 受控值). */
+function isDayjs(v: unknown): v is dayjs.Dayjs {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    'isValid' in v &&
+    typeof (v as dayjs.Dayjs).isValid === 'function'
+  );
 }
 
 // ---------------------------------------------------------------------------

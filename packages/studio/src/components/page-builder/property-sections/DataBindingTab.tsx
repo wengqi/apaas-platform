@@ -12,10 +12,22 @@ import { PlaceholderTab } from './shared.js';
 
 const { Text } = Typography;
 
+/** 数据类组件的默认数据源 prop key（组件模板初始 props 不含该 key，但运行时消费）。 */
+const DATA_SOURCE_KEYS: Record<string, string> = {
+  data_table: 'data',
+  list: 'data',
+  detail_card: 'record',
+  chart: 'data',
+};
+
 /** 排除系统 / 内部 prop 的可绑定属性 key 列表。 */
 function getBindablePropKeys(node: ComponentNode): string[] {
   const exclude = new Set(['style', 'className', 'events']);
-  return Object.keys(node.props).filter((k) => !exclude.has(k));
+  const keys = Object.keys(node.props).filter((k) => !exclude.has(k));
+  // 数据类组件补上数据源 key 的绑定入口（否则无 UI 途径绑定视图模型变量）
+  const dsKey = DATA_SOURCE_KEYS[node.type];
+  if (dsKey && !keys.includes(dsKey)) keys.unshift(dsKey);
+  return keys;
 }
 
 /** 判断属性值是否为绑定表达式。 */

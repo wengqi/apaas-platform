@@ -1,12 +1,4 @@
-import {
-  Skeleton,
-  Space,
-  Tabs,
-  Tag,
-  Tooltip,
-  Typography,
-  message,
-} from 'antd';
+import { Skeleton, Space, Tabs, Tag, Tooltip, Typography, message } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { objectsApi, type UpdateObjectRequest } from '../../api/objects.js';
@@ -57,7 +49,7 @@ export default function ObjectDetail() {
   const handleLabelChange = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed || trimmed === object.label) return;
-    updateMutation.mutate({ label: trimmed });
+    updateMutation.mutate({ name: trimmed });
   };
 
   /** 描述内联保存。 */

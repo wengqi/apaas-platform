@@ -102,7 +102,8 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
       createMutation.mutate({
         name: values.name,
         type: values.type,
-        isDefault: values.isDefault,
+        // 后端 CreateViewDto 仅接受 name/type/config，isDefault 存入 config JSON
+        config: values.isDefault ? { isDefault: true } : undefined,
       });
     } catch {
       /* 校验错误已由 Form 展示 */

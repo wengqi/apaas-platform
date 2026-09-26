@@ -1,4 +1,14 @@
-import { Button, Popconfirm, Segmented, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
+import {
+  Button,
+  Popconfirm,
+  Segmented,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import {
   ArrowLeftOutlined,
   UndoOutlined,
@@ -43,9 +53,6 @@ export default function BuilderToolbar() {
       }
       return pagesApi.update(state.currentPage.id, {
         name: state.currentPage.name,
-        apiName: state.currentPage.apiName,
-        type: state.currentPage.type,
-        objectId: state.currentPage.objectId,
         schema: state.schema,
       });
     },
@@ -74,9 +81,6 @@ export default function BuilderToolbar() {
       const pageIdVal = state.currentPage.id;
       await pagesApi.update(pageIdVal, {
         name: state.currentPage.name,
-        apiName: state.currentPage.apiName,
-        type: state.currentPage.type,
-        objectId: state.currentPage.objectId,
         schema: state.schema,
       });
       return pagesApi.publish(pageIdVal);
@@ -194,11 +198,7 @@ export default function BuilderToolbar() {
           cancelText="取消"
           onConfirm={() => publishMutation.mutate()}
         >
-          <Button
-            type="primary"
-            icon={<RocketOutlined />}
-            loading={publishMutation.isPending}
-          >
+          <Button type="primary" icon={<RocketOutlined />} loading={publishMutation.isPending}>
             发布
           </Button>
         </Popconfirm>

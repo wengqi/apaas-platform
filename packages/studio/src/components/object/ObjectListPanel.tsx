@@ -56,8 +56,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
     const kw = keyword.trim().toLowerCase();
     if (!kw) return objects;
     return objects.filter(
-      (o) =>
-        o.label.toLowerCase().includes(kw) || o.apiName.toLowerCase().includes(kw),
+      (o) => o.label.toLowerCase().includes(kw) || o.apiName.toLowerCase().includes(kw),
     );
   }, [objects, keyword]);
 
@@ -77,9 +76,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
         response?: { data?: { error?: { message?: string } }; message?: string };
         message?: string;
       };
-      message.error(
-        axErr.response?.data?.error?.message ?? axErr.message ?? '创建失败,请重试',
-      );
+      message.error(axErr.response?.data?.error?.message ?? axErr.message ?? '创建失败,请重试');
     },
   });
 
@@ -89,7 +86,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
       const values = await form.validateFields();
       createMutation.mutate({
         apiName: values.apiName,
-        label: values.label,
+        name: values.label,
         description: values.description,
         icon: values.icon,
       });
@@ -115,7 +112,10 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
         message?: string;
       };
       message.error(
-        axErr.response?.data?.message ?? axErr.response?.data?.error?.message ?? axErr.message ?? '删除失败',
+        axErr.response?.data?.message ??
+          axErr.response?.data?.error?.message ??
+          axErr.message ??
+          '删除失败',
       );
     },
   });

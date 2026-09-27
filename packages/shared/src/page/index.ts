@@ -260,7 +260,19 @@ export interface UpdatePageRequest {
 // ---------------------------------------------------------------------------
 
 /** 图表类型。 */
-export type ChartType = 'bar' | 'line' | 'pie' | 'funnel';
+export type ChartType =
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'funnel'
+  // —— 页面模块对齐批次C4 扩展 ——
+  | 'area'
+  | 'scatter'
+  | 'bar_horizontal'
+  | 'radar'
+  | 'waterfall'
+  | 'wordcloud'
+  | 'combo';
 
 /** 聚合方式。 */
 export type ChartAggregation = 'sum' | 'count' | 'avg' | 'max' | 'min';

@@ -64,6 +64,11 @@ import {
   renderText,
 } from './renderers-display.js';
 import {
+  renderProgressChart,
+  renderMatrixTable,
+  renderStatisticGroup,
+} from './renderers-display-ext.js';
+import {
   renderPagination,
   renderSteps,
   renderCollapsePanel,
@@ -180,6 +185,18 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   modal_dialog: renderModalDialog,
   drawer: renderDrawer,
   popover_card: renderPopoverCard,
+
+  // —— 图表·扩展（页面模块对齐批次C4；变体复用 renderChart + defaultProps.chartType） ——
+  chart_radar: renderChart,
+  chart_area: renderChart,
+  chart_scatter: renderChart,
+  chart_bar_horizontal: renderChart,
+  chart_waterfall: renderChart,
+  chart_wordcloud: renderChart,
+  chart_combo: renderChart,
+  progress_chart: renderProgressChart,
+  matrix_table: renderMatrixTable,
+  statistic_group: renderStatisticGroup,
 };
 
 // ---------------------------------------------------------------------------

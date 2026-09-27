@@ -126,7 +126,18 @@ export type ComponentType =
   | 'flat_filter'
   | 'modal_dialog'
   | 'drawer'
-  | 'popover_card';
+  | 'popover_card'
+  // —— 图表·扩展（页面模块对齐批次C4） ——
+  | 'chart_radar'
+  | 'chart_area'
+  | 'chart_scatter'
+  | 'chart_bar_horizontal'
+  | 'chart_waterfall'
+  | 'chart_wordcloud'
+  | 'chart_combo'
+  | 'progress_chart'
+  | 'matrix_table'
+  | 'statistic_group';
 
 /** 组件节点。页面 Schema 的基本单元，组成树形结构。 */
 export interface ComponentNode {

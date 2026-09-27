@@ -16,6 +16,7 @@ import {
   StarFilled,
   UserOutlined,
 } from '@ant-design/icons';
+import { Progress, Statistic as AntStatistic, Table } from 'antd';
 import dayjs from 'dayjs';
 import type { ComponentNode } from './types.js';
 import type { RenderContext } from './renderer-helpers.js';
@@ -269,3 +270,74 @@ const placeholderBoxStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
 };
+
+// ---------------------------------------------------------------------------
+// 批次C4：进度图 / 矩阵表 / 指标卡组
+// ---------------------------------------------------------------------------
+
+/** 进度图 — antd Progress（percent 可绑定）。 */
+export function renderProgressChart(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const percent = getPropAsNumber(node, 'percent', ctx);
+  const pct = Math.max(0, Math.min(100, percent || 0));
+  const circle = getPropAsBool(node, 'circle', ctx);
+  return (
+    <div style={{ padding: 8 }}>
+      <Progress percent={pct} type={circle ? 'circle' : 'line'} status="normal" />
+    </div>
+  );
+}
+
+/** 矩阵表 — 绑定数组自动生成列（列 = 首行键）。 */
+export function renderMatrixTable(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const raw = getPropAsString(node, 'data', ctx);
+  let rows: Record<string, unknown>[] = [];
+  try {
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (Array.isArray(parsed)) {
+      rows = parsed.filter(
+        (r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r),
+      );
+    }
+  } catch {
+    rows = [];
+  }
+  const first = rows[0];
+  const columns = first ? Object.keys(first).map((k) => ({ title: k, dataIndex: k, key: k })) : [];
+  return (
+    <Table
+      size="small"
+      columns={columns}
+      dataSource={rows.map((r, i) => ({ ...r, __key: i }))}
+      rowKey="__key"
+      pagination={false}
+      locale={{ emptyText: '矩阵表（绑定数组数据后展示）' }}
+    />
+  );
+}
+
+/** 指标卡组 — 选项（label/value）渲染一排统计卡。 */
+export function renderStatisticGroup(node: ComponentNode, _ctx: RenderContext): ReactNode {
+  const raw = node.props.options;
+  const options = Array.isArray(raw)
+    ? (raw.filter(
+        (o): o is { label: string; value: number } =>
+          !!o && typeof o === 'object' && typeof (o as { label?: unknown }).label === 'string',
+      ) as { label: string; value: number }[])
+    : [];
+  if (options.length === 0) {
+    return (
+      <div style={placeholderBoxStyle}>
+        <Text type="secondary" style={PLACEHOLDER_STYLE}>
+          指标卡组（配置选项后展示）
+        </Text>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', padding: 8 }}>
+      {options.map((o) => (
+        <AntStatistic key={o.label} title={o.label} value={o.value} />
+      ))}
+    </div>
+  );
+}

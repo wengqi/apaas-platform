@@ -50,8 +50,42 @@ describe('批次C1 — 新增展示组件注册', () => {
     }
   });
 
-  it('全平台组件总数达到 60（51 + 批次C3 的 9）', () => {
-    expect(Object.keys(COMPONENT_META)).toHaveLength(60);
+  it('全平台组件总数达到 70（60 + 批次C4 的 10）', () => {
+    expect(Object.keys(COMPONENT_META)).toHaveLength(70);
+  });
+
+  const BATCH_C4_TYPES: ComponentType[] = [
+    'chart_radar',
+    'chart_area',
+    'chart_scatter',
+    'chart_bar_horizontal',
+    'chart_waterfall',
+    'chart_wordcloud',
+    'chart_combo',
+    'progress_chart',
+    'matrix_table',
+    'statistic_group',
+  ];
+
+  it('批次C4 图表组件已注册并挂入「图表」分组（变体预设 chartType）', () => {
+    const charts = DESIGNER_GROUPS.find((g) => g.title === '图表');
+    expect(charts).toBeTruthy();
+    for (const type of BATCH_C4_TYPES) {
+      expect(COMPONENT_META[type]).toBeTruthy();
+      expect(charts?.types).toContain(type);
+    }
+    // 图表变体通过 defaultProps 预设 chartType（复用 renderChart）
+    for (const t of [
+      'chart_radar',
+      'chart_area',
+      'chart_scatter',
+      'chart_bar_horizontal',
+      'chart_waterfall',
+      'chart_wordcloud',
+      'chart_combo',
+    ] as ComponentType[]) {
+      expect(COMPONENT_META[t]?.defaultProps.chartType).toBeTruthy();
+    }
   });
 
   const BATCH_C3_TYPES: ComponentType[] = [

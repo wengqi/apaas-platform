@@ -83,7 +83,18 @@ export type ComponentType =
   | 'flat_filter'
   | 'modal_dialog'
   | 'drawer'
-  | 'popover_card';
+  | 'popover_card'
+  // —— 图表·扩展（页面模块对齐批次C4） ——
+  | 'chart_radar'
+  | 'chart_area'
+  | 'chart_scatter'
+  | 'chart_bar_horizontal'
+  | 'chart_waterfall'
+  | 'chart_wordcloud'
+  | 'chart_combo'
+  | 'progress_chart'
+  | 'matrix_table'
+  | 'statistic_group';
 
 /** 页面类型(标准页面模板)。 */
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';

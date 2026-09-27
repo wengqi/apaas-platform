@@ -42,6 +42,7 @@ import {
   FilterOutlined,
   MenuUnfoldOutlined,
   CommentOutlined,
+  PieChartOutlined,
 } from '@ant-design/icons';
 import type { ComponentType } from '../api/pages.js';
 
@@ -566,6 +567,88 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     description: '点击弹出的气泡内容',
     defaultProps: { title: '气泡卡片' },
   },
+
+  // —— 图表·扩展（页面模块对齐批次C4，对齐飞书「图表」分组；变体复用 chart 渲染器） ——
+  chart_radar: {
+    label: '雷达图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '雷达图（多指标对比）',
+    defaultProps: { chartType: 'radar', title: '雷达图' },
+  },
+  chart_area: {
+    label: '面积图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '面积趋势图',
+    defaultProps: { chartType: 'area', title: '面积图' },
+  },
+  chart_scatter: {
+    label: '散点图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '散点分布图',
+    defaultProps: { chartType: 'scatter', title: '散点图' },
+  },
+  chart_bar_horizontal: {
+    label: '条形图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '横向条形图',
+    defaultProps: { chartType: 'bar_horizontal', title: '条形图' },
+  },
+  chart_waterfall: {
+    label: '瀑布图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '瀑布图（累计变化）',
+    defaultProps: { chartType: 'waterfall', title: '瀑布图' },
+  },
+  chart_wordcloud: {
+    label: '词云图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '词频气泡云（散点模拟）',
+    defaultProps: { chartType: 'wordcloud', title: '词云图' },
+  },
+  chart_combo: {
+    label: '组合图',
+    icon: BarChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '柱线组合图',
+    defaultProps: { chartType: 'combo', title: '组合图' },
+  },
+  progress_chart: {
+    label: '进度图',
+    icon: PieChartOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '进度展示（可绑定）',
+    defaultProps: { percent: 0 },
+  },
+  matrix_table: {
+    label: '矩阵表',
+    icon: TableOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '矩阵数据表',
+    defaultProps: { data: '' },
+  },
+  statistic_group: {
+    label: '指标卡组',
+    icon: ThunderboltOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '一排统计指标卡',
+    defaultProps: {},
+  },
 };
 
 /**
@@ -601,7 +684,24 @@ export const DESIGNER_GROUPS: {
   },
   {
     title: '数据展示',
-    types: ['data_table', 'list', 'detail_card', 'statistic', 'chart'],
+    types: ['data_table', 'list', 'detail_card'],
+  },
+  {
+    title: '图表',
+    types: [
+      'chart',
+      'chart_radar',
+      'chart_area',
+      'chart_scatter',
+      'chart_bar_horizontal',
+      'chart_waterfall',
+      'chart_wordcloud',
+      'chart_combo',
+      'progress_chart',
+      'matrix_table',
+      'statistic',
+      'statistic_group',
+    ],
   },
   {
     title: '数据输入',

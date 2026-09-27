@@ -15,6 +15,7 @@ import { TenantModule } from './tenant/tenant.module.js';
 import { ConnectorModule } from './connector/connector.module.js';
 import { DatasetModule } from './dataset/dataset.module.js';
 import { CloudFunctionModule } from './cloud-function/cloud-function.module.js';
+import { IdentityModule } from './identity/identity.module.js';
 import { HealthController } from './health.controller.js';
 import { TenantContextInterceptor } from './common/tenant-context.interceptor.js';
 import { envValidation } from './config/env.validation.js';
@@ -61,6 +62,7 @@ import { envValidation } from './config/env.validation.js';
     ConnectorModule,
     DatasetModule,
     CloudFunctionModule,
+    IdentityModule,
   ],
   controllers: [HealthController],
   providers: [

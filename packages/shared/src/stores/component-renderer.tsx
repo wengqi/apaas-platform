@@ -64,6 +64,17 @@ import {
   renderText,
 } from './renderers-display.js';
 import {
+  renderPagination,
+  renderSteps,
+  renderCollapsePanel,
+  renderCarousel,
+  renderButtonGroup,
+  renderFlatFilter,
+  renderModalDialog,
+  renderDrawer,
+  renderPopoverCard,
+} from './renderers-layout-ext.js';
+import {
   renderEmailInput,
   renderPhoneInput,
   renderUserPickerMulti,
@@ -158,6 +169,17 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   cascader_multi: renderCascaderMulti,
   tree_select_single: renderTreeSelectSingle,
   tree_select_multi: renderTreeSelectMulti,
+
+  // —— 布局导航弹层·扩展（页面模块对齐批次C3） ——
+  pagination: renderPagination,
+  steps: renderSteps,
+  collapse_panel: renderCollapsePanel,
+  carousel: renderCarousel,
+  button_group: renderButtonGroup,
+  flat_filter: renderFlatFilter,
+  modal_dialog: renderModalDialog,
+  drawer: renderDrawer,
+  popover_card: renderPopoverCard,
 };
 
 // ---------------------------------------------------------------------------

@@ -63,7 +63,17 @@ export type ComponentType =
   | 'user_display'
   | 'file_display'
   | 'iframe'
-  | 'markdown';
+  | 'markdown'
+  // —— 布局导航弹层·扩展（页面模块对齐批次C3） ——
+  | 'pagination'
+  | 'steps'
+  | 'collapse_panel'
+  | 'carousel'
+  | 'button_group'
+  | 'flat_filter'
+  | 'modal_dialog'
+  | 'drawer'
+  | 'popover_card';
 
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
 

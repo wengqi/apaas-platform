@@ -50,8 +50,36 @@ describe('批次C1 — 新增展示组件注册', () => {
     }
   });
 
-  it('全平台组件总数达到 51（41 + 批次C2 的 10）', () => {
-    expect(Object.keys(COMPONENT_META)).toHaveLength(51);
+  it('全平台组件总数达到 60（51 + 批次C3 的 9）', () => {
+    expect(Object.keys(COMPONENT_META)).toHaveLength(60);
+  });
+
+  const BATCH_C3_TYPES: ComponentType[] = [
+    'pagination',
+    'steps',
+    'collapse_panel',
+    'carousel',
+    'button_group',
+    'flat_filter',
+    'modal_dialog',
+    'drawer',
+    'popover_card',
+  ];
+
+  it('批次C3 组件已注册并挂入 导航/通用/弹层/常用 分组', () => {
+    const nav = DESIGNER_GROUPS.find((g) => g.title === '导航');
+    const popup = DESIGNER_GROUPS.find((g) => g.title === '弹层');
+    const general = DESIGNER_GROUPS.find((g) => g.title === '通用');
+    expect(nav?.types).toEqual(['tabs', 'pagination', 'steps']);
+    expect(popup?.types).toEqual(['modal_dialog', 'drawer', 'popover_card']);
+    const containerTypes: ComponentType[] = ['collapse_panel', 'carousel'];
+    for (const t of containerTypes) {
+      expect(general?.types).toContain(t);
+      expect(COMPONENT_META[t]?.isContainer).toBe(true);
+    }
+    for (const type of BATCH_C3_TYPES) {
+      expect(COMPONENT_META[type]).toBeTruthy();
+    }
   });
 
   const BATCH_C2_TYPES: ComponentType[] = [

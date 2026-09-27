@@ -36,6 +36,12 @@ import {
   TeamOutlined,
   PictureOutlined,
   AccountBookOutlined,
+  CaretRightOutlined,
+  PicRightOutlined,
+  ControlOutlined,
+  FilterOutlined,
+  MenuUnfoldOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import type { ComponentType } from '../api/pages.js';
 
@@ -486,6 +492,80 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     description: '树形层级多选',
     defaultProps: { placeholder: '请选择' },
   },
+
+  // —— 导航/弹层·扩展（页面模块对齐批次C3，对齐飞书「导航/弹层」分组） ——
+  pagination: {
+    label: '分页器',
+    icon: UnorderedListOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '分页导航',
+    defaultProps: { current: 1, pageSize: 10, total: 50 },
+  },
+  steps: {
+    label: '步骤条',
+    icon: CaretRightOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '步骤导航',
+    defaultProps: { current: 0 },
+  },
+  collapse_panel: {
+    label: '折叠面板',
+    icon: CaretDownOutlined,
+    category: 'container',
+    isContainer: true,
+    description: '可折叠内容面板',
+    defaultProps: {},
+  },
+  carousel: {
+    label: '轮播图',
+    icon: PicRightOutlined,
+    category: 'container',
+    isContainer: true,
+    description: '轮播展示子组件',
+    defaultProps: {},
+  },
+  button_group: {
+    label: '按钮组',
+    icon: ControlOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '一组操作按钮',
+    defaultProps: {},
+  },
+  flat_filter: {
+    label: '平铺筛选',
+    icon: FilterOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '平铺单选筛选项',
+    defaultProps: {},
+  },
+  modal_dialog: {
+    label: '弹窗',
+    icon: BlockOutlined,
+    category: 'container',
+    isContainer: true,
+    description: '弹窗容器（预览态按 open 显示）',
+    defaultProps: { title: '弹窗', open: false, width: 520 },
+  },
+  drawer: {
+    label: '侧拉窗',
+    icon: MenuUnfoldOutlined,
+    category: 'container',
+    isContainer: true,
+    description: '侧拉窗容器（预览态按 open 显示）',
+    defaultProps: { title: '侧拉窗', open: false, width: 480 },
+  },
+  popover_card: {
+    label: '气泡卡片',
+    icon: CommentOutlined,
+    category: 'container',
+    isContainer: true,
+    description: '点击弹出的气泡内容',
+    defaultProps: { title: '气泡卡片' },
+  },
 };
 
 /**
@@ -498,11 +578,26 @@ export const DESIGNER_GROUPS: {
 }[] = [
   {
     title: '常用',
-    types: ['section', 'grid', 'data_table', 'list', 'detail_card', 'text', 'button', 'form'],
+    types: [
+      'section',
+      'grid',
+      'data_table',
+      'list',
+      'detail_card',
+      'text',
+      'button',
+      'button_group',
+      'flat_filter',
+      'form',
+    ],
+  },
+  {
+    title: '导航',
+    types: ['tabs', 'pagination', 'steps'],
   },
   {
     title: '布局',
-    types: ['section', 'tabs', 'grid', 'dashboard_grid'],
+    types: ['section', 'grid', 'dashboard_grid'],
   },
   {
     title: '数据展示',
@@ -556,7 +651,13 @@ export const DESIGNER_GROUPS: {
       'file_display',
       'iframe',
       'markdown',
+      'collapse_panel',
+      'carousel',
     ],
+  },
+  {
+    title: '弹层',
+    types: ['modal_dialog', 'drawer', 'popover_card'],
   },
 ];
 

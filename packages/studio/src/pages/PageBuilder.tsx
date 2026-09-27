@@ -7,6 +7,7 @@ import {
   closestCenter,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core';
@@ -17,20 +18,24 @@ import { usePageBuilderStore } from '../stores/pageBuilder.js';
 import { pagesApi, type ComponentType } from '../api/pages.js';
 import { getComponentMeta } from '../constants/pageComponents.js';
 import BuilderToolbar from '../components/page-builder/BuilderToolbar.js';
-import ComponentPanel, { type PanelDragData } from '../components/page-builder/ComponentPanel.js';
+import LeftPanel from '../components/page-builder/LeftPanel.js';
+import type { PanelDragData } from '../components/page-builder/ComponentPanel.js';
 import Canvas from '../components/page-builder/Canvas.js';
 import PropertyPanel from '../components/page-builder/PropertyPanel.js';
 import ViewModelPanel from '../components/page-builder/ViewModelPanel.js';
-import { type DropzoneData } from '../components/page-builder/ComponentRenderer.js';
+import {
+  type DropzoneData,
+  type CanvasNodeDragData,
+} from '../components/page-builder/ComponentRenderer.js';
 
 const { Text } = Typography;
 
 /**
- * 页面搭建器(三栏布局 + DndContext)。
+ * 页面设计器(三栏布局 + DndContext) — 对齐飞书 aPaaS v3 搭建器布局。
  *
  * 路由:/app/:appId/pages/:pageId
- * 布局:工具栏(顶部)+ 组件面板(左 280px)+ 画布(中 flex)+ 属性面板(右 360px)
- * 全屏布局,撑满 calc(100vh - 56px)(StudioLayout Header)。
+ * 布局:顶栏 + 组件面板(左 280px,组件/大纲树页签)+ 画布(中 flex,960px 页面卡)
+ *      + 属性面板(右 360px,单列分组)
  */
 export default function PageBuilder() {
   const { pageId } = useParams<{ appId: string; pageId: string }>();
@@ -38,6 +43,7 @@ export default function PageBuilder() {
   const schema = usePageBuilderStore((s) => s.schema);
   const loadPage = usePageBuilderStore((s) => s.loadPage);
   const addComponent = usePageBuilderStore((s) => s.addComponent);
+  const reorderSibling = usePageBuilderStore((s) => s.reorderSibling);
 
   const loadedPageIdRef = useRef<string | null>(null);
 
@@ -78,16 +84,37 @@ export default function PageBuilder() {
     }
   };
 
+  /** 画布内节点拖拽时只与同级节点碰撞（容器放置区会因面积大抢走最近命中）。 */
+  const collisionDetection: CollisionDetection = (args) => {
+    const activeData = args.active.data.current as CanvasNodeDragData | undefined;
+    if (activeData?.source === 'canvas-node') {
+      return closestCenter({
+        ...args,
+        droppableContainers: args.droppableContainers.filter(
+          (c) => c.data.current?.source === 'canvas-node',
+        ),
+      });
+    }
+    return closestCenter(args);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDrag(null);
     if (!over) return;
 
-    const activeData = active.data.current as PanelDragData | undefined;
-    const overData = over.data.current as DropzoneData | undefined;
+    const activeData = active.data.current as PanelDragData | CanvasNodeDragData | undefined;
+    const overData = over.data.current as DropzoneData | CanvasNodeDragData | undefined;
 
+    // 物料面板 → 画布放置区：新增组件
     if (activeData?.source === 'panel' && overData?.source === 'dropzone') {
       addComponent(activeData.componentType, overData.parentId);
+      return;
+    }
+
+    // 画布内节点 → 同层节点：同父排序（store 内校验同父）
+    if (activeData?.source === 'canvas-node' && overData?.source === 'canvas-node') {
+      reorderSibling(activeData.node.id, overData.node.id);
     }
   };
 
@@ -131,19 +158,19 @@ export default function PageBuilder() {
         height: 'calc(100vh - 56px)',
         display: 'flex',
         flexDirection: 'column',
-        background: '#f5f7fa',
+        background: '#eff1f3',
       }}
     >
       <BuilderToolbar />
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={collisionDetection}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <ComponentPanel />
+          <LeftPanel />
           <Canvas />
           <PropertyPanel />
         </div>

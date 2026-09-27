@@ -1,13 +1,14 @@
 /**
- * 属性面板（右栏）— 主入口。
+ * 属性面板（右栏）— 飞书式单列滚动分组。
  *
- * 未选中组件时显示页面属性；选中时显示组件属性 Tabs（基础/样式/数据绑定/事件）。
- * 各子面板已拆分到 property-sections/ 目录。
+ * 对齐飞书 aPaaS：头部为组件层级面包屑 + 组件 ID；正文为分组区段
+ * （专属配置 → 表单生成器/内容/校验/交互/尺寸 → 事件 → 数据绑定 → 样式），
+ * 取代旧的 基础/样式/数据绑定/事件 四 Tab。未选中时显示页面属性。
  */
 
 import { useMemo } from 'react';
-import { Button, Empty, Input, Space, Switch, Tabs, Tag, Typography } from 'antd';
-import { LayoutOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { Button, Empty, Space, Typography } from 'antd';
+import { LayoutOutlined } from '@ant-design/icons';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { getComponentMeta } from '../../constants/pageComponents.js';
 import type { ComponentNode } from '../../api/pages.js';
@@ -19,9 +20,18 @@ import { ChartPropsSection } from './property-sections/ChartPropsSection.js';
 import { StatisticPropsSection } from './property-sections/StatisticPropsSection.js';
 import { DashboardGridPropsSection } from './property-sections/DashboardGridPropsSection.js';
 import { DataTablePropsSection } from './property-sections/DataTablePropsSection.js';
-import { FormField, panelStyle, headerStyle } from './property-sections/shared.js';
+import { panelStyle } from './property-sections/shared.js';
+import { PropGroup, PropRow } from './property-sections/PropRow.js';
+import {
+  FieldContentSection,
+  FieldInteractionSection,
+  FieldSizeSection,
+  FieldValidateSection,
+  isFormFieldType,
+} from './property-sections/FieldPropsSections.js';
+import FormGeneratorModal from './form-generator/FormGeneratorModal.js';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 /** 在组件树中按 ID 递归查找节点。 */
 function findNodeInTree(node: ComponentNode, id: string): ComponentNode | undefined {
@@ -33,6 +43,21 @@ function findNodeInTree(node: ComponentNode, id: string): ComponentNode | undefi
     }
   }
   return undefined;
+}
+
+/** 从根到目标的路径（面包屑用）。 */
+function findPath(
+  node: ComponentNode,
+  id: string,
+  trail: ComponentNode[] = [],
+): ComponentNode[] | null {
+  const next = [...trail, node];
+  if (node.id === id) return next;
+  for (const child of node.children ?? []) {
+    const found = findPath(child, id, next);
+    if (found) return found;
+  }
+  return null;
 }
 
 /** 属性面板主组件。 */
@@ -47,13 +72,18 @@ export default function PropertyPanel() {
     return findNodeInTree(schema.root, selectedNodeId);
   }, [schema, selectedNodeId]);
 
+  const path = useMemo(() => {
+    if (!schema || !selectedNodeId) return null;
+    return findPath(schema.root, selectedNodeId);
+  }, [schema, selectedNodeId]);
+
   if (!selectedNode) {
     return (
       <div style={panelStyle}>
-        <div style={headerStyle}>
-          <Title level={5} style={{ margin: 0 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid #f2f3f5' }}>
+          <Text strong style={{ fontSize: 14 }}>
             页面属性
-          </Title>
+          </Text>
         </div>
         <div style={{ padding: 16 }}>
           {currentPage ? (
@@ -73,13 +103,13 @@ export default function PropertyPanel() {
                     width: 64,
                     height: 64,
                     borderRadius: 16,
-                    background: '#e6f4ff',
+                    background: '#e1eaff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <LayoutOutlined style={{ fontSize: 32, color: '#1677ff' }} />
+                  <LayoutOutlined style={{ fontSize: 32, color: '#1456f0' }} />
                 </div>
               }
               description="选中一个组件以编辑属性"
@@ -91,154 +121,184 @@ export default function PropertyPanel() {
     );
   }
 
-  return <ComponentPropertyPanel node={selectedNode} />;
+  return <ComponentPropertyPanel node={selectedNode} path={path ?? [selectedNode]} />;
 }
 
-/** 组件属性面板 — 头部信息 + Tabs（基础/样式/数据绑定/事件）。 */
-function ComponentPropertyPanel({ node }: { node: ComponentNode }) {
-  const meta = getComponentMeta(node.type);
-  const Icon = meta.icon;
-  const setVmPanelOpen = usePageBuilderStore((s) => s.setVmPanelOpen);
+// ---------------------------------------------------------------------------
+// 组件属性面板（面包屑 + 分组区段）
+// ---------------------------------------------------------------------------
 
-  return (
-    <div style={panelStyle}>
-      <div style={headerStyle}>
-        <Space size={8} align="center">
-          <Icon style={{ fontSize: 16, color: '#1677ff' }} />
-          <Text strong style={{ fontSize: 14 }}>
-            {node.name || meta.label}
-          </Text>
-          <Tag style={{ margin: 0, fontSize: 11, lineHeight: '18px' }} color="default">
-            {node.type}
-          </Tag>
-        </Space>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text type="secondary" style={{ fontSize: 12, fontFamily: 'monospace' }}>
-            {node.id}
-          </Text>
-          <Button
-            type="text"
-            size="small"
-            icon={<DatabaseOutlined />}
-            onClick={() => setVmPanelOpen(true)}
-          />
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <Tabs
-          size="small"
-          style={{ padding: '0 16px' }}
-          items={[
-            {
-              key: 'basic',
-              label: '基础属性',
-              children: <BasicPropsTab node={node} />,
-            },
-            {
-              key: 'style',
-              label: '样式',
-              children: <StylePropsTab node={node} />,
-            },
-            {
-              key: 'binding',
-              label: '数据绑定',
-              children: <DataBindingTab node={node} />,
-            },
-            {
-              key: 'events',
-              label: '事件',
-              children: <EventsTab node={node} />,
-            },
-          ]}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** 基础属性 Tab — 组件 ID/名称/可见性/class + 类型专属配置。 */
-function BasicPropsTab({ node }: { node: ComponentNode }) {
-  const updateNode = usePageBuilderStore((s) => s.updateNode);
+function ComponentPropertyPanel({ node, path }: { node: ComponentNode; path: ComponentNode[] }) {
   const updateComponentProps = usePageBuilderStore((s) => s.updateComponentProps);
-
-  const isHidden = node.hidden === true;
-  const className = typeof node.props.className === 'string' ? node.props.className : '';
-
+  const formGeneratorOpen = usePageBuilderStore((s) => s.formGeneratorNodeId === node.id);
+  const setFormGeneratorNodeId = usePageBuilderStore((s) => s.setFormGeneratorNodeId);
+  const isField = isFormFieldType(node.type);
+  const isForm = node.type === 'form';
+  const objectId = typeof node.props.objectId === 'string' ? node.props.objectId : undefined;
   const getStr = (key: string): string =>
     typeof node.props[key] === 'string' ? (node.props[key] as string) : '';
 
   return (
-    <div>
-      <FormField label="组件 ID">
+    <div style={panelStyle}>
+      {/* 面包屑（对应飞书组件层级路径） */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid #f2f3f5',
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          overflow: 'hidden',
+        }}
+      >
+        {path.map((item, idx) => {
+          const itemMeta = getComponentMeta(item.type);
+          const isLast = idx === path.length - 1;
+          return (
+            <Space key={item.id} size={4} style={{ flexShrink: 0 }}>
+              {idx > 0 && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  ›
+                </Text>
+              )}
+              <Text
+                style={{
+                  fontSize: 13,
+                  maxWidth: 96,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontWeight: isLast ? 600 : 400,
+                  color: isLast ? 'rgba(0,0,0,0.88)' : 'rgba(0,0,0,0.55)',
+                }}
+              >
+                {item.name || itemMeta.label}
+              </Text>
+            </Space>
+          );
+        })}
         <Text
-          style={{
-            fontSize: 13,
-            fontFamily: 'monospace',
-            display: 'block',
-            padding: '4px 0',
-          }}
           type="secondary"
+          style={{ fontSize: 11, fontFamily: 'monospace', marginLeft: 'auto', flexShrink: 0 }}
         >
           {node.id}
         </Text>
-      </FormField>
-      <FormField label="组件名称">
-        <Input
-          value={node.name ?? ''}
-          onChange={(e) => updateNode(node.id, { name: e.target.value })}
+      </div>
+
+      {/* 分组区段（单列滚动） */}
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {/* 类型专属配置 */}
+        {node.type === 'chart' && (
+          <PropGroup title="图表配置">
+            <ChartPropsSection
+              node={node}
+              getStr={getStr}
+              updateComponentProps={updateComponentProps}
+            />
+          </PropGroup>
+        )}
+        {node.type === 'data_table' && (
+          <PropGroup title="表格配置">
+            <DataTablePropsSection
+              node={node}
+              getStr={getStr}
+              updateComponentProps={updateComponentProps}
+            />
+          </PropGroup>
+        )}
+        {node.type === 'statistic' && (
+          <PropGroup title="指标卡配置">
+            <StatisticPropsSection
+              node={node}
+              getStr={getStr}
+              updateComponentProps={updateComponentProps}
+            />
+          </PropGroup>
+        )}
+        {node.type === 'dashboard_grid' && (
+          <PropGroup title="仪表盘网格">
+            <DashboardGridPropsSection node={node} updateComponentProps={updateComponentProps} />
+          </PropGroup>
+        )}
+
+        {/* 表单容器：表单生成器入口 + 布局 */}
+        {isForm && (
+          <PropGroup title="表单生成器">
+            <PropRow label="来源对象">
+              <Button
+                size="small"
+                onClick={() => setFormGeneratorNodeId(node.id)}
+                style={{ width: '100%', textAlign: 'left' }}
+              >
+                {objectId ? '已关联对象 · 重新生成' : '从对象字段生成'}
+              </Button>
+            </PropRow>
+            <PropRow label="每行列数">
+              <SegmentedColumns node={node} />
+            </PropRow>
+          </PropGroup>
+        )}
+
+        {/* 表单字段专属分组 */}
+        {isField && (
+          <>
+            <FieldContentSection node={node} />
+            <FieldValidateSection node={node} />
+            <FieldInteractionSection node={node} />
+            <FieldSizeSection node={node} />
+          </>
+        )}
+
+        {/* 事件 */}
+        <PropGroup title="事件">
+          <EventsTab node={node} />
+        </PropGroup>
+
+        {/* 数据绑定 */}
+        <PropGroup title="数据绑定">
+          <DataBindingTab node={node} />
+        </PropGroup>
+
+        {/* 样式 */}
+        <PropGroup title="样式">
+          <StylePropsTab node={node} />
+        </PropGroup>
+      </div>
+
+      {isForm && (
+        <FormGeneratorModal
+          open={formGeneratorOpen}
+          onClose={() => setFormGeneratorNodeId(null)}
+          formNodeId={node.id}
+          initialObjectId={objectId}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 表单每行列数（columns：1-3）
+// ---------------------------------------------------------------------------
+
+function SegmentedColumns({ node }: { node: ComponentNode }) {
+  const updateComponentProps = usePageBuilderStore((s) => s.updateComponentProps);
+  const current = typeof node.props.columns === 'number' ? node.props.columns : 1;
+
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {[1, 2, 3].map((n) => (
+        <Button
+          key={n}
           size="small"
-          placeholder="组件名称"
-        />
-      </FormField>
-      <FormField label="可见性">
-        <Space size={8} align="center">
-          <Switch
-            size="small"
-            checked={!isHidden}
-            onChange={(checked) => updateNode(node.id, { hidden: !checked })}
-          />
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            {isHidden ? '隐藏' : '显示'}
-          </Text>
-        </Space>
-      </FormField>
-      <FormField label="自定义 class">
-        <Input
-          value={className}
-          onChange={(e) => updateComponentProps(node.id, { className: e.target.value })}
-          size="small"
-          placeholder="highlight-card"
-        />
-      </FormField>
-
-      {node.type === 'chart' && (
-        <ChartPropsSection
-          node={node}
-          getStr={getStr}
-          updateComponentProps={updateComponentProps}
-        />
-      )}
-
-      {node.type === 'data_table' && (
-        <DataTablePropsSection
-          node={node}
-          getStr={getStr}
-          updateComponentProps={updateComponentProps}
-        />
-      )}
-
-      {node.type === 'statistic' && (
-        <StatisticPropsSection
-          node={node}
-          getStr={getStr}
-          updateComponentProps={updateComponentProps}
-        />
-      )}
-
-      {node.type === 'dashboard_grid' && (
-        <DashboardGridPropsSection node={node} updateComponentProps={updateComponentProps} />
-      )}
+          type={current === n ? 'primary' : 'default'}
+          onClick={() => updateComponentProps(node.id, { columns: n })}
+          style={{ flex: 1 }}
+        >
+          {n} 列
+        </Button>
+      ))}
     </div>
   );
 }

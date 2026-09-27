@@ -295,21 +295,28 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
   },
 };
 
-/** 组件分类分组(用于组件面板折叠面板)。grid_column 不在面板展示(由栅格自动管理)。 */
-export const COMPONENT_GROUPS: {
+/**
+ * 设计器物料分组 —— 对齐飞书 aPaaS 物料面板结构（常用/布局/数据展示/数据输入/通用）。
+ * grid_column 不在面板展示(由栅格自动管理)。
+ */
+export const DESIGNER_GROUPS: {
   title: string;
-  category: ComponentCategory;
   types: ComponentType[];
 }[] = [
   {
-    title: '容器',
-    category: 'container',
-    types: ['page', 'section', 'tabs', 'grid', 'dashboard_grid'],
+    title: '常用',
+    types: ['section', 'grid', 'data_table', 'list', 'detail_card', 'text', 'button', 'form'],
   },
-  { title: '数据', category: 'data', types: ['data_table', 'detail_card', 'list'] },
   {
-    title: '表单',
-    category: 'form',
+    title: '布局',
+    types: ['section', 'tabs', 'grid', 'dashboard_grid'],
+  },
+  {
+    title: '数据展示',
+    types: ['data_table', 'list', 'detail_card', 'statistic', 'chart'],
+  },
+  {
+    title: '数据输入',
     types: [
       'form',
       'text_input',
@@ -328,9 +335,8 @@ export const COMPONENT_GROUPS: {
     ],
   },
   {
-    title: '展示',
-    category: 'display',
-    types: ['button', 'statistic', 'chart', 'rich_text_display', 'divider', 'text'],
+    title: '通用',
+    types: ['text', 'button', 'rich_text_display', 'divider'],
   },
 ];
 

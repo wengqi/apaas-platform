@@ -217,6 +217,12 @@ jobs:
       # 直接 pnpm --filter 跑单包 build 会因 @apaas/db 类型解析失败而报 TS2307
       - name: Build studio & gateway
         run: pnpm exec turbo run build --filter=@apaas/gateway --filter=@apaas/studio
+        # 必须覆盖 job 级 NODE_ENV=test：Vite 6 以 NODE_ENV 决定构建模式，
+        # test 模式打进 React development 版本，flowgram 画布在 dev bundle 下
+        # 不渲染节点（曾致 12 号 spec 全挂且本地生产构建无法复现）。
+        # gateway 运行时不受影响，仍继承 job 级 NODE_ENV=test。
+        env:
+          NODE_ENV: production
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

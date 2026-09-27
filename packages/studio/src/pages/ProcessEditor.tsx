@@ -9,7 +9,7 @@
  * 工具栏 / ErrorBoundary / 触发器配置弹窗已拆分至 ./process-editor/。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Skeleton, Typography, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -37,13 +37,27 @@ export default function ProcessEditor() {
    *  编辑器→onSchemaChange→store→props→编辑器 的反馈环（画布永不收敛）。 */
   const initialSchemaRef = useRef<WorkflowSchema | undefined>(undefined);
 
-  /** flowgram 撤销/重做 API(由 SimplifiedEditor 内部 HistoryBridge 暴露)。 */
-  const [historyApi, setHistoryApi] = useState<{
+  /** flowgram 撤销/重做 API(由 SimplifiedEditor 内部 HistoryBridge 暴露)。
+   *  API 对象每次上报都是新引用，只能入 ref；重渲染经由布尔 state 驱动——
+   *  值不变时返回 prev 使 setState 退出，保证上报循环有界（不会饿死画布）。 */
+  const historyApiRef = useRef<{
     undo: () => void;
     redo: () => void;
     canUndo: boolean;
     canRedo: boolean;
   } | null>(null);
+  const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
+  const handleHistoryReady = useCallback(
+    (api: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) => {
+      historyApiRef.current = api;
+      setHistoryFlags((prev) =>
+        prev.canUndo === api.canUndo && prev.canRedo === api.canRedo
+          ? prev
+          : { canUndo: api.canUndo, canRedo: api.canRedo },
+      );
+    },
+    [],
+  );
 
   /** 加载流程详情。 */
   const { data: processDef, isLoading } = useQuery({
@@ -216,10 +230,10 @@ export default function ProcessEditor() {
         onPublish={() => publishMutation.mutate()}
         saving={saveMutation.isPending}
         publishing={publishMutation.isPending}
-        canUndo={historyApi?.canUndo ?? false}
-        canRedo={historyApi?.canRedo ?? false}
-        onUndo={() => historyApi?.undo()}
-        onRedo={() => historyApi?.redo()}
+        canUndo={historyFlags.canUndo}
+        canRedo={historyFlags.canRedo}
+        onUndo={() => historyApiRef.current?.undo()}
+        onRedo={() => historyApiRef.current?.redo()}
         onConfigureTrigger={() => setTriggerOpen(true)}
       />
       <TriggerConfigModal
@@ -241,7 +255,7 @@ export default function ProcessEditor() {
           objectOptions={objectOptions}
           formOptions={formOptions}
           processOptions={processOptions}
-          onHistoryReady={setHistoryApi}
+          onHistoryReady={handleHistoryReady}
         />
       </EditorErrorBoundary>
     </div>

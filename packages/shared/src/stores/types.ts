@@ -86,6 +86,17 @@ export type ComponentType =
   | 'sub_form_table'
   | 'attachment_upload'
   | 'user_picker'
+  // —— 表单类·扩展（页面模块对齐批次C2） ——
+  | 'email_input'
+  | 'phone_input'
+  | 'user_picker_multi'
+  | 'lookup_picker_multi'
+  | 'image_upload'
+  | 'rich_text_input'
+  | 'cascader_single'
+  | 'cascader_multi'
+  | 'tree_select_single'
+  | 'tree_select_multi'
   // —— 展示类 ——
   | 'button'
   | 'statistic'

@@ -64,6 +64,18 @@ import {
   renderText,
 } from './renderers-display.js';
 import {
+  renderEmailInput,
+  renderPhoneInput,
+  renderUserPickerMulti,
+  renderLookupPickerMulti,
+  renderImageUpload,
+  renderRichTextInput,
+  renderCascaderSingle,
+  renderCascaderMulti,
+  renderTreeSelectSingle,
+  renderTreeSelectMulti,
+} from './renderers-form-ext.js';
+import {
   renderIcon,
   renderImage,
   renderTag,
@@ -134,6 +146,18 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   file_display: renderFileDisplay,
   iframe: renderIframe,
   markdown: renderMarkdownDisplay,
+
+  // —— 表单类·扩展（页面模块对齐批次C2） ——
+  email_input: renderEmailInput,
+  phone_input: renderPhoneInput,
+  user_picker_multi: renderUserPickerMulti,
+  lookup_picker_multi: renderLookupPickerMulti,
+  image_upload: renderImageUpload,
+  rich_text_input: renderRichTextInput,
+  cascader_single: renderCascaderSingle,
+  cascader_multi: renderCascaderMulti,
+  tree_select_single: renderTreeSelectSingle,
+  tree_select_multi: renderTreeSelectMulti,
 };
 
 // ---------------------------------------------------------------------------

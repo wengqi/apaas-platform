@@ -50,7 +50,29 @@ describe('批次C1 — 新增展示组件注册', () => {
     }
   });
 
-  it('全平台组件总数达到 41（29 + 批次C1 的 12）', () => {
-    expect(Object.keys(COMPONENT_META)).toHaveLength(41);
+  it('全平台组件总数达到 51（41 + 批次C2 的 10）', () => {
+    expect(Object.keys(COMPONENT_META)).toHaveLength(51);
+  });
+
+  const BATCH_C2_TYPES: ComponentType[] = [
+    'email_input',
+    'phone_input',
+    'user_picker_multi',
+    'lookup_picker_multi',
+    'image_upload',
+    'rich_text_input',
+    'cascader_single',
+    'cascader_multi',
+    'tree_select_single',
+    'tree_select_multi',
+  ];
+
+  it('批次C2 输入组件已注册并挂入「数据输入」分组', () => {
+    const dataInput = DESIGNER_GROUPS.find((g) => g.title === '数据输入');
+    expect(dataInput).toBeTruthy();
+    for (const type of BATCH_C2_TYPES) {
+      expect(COMPONENT_META[type]).toBeTruthy();
+      expect(dataInput?.types).toContain(type);
+    }
   });
 });

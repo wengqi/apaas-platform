@@ -137,7 +137,13 @@ export type ComponentType =
   | 'chart_combo'
   | 'progress_chart'
   | 'matrix_table'
-  | 'statistic_group';
+  | 'matrix_table'
+  | 'statistic_group'
+  | 'filter'
+  | 'sort'
+  | 'audit_list'
+  | 'tree_list_single'
+  | 'tree_list_multi';
 
 /** 组件节点。页面 Schema 的基本单元，组成树形结构。 */
 export interface ComponentNode {

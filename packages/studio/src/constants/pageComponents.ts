@@ -43,6 +43,8 @@ import {
   MenuUnfoldOutlined,
   CommentOutlined,
   PieChartOutlined,
+  FileSearchOutlined,
+  PartitionOutlined,
 } from '@ant-design/icons';
 import type { ComponentType } from '../api/pages.js';
 
@@ -649,6 +651,48 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     description: '一排统计指标卡',
     defaultProps: {},
   },
+
+  // —— 数据展示·扩展（页面模块对齐批次C5，对齐飞书「数据展示」分组） ——
+  filter: {
+    label: '筛选',
+    icon: FilterOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '关键字筛选（写入变量联动表格）',
+    defaultProps: { targetVariable: 'keyword', placeholder: '搜索…' },
+  },
+  sort: {
+    label: '排序',
+    icon: SwapOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '字段排序（写入变量联动表格）',
+    defaultProps: { targetVariable: 'sort' },
+  },
+  audit_list: {
+    label: '操作日志',
+    icon: FileSearchOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '操作日志时间线',
+    defaultProps: { data: '' },
+  },
+  tree_list_single: {
+    label: '树形组件单选',
+    icon: PartitionOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '树形层级单选列表',
+    defaultProps: { targetVariable: 'treeSelected' },
+  },
+  tree_list_multi: {
+    label: '树形组件多选',
+    icon: PartitionOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '树形层级多选列表',
+    defaultProps: { targetVariable: 'treeChecked' },
+  },
 };
 
 /**
@@ -684,7 +728,16 @@ export const DESIGNER_GROUPS: {
   },
   {
     title: '数据展示',
-    types: ['data_table', 'list', 'detail_card'],
+    types: [
+      'data_table',
+      'list',
+      'detail_card',
+      'filter',
+      'sort',
+      'audit_list',
+      'tree_list_single',
+      'tree_list_multi',
+    ],
   },
   {
     title: '图表',

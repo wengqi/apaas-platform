@@ -60,6 +60,8 @@ export interface PageBuilderState {
   reorderSibling: (activeId: string, overId: string) => void;
   /** 整体替换容器子节点（表单生成器写回） */
   replaceChildren: (parentId: string, children: ComponentNode[]) => void;
+  /** 插入子树（复合组件拖入；深拷贝重置 ID） */
+  insertSubtree: (parentId: string, node: ComponentNode) => string | null;
   /** 删除组件 */
   removeComponent: (id: string) => void;
   /** 复制组件(同层级,新 ID) */

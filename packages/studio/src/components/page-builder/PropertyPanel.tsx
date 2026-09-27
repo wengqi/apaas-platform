@@ -6,10 +6,11 @@
  * 取代旧的 基础/样式/数据绑定/事件 四 Tab。未选中时显示页面属性。
  */
 
-import { useMemo } from 'react';
-import { Button, Empty, Space, Typography } from 'antd';
-import { LayoutOutlined } from '@ant-design/icons';
+import { useMemo, useState } from 'react';
+import { Button, Empty, Input, Modal, Space, Typography, message } from 'antd';
+import { LayoutOutlined, SaveOutlined } from '@ant-design/icons';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
+import { useCompositesStore } from '../../stores/page-builder/composites.js';
 import { getComponentMeta } from '../../constants/pageComponents.js';
 import type { ComponentNode } from '../../api/pages.js';
 import { EventsTab } from './EventsTab.js';
@@ -129,6 +130,9 @@ export default function PropertyPanel() {
 // ---------------------------------------------------------------------------
 
 function ComponentPropertyPanel({ node, path }: { node: ComponentNode; path: ComponentNode[] }) {
+  const [saveCompOpen, setSaveCompOpen] = useState(false);
+  const [compName, setCompName] = useState('');
+  const saveComposite = useCompositesStore((s) => s.saveComposite);
   const updateComponentProps = usePageBuilderStore((s) => s.updateComponentProps);
   const formGeneratorOpen = usePageBuilderStore((s) => s.formGeneratorNodeId === node.id);
   const setFormGeneratorNodeId = usePageBuilderStore((s) => s.setFormGeneratorNodeId);
@@ -178,10 +182,15 @@ function ComponentPropertyPanel({ node, path }: { node: ComponentNode; path: Com
             </Space>
           );
         })}
-        <Text
-          type="secondary"
-          style={{ fontSize: 11, fontFamily: 'monospace', marginLeft: 'auto', flexShrink: 0 }}
-        >
+        <Button
+          type="text"
+          size="small"
+          icon={<SaveOutlined />}
+          title="保存为复合组件"
+          onClick={() => setSaveCompOpen(true)}
+          style={{ marginLeft: 'auto', flexShrink: 0 }}
+        />
+        <Text type="secondary" style={{ fontSize: 11, fontFamily: 'monospace', flexShrink: 0 }}>
           {node.id}
         </Text>
       </div>
@@ -265,6 +274,30 @@ function ComponentPropertyPanel({ node, path }: { node: ComponentNode; path: Com
           <StylePropsTab node={node} />
         </PropGroup>
       </div>
+
+      {/* 保存为复合组件（对齐飞书「自定义」物料） */}
+      <Modal
+        title="保存为复合组件"
+        open={saveCompOpen}
+        onCancel={() => setSaveCompOpen(false)}
+        onOk={() => {
+          const name = compName.trim();
+          if (!name) {
+            message.warning('请输入复合组件名称');
+            return;
+          }
+          saveComposite(name, node);
+          setCompName('');
+          setSaveCompOpen(false);
+          message.success(`复合组件「${name}」已保存，可在左栏「自定义」中拖拽复用`);
+        }}
+      >
+        <Input
+          placeholder="复合组件名称"
+          value={compName}
+          onChange={(e) => setCompName(e.target.value)}
+        />
+      </Modal>
 
       {isForm && (
         <FormGeneratorModal

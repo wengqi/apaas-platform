@@ -200,6 +200,29 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     set({ schema, past, future: [], selectedNodeId: parentId });
   },
 
+  insertSubtree: (parentId, node) => {
+    const state = get();
+    if (!state.schema) return null;
+
+    const past = pushHistory(state.past, state.schema);
+    const schema = cloneSchema(state.schema);
+    const parent = findNode(schema.root, parentId);
+    if (!parent) {
+      set({ past });
+      return null;
+    }
+    if (!parent.children && !COMPONENT_META[parent.type]?.isContainer) {
+      set({ past });
+      return null;
+    }
+
+    const newNode = deepCloneWithNewIds(node);
+    if (!parent.children) parent.children = [];
+    parent.children.push(newNode);
+    set({ schema, past, future: [], selectedNodeId: newNode.id });
+    return newNode.id;
+  },
+
   removeComponent: (id) => {
     const state = get();
     if (!state.schema) return;

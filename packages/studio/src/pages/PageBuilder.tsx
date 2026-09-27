@@ -28,6 +28,7 @@ import {
   type DropzoneData,
   type CanvasNodeDragData,
 } from '../components/page-builder/ComponentRenderer.js';
+import type { CompositePanelDragData } from '../components/page-builder/ComponentPanel.js';
 
 const { Text } = Typography;
 
@@ -45,6 +46,7 @@ export default function PageBuilder() {
   const loadPage = usePageBuilderStore((s) => s.loadPage);
   const addComponent = usePageBuilderStore((s) => s.addComponent);
   const reorderSibling = usePageBuilderStore((s) => s.reorderSibling);
+  const insertSubtree = usePageBuilderStore((s) => s.insertSubtree);
 
   const loadedPageIdRef = useRef<string | null>(null);
 
@@ -104,12 +106,19 @@ export default function PageBuilder() {
     setActiveDrag(null);
     if (!over) return;
 
-    const activeData = active.data.current as PanelDragData | CanvasNodeDragData | undefined;
+    const activeData = active.data.current as
+      PanelDragData | CanvasNodeDragData | CompositePanelDragData | undefined;
     const overData = over.data.current as DropzoneData | CanvasNodeDragData | undefined;
 
     // 物料面板 → 画布放置区：新增组件
     if (activeData?.source === 'panel' && overData?.source === 'dropzone') {
       addComponent(activeData.componentType, overData.parentId);
+      return;
+    }
+
+    // 复合组件 → 画布放置区：插入子树
+    if (activeData?.source === 'panel-composite' && overData?.source === 'dropzone') {
+      insertSubtree(overData.parentId, activeData.node);
       return;
     }
 

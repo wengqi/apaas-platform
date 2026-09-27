@@ -64,6 +64,13 @@ import {
   renderText,
 } from './renderers-display.js';
 import {
+  renderFilter,
+  renderSort,
+  renderAuditList,
+  renderTreeListSingle,
+  renderTreeListMulti,
+} from './renderers-data-ext.js';
+import {
   renderProgressChart,
   renderMatrixTable,
   renderStatisticGroup,
@@ -197,6 +204,13 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   progress_chart: renderProgressChart,
   matrix_table: renderMatrixTable,
   statistic_group: renderStatisticGroup,
+
+  // —— 数据展示·扩展（页面模块对齐批次C5） ——
+  filter: renderFilter,
+  sort: renderSort,
+  audit_list: renderAuditList,
+  tree_list_single: renderTreeListSingle,
+  tree_list_multi: renderTreeListMulti,
 };
 
 // ---------------------------------------------------------------------------

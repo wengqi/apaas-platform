@@ -50,8 +50,25 @@ describe('批次C1 — 新增展示组件注册', () => {
     }
   });
 
-  it('全平台组件总数达到 70（60 + 批次C4 的 10）', () => {
-    expect(Object.keys(COMPONENT_META)).toHaveLength(70);
+  it('全平台组件总数达到 75（70 + 批次C5 的 5）', () => {
+    expect(Object.keys(COMPONENT_META)).toHaveLength(75);
+  });
+
+  const BATCH_C5_TYPES: ComponentType[] = [
+    'filter',
+    'sort',
+    'audit_list',
+    'tree_list_single',
+    'tree_list_multi',
+  ];
+
+  it('批次C5 数据展示组件已注册并挂入「数据展示」分组', () => {
+    const group = DESIGNER_GROUPS.find((g) => g.title === '数据展示');
+    expect(group).toBeTruthy();
+    for (const type of BATCH_C5_TYPES) {
+      expect(COMPONENT_META[type]).toBeTruthy();
+      expect(group?.types).toContain(type);
+    }
   });
 
   const BATCH_C4_TYPES: ComponentType[] = [

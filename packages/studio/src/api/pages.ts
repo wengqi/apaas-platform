@@ -94,7 +94,13 @@ export type ComponentType =
   | 'chart_combo'
   | 'progress_chart'
   | 'matrix_table'
-  | 'statistic_group';
+  | 'matrix_table'
+  | 'statistic_group'
+  | 'filter'
+  | 'sort'
+  | 'audit_list'
+  | 'tree_list_single'
+  | 'tree_list_multi';
 
 /** 页面类型(标准页面模板)。 */
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';

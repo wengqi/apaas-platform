@@ -64,6 +64,11 @@ import {
   renderText,
 } from './renderers-display.js';
 import {
+  renderProfileCenter,
+  renderNotificationList,
+  renderTaskDetail,
+  renderMyTasks,
+  renderApprovalAdmin,
   renderFilter,
   renderSort,
   renderAuditList,
@@ -211,6 +216,13 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   audit_list: renderAuditList,
   tree_list_single: renderTreeListSingle,
   tree_list_multi: renderTreeListMulti,
+
+  // —— 业务审批·扩展（页面模块对齐批次C6） ——
+  profile_center: renderProfileCenter,
+  notification_list: renderNotificationList,
+  task_detail: renderTaskDetail,
+  my_tasks: renderMyTasks,
+  approval_admin: renderApprovalAdmin,
 };
 
 // ---------------------------------------------------------------------------

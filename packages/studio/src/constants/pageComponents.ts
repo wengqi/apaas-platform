@@ -45,6 +45,9 @@ import {
   PieChartOutlined,
   FileSearchOutlined,
   PartitionOutlined,
+  BellOutlined,
+  FileDoneOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import type { ComponentType } from '../api/pages.js';
 
@@ -693,6 +696,48 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     description: '树形层级多选列表',
     defaultProps: { targetVariable: 'treeChecked' },
   },
+
+  // —— 业务审批·扩展（页面模块对齐批次C6，对齐飞书「业务/审批」分组） ——
+  profile_center: {
+    label: '个人中心',
+    icon: UserOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '当前用户信息卡片',
+    defaultProps: { userName: '', description: '' },
+  },
+  notification_list: {
+    label: '系统通知',
+    icon: BellOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '系统通知列表',
+    defaultProps: { data: '' },
+  },
+  task_detail: {
+    label: '任务详情',
+    icon: FileDoneOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '任务详情卡片',
+    defaultProps: { title: '任务详情', status: '待处理', assignee: '', description: '' },
+  },
+  my_tasks: {
+    label: '我的任务',
+    icon: UnorderedListOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '我的待办任务列表',
+    defaultProps: { data: '' },
+  },
+  approval_admin: {
+    label: '审批管理',
+    icon: AuditOutlined,
+    category: 'display',
+    isContainer: false,
+    description: '审批流程管理列表',
+    defaultProps: { data: '' },
+  },
 };
 
 /**
@@ -811,6 +856,14 @@ export const DESIGNER_GROUPS: {
   {
     title: '弹层',
     types: ['modal_dialog', 'drawer', 'popover_card'],
+  },
+  {
+    title: '业务',
+    types: ['profile_center', 'notification_list'],
+  },
+  {
+    title: '审批',
+    types: ['task_detail', 'my_tasks', 'approval_admin'],
   },
 ];
 

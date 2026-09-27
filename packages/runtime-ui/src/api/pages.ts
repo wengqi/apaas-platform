@@ -90,7 +90,14 @@ export type ComponentType =
   | 'sort'
   | 'audit_list'
   | 'tree_list_single'
-  | 'tree_list_multi';
+  | 'tree_list_single'
+  | 'tree_list_multi'
+  // —— 业务审批·扩展（页面模块对齐批次C6） ——
+  | 'profile_center'
+  | 'notification_list'
+  | 'task_detail'
+  | 'my_tasks'
+  | 'approval_admin';
 
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
 

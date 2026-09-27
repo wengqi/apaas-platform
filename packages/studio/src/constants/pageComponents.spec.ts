@@ -50,8 +50,26 @@ describe('批次C1 — 新增展示组件注册', () => {
     }
   });
 
-  it('全平台组件总数达到 75（70 + 批次C5 的 5）', () => {
-    expect(Object.keys(COMPONENT_META)).toHaveLength(75);
+  it('全平台组件总数达到 80（75 + 批次C6 的 5）', () => {
+    expect(Object.keys(COMPONENT_META)).toHaveLength(80);
+  });
+
+  const BATCH_C6_TYPES: ComponentType[] = [
+    'profile_center',
+    'notification_list',
+    'task_detail',
+    'my_tasks',
+    'approval_admin',
+  ];
+
+  it('批次C6 业务审批组件已注册并挂入 业务/审批 分组', () => {
+    const biz = DESIGNER_GROUPS.find((g) => g.title === '业务');
+    const approval = DESIGNER_GROUPS.find((g) => g.title === '审批');
+    expect(biz?.types).toEqual(['profile_center', 'notification_list']);
+    expect(approval?.types).toEqual(['task_detail', 'my_tasks', 'approval_admin']);
+    for (const type of BATCH_C6_TYPES) {
+      expect(COMPONENT_META[type]).toBeTruthy();
+    }
   });
 
   const BATCH_C5_TYPES: ComponentType[] = [

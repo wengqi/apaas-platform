@@ -8,7 +8,9 @@
  */
 
 import type { ReactNode } from 'react';
-import { Input, Radio, Select, Space, Timeline, Tree } from 'antd';
+import { Avatar, Card, Input, Radio, Select, Space, Table, Tag, Timeline, Tree } from 'antd';
+import type { TableProps } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ComponentNode } from './types.js';
 import type { RenderContext } from './renderer-helpers.js';
@@ -139,4 +141,122 @@ export function renderTreeListMulti(node: ComponentNode, ctx: RenderContext): Re
       style={{ padding: 4 }}
     />
   );
+}
+
+// ---------------------------------------------------------------------------
+// 批次C6：个人中心 / 系统通知 / 任务详情 / 我的任务 / 审批管理
+// （数据经 vm 绑定传入：props.data 为数组的 JSON 串，与 audit_list 同模式）
+// ---------------------------------------------------------------------------
+
+/** 解析 props.data 中的数组（JSON 串；预览态支持 __bind 解析后为 JSON 串）。 */
+function parseRows(node: ComponentNode, ctx: RenderContext): Record<string, unknown>[] {
+  const raw = getPropAsString(node, 'data', ctx);
+  let parsed: unknown;
+  try {
+    parsed = raw ? (JSON.parse(raw) as unknown) : [];
+  } catch {
+    return [];
+  }
+  return Array.isArray(parsed)
+    ? parsed.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+    : [];
+}
+
+const statusTag = (status: unknown): ReactNode => {
+  const s = String(status ?? '');
+  const color =
+    s.includes('拒绝') || s.includes('驳回')
+      ? 'error'
+      : s.includes('完成') || s.includes('通过') || s.includes('已办')
+        ? 'success'
+        : s.includes('待')
+          ? 'processing'
+          : 'default';
+  return <Tag color={color}>{s || '--'}</Tag>;
+};
+
+/** 个人中心 — 头像 + 名称 + 描述卡片（均可绑定）。 */
+export function renderProfileCenter(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const name = getPropAsString(node, 'userName', ctx) || '未登录用户';
+  const description = getPropAsString(node, 'description', ctx) || '';
+  return (
+    <Card size="small" style={{ margin: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Avatar size={44} icon={<UserOutlined />} style={{ background: '#1456f0' }} />
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{name}</div>
+          {description && (
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>{description}</div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** 系统通知 — 绑定数组（title/time）渲染通知列表。 */
+export function renderNotificationList(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const rows = parseRows(node, ctx);
+  if (rows.length === 0) {
+    return <div style={placeholderStyle}>系统通知（绑定数组：title/time）</div>;
+  }
+  return (
+    <div style={{ padding: 8 }}>
+      {rows.map((r, i) => (
+        <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid #f7f8fa' }}>
+          <div style={{ fontSize: 13 }}>{String(r.title ?? '')}</div>
+          <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>{String(r.time ?? '')}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 任务详情 — 标题/状态/办理人/描述 字段卡（均可绑定）。 */
+export function renderTaskDetail(node: ComponentNode, ctx: RenderContext): ReactNode {
+  return (
+    <Card
+      size="small"
+      title={getPropAsString(node, 'title', ctx) || '任务详情'}
+      style={{ margin: 4 }}
+    >
+      <Space size={16} wrap>
+        <span>状态：{statusTag(getPropAsString(node, 'status', ctx) || '待处理')}</span>
+        <span>办理人：{getPropAsString(node, 'assignee', ctx) || '--'}</span>
+      </Space>
+      <div style={{ marginTop: 8, fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>
+        {getPropAsString(node, 'description', ctx) || '--'}
+      </div>
+    </Card>
+  );
+}
+
+/** 我的任务 — 绑定数组（title/status/time）渲染待办任务表。 */
+export function renderMyTasks(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const rows = parseRows(node, ctx);
+  const columns: TableProps<Record<string, unknown>>['columns'] =
+    rows.length > 0
+      ? Object.keys(rows[0] ?? {}).map((k) => ({
+          title: k,
+          dataIndex: k,
+          key: k,
+          render: (v: unknown) => (k === 'status' ? statusTag(v) : String(v ?? '')),
+        }))
+      : [];
+  return (
+    <Table<Record<string, unknown>>
+      size="small"
+      columns={columns}
+      dataSource={rows.map((r, i) => ({ ...r, __key: i }))}
+      rowKey="__key"
+      pagination={false}
+      locale={{ emptyText: '我的任务（绑定数组：title/status/time）' }}
+      style={{ margin: 4 }}
+    />
+  );
+}
+
+/** 审批管理 — 绑定数组（name/applicant/status/time）渲染审批表。 */
+export function renderApprovalAdmin(node: ComponentNode, ctx: RenderContext): ReactNode {
+  return renderMyTasks(node, ctx);
 }

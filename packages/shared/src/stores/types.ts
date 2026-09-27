@@ -143,7 +143,14 @@ export type ComponentType =
   | 'sort'
   | 'audit_list'
   | 'tree_list_single'
-  | 'tree_list_multi';
+  | 'tree_list_single'
+  | 'tree_list_multi'
+  // —— 业务审批·扩展（页面模块对齐批次C6） ——
+  | 'profile_center'
+  | 'notification_list'
+  | 'task_detail'
+  | 'my_tasks'
+  | 'approval_admin';
 
 /** 组件节点。页面 Schema 的基本单元，组成树形结构。 */
 export interface ComponentNode {

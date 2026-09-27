@@ -32,6 +32,10 @@ export default function ProcessEditor() {
 
   const store = useProcessEditorStore();
   const loadedRef = useRef<string | null>(null);
+  /** 编辑器 initialData：挂载期捕获一次。编辑器已按 processId key 重挂载，
+   *  store.schema 的后续更新不得回灌 initialData——否则形成
+   *  编辑器→onSchemaChange→store→props→编辑器 的反馈环（画布永不收敛）。 */
+  const initialSchemaRef = useRef<WorkflowSchema | undefined>(undefined);
 
   /** flowgram 撤销/重做 API(由 SimplifiedEditor 内部 HistoryBridge 暴露)。 */
   const [historyApi, setHistoryApi] = useState<{
@@ -83,6 +87,7 @@ export default function ProcessEditor() {
       // 先重置 store，清除上一个流程的残留状态
       store.reset();
       loadedRef.current = processDef.id;
+      initialSchemaRef.current = processDef.workflowSchema;
       store.loadProcess(processDef);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -230,7 +235,7 @@ export default function ProcessEditor() {
       <EditorErrorBoundary key={processId}>
         <SimplifiedEditor
           key={processId}
-          initialSchema={store.schema ?? processDef.workflowSchema}
+          initialSchema={initialSchemaRef.current ?? processDef.workflowSchema}
           readonly={isReadonly}
           onSchemaChange={handleSchemaChange}
           objectOptions={objectOptions}

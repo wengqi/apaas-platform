@@ -65,6 +65,13 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   test.beforeAll(async () => {
     const token = await loginViaApi();
     api = createApiClient(token);
+    // appId 必须在此独立解析：Playwright 失败重试会更换 worker 并重跑 beforeAll，
+    // 但不会重跑文件内其它测试——若依赖首个测试的副作用赋值，重试 worker 中
+    // appId 恒为 undefined，一次失败会级联成多个 /app/undefined 的必然失败。
+    const apps = await api.get<Array<{ id: string; apiName: string }>>('/apps');
+    const app = apps.find((a) => a.apiName === 'asset_management');
+    if (!app) throw new Error('Demo app asset_management not found — 请先执行 pnpm db:seed');
+    appId = app.id;
   });
 
   test('应用已发布（PUBLISHED + publishedSnapshot）', async () => {
@@ -82,7 +89,6 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     );
     expect(detail.publishedSnapshot).toBeTruthy();
     expect(detail.publishedSnapshot!.meta).toBeTruthy();
-    appId = app!.id;
   });
 
   test('3 个业务对象存在', async () => {
@@ -213,9 +219,18 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
 
   test('Studio 对象设计器可见（UI 验证）', async ({ page }) => {
     await page.goto(`/app/${appId}/objects`);
-    await expect(page.getByText('资产', { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('领用申请', { exact: true })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('资产分类', { exact: true })).toBeVisible({ timeout: 30_000 });
+    // filter(visible)：AntD Typography ellipsis 在字体测量窗口期会渲染隐藏的
+    // 副本节点，慢环境（CI）下存活时间更长，exact 文本定位会把它们计入
+    // strict 匹配导致误报——只断言可见元素。
+    await expect(
+      page.getByText('资产', { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText('领用申请', { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText('资产分类', { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test('Studio 页面列表可见（UI 验证）', async ({ page }) => {

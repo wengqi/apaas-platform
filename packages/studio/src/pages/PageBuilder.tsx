@@ -23,6 +23,7 @@ import type { PanelDragData } from '../components/page-builder/ComponentPanel.js
 import Canvas from '../components/page-builder/Canvas.js';
 import PropertyPanel from '../components/page-builder/PropertyPanel.js';
 import ViewModelPanel from '../components/page-builder/ViewModelPanel.js';
+import BottomPanel from '../components/page-builder/BottomPanel.js';
 import {
   type DropzoneData,
   type CanvasNodeDragData,
@@ -178,6 +179,7 @@ export default function PageBuilder() {
           {activeDrag && <DragGhost componentType={activeDrag.componentType} />}
         </DragOverlay>
       </DndContext>
+      <BottomPanel />
       <ViewModelPanel />
     </div>
   );

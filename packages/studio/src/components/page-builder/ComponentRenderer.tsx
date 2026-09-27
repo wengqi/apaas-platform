@@ -9,9 +9,17 @@
  * - ctx 构建：从 usePageBuilderStore + useRuntimeCtx 组装 RenderContext
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Popconfirm, Typography } from 'antd';
-import { CopyOutlined, DeleteOutlined, HolderOutlined } from '@ant-design/icons';
+import {
+  CodeOutlined,
+  CopyOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  EyeInvisibleOutlined,
+  HolderOutlined,
+} from '@ant-design/icons';
+import { spanFromDrag } from '../../utils/designer-shortcuts.js';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -156,7 +164,37 @@ function EditNode({ node, ctx, content, isRoot }: WrapEditProps): ReactNode {
   const selectNode = usePageBuilderStore((s) => s.selectNode);
   const removeComponent = usePageBuilderStore((s) => s.removeComponent);
   const duplicateNode = usePageBuilderStore((s) => s.duplicateNode);
+  const updateComponentProps = usePageBuilderStore((s) => s.updateComponentProps);
+  const setVmPanelOpen = usePageBuilderStore((s) => s.setVmPanelOpen);
   const [hovered, setHovered] = useState(false);
+  const [previewSpan, setPreviewSpan] = useState<number | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const resizeRef = useRef<{ startX: number; baseSpan: number; width: number; dir: 1 | -1 } | null>(
+    null,
+  );
+
+  // 选中节点的左右 resize 手柄（批次D）：拖拽调整 12 栅格 span，松手一次性提交
+  const baseSpan = typeof node.props.span === 'number' ? node.props.span : 12;
+  const onHandleDown = (e: React.PointerEvent, dir: 1 | -1) => {
+    e.stopPropagation();
+    const width = wrapperRef.current?.getBoundingClientRect().width || 1;
+    resizeRef.current = { startX: e.clientX, baseSpan, width, dir };
+    setPreviewSpan(baseSpan);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onHandleMove = (e: React.PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    setPreviewSpan(spanFromDrag(r.baseSpan, (e.clientX - r.startX) * r.dir, r.width));
+  };
+  const onHandleUp = (e: React.PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    resizeRef.current = null;
+    const final = spanFromDrag(r.baseSpan, (e.clientX - r.startX) * r.dir, r.width);
+    setPreviewSpan(null);
+    if (final !== baseSpan) updateComponentProps(node.id, { span: final });
+  };
 
   const meta = getComponentMeta(node.type);
   const isSelected = ctx.selectedNodeId === node.id;
@@ -183,9 +221,24 @@ function EditNode({ node, ctx, content, isRoot }: WrapEditProps): ReactNode {
     borderColor = '#85a8ff';
   }
 
+  const hidden = node.hidden === true;
+  const span =
+    typeof node.props.span === 'number' && node.props.span >= 1 && node.props.span <= 12
+      ? node.props.span
+      : 12;
+  const widthPct =
+    previewSpan !== null
+      ? `${(previewSpan / 12) * 100}%`
+      : span < 12
+        ? `${(span / 12) * 100}%`
+        : undefined;
+
   return (
     <div
-      ref={isRoot ? undefined : sortable.setNodeRef}
+      ref={(el) => {
+        wrapperRef.current = el;
+        if (!isRoot) sortable.setNodeRef(el);
+      }}
       onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -195,9 +248,10 @@ function EditNode({ node, ctx, content, isRoot }: WrapEditProps): ReactNode {
         borderRadius: 6,
         margin: isRoot ? 0 : '4px 0',
         boxShadow,
+        width: widthPct,
+        opacity: hidden ? 0.4 : sortable.isDragging ? 0.5 : 1,
         transform: isRoot ? undefined : CSS.Translate.toString(sortable.transform),
         transition: sortable.isDragging ? 'none' : 'border-color 0.15s ease, box-shadow 0.15s ease',
-        opacity: sortable.isDragging ? 0.5 : 1,
         zIndex: sortable.isDragging ? 20 : undefined,
       }}
     >
@@ -246,6 +300,26 @@ function EditNode({ node, ctx, content, isRoot }: WrapEditProps): ReactNode {
           >
             {node.name || meta.label}
           </Text>
+          <ToolDivider />
+          <ToolIcon
+            title="数据绑定"
+            icon={<DatabaseOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              setVmPanelOpen(true);
+            }}
+          />
+          <ToolIcon
+            title="事件 / JS 脚本"
+            icon={<CodeOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              document
+                .getElementById('prop-events')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }}
+          />
+          <ToolDivider />
           <ToolIcon
             title="复制"
             icon={<CopyOutlined />}
@@ -268,7 +342,61 @@ function EditNode({ node, ctx, content, isRoot }: WrapEditProps): ReactNode {
           >
             <ToolIcon title="删除" icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
           </Popconfirm>
+          <ToolDivider />
+          <ToolIcon
+            title="隐藏"
+            icon={<EyeInvisibleOutlined />}
+            active={node.hidden === true}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateComponentProps(node.id, { hidden: node.hidden !== true });
+            }}
+          />
         </div>
+      )}
+
+      {/* 左右 resize 手柄（选中态，拖拽调整 12 栅格宽度） */}
+      {isSelected && !isRoot && (
+        <>
+          <div
+            onPointerDown={(e) => onHandleDown(e, -1)}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            title="拖拽调整宽度"
+            style={{
+              position: 'absolute',
+              left: -5,
+              top: '50%',
+              width: 9,
+              height: 20,
+              marginTop: -10,
+              borderRadius: 5,
+              background: ACCENT,
+              cursor: 'ew-resize',
+              touchAction: 'none',
+              zIndex: 11,
+            }}
+          />
+          <div
+            onPointerDown={(e) => onHandleDown(e, 1)}
+            onPointerMove={onHandleMove}
+            onPointerUp={onHandleUp}
+            title="拖拽调整宽度"
+            style={{
+              position: 'absolute',
+              right: -5,
+              top: '50%',
+              width: 9,
+              height: 20,
+              marginTop: -10,
+              borderRadius: 5,
+              background: ACCENT,
+              cursor: 'ew-resize',
+              touchAction: 'none',
+              zIndex: 11,
+            }}
+          />
+        </>
       )}
 
       {content}
@@ -276,14 +404,23 @@ function EditNode({ node, ctx, content, isRoot }: WrapEditProps): ReactNode {
   );
 }
 
-/** 工具条图标按钮（白描边风格）。 */
+/** 工具条竖分隔线。 */
+function ToolDivider() {
+  return (
+    <div style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.3)', margin: '0 4px' }} />
+  );
+}
+
+/** 工具条图标按钮（白描边风格）；active 表示开关型图标已激活。 */
 function ToolIcon({
   title,
   icon,
+  active,
   onClick,
 }: {
   title: string;
   icon: ReactNode;
+  active?: boolean;
   onClick: (e: React.MouseEvent) => void;
 }) {
   return (
@@ -297,7 +434,7 @@ function ToolIcon({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'transparent',
+        background: active ? 'rgba(255,255,255,0.25)' : 'transparent',
         border: 'none',
         color: '#fff',
         cursor: 'pointer',
@@ -308,7 +445,7 @@ function ToolIcon({
         e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.background = active ? 'rgba(255,255,255,0.25)' : 'transparent';
       }}
     >
       {icon}

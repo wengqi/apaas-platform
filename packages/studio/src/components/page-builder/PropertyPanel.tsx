@@ -260,7 +260,7 @@ function ComponentPropertyPanel({ node, path }: { node: ComponentNode; path: Com
         )}
 
         {/* 事件 */}
-        <PropGroup title="事件">
+        <PropGroup title="事件" domId="prop-events">
           <EventsTab node={node} />
         </PropGroup>
 

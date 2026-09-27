@@ -12,15 +12,17 @@ const { Text } = Typography;
 /** 分组标题（如「内容」「校验」「交互」「尺寸」「样式」）。 */
 export function PropGroup({
   title,
+  domId,
   extra,
   children,
 }: {
   title: string;
+  domId?: string;
   extra?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div style={{ padding: '12px 16px 4px' }}>
+    <div id={domId} style={{ padding: '12px 16px 4px' }}>
       <div
         style={{
           display: 'flex',

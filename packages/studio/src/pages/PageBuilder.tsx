@@ -24,6 +24,7 @@ import Canvas from '../components/page-builder/Canvas.js';
 import PropertyPanel from '../components/page-builder/PropertyPanel.js';
 import ViewModelPanel from '../components/page-builder/ViewModelPanel.js';
 import BottomPanel from '../components/page-builder/BottomPanel.js';
+import { isTextEntryTarget, matchShortcut } from '../utils/designer-shortcuts.js';
 import {
   type DropzoneData,
   type CanvasNodeDragData,
@@ -70,6 +71,37 @@ export default function PageBuilder() {
       loadPage(page);
     }
   }, [page, loadPage]);
+
+  // 快捷键（批次D）：Delete 删除选中 / Ctrl(Cmd)+Z 撤销 / Ctrl(Cmd)+Y 或 +Shift+Z 重做。
+  // 文本输入中的按键不拦截（isTextEntryTarget）；仅编辑模式生效。
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const shortcut = matchShortcut(e);
+      if (!shortcut || isTextEntryTarget(e.target)) return;
+      const st = usePageBuilderStore.getState();
+      if (st.mode !== 'edit') return;
+      if (shortcut === 'undo') {
+        if (st.past.length > 0) {
+          e.preventDefault();
+          st.undo();
+        }
+      } else if (shortcut === 'redo') {
+        if (st.future.length > 0) {
+          e.preventDefault();
+          st.redo();
+        }
+      } else if (
+        shortcut === 'delete' &&
+        st.selectedNodeId &&
+        st.selectedNodeId !== st.schema?.root.id
+      ) {
+        e.preventDefault();
+        st.removeComponent(st.selectedNodeId);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // 评审 P1-2：此前 API 失败会静默回退到空 Schema，用户随后"保存/发布"
   // 会用伪造的空页面覆盖真实已发布页面（数据覆盖事故路径）。

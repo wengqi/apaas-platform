@@ -49,15 +49,16 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 4. **Prisma 迁移历史不可回改**（详见「数据库变更规范」）。
 5. **破坏性命令**（rm -rf 危险路径 / 删库删卷 / DROP DDL 等）由 `.zcode/config.json` PreToolUse 守卫自动拦截——被拦截说明该操作需要人工执行。
 
-## 飞书 aPaaS 对齐原则
+## 平台定位与对标原则（2026-09-27 修订，见 ADR-0002）
 
-**后续所有功能开发必须与飞书 aPaaS 对齐。** 对齐基准文档：`docs/knowledge-base/FEISHU-ALIGNMENT-BENCHMARK.md`
+**定位：企业内部真实使用的低代码平台；目标环境为非飞书的企业环境；使用者先开发者后业务。**
+首要成功标准：能用平台完整交付并运行一个真实业务应用（表单 + 审批 + 报表）。
 
-- 功能开发前查阅对齐基准文档，确认飞书实现方案
-- PRD 编写时以飞书功能为基准，标注「对齐/增强/简化/偏离」
-- UI 设计时参考飞书交互模式（三栏布局、异步进度、模板驱动等）
-- 偏离时在 PR/commit 中说明理由
-- 原始调研材料：`docs/research/RESEARCH-feishu-apaas-full.md`（功能体系全景）+ `docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`（应用生命周期深度调研）
+- 能力形态对标飞书 aPaaS（版本模型 / 权限语义 / 流程触发与节点语义 / 观测分类 / 编辑器信息架构）
+- **飞书生态特有项移出对标范围**：官方连接器市场、飞书审批/飞书事件、AI 专区、MCP、行业模板市场
+- 组织与身份经**可插拔对接层**接入目标企业环境（SSO + 目录同步），具体协议待定（见 ADR-0002 开放问题）
+- 功能开发前查阅对标报告：`docs/research/RESEARCH-feishu-apaas-live-benchmark-2026-09-27.md`（36 项矩阵）+ 历史调研 `docs/research/RESEARCH-feishu-apaas-full.md`、`docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`
+- PRD 以新 P0/P1 优先级为准（`docs/roadmap/ROADMAP.md` 重规划节）；偏离时在 PR/commit 中说明理由
 
 ## 知识库
 
@@ -215,7 +216,11 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - 每个阶段完成后新建 `STATUS-MATRIX-YYYY-MM-DD.md` 状态矩阵
 - 知识库文档（`docs/knowledge-base/`）记录实现细节和设计决策
 
-## 当前阶段（2026-09-26 整改后快照）
+## 当前阶段（2026-09-27 定位修订快照）
+
+- ✅ 整改 PR #1 已合并 main（2026-09-27，CI 四 job 全绿）
+- ✅ 实地对标调研完成：docs/research/RESEARCH-feishu-apaas-live-benchmark-2026-09-27.md（36 项矩阵，实测对齐度 ~53%）
+- ✅ **定位修订（ADR-0002）**：企业内部真实使用 / 非飞书环境 / 先开发者后业务；新 P0 = 身份与组织对接层、草稿→提交版本模型、流程表单与审批语义、多环境化、端到端真实应用交付（见 ROADMAP 重规划节）
 
 > 历史明细归档：`docs/knowledge-base/STATUS-2026-09-25.md`；本轮整改详见
 > `docs/knowledge-base/REMEDIATION-2026-09-26.md`（含评审→修复→验证对照）。

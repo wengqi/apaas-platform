@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { Space, Typography } from 'antd';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
+import { useDebugStore } from '../../stores/page-builder/debug.js';
+import { useRuntimeCtx } from './RuntimeStore.js';
 import ComponentRenderer from './ComponentRenderer.js';
 import { RuntimeStoreProvider } from './RuntimeStore.js';
 
@@ -66,6 +69,7 @@ export default function Canvas() {
           {schema ? (
             mode === 'preview' ? (
               <RuntimeStoreProvider key="preview" viewModel={viewModel} objectId={objectId}>
+                <RuntimeVmBridge />
                 <ComponentRenderer node={schema.root} isRoot />
               </RuntimeStoreProvider>
             ) : (
@@ -84,4 +88,18 @@ export default function Canvas() {
       </div>
     </div>
   );
+}
+
+/**
+ * 运行时 vm 桥接 — 把预览态 vm 快照同步到调试 store，
+ * 供左栏「状态数据」页签展示运行时值；卸载（切回编辑）时清空。
+ */
+function RuntimeVmBridge(): null {
+  const vm = useRuntimeCtx((s) => s.vm);
+  const setRuntimeVm = useDebugStore((s) => s.setRuntimeVm);
+  useEffect(() => {
+    setRuntimeVm(vm);
+  }, [vm, setRuntimeVm]);
+  useEffect(() => () => setRuntimeVm(null), [setRuntimeVm]);
+  return null;
 }

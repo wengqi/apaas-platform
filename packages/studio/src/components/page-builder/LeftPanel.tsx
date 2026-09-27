@@ -10,6 +10,7 @@ import { Empty, Skeleton, Typography } from 'antd';
 import {
   AppstoreOutlined,
   CaretRightOutlined,
+  DatabaseOutlined,
   DownOutlined,
   PartitionOutlined,
 } from '@ant-design/icons';
@@ -20,6 +21,7 @@ import { pagesApi } from '../../api/pages.js';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import ComponentPanel from './ComponentPanel.js';
 import OutlineTree from './OutlineTree.js';
+import StateDataTab from './StateDataTab.js';
 
 const { Text } = Typography;
 
@@ -27,7 +29,7 @@ const PANEL_WIDTH = 280;
 
 /** 左侧面板主组件。 */
 export default function LeftPanel() {
-  const [tab, setTab] = useState<'components' | 'outline'>('components');
+  const [tab, setTab] = useState<'components' | 'outline' | 'state'>('components');
 
   return (
     <div
@@ -67,9 +69,17 @@ export default function LeftPanel() {
           active={tab === 'outline'}
           onClick={() => setTab('outline')}
         />
+        <TabButton
+          label="状态数据"
+          icon={<DatabaseOutlined />}
+          active={tab === 'state'}
+          onClick={() => setTab('state')}
+        />
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {tab === 'components' ? <ComponentPanel /> : <OutlineTree />}
+        {tab === 'components' && <ComponentPanel />}
+        {tab === 'outline' && <OutlineTree />}
+        {tab === 'state' && <StateDataTab />}
       </div>
     </div>
   );

@@ -69,7 +69,7 @@
 | 批次 | 内容 | 状态 |
 |---|---|---|
 | A | 底部调试面板：错误检查(校验/schema 错误列表)+控制台(过滤/计数/时间戳/REPL/日志 API)+请求时间轴+性能(组件计数)+更多；与搭建器运行时接事件 | ✅ 2026-09-27 commit f7efda2（useDebugStore + collectSchemaIssues 9 单测 + BottomPanel/ConsoleTab/TimelinePerfTabs；RuntimeStore adapter 请求埋点）|
-| B | 状态数据页签：数据请求/自定义变量/JS方法/组件状态树/URL参数（读取自 viewModel 运行时） | ⬜ |
+| B | 状态数据页签：数据请求/自定义变量/JS方法/组件状态树/URL参数（读取自 viewModel 运行时） | ✅ 2026-09-27（StateDataTab 五分组 + 预览态 RuntimeVmBridge 同步运行时值 + 自定义变量增删写回 viewModel + splitVariables 等 7 单测）|
 | C1 | 简单展示类组件 12 个：图标/图片/标签/链接/二维码/常驻提示/数字/日期时间/人员/文件/Iframe/Markdown | ⬜ |
 | C2 | 输入类 8 个：邮箱/手机号/人员多选/关联对象多选/图片上传/富文本输入/级联单选/树形单选(+多选变体) | ⬜ |
 | C3 | 布局导航类 7 个：分页器/步骤条/折叠面板/轮播图/按钮组/平铺筛选/弹层3件(弹窗/侧拉窗/气泡卡片) | ⬜ |

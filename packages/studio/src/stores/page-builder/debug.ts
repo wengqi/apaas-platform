@@ -36,6 +36,8 @@ interface DebugState {
   tab: DebugTab;
   logs: ConsoleLogEntry[];
   requests: RequestEntry[];
+  /** 预览态运行时 vm 快照（null = 非预览态；由 RuntimeVmBridge 同步） */
+  runtimeVm: Record<string, unknown> | null;
   /** 自增 id（日志与请求共用计数器） */
   nextId: number;
 
@@ -46,6 +48,7 @@ interface DebugState {
   /** 开始一条请求，返回其 id（完成后调 completeRequest） */
   beginRequest: (method: string, url: string) => number;
   completeRequest: (id: number, ok: boolean, durationMs: number) => void;
+  setRuntimeVm: (vm: Record<string, unknown> | null) => void;
 }
 
 let seq = 0;
@@ -56,6 +59,7 @@ export const useDebugStore = create<DebugState>((set) => ({
   tab: 'console',
   logs: [],
   requests: [],
+  runtimeVm: null,
   nextId: 1,
 
   togglePanel: (open) => set((s) => ({ panelOpen: open ?? !s.panelOpen })),
@@ -86,6 +90,7 @@ export const useDebugStore = create<DebugState>((set) => ({
         r.id === id ? { ...r, status: ok ? 'ok' : 'error', durationMs } : r,
       ),
     })),
+  setRuntimeVm: (vm) => set({ runtimeVm: vm }),
 }));
 
 /** 按级别过滤日志（level 集合为空时返回全部）。 */

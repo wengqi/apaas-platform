@@ -8,13 +8,28 @@
  */
 
 import type { ReactNode } from 'react';
-import { Avatar, Card, Input, Radio, Select, Space, Table, Tag, Timeline, Tree } from 'antd';
+import {
+  Avatar,
+  Card,
+  Cascader,
+  Input,
+  Radio,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Timeline,
+  Tree,
+  TreeSelect,
+} from 'antd';
 import type { TableProps } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
+import DOMPurify from 'dompurify';
 import dayjs from 'dayjs';
+import { regionOptions as builtinRegionOptions } from '../page/region-data.js';
 import type { ComponentNode } from './types.js';
 import type { RenderContext } from './renderer-helpers.js';
-import { extractSelectOptions, getPropAsString } from './renderer-helpers.js';
+import { extractSelectOptions, getPropAsString, FormFieldItem } from './renderer-helpers.js';
 
 const placeholderStyle: React.CSSProperties = {
   padding: 8,
@@ -259,4 +274,109 @@ export function renderMyTasks(node: ComponentNode, ctx: RenderContext): ReactNod
 /** 审批管理 — 绑定数组（name/applicant/status/time）渲染审批表。 */
 export function renderApprovalAdmin(node: ComponentNode, ctx: RenderContext): ReactNode {
   return renderMyTasks(node, ctx);
+}
+
+// ---------------------------------------------------------------------------
+// 批次C7：部门选择×2 / 行政区划级联×2 / HTML 展示 / JSX 展示
+// ---------------------------------------------------------------------------
+
+/** 部门选择 — TreeSelect（部门树数据经 options 传入）。 */
+export function renderDeptPicker(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const treeData = extractSelectOptions(node).map((o) => ({ title: o.label, value: o.value }));
+  return (
+    <FormFieldItem node={node} ctx={ctx}>
+      <TreeSelect
+        treeData={treeData}
+        placeholder={getPropAsString(node, 'placeholder', ctx) || '请选择部门'}
+        size="small"
+        allowClear
+        style={{ width: '100%' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+export function renderDeptPickerMulti(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const treeData = extractSelectOptions(node).map((o) => ({ title: o.label, value: o.value }));
+  return (
+    <FormFieldItem node={node} ctx={ctx}>
+      <TreeSelect
+        treeData={treeData}
+        multiple
+        placeholder={getPropAsString(node, 'placeholder', ctx) || '请选择部门'}
+        size="small"
+        maxTagCount="responsive"
+        style={{ width: '100%' }}
+      />
+    </FormFieldItem>
+  );
+}
+
+/** 内置省级行政区划级联（可经 options 覆盖扩展市县级）。 */
+function regionOptions(node: ComponentNode): { label: string; value: string }[] {
+  const custom = extractSelectOptions(node);
+  return custom.length
+    ? custom.map((o) => ({ label: o.label, value: o.value }))
+    : builtinRegionOptions();
+}
+
+export function renderRegionCascaderSingle(node: ComponentNode, ctx: RenderContext): ReactNode {
+  return (
+    <FormFieldItem node={node} ctx={ctx}>
+      <Cascader
+        options={regionOptions(node)}
+        placeholder={getPropAsString(node, 'placeholder', ctx) || '请选择省份/地区'}
+        size="small"
+        changeOnSelect
+      />
+    </FormFieldItem>
+  );
+}
+
+export function renderRegionCascaderMulti(node: ComponentNode, ctx: RenderContext): ReactNode {
+  return (
+    <FormFieldItem node={node} ctx={ctx}>
+      <Cascader
+        options={regionOptions(node)}
+        multiple
+        placeholder={getPropAsString(node, 'placeholder', ctx) || '请选择省份/地区'}
+        size="small"
+        maxTagCount="responsive"
+      />
+    </FormFieldItem>
+  );
+}
+
+/** HTML 展示 — 消毒后注入（XSS 防线对齐 rich_text_display）。 */
+export function renderHtmlDisplay(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const html = getPropAsString(node, 'html', ctx);
+  if (!html) {
+    return <div style={placeholderStyle}>HTML（未设置内容）</div>;
+  }
+  return (
+    <div style={{ padding: 8 }} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
+  );
+}
+
+/** JSX 展示 — 代码源码只读展示（执行需经全局代码/脚本动作）。 */
+export function renderJsxDisplay(node: ComponentNode, ctx: RenderContext): ReactNode {
+  const code = getPropAsString(node, 'code', ctx);
+  if (!code) {
+    return <div style={placeholderStyle}>JSX（未设置代码）</div>;
+  }
+  return (
+    <pre
+      style={{
+        margin: 4,
+        padding: 12,
+        background: '#0d1117',
+        color: '#c9d1d9',
+        borderRadius: 6,
+        fontSize: 12,
+        overflow: 'auto',
+      }}
+    >
+      <code>{code}</code>
+    </pre>
+  );
 }

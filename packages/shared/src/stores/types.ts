@@ -137,12 +137,10 @@ export type ComponentType =
   | 'chart_combo'
   | 'progress_chart'
   | 'matrix_table'
-  | 'matrix_table'
   | 'statistic_group'
   | 'filter'
   | 'sort'
   | 'audit_list'
-  | 'tree_list_single'
   | 'tree_list_single'
   | 'tree_list_multi'
   // —— 业务审批·扩展（页面模块对齐批次C6） ——
@@ -150,7 +148,14 @@ export type ComponentType =
   | 'notification_list'
   | 'task_detail'
   | 'my_tasks'
-  | 'approval_admin';
+  | 'approval_admin'
+  // —— 收尾·扩展（页面模块对齐批次C7） ——
+  | 'html_display'
+  | 'jsx_display'
+  | 'dept_picker'
+  | 'dept_picker_multi'
+  | 'region_cascader_single'
+  | 'region_cascader_multi';
 
 /** 组件节点。页面 Schema 的基本单元，组成树形结构。 */
 export interface ComponentNode {

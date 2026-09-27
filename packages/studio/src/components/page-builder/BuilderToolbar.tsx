@@ -24,6 +24,8 @@ import {
   ReloadOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
+  GlobalOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -31,6 +33,7 @@ import { qk } from '@apaas/shared/stores';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { pagesApi } from '../../api/pages.js';
 import { PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
+import { GlobalCodeModal, I18nModal } from './builder-toolbar/BuilderToolbarModals.js';
 
 const { Text } = Typography;
 
@@ -65,6 +68,8 @@ export default function BuilderToolbar() {
   const loadPage = usePageBuilderStore((s) => s.loadPage);
   const canvasZoom = usePageBuilderStore((s) => s.canvasZoom);
   const setCanvasZoom = usePageBuilderStore((s) => s.setCanvasZoom);
+  const [i18nOpen, setI18nOpen] = useState(false);
+  const [globalCodeOpen, setGlobalCodeOpen] = useState(false);
 
   /** 保存页面(Schema + 元数据)。 */
   const saveMutation = useMutation({
@@ -274,7 +279,26 @@ export default function BuilderToolbar() {
             刷新页面
           </Button>
         </Tooltip>
+        <Button
+          type="text"
+          size="small"
+          icon={<GlobalOutlined />}
+          onClick={() => setI18nOpen(true)}
+        >
+          多语
+        </Button>
+        <Button
+          type="text"
+          size="small"
+          icon={<CodeOutlined />}
+          onClick={() => setGlobalCodeOpen(true)}
+        >
+          全局代码
+        </Button>
       </Space>
+
+      <I18nModal open={i18nOpen} onClose={() => setI18nOpen(false)} />
+      <GlobalCodeModal open={globalCodeOpen} onClose={() => setGlobalCodeOpen(false)} />
 
       {/* 右侧:编辑预览 + 保存 + 发布 */}
       <Space size={8} align="center" style={{ flex: 1, justifyContent: 'flex-end' }}>

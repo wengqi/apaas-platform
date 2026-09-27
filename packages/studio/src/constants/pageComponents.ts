@@ -48,6 +48,8 @@ import {
   BellOutlined,
   FileDoneOutlined,
   AuditOutlined,
+  ApartmentOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import type { ComponentType } from '../api/pages.js';
 
@@ -738,6 +740,56 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     description: '审批流程管理列表',
     defaultProps: { data: '' },
   },
+
+  // —— 收尾·扩展（页面模块对齐批次C7，HTML/JSX 入通用，部门/行政区划入数据输入） ——
+  html_display: {
+    label: 'HTML',
+    icon: CodeOutlined,
+    category: 'display',
+    isContainer: false,
+    description: 'HTML 片段展示（消毒）',
+    defaultProps: { html: '' },
+  },
+  jsx_display: {
+    label: 'JSX',
+    icon: CodeOutlined,
+    category: 'display',
+    isContainer: false,
+    description: 'JSX 源码展示',
+    defaultProps: { code: '' },
+  },
+  dept_picker: {
+    label: '部门选择',
+    icon: ApartmentOutlined,
+    category: 'form',
+    isContainer: false,
+    description: '部门树形单选',
+    defaultProps: { placeholder: '请选择部门' },
+  },
+  dept_picker_multi: {
+    label: '部门多选',
+    icon: ApartmentOutlined,
+    category: 'form',
+    isContainer: false,
+    description: '部门树形多选',
+    defaultProps: { placeholder: '请选择部门' },
+  },
+  region_cascader_single: {
+    label: '行政区划单选',
+    icon: EnvironmentOutlined,
+    category: 'form',
+    isContainer: false,
+    description: '省级行政区划级联单选',
+    defaultProps: { placeholder: '请选择省份/地区' },
+  },
+  region_cascader_multi: {
+    label: '行政区划多选',
+    icon: EnvironmentOutlined,
+    category: 'form',
+    isContainer: false,
+    description: '省级行政区划级联多选',
+    defaultProps: { placeholder: '请选择省份/地区' },
+  },
 };
 
 /**
@@ -828,6 +880,10 @@ export const DESIGNER_GROUPS: {
       'cascader_multi',
       'tree_select_single',
       'tree_select_multi',
+      'dept_picker',
+      'dept_picker_multi',
+      'region_cascader_single',
+      'region_cascader_multi',
     ],
   },
   {
@@ -851,6 +907,8 @@ export const DESIGNER_GROUPS: {
       'markdown',
       'collapse_panel',
       'carousel',
+      'html_display',
+      'jsx_display',
     ],
   },
   {

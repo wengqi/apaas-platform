@@ -84,12 +84,10 @@ export type ComponentType =
   | 'chart_combo'
   | 'progress_chart'
   | 'matrix_table'
-  | 'matrix_table'
   | 'statistic_group'
   | 'filter'
   | 'sort'
   | 'audit_list'
-  | 'tree_list_single'
   | 'tree_list_single'
   | 'tree_list_multi'
   // —— 业务审批·扩展（页面模块对齐批次C6） ——
@@ -97,7 +95,14 @@ export type ComponentType =
   | 'notification_list'
   | 'task_detail'
   | 'my_tasks'
-  | 'approval_admin';
+  | 'approval_admin'
+  // —— 收尾·扩展（页面模块对齐批次C7） ——
+  | 'html_display'
+  | 'jsx_display'
+  | 'dept_picker'
+  | 'dept_picker_multi'
+  | 'region_cascader_single'
+  | 'region_cascader_multi';
 
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
 
@@ -179,6 +184,15 @@ export interface PageSchema {
   pageType: PageType;
   viewModel: ViewModel;
   root: ComponentNode;
+  /** 全局 CSS（预览/运行时注入页面，可选） */
+  globalCss?: string;
+  /** 全局 JS（页面挂载后执行一次，可选） */
+  globalJs?: string;
+  /** 页面多语文案（可选）：默认语言 + 各 locale 的 key→文案 表 */
+  i18n?: {
+    defaultLocale?: string;
+    locales: Record<string, Record<string, string>>;
+  };
 }
 
 export interface PageMeta {

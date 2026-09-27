@@ -64,6 +64,14 @@ import {
   renderText,
 } from './renderers-display.js';
 import {
+  renderRegionCascaderSingle,
+  renderRegionCascaderMulti,
+  renderDeptPicker,
+  renderDeptPickerMulti,
+  renderHtmlDisplay,
+  renderJsxDisplay,
+} from './renderers-data-ext.js';
+import {
   renderProfileCenter,
   renderNotificationList,
   renderTaskDetail,
@@ -223,6 +231,14 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   task_detail: renderTaskDetail,
   my_tasks: renderMyTasks,
   approval_admin: renderApprovalAdmin,
+
+  // —— 收尾·扩展（页面模块对齐批次C7） ——
+  html_display: renderHtmlDisplay,
+  jsx_display: renderJsxDisplay,
+  dept_picker: renderDeptPicker,
+  dept_picker_multi: renderDeptPickerMulti,
+  region_cascader_single: renderRegionCascaderSingle,
+  region_cascader_multi: renderRegionCascaderMulti,
 };
 
 // ---------------------------------------------------------------------------

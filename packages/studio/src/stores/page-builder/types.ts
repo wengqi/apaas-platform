@@ -46,6 +46,8 @@ export interface PageBuilderState {
   markSaved: () => void;
   /** 获取当前 Schema(命令式,用于保存) */
   getSchema: () => PageSchema | null;
+  /** 浅合并更新 Schema 顶层字段（全局代码/多语等） */
+  patchSchema: (partial: Partial<PageSchema>) => void;
   /** 更新页面元数据(名称/apiName/类型等) */
   updatePageMeta: (
     updates: Partial<Pick<PageMeta, 'name' | 'apiName' | 'type' | 'objectId' | 'published'>>,

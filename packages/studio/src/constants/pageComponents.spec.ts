@@ -50,8 +50,32 @@ describe('批次C1 — 新增展示组件注册', () => {
     }
   });
 
-  it('全平台组件总数达到 80（75 + 批次C6 的 5）', () => {
-    expect(Object.keys(COMPONENT_META)).toHaveLength(80);
+  it('全平台组件总数达到 86（80 + 批次C7 的 6），完成与飞书组件数量对齐', () => {
+    expect(Object.keys(COMPONENT_META)).toHaveLength(86);
+  });
+
+  const BATCH_C7_TYPES: ComponentType[] = [
+    'html_display',
+    'jsx_display',
+    'dept_picker',
+    'dept_picker_multi',
+    'region_cascader_single',
+    'region_cascader_multi',
+  ];
+
+  it('批次C7 收尾组件已注册并挂入正确分组', () => {
+    const general = DESIGNER_GROUPS.find((g) => g.title === '通用');
+    const dataInput = DESIGNER_GROUPS.find((g) => g.title === '数据输入');
+    expect(general?.types).toContain('html_display');
+    expect(general?.types).toContain('jsx_display');
+    for (const t of BATCH_C7_TYPES) {
+      if (t.startsWith('dept') || t.startsWith('region')) {
+        expect(dataInput?.types).toContain(t);
+      } else {
+        expect(general?.types).toContain(t);
+      }
+      expect(COMPONENT_META[t]).toBeTruthy();
+    }
   });
 
   const BATCH_C6_TYPES: ComponentType[] = [

@@ -80,6 +80,14 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
 
   getSchema: () => get().schema,
 
+  patchSchema: (partial) => {
+    const state = get();
+    if (!state.schema) return;
+    const past = pushHistory(state.past, state.schema);
+    const schema = cloneSchema(state.schema);
+    set({ schema: { ...schema, ...partial }, past, future: [] });
+  },
+
   updatePageMeta: (updates) => {
     const state = get();
     if (!state.currentPage) return;

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { applyGlobalCss, runGlobalJs } from '@apaas/shared/page';
 import { Space, Typography } from 'antd';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { useDebugStore } from '../../stores/page-builder/debug.js';
@@ -31,6 +32,14 @@ export default function Canvas() {
   // 切回编辑时卸载(清理运行时状态)。
   const viewModel = schema?.viewModel ?? { variables: {} };
   const objectId = currentPage?.objectId;
+
+  // 全局代码（批次C7）：预览态注入 CSS / 执行一次 JS，切回编辑时清理
+  useEffect(() => {
+    if (mode !== 'preview' || !schema) return;
+    applyGlobalCss(schema);
+    runGlobalJs(schema);
+    return () => applyGlobalCss(null);
+  }, [mode, schema]);
 
   return (
     <div

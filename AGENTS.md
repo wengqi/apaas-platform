@@ -231,7 +231,11 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
     （审批后状态流转与通知闭环）/ 记录表单系统字段隐藏 / 页面搭建器
     脏状态与加载失败显式化 / 全局 ErrorBoundary
   - 质量：新增真实 UI 路径 e2e（e2e/11-ui-user-paths.spec.ts）；
-    本地 e2e 50/50、单测 492/492 通过
+    单测 gateway 517/517、studio 108/108，e2e 58/58 通过
+- ✅ CI e2e 全红已闭环（2026-09-27）：根因为 e2e job 全局 NODE_ENV=test 污染
+  Vite 构建模式（打进 React dev 版本致流程画布不渲染节点）+ HistoryBridge
+  setState 死循环 + newQbId 碰撞（RAQB 伪 UUID）+ e2e appId 副作用级联；
+  详见 docs/knowledge-base/REMEDIATION-2026-09-26.md 第五节之八
 - ✅ BUG-05 已闭环：流程配置侧栏改为在应用 root 内渲染（原 body portal 事件
   委托不可靠），新增 e2e/12-process-sidebar.spec.ts 守护（含负向对照）
 - ✅ 数据层高严重度项已闭环：可空列 partial unique index（users/org_role_grants）、

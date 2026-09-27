@@ -310,6 +310,44 @@ RecordService 的字段校验、AutoNumber/Formula/Rollup 计算与
 - **完整 e2e 58/58 通过**（含 UI 全路径、对象/字段/记录/视图/页面搭建器/流程监控/任务中心等被拆分模块的界面）。
 - 未修改任何测试文件；未改变任何行为（仅搬移 + props 接线 + re-export）。
 
+## 五之八、CI e2e 全红闭环（本地绿 / CI 红的根因链）
+
+**背景**：整改分支首次推送后 PR CI 全量跑红——e2e 58 例中 4 例确定性失败
+（10-demo-app 对象/页面设计器 UI 断言 ×2、12-process-sidebar 画布节点点击 ×2），
+而本地全量 e2e 始终 58/58。复跑两次失败集合完全一致，排除抖动。
+
+**证据链**（`02d6db8` 新增的失败现场上传发挥了关键作用）：
+1. 失败截图/页面快照：编辑器页结构完整但**画布零节点**；页面列表呈现 `/app/undefined`
+   特征（空态 + 通用标题）。
+2. trace 网络记录：API 全部 200、schema 数据完整 → 排除后端；10 号 spec retry 访问
+   `/app/undefined` → 暴露 appId 依赖测试副作用的设计缺陷。
+3. trace console 记录：**21,004 次** antd Modal 警告 + **201 次** `Maximum update depth
+   exceeded` → 定位渲染循环；栈顶组件为 HistoryBridge。
+
+**根因与修复**（各为独立问题）：
+
+| # | 根因 | 修复 |
+|---|---|---|
+| 1 | e2e job 全局 `NODE_ENV=test` 被 Vite 6 当作构建模式 → studio bundle 打入 **React development 版本** → flowgram 画布在 dev bundle 下不渲染节点。生产构建从未受影响——这就是"本地全绿、CI 确定性全红"的来源（CI console 里的 React DevTools 提示是 dev bundle 的铁证） | ci.yml「Build studio & gateway」步骤覆盖 `NODE_ENV=production`（gateway 运行时仍继承 test） |
+| 2 | HistoryBridge effect 依赖不稳定的 `tools` 实例，每次执行经 `setHistoryApi` 喂新对象 → 重渲染 → 新 tools → effect 再跑，**setState 死循环**（dev bundle 下 21k 次渲染饿死画布；生产 bundle 自愈但属真实隐患，vite dev 本地开发同样暴露） | tools 实例经 ref 读取，effect 仅依赖 canUndo/canRedo 布尔值；ProcessEditor 侧 historyApi 入 ref、布尔 state 驱动渲染且值不变时返回 prev 使 setState 退出——上报路径在构造上有界 |
+| 3 | studio 单测偶发失败（`newQbId` 100 个 ID 出现碰撞，expected 100 got 99）：RAQB 的 `Utils.uuid()` 以毫秒时间戳+模 16 计数器为主体、仅 8 个 hex 位真随机，同毫秒批量生成实测约 **1.5% 碰撞率**（200 次采样命中 3 次） | 按红线不动测试、修产品实现：`newQbId` 与 `emptyTree` 根节点 ID 改用 `crypto.randomUUID()`（CSPRNG v4，2 万 ID 采样零碰撞） |
+| 4 | e2e 脆弱点放大器：`10-demo-app` 的 appId 由文件内首个测试的**副作用**赋值，Playwright 失败重试会更换 worker 并重跑 beforeAll 但不重跑其它测试 → appId 恒为 undefined，一次失败级联成多个 `/app/undefined` 必然失败 | appId 改为 beforeAll 独立解析；AntD Typography ellipsis 字体测量窗口期会渲染隐藏副本导致 strict exact 文本误判，断言改 `filter({ visible: true }).first()` |
+
+**方法论教训**（沉淀为规约）：
+- 本地 e2e `reuseExistingServer: true` 会静默复用 Docker 旧构建服务——**验证重构/修复前必须
+  确认被测产物由当前代码构建**（本轮本地"全绿"实际测的是旧 bundle）。
+- 本地绿 ≠ CI 绿：排查时按 CI 完全相同的构建模式与环境变量复现（`NODE_ENV=test pnpm exec
+  vite build` 一步复现画布空白），比阅读代码推测快得多。
+- Playwright trace 的 console 记录与网络记录是 CI-only 失败的第一现场；失败时先看 console
+  是否出现 dev-only 警告（React DevTools 提示 / antd dev 警告），它们直接指认构建模式错误。
+
+**验证**：
+- 复现闭环：`NODE_ENV=test` 构建 → 12 号 spec 必现失败（与 CI 一致）；修复后同构建 12 号
+  spec 通过、超限警告与万次重渲染消失（Modal 警告 21,004 → 6，即正常挂载次数）。
+- 本地按 CI 同路径（`NODE_ENV=production` turbo 构建）完整 e2e **58/58**；typecheck 11/11；
+  单测 gateway 517/517、studio 108/108（连跑 3 次）。
+- CI：run `36306418165` 全绿（static / test / build / e2e 四 job）。
+
 ## 六、遗留项（技术边界与设计取舍，非缺陷）
 
 评审报告「整改优先级」中的实质缺陷已全部闭环（安全 C-1/H-1~H-4/M-2~M-8、引擎 P0-1/P0-2 与 P1 系列、
@@ -331,3 +369,10 @@ RecordService 的字段校验、AutoNumber/Formula/Rollup 计算与
 2. `fix(gateway,db): 流程引擎与数据一致性整改（P0-1/P0-2/P1 系列）`
 3. `fix(studio,runtime-ui): 前端整改——流程 UI 断链/脏状态/数据绑定/值统一`
 4. `test(e2e): 新增真实 UI 用户路径 spec + 页面搭建器健壮性修复`
+
+CI e2e 闭环增量（2026-09-27）：
+
+- `fix(config,studio) 0a88129` — e2e 构建强制 NODE_ENV=production + HistoryBridge/ProcessEditor 循环加固
+- `fix(studio) 709bc53` — newQbId 改用 crypto.randomUUID 修复唯一性缺陷
+- `fix(studio,e2e) e50752a` — 切断 initialSchema 反馈环 + e2e 抗 worker 替换与隐藏节点
+- `ci(e2e) 02d6db8` — 失败时上传 Playwright 现场证据（本轮排查的全部依据）

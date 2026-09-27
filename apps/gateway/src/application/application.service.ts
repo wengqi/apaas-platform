@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import {
   asAppId,
@@ -23,6 +19,8 @@ import {
 import { SnapshotService } from './snapshot.service.js';
 import { CheckService } from './check.service.js';
 import { ChangeLogService } from './changelog.service.js';
+import { TriggerService } from '../process/trigger.service.js';
+import { writeAudit } from '../common/audit.js';
 
 /**
  * 应用服务 — Application CRUD + 发布/回滚/版本管理。
@@ -34,7 +32,11 @@ export class ApplicationService {
     private readonly snapshotService: SnapshotService,
     private readonly checkService: CheckService,
     private readonly changeLogService: ChangeLogService,
+    private readonly triggerService: TriggerService,
   ) {}
+
+  /** 评审整改：类内日志器（不作为 DI 依赖） */
+  private readonly logger = new Logger(ApplicationService.name);
 
   /**
    * 列出租户下所有应用（含资源统计）。
@@ -108,11 +110,7 @@ export class ApplicationService {
   /**
    * 创建应用 — apiName 自动生成（若未传入）。
    */
-  async create(
-    tenantId: string,
-    createdBy: string,
-    req: CreateAppRequest,
-  ): Promise<Application> {
+  async create(tenantId: string, createdBy: string, req: CreateAppRequest): Promise<Application> {
     const apiName = req.apiName || this.generateApiName();
 
     const app = await prisma.application.create({
@@ -189,11 +187,7 @@ export class ApplicationService {
    * 归档应用 — 冻结运行态入口，在途流程仍可继续完成。
    * 仅 PUBLISHED 状态可归档。
    */
-  async archive(
-    tenantId: string,
-    appId: string,
-    archivedBy: string,
-  ): Promise<Application> {
+  async archive(tenantId: string, appId: string, archivedBy: string): Promise<Application> {
     const app = await prisma.application.findFirst({
       where: { id: appId, tenantId },
       select: { id: true, name: true, status: true },
@@ -285,21 +279,14 @@ export class ApplicationService {
   /**
    * 执行预检。
    */
-  async check(
-    tenantId: string,
-    appId: string,
-    checkedBy: string,
-  ): Promise<CheckResult> {
+  async check(tenantId: string, appId: string, checkedBy: string): Promise<CheckResult> {
     return this.checkService.check(tenantId, appId, checkedBy);
   }
 
   /**
    * 获取预检记录列表。
    */
-  async listChecks(
-    tenantId: string,
-    appId: string,
-  ): Promise<AppCheckRecord[]> {
+  async listChecks(tenantId: string, appId: string): Promise<AppCheckRecord[]> {
     const checks = await prisma.appCheck.findMany({
       where: { tenantId, appId },
       orderBy: { checkedAt: 'desc' },
@@ -346,11 +333,7 @@ export class ApplicationService {
     }
 
     // 3. 执行预检
-    const checkResult = await this.checkService.check(
-      tenantId,
-      appId,
-      publishedBy,
-    );
+    const checkResult = await this.checkService.check(tenantId, appId, publishedBy);
     if (checkResult.status === 'FAIL') {
       throw new BadRequestException({
         message: '预检未通过，请修复以下问题后再发布',
@@ -367,10 +350,7 @@ export class ApplicationService {
     );
 
     // 5. 生成变更清单
-    const changeSet = await this.changeLogService.getChangeSet(
-      tenantId,
-      appId,
-    );
+    const changeSet = await this.changeLogService.getChangeSet(tenantId, appId);
 
     // 6. 事务写入：创建版本记录 + 更新应用状态 + 同步子资源发布状态
     const version = await prisma.$transaction(async (tx) => {
@@ -404,12 +384,36 @@ export class ApplicationService {
         where: { tenantId, appId },
         data: { isPublished: true },
       });
+      // 评审 P1-7：只把 DRAFT 流程随应用发布——未完成的草稿不强制上线
       await tx.processDef.updateMany({
-        where: { tenantId, appId },
+        where: { tenantId, appId, status: 'DRAFT' },
         data: { status: 'PUBLISHED' },
       });
 
       return newVersion;
+    });
+
+    // 评审 P1-7：应用级发布上线的 SCHEDULED 流程需即时注册定时触发器
+    // （此前仅 onModuleInit 注册，应用级发布后定时流程静默不执行）
+    const publishedDefs = await prisma.processDef.findMany({
+      where: { tenantId, appId, status: 'PUBLISHED', triggerType: 'SCHEDULED' },
+      select: { id: true, cron: true, apiName: true },
+    });
+    for (const def of publishedDefs) {
+      await this.triggerService
+        .onProcessPublished(def.id, 'SCHEDULED', def.cron, def.apiName)
+        .catch((err: unknown) => this.logger?.warn?.(`定时触发器注册失败: ${String(err)}`));
+    }
+
+    // 评审整改：业务动作级审计
+    writeAudit({
+      tenantId,
+      userId: publishedBy,
+      action: 'APP_PUBLISH',
+      resource: 'APPLICATION',
+      resourceId: appId,
+      appId,
+      detail: { version: version.versionNumber },
     });
 
     return this.toAppVersion(version);
@@ -486,10 +490,7 @@ export class ApplicationService {
   /**
    * 获取版本列表（不含快照，避免大字段传输）。
    */
-  async listVersions(
-    tenantId: string,
-    appId: string,
-  ): Promise<AppVersionSummary[]> {
+  async listVersions(tenantId: string, appId: string): Promise<AppVersionSummary[]> {
     const versions = await prisma.appVersion.findMany({
       where: { tenantId, appId },
       orderBy: { publishedAt: 'desc' },
@@ -518,11 +519,7 @@ export class ApplicationService {
   /**
    * 获取版本详情（含完整快照）。
    */
-  async getVersion(
-    tenantId: string,
-    appId: string,
-    versionId: string,
-  ): Promise<AppVersion> {
+  async getVersion(tenantId: string, appId: string, versionId: string): Promise<AppVersion> {
     const version = await prisma.appVersion.findFirst({
       where: { id: versionId, tenantId, appId },
     });
@@ -546,10 +543,7 @@ export class ApplicationService {
    * 生成回滚版本号（碰撞安全）。
    * 策略：在原版本号基础上递增 patch，若碰撞则继续递增直到不碰撞。
    */
-  private async generateRollbackVersionNumber(
-    appId: string,
-    baseVersion: string,
-  ): Promise<string> {
+  private async generateRollbackVersionNumber(appId: string, baseVersion: string): Promise<string> {
     const [major, minor, patch] = baseVersion.split('.').map(Number);
     const basePatch = patch ?? 0;
     let candidate = `${major}.${minor}.${basePatch + 1}`;

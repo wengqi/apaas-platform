@@ -8,10 +8,7 @@ import { prisma } from '@apaas/db';
 @Injectable()
 export class UserService {
   /** 用户列表（支持搜索/按组织/按角色过滤）。 */
-  async list(
-    tenantId: string,
-    params?: { keyword?: string; orgId?: string; roleId?: string },
-  ) {
+  async list(tenantId: string, params?: { keyword?: string; orgId?: string; roleId?: string }) {
     const where: Record<string, unknown> = { tenantId };
 
     if (params?.keyword) {
@@ -31,14 +28,35 @@ export class UserService {
       where.orgMemberships = { some: { orgId: params.orgId } };
     }
 
-    return prisma.user.findMany({
-      where,
-      include: {
-        userRoles: { include: { role: true } },
-        orgMemberships: { include: { org: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    return prisma.user
+      .findMany({
+        where,
+        include: {
+          userRoles: { include: { role: true } },
+          orgMemberships: { include: { org: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      .then((users) => users.map((u) => this.toDto(u)));
+  }
+
+  /**
+   * 实体 → DTO：剔除 passwordHash，并将 userRoles[] 拍平为 roles[]，
+   * 与前端 UserInfo 契约（record.roles / record.orgMemberships）对齐。
+   */
+  private toDto(
+    u: {
+      passwordHash: string;
+      userRoles: Array<{ role: { id: string; name: string; code: string } }>;
+      orgMemberships: Array<{ org: { id: string; name: string } }>;
+    } & Record<string, unknown>,
+  ) {
+    const { passwordHash: _ph, userRoles, ...rest } = u;
+    return {
+      ...rest,
+      roles: (userRoles ?? []).map((ur) => ur.role),
+      orgMemberships: u.orgMemberships,
+    };
   }
 
   /** 用户详情（含角色+组织）。 */
@@ -51,13 +69,20 @@ export class UserService {
       },
     });
     if (!user) throw new NotFoundException('用户不存在');
-    return user;
+    return this.toDto(user);
   }
 
   /** 创建用户。 */
-  async create(tenantId: string, data: {
-    email: string; name: string; password: string; roleIds?: string[]; orgIds?: string[];
-  }) {
+  async create(
+    tenantId: string,
+    data: {
+      email: string;
+      name: string;
+      password: string;
+      roleIds?: string[];
+      orgIds?: string[];
+    },
+  ) {
     const exists = await prisma.user.findFirst({ where: { tenantId, email: data.email } });
     if (exists) throw new BadRequestException('邮箱已存在');
 
@@ -83,7 +108,7 @@ export class UserService {
       }
     }
 
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    const passwordHash = await bcrypt.hash(data.password, 12);
 
     const user = await prisma.user.create({
       data: {
@@ -110,13 +135,20 @@ export class UserService {
       });
     }
 
-    return user;
+    const { passwordHash: _ph, ...safeUser } = user;
+    return safeUser;
   }
 
   /** 更新用户。 */
-  async update(tenantId: string, id: string, data: {
-    name?: string; avatar?: string; status?: string;
-  }) {
+  async update(
+    tenantId: string,
+    id: string,
+    data: {
+      name?: string;
+      avatar?: string;
+      status?: string;
+    },
+  ) {
     const user = await prisma.user.findFirst({ where: { id, tenantId } });
     if (!user) throw new NotFoundException('用户不存在');
     return prisma.user.update({

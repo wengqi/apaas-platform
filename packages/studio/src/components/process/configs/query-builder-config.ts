@@ -305,7 +305,7 @@ function normalizeJsonLogic(rule: object): object {
  * 从 JsonLogic 规则加载到 RAQB 的 Immutable 树。
  */
 export function loadFromJsonLogic(rule: object | null | undefined, config: Config): ImmutableTree {
-  const emptyTree = () => QbUtils.loadTree({ id: QbUtils.uuid(), type: 'group' } as JsonTree);
+  const emptyTree = () => QbUtils.loadTree({ id: newQbId(), type: 'group' } as JsonTree);
   if (!rule) {
     return emptyTree();
   }
@@ -339,7 +339,10 @@ export function exportToJsonLogic(
 // 工具
 // ---------------------------------------------------------------------------
 
-/** 生成唯一 ID（用于 RAQB 树节点） */
+/** 生成唯一 ID（用于 RAQB 树节点）。
+ *  不用 QbUtils.uuid()：其实现以毫秒时间戳 + 模 16 计数器为主，仅 8 个 hex 位
+ *  来自 Math.random，同毫秒批量生成时计数位每 4 个 ID 即整组重复，实测 100 个
+ *  ID 约 1.5% 概率碰撞。crypto.randomUUID() 为 CSPRNG v4，真正满足唯一性。 */
 export function newQbId(): string {
-  return QbUtils.uuid();
+  return crypto.randomUUID();
 }

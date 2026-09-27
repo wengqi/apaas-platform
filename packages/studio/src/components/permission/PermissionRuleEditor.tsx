@@ -24,6 +24,7 @@ import { pagesApi } from '../../api/pages.js';
 import { processesApi } from '../../api/processes.js';
 import { connectorsApi } from '../../api/connectors.js';
 import QueryBuilderPanel from '../shared/QueryBuilderPanel.js';
+import { qk } from '@apaas/shared/stores';
 
 const { Text } = Typography;
 
@@ -70,21 +71,21 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
 
   // 加载应用对象列表（用于 RECORD 权限的目标选择）
   const { data: objects } = useQuery({
-    queryKey: ['app-objects', role.appId],
+    queryKey: qk.appObjects(role.appId!),
     queryFn: () => objectsApi.list(role.appId!),
     enabled: open && !!role.appId,
   });
 
   // 加载选中对象的字段（用于 QueryBuilderPanel）
   const { data: selectedObject } = useQuery({
-    queryKey: ['object', selectedObjectId],
+    queryKey: qk.object(selectedObjectId!),
     queryFn: () => objectsApi.get(selectedObjectId!),
     enabled: !!selectedObjectId,
   });
 
   // 加载应用页面列表（用于 PAGE 权限的目标选择）
   const { data: pages } = useQuery({
-    queryKey: ['app-pages', role.appId],
+    queryKey: qk.appPages(role.appId!),
     queryFn: () => pagesApi.list(role.appId!),
     enabled: open && !!role.appId,
   });

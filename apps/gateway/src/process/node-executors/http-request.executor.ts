@@ -18,6 +18,11 @@ import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../typ
 import { renderTemplateDotted } from '../process-utils.js';
 import { ConnectorService } from '../../connector/connector.service.js';
 import { ConnectorCallService } from '../../connector/connector-call.service.js';
+import {
+  assertSafeOutboundUrl,
+  safeFetch,
+  outboundTimeoutMs,
+} from '../../common/net/ssrf-guard.js';
 
 @Injectable()
 export class HttpRequestExecutor implements NodeExecutor {
@@ -90,7 +95,14 @@ export class HttpRequestExecutor implements NodeExecutor {
       }
 
       this.logger.log(`HTTP ${method} ${url}`);
-      const resp = await fetch(url, { method, headers, body: bodyStr });
+      // 评审 H-3/P2-4：出站 SSRF 校验 + 超时（直连模式同样受限）
+      await assertSafeOutboundUrl(url);
+      const resp = await safeFetch(url, {
+        method,
+        headers,
+        body: bodyStr,
+        signal: AbortSignal.timeout(outboundTimeoutMs()),
+      });
       const respText = await resp.text();
       try {
         responseBody = JSON.parse(respText);

@@ -13,6 +13,7 @@ import {
   message,
 } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import dayjs from 'dayjs';
 import { objectsApi, type Field, type RecordItem } from '../../api/objects.js';
 import { getFieldTypeMeta } from '../../constants/fieldTypes.js';
@@ -51,15 +52,22 @@ export default function RecordFormDrawer({
 
   const isEdit = mode === 'edit';
 
-  /** 仅可编辑的业务字段(排除只读类型)。 */
-  const editableFields = fields.filter((f) => !isReadonlyType(f.type));
+  /**
+   * 表单可见字段：排除 isSystem 系统字段。
+   * 评审整改：created_by/created_at/updated_by/updated_at 等系统字段由后端自动维护，
+   * 不应出现在新增/编辑表单中让用户手填。
+   */
+  const visibleFields = fields.filter((f) => !f.isSystem);
+
+  /** 仅可编辑的业务字段(排除系统字段与只读类型)。 */
+  const editableFields = fields.filter((f) => !f.isSystem && !isReadonlyType(f.type));
 
   /** 新增记录。 */
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => objectsApi.records.create(object.id, data),
     onSuccess: () => {
       message.success('记录已创建');
-      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
       onClose();
     },
     onError: (err) => showError(err),
@@ -73,7 +81,7 @@ export default function RecordFormDrawer({
     },
     onSuccess: () => {
       message.success('记录已更新');
-      queryClient.invalidateQueries({ queryKey: ['object', object.id, 'records'] });
+      queryClient.invalidateQueries({ queryKey: qk.objectRecords(object.id) });
       onClose();
     },
     onError: (err) => showError(err),
@@ -135,10 +143,11 @@ export default function RecordFormDrawer({
       }
     >
       <Form form={form} layout="vertical" preserve={false}>
-        {fields.map((field) => (
+        {/* 评审整改：渲染 visibleFields 而非全量 fields，系统字段不进入表单 */}
+        {visibleFields.map((field) => (
           <FieldFormItem key={field.id} field={field} />
         ))}
-        {fields.length === 0 && <Text type="secondary">该对象暂无字段</Text>}
+        {visibleFields.length === 0 && <Text type="secondary">该对象暂无字段</Text>}
       </Form>
     </Drawer>
   );
@@ -179,28 +188,64 @@ function FieldFormItem({ field }: { field: Field }) {
   );
 }
 
-/** 按字段类型渲染表单控件。 */
-function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) {
+/**
+ * 按字段类型渲染表单控件。
+ * Form.Item 会向直接子组件注入 value/onChange（受控绑定）——必须接收并透传给
+ * 实际的 AntD 控件，否则输入值不会进入 form store，必填校验永远失败。
+ */
+function FieldControl({
+  field,
+  disabled,
+  value,
+  onChange,
+}: {
+  field: Field;
+  disabled: boolean;
+  value?: unknown;
+  onChange?: (v: unknown) => void;
+}) {
   const type = field.type;
 
   if (disabled) {
-    // 只读字段:展示为禁用 Input
-    return <Input disabled placeholder="系统自动生成" />;
+    // 只读字段:展示为禁用 Input(仅需 value 展示,无需 onChange)
+    return (
+      <Input
+        disabled
+        placeholder="系统自动生成"
+        value={typeof value === 'string' ? value : undefined}
+      />
+    );
   }
 
   switch (type) {
     case 'long_text':
     case 'rich_text':
-      return <Input.TextArea rows={3} placeholder={`请输入${field.label}`} />;
+      return (
+        <Input.TextArea
+          rows={3}
+          placeholder={`请输入${field.label}`}
+          value={typeof value === 'string' ? value : undefined}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      );
     case 'number':
     case 'percent':
-      return <InputNumber style={{ width: '100%' }} placeholder={`请输入${field.label}`} />;
+      return (
+        <InputNumber
+          style={{ width: '100%' }}
+          placeholder={`请输入${field.label}`}
+          value={typeof value === 'number' ? value : undefined}
+          onChange={(v) => onChange?.(v ?? null)}
+        />
+      );
     case 'currency':
       return (
         <InputNumber
           style={{ width: '100%' }}
           placeholder={`请输入${field.label}`}
           addonAfter={field.config.currency?.code ?? 'CNY'}
+          value={typeof value === 'number' ? value : undefined}
+          onChange={(v) => onChange?.(v ?? null)}
         />
       );
     case 'single_select': {
@@ -209,10 +254,14 @@ function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) 
         <Select
           allowClear
           placeholder={`请选择${field.label}`}
+          // 评审整改：存 value（未配置时回退 label），界面显示 label——
+          // 使流程条件/集成依据稳定编码而非展示文案
           options={options.map((o) => ({
-            value: o.label,
+            value: optionsStored(o),
             label: o.label,
           }))}
+          value={typeof value === 'string' ? value : undefined}
+          onChange={(v) => onChange?.(v)}
         />
       );
     }
@@ -224,21 +273,59 @@ function FieldControl({ field, disabled }: { field: Field; disabled: boolean }) 
           allowClear
           placeholder={`请选择${field.label}`}
           options={options.map((o) => ({
-            value: o.label,
+            value: optionsStored(o),
             label: o.label,
           }))}
+          value={Array.isArray(value) ? (value as string[]) : undefined}
+          onChange={(v) => onChange?.(v)}
         />
       );
     }
     case 'date':
-      return <DatePicker style={{ width: '100%' }} placeholder={`请选择${field.label}`} />;
+      return (
+        <DatePicker
+          style={{ width: '100%' }}
+          placeholder={`请选择${field.label}`}
+          value={isDayjs(value) ? value : undefined}
+          onChange={(d) => onChange?.(d)}
+        />
+      );
     case 'date_time':
-      return <DatePicker showTime style={{ width: '100%' }} placeholder={`请选择${field.label}`} />;
+      return (
+        <DatePicker
+          showTime
+          style={{ width: '100%' }}
+          placeholder={`请选择${field.label}`}
+          value={isDayjs(value) ? value : undefined}
+          onChange={(d) => onChange?.(d)}
+        />
+      );
     case 'checkbox':
-      return <Switch />;
+      return <Switch checked={value === true} onChange={(v) => onChange?.(v)} />;
     default:
-      return <Input placeholder={`请输入${field.label}`} />;
+      return (
+        <Input
+          placeholder={`请输入${field.label}`}
+          value={typeof value === 'string' ? value : undefined}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      );
   }
+}
+
+/** 评审整改：选项存储值（value 优先，未配置回退 label）。 */
+function optionsStored(option: { label: string; value?: string }): string {
+  return option.value ?? option.label;
+}
+
+/** narrows an unknown form value to a Dayjs instance (DatePicker 受控值). */
+function isDayjs(v: unknown): v is dayjs.Dayjs {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    'isValid' in v &&
+    typeof (v as dayjs.Dayjs).isValid === 'function'
+  );
 }
 
 // ---------------------------------------------------------------------------

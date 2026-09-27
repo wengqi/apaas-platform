@@ -1,6 +1,7 @@
 import { Card, Row, Col, Typography, Spin, Empty } from 'antd';
 import { AppstoreOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useNavigate } from 'react-router-dom';
 import { appsApi, type AppSummary } from '../api/apps';
 
@@ -9,12 +10,12 @@ const { Title, Paragraph, Text } = Typography;
 export default function Home() {
   const navigate = useNavigate();
   const { data: apps, isLoading } = useQuery({
-    queryKey: ['apps'],
+    queryKey: qk.apps(),
     queryFn: appsApi.list,
   });
 
-  // 运行时只展示非归档应用
-  const visibleApps = (apps ?? []).filter((a: AppSummary) => a.status !== 'ARCHIVED');
+  // 评审整改：运行时只展示已发布(PUBLISHED)应用，草稿/已归档应用不可访问
+  const visibleApps = (apps ?? []).filter((a: AppSummary) => a.status === 'PUBLISHED');
 
   return (
     <Card>
@@ -33,17 +34,9 @@ export default function Home() {
         <Row gutter={[16, 16]}>
           {visibleApps.map((app: AppSummary) => (
             <Col key={app.id} xs={24} sm={12} md={8} lg={6}>
-              <Card
-                hoverable
-                onClick={() => navigate(`/app/${app.id}`)}
-                style={{ height: '100%' }}
-              >
+              <Card hoverable onClick={() => navigate(`/app/${app.id}`)} style={{ height: '100%' }}>
                 <Card.Meta
-                  avatar={
-                    <span style={{ fontSize: 32 }}>
-                      {app.icon || '📦'}
-                    </span>
-                  }
+                  avatar={<span style={{ fontSize: 32 }}>{app.icon || '📦'}</span>}
                   title={app.name}
                   description={
                     <div>

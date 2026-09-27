@@ -32,7 +32,8 @@ export interface UserTaskConfigFormProps {
   nodeOptions?: { label: string; value: string }[];
 }
 
-const ASSIGNEE_TYPE_OPTIONS = [
+// 评审整改：导出枚举选项，供节点副标题(nodeMetadata)复用做中文标签映射，避免映射表两处维护
+export const ASSIGNEE_TYPE_OPTIONS = [
   { label: '指定用户', value: 'USER' },
   { label: '指定角色', value: 'ROLE' },
   { label: '指定组织', value: 'ORG' },
@@ -40,7 +41,7 @@ const ASSIGNEE_TYPE_OPTIONS = [
   { label: '表单字段', value: 'FORM_FIELD' },
 ];
 
-const APPROVAL_MODE_OPTIONS = [
+export const APPROVAL_MODE_OPTIONS = [
   { label: '单人审批', value: 'SINGLE' },
   { label: '会签(全部同意)', value: 'COUNTERSIGN' },
   { label: '或签(任一同意)', value: 'OR_SIGN' },
@@ -72,8 +73,7 @@ export default function UserTaskConfigForm({
   formOptions = [],
   nodeOptions = [],
 }: UserTaskConfigFormProps) {
-  const update = (patch: Partial<UserTaskConfigData>) =>
-    onChange({ ...data, ...patch });
+  const update = (patch: Partial<UserTaskConfigData>) => onChange({ ...data, ...patch });
 
   const assigneeType = data.assigneeType || 'ROLE';
   const showAssignee = assigneeType !== 'SUPERVISOR';
@@ -148,11 +148,18 @@ export default function UserTaskConfigForm({
           />
         </Input.Group>
       </Form.Item>
-      <Divider orientation="left" plain>驳回配置</Divider>
+      <Divider orientation="left" plain>
+        驳回配置
+      </Divider>
       <Form.Item label="允许驳回">
         <Select
           value={data.allowReject ? 'true' : 'false'}
-          onChange={(v) => update({ allowReject: v === 'true', rejectToNodeId: v === 'true' ? data.rejectToNodeId : undefined })}
+          onChange={(v) =>
+            update({
+              allowReject: v === 'true',
+              rejectToNodeId: v === 'true' ? data.rejectToNodeId : undefined,
+            })
+          }
           options={[
             { label: '不允许', value: 'false' },
             { label: '允许驳回', value: 'true' },
@@ -170,7 +177,9 @@ export default function UserTaskConfigForm({
           />
         </Form.Item>
       )}
-      <Divider orientation="left" plain>抄送配置</Divider>
+      <Divider orientation="left" plain>
+        抄送配置
+      </Divider>
       <Form.Item label="启用抄送">
         <Switch
           checked={data.ccEnabled ?? false}
@@ -191,7 +200,13 @@ export default function UserTaskConfigForm({
               mode="tags"
               value={data.ccRecipients ?? []}
               onChange={(v) => update({ ccRecipients: v })}
-              placeholder={data.ccAssigneeType === 'ROLE' ? '输入角色 ID（回车添加）' : data.ccAssigneeType === 'ORG' ? '输入组织 ID（回车添加）' : '输入用户 ID（回车添加）'}
+              placeholder={
+                data.ccAssigneeType === 'ROLE'
+                  ? '输入角色 ID（回车添加）'
+                  : data.ccAssigneeType === 'ORG'
+                    ? '输入组织 ID（回车添加）'
+                    : '输入用户 ID（回车添加）'
+              }
               tokenSeparators={[',']}
             />
           </Form.Item>

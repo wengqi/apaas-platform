@@ -16,6 +16,14 @@ import type {
   DataFlowPreviewResult,
 } from '@apaas/shared';
 
+/** 评审 P1-6：数据集刷新作业统一重试/清理策略 */
+const REFRESH_JOB_OPTS = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5_000 },
+  removeOnComplete: { age: 3_600, count: 500 },
+  removeOnFail: { age: 86_400 },
+} as const;
+
 @Injectable()
 export class DataFlowService {
   constructor(
@@ -169,11 +177,15 @@ export class DataFlowService {
     // 此处预设置会导致 worker 的守卫 count=0 而 skip，数据集永远卡在 REFRESHING。
 
     // 入队异步执行
-    await this.datasetQueue.add('refresh', {
-      datasetId: dataset.id,
-      flowId,
-      tenantId,
-    });
+    await this.datasetQueue.add(
+      'refresh',
+      {
+        datasetId: dataset.id,
+        flowId,
+        tenantId,
+      },
+      REFRESH_JOB_OPTS,
+    );
 
     return dataset.id;
   }

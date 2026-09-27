@@ -13,7 +13,14 @@
  *   到达 End 节点 → 令牌终止；无活跃令牌则实例 COMPLETED
  */
 
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  ConflictException,
+} from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { prisma, Prisma, runWithTenant } from '@apaas/db';
 import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
@@ -22,6 +29,19 @@ import { resolveInputs, writeNodeOutput, evaluateCondition } from './process-uti
 import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
+import { RedisLockService } from '../common/redis/redis-lock.service.js';
+
+/**
+ * 评审 P1-6：队列作业统一重试/清理策略。
+ * 瞬时 DB 抖动导致的推进失败不再让实例永久卡 RUNNING；
+ * completed/failed 作业保留有限时间供排障，避免 Redis 无限堆积。
+ */
+const DEFAULT_JOB_OPTS = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 3_000 },
+  removeOnComplete: { age: 3_600, count: 1_000 },
+  removeOnFail: { age: 86_400 },
+} as const;
 
 /**
  * 递归在 blocks 数组中查找节点（用于查找嵌套在条件分支内的 block 容器等）。
@@ -75,6 +95,7 @@ export class ProcessEngine {
   constructor(
     private readonly registry: NodeExecutorRegistry,
     private readonly inAppMessageService: InAppMessageService,
+    private readonly redisLock: RedisLockService,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
     @Inject(DELAY_QUEUE) private readonly delayQueue: Queue,
   ) {}
@@ -84,21 +105,9 @@ export class ProcessEngine {
    * 同一实例的操作按调用顺序串行；不同实例互不阻塞。
    */
   private async withInstanceLock<T>(instanceId: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.instanceLocks.get(instanceId) ?? Promise.resolve();
-    const run = prev
-      .catch(() => {
-        /* 前序操作失败不阻断后续排队 */
-      })
-      .then(fn);
-    this.instanceLocks.set(instanceId, run);
-    try {
-      return await run;
-    } finally {
-      // 仅当仍是队尾时清理，避免误删后续排队的 promise
-      if (this.instanceLocks.get(instanceId) === run) {
-        this.instanceLocks.delete(instanceId);
-      }
-    }
+    // 评审 P0-2：升级为 Redis 分布式锁（跨副本互斥）；Redis 不可用时服务内部
+    // 自动降级为进程内互斥，单副本开发环境不受影响。
+    return this.redisLock.withLock(`process-instance:${instanceId}`, fn);
   }
 
   // ===========================================================================
@@ -159,7 +168,7 @@ export class ProcessEngine {
     );
 
     // 异步入队：由 BullMQ Worker 消费推进令牌
-    await this.processQueue.add('execute', { instanceId: instance.id });
+    await this.processQueue.add('execute', { instanceId: instance.id }, DEFAULT_JOB_OPTS);
     return instance.id;
   }
 
@@ -493,6 +502,20 @@ export class ProcessEngine {
       });
       if (!instance) throw new NotFoundException('流程实例不存在或已被删除');
 
+      // 评审 P1-2：锁内校验实例状态——已取消/已完成的实例不得被审批动作复活。
+      // 时序：任务认领(无锁) → cancelProcess 拿锁 TERMINATED → completeTask 拿锁。
+      if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
+        await prisma.processTask
+          .updateMany({
+            where: { id: taskId, status: taskStatus },
+            data: { status: 'CANCELLED', completedAt: new Date() },
+          })
+          .catch(() => {});
+        throw new ConflictException(
+          `流程实例已${instance.status === 'TERMINATED' ? '取消' : '结束'}，任务作废`,
+        );
+      }
+
       // 写入任务决策到节点输出变量，供下游节点引用
       const variables = (instance.variables as Record<string, unknown>) ?? {};
       writeNodeOutput(variables, task.nodeId, {
@@ -563,7 +586,7 @@ export class ProcessEngine {
     });
 
     // 异步入队：由 BullMQ Worker 消费推进令牌
-    await this.processQueue.add('execute', { instanceId: task.instance.id });
+    await this.processQueue.add('execute', { instanceId: task.instance.id }, DEFAULT_JOB_OPTS);
   }
 
   // ===========================================================================
@@ -648,7 +671,7 @@ export class ProcessEngine {
     this.logger.log(`实例 ${instanceId} 延时节点 ${nodeId} 已恢复，继续推进令牌`);
 
     // 重新入队推进下一节点
-    await this.processQueue.add('execute', { instanceId });
+    await this.processQueue.add('execute', { instanceId }, DEFAULT_JOB_OPTS);
   }
 
   // ===========================================================================
@@ -712,7 +735,7 @@ export class ProcessEngine {
     if (satisfied) {
       await this.completeWaitingNodeAndAdvance(instance, nodeId);
       this.logger.log(`实例 ${instanceId} 等待条件节点 ${nodeId} 条件已满足，继续推进令牌`);
-      await this.processQueue.add('execute', { instanceId });
+      await this.processQueue.add('execute', { instanceId }, DEFAULT_JOB_OPTS);
       return;
     }
 
@@ -757,7 +780,7 @@ export class ProcessEngine {
       this.logger.warn(
         `实例 ${instanceId} 等待条件节点 ${nodeId} 超时，路由到 timeout 分支 ${timeoutEdge.targetNodeID}`,
       );
-      await this.processQueue.add('execute', { instanceId });
+      await this.processQueue.add('execute', { instanceId }, DEFAULT_JOB_OPTS);
       return;
     }
 
@@ -1076,7 +1099,7 @@ export class ProcessEngine {
       });
 
       if (subStatus === 'COMPLETED') {
-        await this.processQueue.add('execute', { instanceId: parentInstanceId });
+        await this.processQueue.add('execute', { instanceId: parentInstanceId }, DEFAULT_JOB_OPTS);
       }
     } catch (err) {
       // 恢复父实例失败不影响子实例已完成的状态（子流程仍成功）

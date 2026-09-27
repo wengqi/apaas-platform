@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { NotFoundException } from '@nestjs/common';
 import type { WorkflowEdge, WorkflowSchema } from '@apaas/shared';
 import { getMockPrisma } from '../test/test-helpers.js';
 import type { ExecutionContext, NodeExecutionResult } from './types.js';
@@ -404,14 +405,22 @@ describe('HttpRequestExecutor', () => {
 
 describe('ObjectOperationExecutor', () => {
   const prisma = getMockPrisma();
-  const executor = new ObjectOperationExecutor();
+  /** 记录写内核 mock（评审 P1-5：执行器必须经 RecordService 写库） */
+  const recordService = {
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    batchDelete: vi.fn(),
+  };
+  const executor = new ObjectOperationExecutor(recordService as never);
 
   beforeEach(() => {
+    vi.clearAllMocks();
     prisma.objectMeta.findFirst.mockResolvedValue({ id: 'obj-1', tenantId: 't-1', appId: 'app-1' });
   });
 
-  it('create：写入记录并返回 recordId', async () => {
-    prisma.record.create.mockResolvedValue({ id: 'rec-9', data: { name: 'a' } });
+  it('create：经记录写内核写入并返回 recordId（自动编号/公式/Rollup/事件由内核保证）', async () => {
+    recordService.create.mockResolvedValue({ id: 'rec-9', data: { name: 'a' } });
     const ctx = makeCtx({
       node: {
         id: 'o0',
@@ -423,7 +432,78 @@ describe('ObjectOperationExecutor', () => {
     });
     const result = await executor.execute(ctx);
     expect(result.output).toMatchObject({ recordId: 'rec-9' });
-    expect(prisma.record.create).toHaveBeenCalledOnce();
+    expect(recordService.create).toHaveBeenCalledWith('t-1', 'obj-1', 'system', { name: 'a' });
+    // 不得再直接写库（否则绕过校验/公式/事件）
+    expect(prisma.record.create).not.toHaveBeenCalled();
+  });
+
+  it('create：发起人存在时以其为用户上下文（triggerContext.triggeredByUser）', async () => {
+    recordService.create.mockResolvedValue({ id: 'rec-10', data: {} });
+    const ctx = makeCtx({
+      node: {
+        id: 'o0',
+        type: 'object_operation',
+        meta: {},
+        data: { operation: 'create', objectId: 'obj-1' },
+      } as ExecutionContext['node'],
+      inputs: { name: 'b' },
+    });
+    ctx.instance.triggerContext = { triggeredByUser: 'user-42' };
+    await executor.execute(ctx);
+    expect(recordService.create).toHaveBeenCalledWith('t-1', 'obj-1', 'user-42', { name: 'b' });
+  });
+
+  it('delete（filter 范围）：解析受影响 id 后经批量删除内核（触发删除事件）', async () => {
+    recordService.batchDelete.mockResolvedValue({ deleted: 2, errors: [] });
+    prisma.record.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    const ctx = makeCtx({
+      node: {
+        id: 'o0',
+        type: 'object_operation',
+        meta: {},
+        data: {
+          operation: 'delete',
+          objectId: 'obj-1',
+          filter: { '==': [{ var: 'status' }, 'SCRAPPED'] },
+        },
+      } as ExecutionContext['node'],
+    });
+    const result = await executor.execute(ctx);
+    expect(result.output).toEqual({ affectedCount: 2 });
+    expect(recordService.batchDelete).toHaveBeenCalledWith('t-1', ['r1', 'r2']);
+    expect(prisma.record.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('update：经记录写内核（部分更新 merge + 公式/Rollup/事件）', async () => {
+    recordService.update.mockResolvedValue({ id: 'r1', data: { status: 'DONE' } });
+    const ctx = makeCtx({
+      node: {
+        id: 'o0',
+        type: 'object_operation',
+        meta: {},
+        data: { operation: 'update', objectId: 'obj-1' },
+      } as ExecutionContext['node'],
+      inputs: { recordId: 'r1', status: 'DONE' },
+    });
+    const result = await executor.execute(ctx);
+    expect(result.output).toEqual({ affectedCount: 1, recordId: 'r1' });
+    // recordId 不作为业务字段写入
+    expect(recordService.update).toHaveBeenCalledWith('t-1', 'r1', 'system', { status: 'DONE' });
+    expect(prisma.record.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('update：未命中记录时显式失败（保留原有防呆语义）', async () => {
+    recordService.update.mockRejectedValue(new NotFoundException('记录不存在'));
+    const ctx = makeCtx({
+      node: {
+        id: 'o0',
+        type: 'object_operation',
+        meta: {},
+        data: { operation: 'update', objectId: 'obj-1' },
+      } as ExecutionContext['node'],
+      inputs: { recordId: 'missing', status: 'X' },
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow('未命中任何记录');
   });
 
   it('query：按 JsonLogic filter 查询', async () => {

@@ -8,6 +8,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { ProcessModule } from '../process/process.module.js';
 
 /**
  * 应用模块 — Application CRUD + 发布/预检/版本管理。
@@ -24,9 +25,15 @@ import { PermissionModule } from '../permission/permission.module.js';
  */
 @Module({
   imports: [
+    // 评审 P1-7：应用级发布需要为 SCHEDULED 流程注册定时触发器（TriggerService）
+    ProcessModule,
     ConfigModule,
     JwtModule.registerAsync({
-      imports: [ConfigModule],
+      imports: [
+        // 评审 P1-7：应用级发布需要为 SCHEDULED 流程注册定时触发器（TriggerService）
+        ProcessModule,
+        ConfigModule,
+      ],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET') ?? 'dev-secret-change-me',
@@ -37,12 +44,7 @@ import { PermissionModule } from '../permission/permission.module.js';
     ChangeLogModule,
   ],
   controllers: [ApplicationController],
-  providers: [
-    ApplicationService,
-    SnapshotService,
-    CheckService,
-    JwtStrategy,
-  ],
+  providers: [ApplicationService, SnapshotService, CheckService, JwtStrategy],
   exports: [ApplicationService],
 })
 export class ApplicationModule {}

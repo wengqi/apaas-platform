@@ -57,11 +57,15 @@ function createEngine(executors: NodeExecutor[] = []) {
   const inAppMessageService = createMockInAppMessageService();
   const processQueue = createMockQueue();
   const delayQueue = createMockQueue();
+  const redisLock = {
+    withLock: (_key: string, fn: () => Promise<unknown>) => fn(),
+  } as unknown as ConstructorParameters<typeof ProcessEngine>[2];
   const engine = new ProcessEngine(
     registry as unknown as ConstructorParameters<typeof ProcessEngine>[0],
     inAppMessageService as unknown as ConstructorParameters<typeof ProcessEngine>[1],
-    processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[2],
-    delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+    redisLock,
+    processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+    delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
   );
   return { engine, registry, inAppMessageService, processQueue, delayQueue };
 }
@@ -135,7 +139,11 @@ describe('ProcessEngine', () => {
       expect(createCall.data.status).toBe('RUNNING');
       expect(createCall.data.activeNodeIds).toEqual(['node-start']);
       // 应异步入队
-      expect(processQueue.add).toHaveBeenCalledWith('execute', { instanceId: 'pi-001' });
+      expect(processQueue.add).toHaveBeenCalledWith(
+        'execute',
+        { instanceId: 'pi-001' },
+        expect.objectContaining({ attempts: 3 }),
+      );
     });
 
     it('triggerContext 无 inputs 字段时，变量直接展开 triggerContext', async () => {
@@ -178,7 +186,11 @@ describe('ProcessEngine', () => {
       const instanceId = await engine.startProcessByDefId('pd-001', {});
 
       expect(instanceId).toBe('pi-001');
-      expect(processQueue.add).toHaveBeenCalledWith('execute', { instanceId: 'pi-001' });
+      expect(processQueue.add).toHaveBeenCalledWith(
+        'execute',
+        { instanceId: 'pi-001' },
+        expect.objectContaining({ attempts: 3 }),
+      );
     });
   });
 
@@ -439,7 +451,11 @@ describe('ProcessEngine', () => {
       );
       expect(instUpdate).toBeDefined();
       // 应入队继续执行
-      expect(processQueue.add).toHaveBeenCalledWith('execute', { instanceId: 'pi-001' });
+      expect(processQueue.add).toHaveBeenCalledWith(
+        'execute',
+        { instanceId: 'pi-001' },
+        expect.objectContaining({ attempts: 3 }),
+      );
     });
 
     it('驳回且有 rejectToNodeId — 跳回指定节点', async () => {
@@ -693,7 +709,11 @@ describe('ProcessEngine', () => {
       );
       expect(runningUpdate).toBeDefined();
       // 入队继续执行
-      expect(processQueue.add).toHaveBeenCalledWith('execute', { instanceId: 'pi-001' });
+      expect(processQueue.add).toHaveBeenCalledWith(
+        'execute',
+        { instanceId: 'pi-001' },
+        expect.objectContaining({ attempts: 3 }),
+      );
     });
   });
 

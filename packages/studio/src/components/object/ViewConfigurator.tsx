@@ -1,20 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Checkbox,
-  Divider,
-  Drawer,
-  Empty,
-  Select,
-  Space,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
+import { Button, Checkbox, Divider, Drawer, Empty, Space, Tag, Typography, message } from 'antd';
 import {
   PlusOutlined,
-  DeleteOutlined,
-  HolderOutlined,
   FilterOutlined,
   SortAscendingOutlined,
   EyeOutlined,
@@ -28,13 +15,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import {
   objectsApi,
   type Field,
@@ -45,8 +26,12 @@ import {
 } from '../../api/objects.js';
 import { getFieldTypeMeta } from '../../constants/fieldTypes.js';
 import QueryBuilderPanel from '../shared/QueryBuilderPanel.js';
+import { SectionHeader } from './view-configurator/SectionHeader.js';
+import { SortableFieldRow } from './view-configurator/SortableFieldRow.js';
+import { SortRow } from './view-configurator/SortRow.js';
+import { showError } from './view-configurator/helpers.js';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 interface ViewConfiguratorProps {
   open: boolean;
@@ -210,47 +195,14 @@ export default function ViewConfigurator({ open, view, fields, onClose }: ViewCo
           </Text>
         )}
         {sorts.map((sort, index) => (
-          <div
+          <SortRow
             key={index}
-            style={{
-              display: 'flex',
-              gap: 6,
-              alignItems: 'center',
-              background: '#fafbfc',
-              borderRadius: 8,
-              padding: '6px 8px',
-            }}
-          >
-            <Text type="secondary" style={{ fontSize: 12, width: 20 }}>
-              {index + 1}.
-            </Text>
-            <Select
-              size="small"
-              value={sort.field}
-              onChange={(v) => updateSort(index, { field: v })}
-              style={{ flex: 1 }}
-              showSearch
-              optionFilterProp="label"
-              options={fields.map((f) => ({ value: f.apiName, label: f.label }))}
-            />
-            <Select
-              size="small"
-              value={sort.order}
-              onChange={(v) => updateSort(index, { order: v })}
-              style={{ width: 90 }}
-              options={[
-                { value: 'asc', label: '升序' },
-                { value: 'desc', label: '降序' },
-              ]}
-            />
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => removeSort(index)}
-            />
-          </div>
+            index={index}
+            sort={sort}
+            fields={fields}
+            onUpdate={updateSort}
+            onRemove={removeSort}
+          />
         ))}
         <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addSort} block>
           添加排序
@@ -343,75 +295,4 @@ export default function ViewConfigurator({ open, view, fields, onClose }: ViewCo
       )}
     </Drawer>
   );
-}
-
-// ---------------------------------------------------------------------------
-// 子组件
-// ---------------------------------------------------------------------------
-
-function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <Space size={8} style={{ marginBottom: 12 }}>
-      <span style={{ color: '#1677ff' }}>{icon}</span>
-      <Title level={5} style={{ margin: 0 }}>
-        {title}
-      </Title>
-    </Space>
-  );
-}
-
-/** 可拖拽的显隐字段行。 */
-function SortableFieldRow({
-  fieldId,
-  label,
-  apiName,
-  color,
-  checked,
-  onToggle,
-}: {
-  fieldId: string;
-  label: string;
-  apiName: string;
-  color: string;
-  checked: boolean;
-  onToggle: (checked: boolean) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: fieldId,
-  });
-  const style: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '6px 10px',
-    background: '#fff',
-    border: '1px solid #eef0f4',
-    borderRadius: 8,
-    transform: CSS.Transform.toString(transform),
-    transition,
-    ...(isDragging ? { boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 10 } : {}),
-  };
-  return (
-    <div ref={setNodeRef} style={style}>
-      <HolderOutlined
-        {...attributes}
-        {...listeners}
-        style={{ cursor: 'grab', color: 'rgba(0,0,0,0.35)' }}
-      />
-      <Checkbox checked={checked} onChange={(e) => onToggle(e.target.checked)} />
-      <Tag color={color} style={{ margin: 0 }}>
-        {label}
-      </Tag>
-      <Text style={{ fontSize: 13, flex: 1 }}>{apiName}</Text>
-    </div>
-  );
-}
-
-/** 统一错误提示。 */
-function showError(err: unknown) {
-  const axErr = err as {
-    response?: { data?: { error?: { message?: string } }; message?: string };
-    message?: string;
-  };
-  message.error(axErr.response?.data?.error?.message ?? axErr.message ?? '操作失败,请重试');
 }

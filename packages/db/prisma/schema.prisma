@@ -119,6 +119,8 @@ model User {
   passwordHash    String   @map("password_hash") // bcrypt
   isPlatformAdmin Boolean  @default(false) @map("is_platform_admin") // 平台超管标识
   status          UserStatus @default(ACTIVE)
+  failedLoginAttempts Int     @default(0) @map("failed_login_attempts") // 登录失败计数（评审 H-2 防爆破）
+  lockedUntil     DateTime? @map("locked_until") // 账号锁定截止时间
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -279,6 +281,8 @@ model AuditLog {
   id        String   @id @default(cuid())
   tenantId  String   @map("tenant_id")
   userId    String   @map("user_id")
+  // 应用维度（ROADMAP 9.9 应用级审计 UI）：平台级事件为空
+  appId     String?  @map("app_id")
   action    String                              // CREATE_ROLE | UPDATE_PERMISSION | DELETE_USER | ...
   resource  String?                              // 操作资源类型
   resourceId String?  @map("resource_id")       // 资源 ID
@@ -291,6 +295,7 @@ model AuditLog {
   @@index([tenantId])
   @@index([userId])
   @@index([tenantId, action])
+  @@index([tenantId, appId])
   @@map("audit_logs")
 }
 

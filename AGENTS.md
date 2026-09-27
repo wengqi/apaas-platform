@@ -215,12 +215,40 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - 每个阶段完成后新建 `STATUS-MATRIX-YYYY-MM-DD.md` 状态矩阵
 - 知识库文档（`docs/knowledge-base/`）记录实现细节和设计决策
 
-## 当前阶段（2026-09-26 快照）
+## 当前阶段（2026-09-26 整改后快照）
 
-> 历史完成明细已归档至 `docs/knowledge-base/STATUS-2026-09-25.md`；阶段性工作完成后更新本节，并把被替换的明细追加到归档。
+> 历史明细归档：`docs/knowledge-base/STATUS-2026-09-25.md`；本轮整改详见
+> `docs/knowledge-base/REMEDIATION-2026-09-26.md`（含评审→修复→验证对照）。
 
-- 代码工程完成度 ~90%；飞书功能对齐度 ~68%（2026-08-23 审查校准口径）
-- ✅ Phase 0-10 全部完成，ROADMAP 无未实现项（2026-09-25 收口，明细见归档）
-- ⬜ 对齐长尾（增强项）：连接器 OpenAPI 导入 / 数据库连接器 / 自定义组件注册
-- ⬜ P2 缺陷清单消化：B10-B22 / F-B3~F-B10（见知识库审计报告）
-- 🟡 风险：多进程水平扩展需 Redis 分布式锁（引擎内已标注）
+- 代码工程完成度 ~92%；飞书功能对齐度 ~68%（口径未变）
+- ✅ Phase 0-10 完成；✅ 独立评审（2026-09-26）"上线前必须"清单已整改完毕
+  - 安全：默认凭证链 / 登录防爆破（限流桶 + 账号锁定）/ 出站 SSRF /
+    租户挂起即时失效 / Swagger 生产关闭 / 云函数代码锁定与并发预算 /
+    webhook 签名与日志脱敏 / 业务动作级审计
+  - 引擎：批量更新字段级 merge / Redis 分布式锁 / 取消后不可复活 /
+    数据集刷新租约 / BullMQ 重试与清理 / 应用发布触发器注册
+  - 产品：手动流程 UI 启动入口 / 触发器配置界面 / 单选值稳定编码
+    （审批后状态流转与通知闭环）/ 记录表单系统字段隐藏 / 页面搭建器
+    脏状态与加载失败显式化 / 全局 ErrorBoundary
+  - 质量：新增真实 UI 路径 e2e（e2e/11-ui-user-paths.spec.ts）；
+    单测 gateway 517/517、studio 108/108，e2e 58/58 通过
+- ✅ CI e2e 全红已闭环（2026-09-27）：根因为 e2e job 全局 NODE_ENV=test 污染
+  Vite 构建模式（打进 React dev 版本致流程画布不渲染节点）+ HistoryBridge
+  setState 死循环 + newQbId 碰撞（RAQB 伪 UUID）+ e2e appId 副作用级联；
+  详见 docs/knowledge-base/REMEDIATION-2026-09-26.md 第五节之八
+- ✅ BUG-05 已闭环：流程配置侧栏改为在应用 root 内渲染（原 body portal 事件
+  委托不可靠），新增 e2e/12-process-sidebar.spec.ts 守护（含负向对照）
+- ✅ 数据层高严重度项已闭环：可空列 partial unique index（users/org_role_grants）、
+  records JSONB 等值过滤改 `@>` 命中 GIN、业务字段排序按类型 cast（A-H1/A-H2）
+- ✅ 流程写库已复用记录写内核（P1-5）：对象/批量操作节点走 RecordService
+  （校验 + AutoNumber/Formula/Rollup + 记录事件触发），新增 e2e/14 回归
+- ✅ React Query key 治理（P2-1）：删除零引用注册表、建立与事实键一致的
+  `qk` 构造器并全量迁移读写点、发布/回滚统一失效，附静态守卫测试与负向对照
+- ✅ 应用级审计 UI（ROADMAP 9.9）：audit_logs 增加 appId 维度 + 应用内审计页与
+  侧边栏入口 + 按 appId 过滤查询（e2e/15 覆盖）
+- ✅ 单文件 400 行规范达标：20 个超限文件按职责拆分完毕（仅搬移 + re-export，
+  调用点零改动；前端源码已无 > 400 行文件），详见整改记录第五节之七
+- ⬜ 残留（技术边界 / 设计取舍）：LIKE/范围类条件无法用 GIN（需大表压测后评估）；
+  流程 query 节点未接入发起人 ABAC 条件
+- 🟡 风险：多副本部署需确认 Redis 锁可用（已内置降级为进程内互斥）；
+  水平扩展前建议压测 BullMQ 与 Redis 连接数

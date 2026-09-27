@@ -319,7 +319,8 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
-        position: 'absolute',
+        // 评审 BUG-05：改用 fixed（不再依赖 body 作为绝对定位上下文，也不被画布裁剪）
+        position: 'fixed',
         top: 0,
         right: 0,
         bottom: 0,

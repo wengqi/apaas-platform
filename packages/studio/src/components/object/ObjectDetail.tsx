@@ -1,13 +1,6 @@
-import {
-  Skeleton,
-  Space,
-  Tabs,
-  Tag,
-  Tooltip,
-  Typography,
-  message,
-} from 'antd';
+import { Skeleton, Space, Tabs, Tag, Tooltip, Typography, message } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useParams } from 'react-router-dom';
 import { objectsApi, type UpdateObjectRequest } from '../../api/objects.js';
 import FieldTable from './FieldTable.js';
@@ -26,7 +19,7 @@ export default function ObjectDetail() {
 
   /** 加载对象详情(含字段)。 */
   const { data: object, isLoading } = useQuery({
-    queryKey: ['object', objectId],
+    queryKey: qk.object(objectId!),
     queryFn: () => objectsApi.get(objectId as string),
     enabled: !!objectId,
   });
@@ -35,8 +28,8 @@ export default function ObjectDetail() {
   const updateMutation = useMutation({
     mutationFn: (data: UpdateObjectRequest) => objectsApi.update(objectId as string, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['object', objectId] });
-      queryClient.invalidateQueries({ queryKey: ['objects', appId] });
+      queryClient.invalidateQueries({ queryKey: qk.object(objectId!) });
+      queryClient.invalidateQueries({ queryKey: qk.appObjects(appId!) });
     },
     onError: (err) => showError(err),
   });
@@ -57,7 +50,7 @@ export default function ObjectDetail() {
   const handleLabelChange = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed || trimmed === object.label) return;
-    updateMutation.mutate({ label: trimmed });
+    updateMutation.mutate({ name: trimmed });
   };
 
   /** 描述内联保存。 */

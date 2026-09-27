@@ -46,6 +46,8 @@ import { ContinueExecutor } from './node-executors/continue.executor.js';
 import { WaitForConditionExecutor } from './node-executors/wait-for-condition.executor.js';
 import { BatchOperationExecutor } from './node-executors/batch-operation.executor.js';
 import { TriggerService } from './trigger.service.js';
+import { RedisLockService } from '../common/redis/redis-lock.service.js';
+import { RecordModule } from '../record/record.module.js';
 
 @Module({
   imports: [
@@ -61,6 +63,8 @@ import { TriggerService } from './trigger.service.js';
     PermissionModule,
     ChangeLogModule,
     NotificationModule,
+    // 评审 P1-5：流程节点执行器复用记录写内核（RecordService）
+    forwardRef(() => RecordModule),
     forwardRef(() => QueueModule),
     forwardRef(() => ConnectorModule),
     forwardRef(() => CloudFunctionModule),
@@ -70,6 +74,7 @@ import { TriggerService } from './trigger.service.js';
     ProcessService,
     ProcessEngine,
     NodeExecutorRegistry,
+    RedisLockService,
     // 节点执行器
     StartExecutor,
     EndExecutor,

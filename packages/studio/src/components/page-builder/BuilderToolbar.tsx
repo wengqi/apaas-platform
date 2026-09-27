@@ -1,4 +1,16 @@
-import { Button, Popconfirm, Segmented, Select, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { useEffect } from 'react';
+import {
+  Button,
+  Modal,
+  Popconfirm,
+  Segmented,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import {
   ArrowLeftOutlined,
   UndoOutlined,
@@ -27,6 +39,11 @@ export default function BuilderToolbar() {
 
   const currentPage = usePageBuilderStore((s) => s.currentPage);
   const mode = usePageBuilderStore((s) => s.mode);
+  // 评审 P2-5：脏状态派生（schema/元数据 vs 已保存快照）。
+  // 订阅 schema 与 savedSnapshot 以便二者变化时重算/重渲染。
+  usePageBuilderStore((s) => s.schema);
+  usePageBuilderStore((s) => s.savedSnapshot);
+  const isDirty = usePageBuilderStore((s) => s.isDirty());
   const canUndo = usePageBuilderStore((s) => s.past.length > 0);
   const canRedo = usePageBuilderStore((s) => s.future.length > 0);
   const updatePageMeta = usePageBuilderStore((s) => s.updatePageMeta);
@@ -43,14 +60,12 @@ export default function BuilderToolbar() {
       }
       return pagesApi.update(state.currentPage.id, {
         name: state.currentPage.name,
-        apiName: state.currentPage.apiName,
-        type: state.currentPage.type,
-        objectId: state.currentPage.objectId,
         schema: state.schema,
       });
     },
     onSuccess: (updatedPage) => {
       message.success('保存成功');
+      usePageBuilderStore.getState().markSaved();
       if (pageId) {
         queryClient.setQueryData(['page', pageId], updatedPage);
       }
@@ -74,15 +89,13 @@ export default function BuilderToolbar() {
       const pageIdVal = state.currentPage.id;
       await pagesApi.update(pageIdVal, {
         name: state.currentPage.name,
-        apiName: state.currentPage.apiName,
-        type: state.currentPage.type,
-        objectId: state.currentPage.objectId,
         schema: state.schema,
       });
       return pagesApi.publish(pageIdVal);
     },
     onSuccess: (publishedPage) => {
       message.success('发布成功');
+      usePageBuilderStore.getState().markSaved();
       updatePageMeta({ published: true });
       if (pageId) {
         queryClient.setQueryData(['page', pageId], publishedPage);
@@ -96,6 +109,35 @@ export default function BuilderToolbar() {
       message.error(axErr.response?.data?.error?.message ?? axErr.message ?? '发布失败,请重试');
     },
   });
+
+  /** 评审 P2-5：离开前确认未保存修改（此前静默丢失编辑）。 */
+  const handleBack = () => {
+    const go = () => navigate(`/app/${appId}/pages`);
+    if (!isDirty) {
+      go();
+      return;
+    }
+    Modal.confirm({
+      title: '存在未保存的修改',
+      content: '离开后当前页面编辑将丢失，是否继续？',
+      okText: '放弃修改并离开',
+      cancelText: '留在本页',
+      okButtonProps: { danger: true },
+      onOk: go,
+    });
+  };
+
+  // 评审 P2-5：浏览器关闭/刷新拦截
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (usePageBuilderStore.getState().isDirty()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   return (
     <div
@@ -120,7 +162,7 @@ export default function BuilderToolbar() {
         <Button
           type="text"
           icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(`/app/${appId}/pages`)}
+          onClick={handleBack}
           style={{ fontSize: 13 }}
         >
           返回
@@ -194,11 +236,7 @@ export default function BuilderToolbar() {
           cancelText="取消"
           onConfirm={() => publishMutation.mutate()}
         >
-          <Button
-            type="primary"
-            icon={<RocketOutlined />}
-            loading={publishMutation.isPending}
-          >
+          <Button type="primary" icon={<RocketOutlined />} loading={publishMutation.isPending}>
             发布
           </Button>
         </Popconfirm>

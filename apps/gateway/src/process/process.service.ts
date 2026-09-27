@@ -16,12 +16,14 @@ import {
   BadRequestException,
   ConflictException,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
 import { TriggerService } from './trigger.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
+import { writeAudit } from '../common/audit.js';
 
 // ---------------------------------------------------------------------------
 // DTO 类型（创建/更新请求体）
@@ -38,6 +40,7 @@ export interface UpdateProcessDefRequest {
   name?: string;
   workflowSchema?: unknown;
   triggerType?: string;
+  cron?: string;
 }
 
 export interface StartInstanceRequest {
@@ -170,6 +173,7 @@ export class ProcessService {
       data.workflowSchema = req.workflowSchema as Prisma.InputJsonValue;
     }
     if (req.triggerType !== undefined) data.triggerType = req.triggerType;
+    if (req.cron !== undefined) data.cron = req.cron;
 
     await prisma.processDef.update({ where: { id: processId }, data });
 
@@ -219,7 +223,7 @@ export class ProcessService {
   }
 
   /** 发布流程（版本自增，状态→PUBLISHED）。 */
-  async publishProcess(tenantId: string, processId: string) {
+  async publishProcess(tenantId: string, processId: string, userId?: string) {
     const existing = await prisma.processDef.findFirst({
       where: { id: processId, tenantId },
     });
@@ -246,6 +250,17 @@ export class ProcessService {
       .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName)
       .catch((err) => this.logger.error(`定时触发器注册失败: ${err.message}`));
 
+    // 评审整改：业务动作级审计
+    writeAudit({
+      tenantId,
+      userId: userId ?? '',
+      action: 'PROCESS_PUBLISH',
+      resource: 'PROCESS',
+      resourceId: def.id,
+      appId: def.appId,
+      detail: { apiName: def.apiName, version: def.version },
+    });
+
     return this.toProcessDefDto(def);
   }
 
@@ -266,7 +281,14 @@ export class ProcessService {
   }
 
   /** 获取实例详情。 */
-  async getInstance(tenantId: string, instanceId: string) {
+  /**
+   * 获取实例详情。
+   *
+   * 评审 M-2：实例变量/触发上下文含敏感业务数据，此前仅校验 PROCESS VIEW
+   * （通配规则即通过）→ 同租户内可枚举读取。现要求实例级授权：
+   * 平台/租户超管、实例发起人、或该实例任一任务的处理人（含候选人）。
+   */
+  async getInstance(tenantId: string, instanceId: string, viewerId?: string) {
     const instance = await prisma.processInstance.findFirst({
       where: { id: instanceId, tenantId },
       include: {
@@ -276,7 +298,42 @@ export class ProcessService {
       },
     });
     if (!instance) throw new NotFoundException('流程实例不存在');
+    await this.assertInstanceVisible(tenantId, instance, viewerId);
     return this.toInstanceDto(instance);
+  }
+
+  /** 实例级可见性校验（超管 / 发起人 / 任务参与人）。 */
+  private async assertInstanceVisible(
+    tenantId: string,
+    instance: {
+      triggerContext: unknown;
+      tasks?: Array<{ assignee?: string | null; candidateUsers?: string[] | null }>;
+    },
+    viewerId?: string,
+  ): Promise<void> {
+    if (!viewerId) return; // 内部调用（无请求上下文）不做限制
+
+    const viewer = await prisma.user.findFirst({
+      where: { id: viewerId, tenantId },
+      select: { isPlatformAdmin: true },
+    });
+    if (viewer?.isPlatformAdmin) return;
+
+    const roleCodes = await prisma.userRole.findMany({
+      where: { userId: viewerId, role: { tenantId } },
+      select: { role: { select: { code: true } } },
+    });
+    if (roleCodes.some((r) => r.role.code === 'TENANT_ADMIN')) return;
+
+    const ctx = (instance.triggerContext ?? {}) as Record<string, unknown>;
+    const starter = (ctx['triggeredByUser'] ?? ctx['startedBy'] ?? null) as string | null;
+    const isStarter = starter === viewerId;
+    const isParticipant = (instance.tasks ?? []).some(
+      (t) => t.assignee === viewerId || (t.candidateUsers ?? []).includes(viewerId),
+    );
+    if (!isStarter && !isParticipant) {
+      throw new ForbiddenException('无权查看该流程实例（仅发起人或任务参与人可见）');
+    }
   }
 
   /**
@@ -289,7 +346,7 @@ export class ProcessService {
    *   SKIPPED   — 条件分支未命中（灰色半透明）
    *   PENDING   — 尚未到达（灰色）
    */
-  async getTrace(tenantId: string, instanceId: string) {
+  async getTrace(tenantId: string, instanceId: string, viewerId?: string) {
     const instance = await prisma.processInstance.findFirst({
       where: { id: instanceId, tenantId },
       include: {
@@ -299,6 +356,12 @@ export class ProcessService {
       },
     });
     if (!instance) throw new NotFoundException('流程实例不存在');
+    // 评审 M-2：轨迹同样含执行细节，需实例级可见性
+    await this.assertInstanceVisible(
+      tenantId,
+      instance as unknown as Parameters<ProcessService['assertInstanceVisible']>[1],
+      viewerId,
+    );
 
     const schema = instance.processDef.workflowSchema as {
       nodes?: Array<{ id: string; type: string; data?: Record<string, unknown> }>;

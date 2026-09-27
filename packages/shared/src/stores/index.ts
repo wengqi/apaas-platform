@@ -13,6 +13,7 @@ export * from './auth.js';
 
 // QueryClient 工厂 + queryKey 注册表
 export * from './query-client.js';
+export * from './query-keys.js';
 
 // 表达式引擎（运行时绑定/表达式求值）
 export * from './expression-engine.js';

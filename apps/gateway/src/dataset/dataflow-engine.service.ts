@@ -16,6 +16,9 @@ import type {
   DatasetColumn,
 } from '@apaas/shared';
 
+/** 评审 P1-3：刷新租约期——超过该时长的 REFRESHING 视为 worker 崩溃遗留 */
+const DATASET_REFRESH_LEASE_MS = 10 * 60 * 1000;
+
 /** pipeline 中间数据行（键为字段 apiName 或 alias.field 形式）。 */
 type DataRow = Record<string, unknown>;
 
@@ -54,9 +57,17 @@ export class DataFlowEngine {
     config: DataFlowConfig,
   ): Promise<void> {
     // B6 修复：REFRESHING 守卫 — 防止并发刷新交错。
-    // 原子更新：仅当当前状态不是 REFRESHING 时才置为 REFRESHING。
+    // 评审 P1-3：增加租约——worker 崩溃后 REFRESHING 永久卡死、后续刷新全部被跳过。
+    // 超过租约期（10 分钟）仍未释放的 REFRESHING 视为孤儿，允许重新抢占。
+    const leaseCutoff = new Date(Date.now() - DATASET_REFRESH_LEASE_MS);
     const claimed = await prisma.dataset.updateMany({
-      where: { id: datasetId, status: { not: 'REFRESHING' } },
+      where: {
+        id: datasetId,
+        OR: [
+          { status: { not: 'REFRESHING' } },
+          { status: 'REFRESHING', updatedAt: { lt: leaseCutoff } },
+        ],
+      },
       data: { status: 'REFRESHING', lastError: null },
     });
     if (claimed.count === 0) {

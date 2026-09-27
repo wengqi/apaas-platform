@@ -31,6 +31,12 @@ export class AuditLogController {
   @ApiQuery({ name: 'action', required: false, type: String, description: '按操作类型筛选' })
   @ApiQuery({ name: 'resource', required: false, type: String, description: '按资源类型筛选' })
   @ApiQuery({ name: 'userId', required: false, type: String, description: '按用户 ID 筛选' })
+  @ApiQuery({
+    name: 'appId',
+    required: false,
+    type: String,
+    description: '按应用筛选（应用级审计，ROADMAP 9.9）',
+  })
   async query(
     @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
@@ -38,6 +44,7 @@ export class AuditLogController {
     @Query('action') action?: string,
     @Query('resource') resource?: string,
     @Query('userId') userId?: string,
+    @Query('appId') appId?: string,
   ) {
     const tenantId = req.user.tenantId;
     if (!tenantId) {
@@ -50,6 +57,7 @@ export class AuditLogController {
       action: action || undefined,
       resource: resource || undefined,
       userId: userId || undefined,
+      appId: appId || undefined,
     });
     return { ok: true as const, data: result };
   }

@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { InputNumber, Typography } from 'antd';
 import type { ComponentNode } from '../../../api/pages.js';
 import { objectsApi } from '../../../api/objects.js';
@@ -198,7 +199,7 @@ export function useDatasourceFields(
   enabled = true,
 ) {
   const { data: objects } = useQuery({
-    queryKey: ['app-objects', appId],
+    queryKey: qk.appObjects(appId!),
     queryFn: () => objectsApi.list(appId!),
     enabled: !!appId && datasourceType === 'object' && enabled,
   });
@@ -210,7 +211,7 @@ export function useDatasourceFields(
   });
 
   const { data: selectedObject } = useQuery({
-    queryKey: ['object', datasourceId],
+    queryKey: qk.object(datasourceId),
     queryFn: () => objectsApi.get(datasourceId!),
     enabled: datasourceType === 'object' && !!datasourceId && enabled,
   });

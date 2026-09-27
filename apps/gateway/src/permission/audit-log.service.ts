@@ -17,6 +17,8 @@ export interface AuditLogParams {
   resource?: string;
   /** 资源 ID */
   resourceId?: string;
+  /** 应用维度（ROADMAP 9.9 应用级审计 UI）；null 表示平台级事件 */
+  appId?: string | null;
   /** 操作详情（JSON） */
   detail?: Record<string, unknown>;
   /** 请求方 IP */
@@ -30,6 +32,8 @@ export interface AuditLogQueryParams {
   action?: string;
   resource?: string;
   userId?: string;
+  /** 应用维度过滤（ROADMAP 9.9 应用级审计 UI） */
+  appId?: string;
 }
 
 export interface AuditLogDto {
@@ -38,6 +42,7 @@ export interface AuditLogDto {
   action: string;
   resource: string | null;
   resourceId: string | null;
+  appId: string | null;
   detail: unknown;
   ip: string | null;
   createdAt: string;
@@ -62,6 +67,7 @@ export class AuditLogService {
           action: params.action,
           resource: params.resource ?? null,
           resourceId: params.resourceId ?? null,
+          appId: params.appId ?? null,
           detail: (params.detail ?? null) as never,
           ip: params.ip ?? null,
         },
@@ -85,6 +91,8 @@ export class AuditLogService {
     if (params.action) where.action = params.action;
     if (params.resource) where.resource = params.resource;
     if (params.userId) where.userId = params.userId;
+    // ROADMAP 9.9：应用级审计页按 appId 维度过滤
+    if (params.appId) where.appId = params.appId;
 
     const [items, total] = await Promise.all([
       prisma.auditLog.findMany({
@@ -110,6 +118,7 @@ export class AuditLogService {
     action: string;
     resource: string | null;
     resourceId: string | null;
+    appId: string | null;
     detail: unknown;
     ip: string | null;
     createdAt: Date;
@@ -120,6 +129,7 @@ export class AuditLogService {
       action: item.action,
       resource: item.resource,
       resourceId: item.resourceId,
+      appId: item.appId,
       detail: item.detail,
       ip: item.ip,
       createdAt: item.createdAt.toISOString(),

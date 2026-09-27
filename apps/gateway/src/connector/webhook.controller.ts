@@ -12,12 +12,14 @@ import {
   All,
   Body,
   Controller,
+  ForbiddenException,
   HttpCode,
   Param,
   Req,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { prisma, runWithTenant } from '@apaas/db';
@@ -47,6 +49,31 @@ export class WebhookController {
     const allowedMethods = config.allowedMethods ?? ['POST'];
     if (!allowedMethods.includes(req.method)) {
       throw new BadRequestException(`Webhook 不允许 ${req.method} 方法`);
+    }
+
+    // 2.5 评审 M-5：可选 HMAC-SHA256 签名 + 时间戳防重放。
+    // 配置 webhookSecret 后强制校验 X-Apaas-Signature（hex）与 X-Apaas-Timestamp（毫秒）。
+    if (config.webhookSecret) {
+      const signature = req.headers['x-apaas-signature'] as string | undefined;
+      const timestamp = req.headers['x-apaas-timestamp'] as string | undefined;
+      const ts = Number(timestamp);
+      if (!signature || !timestamp || !Number.isFinite(ts)) {
+        throw new ForbiddenException('缺少签名或时间戳头');
+      }
+      // 时间戳窗口 5 分钟——超窗直接拒绝（防重放）
+      if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) {
+        throw new ForbiddenException('时间戳超出允许窗口（疑似重放）');
+      }
+      const maybeRaw = (req as unknown as { rawBody?: Buffer }).rawBody;
+      const rawBody = Buffer.isBuffer(maybeRaw)
+        ? maybeRaw
+        : Buffer.from(JSON.stringify(body ?? {}));
+      const expected = createHmac('sha256', config.webhookSecret).update(rawBody).digest('hex');
+      const a = Buffer.from(signature, 'hex');
+      const b = Buffer.from(expected, 'hex');
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        throw new ForbiddenException('签名校验失败');
+      }
     }
 
     // Webhook 是公开端点（无 JWT），需从 connector 记录恢复租户上下文

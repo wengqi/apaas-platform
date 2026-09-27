@@ -125,7 +125,11 @@ export class ProcessController {
   @Post('processes/:processId/publish')
   @RequirePermission('PROCESS', 'EDIT', 'processId')
   async publishProcess(@Req() req: AuthenticatedRequest, @Param('processId') processId: string) {
-    const data = await this.processService.publishProcess(requireTenantId(req), processId);
+    const data = await this.processService.publishProcess(
+      requireTenantId(req),
+      processId,
+      req.user.id,
+    );
     return { ok: true as const, data };
   }
 
@@ -167,14 +171,18 @@ export class ProcessController {
   @Get('instances/:instanceId')
   @RequirePermission('PROCESS', 'VIEW')
   async getInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
-    const data = await this.processService.getInstance(requireTenantId(req), instanceId);
+    const data = await this.processService.getInstance(
+      requireTenantId(req),
+      instanceId,
+      req.user.id,
+    );
     return { ok: true as const, data };
   }
 
   @Get('instances/:instanceId/trace')
   @RequirePermission('PROCESS', 'VIEW')
   async getTrace(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
-    const data = await this.processService.getTrace(requireTenantId(req), instanceId);
+    const data = await this.processService.getTrace(requireTenantId(req), instanceId, req.user.id);
     return { ok: true as const, data };
   }
 

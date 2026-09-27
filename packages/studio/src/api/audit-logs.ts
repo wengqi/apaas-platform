@@ -11,6 +11,8 @@ export interface AuditLogItem {
   action: string;
   resource: string | null;
   resourceId: string | null;
+  /** 应用维度（应用级审计页使用） */
+  appId: string | null;
   detail: unknown;
   ip: string | null;
   createdAt: string;
@@ -29,6 +31,8 @@ export interface AuditLogQueryParams {
   action?: string;
   resource?: string;
   userId?: string;
+  /** 按应用筛选（ROADMAP 9.9 应用级审计 UI） */
+  appId?: string;
 }
 
 const unwrap = <T>(p: Promise<{ data: ApiResponse<T> }>) => p.then((res) => res.data.data as T);

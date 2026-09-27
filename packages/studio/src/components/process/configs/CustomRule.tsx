@@ -14,135 +14,21 @@
  * - 条件序号 + AND 连接词显示
  */
 
-import { createElement, memo, useState } from 'react';
-import { Select, Input, Button, Tag, Popconfirm } from 'antd';
+import { createElement, memo } from 'react';
+import { Select, Input, Button, Popconfirm } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { ItemBuilderProps } from '@react-awesome-query-builder/antd';
-import type { Config, Field } from '@react-awesome-query-builder/antd';
-
-// ---------------------------------------------------------------------------
-// 操作符定义 — 按字段类型分组（飞书风格）
-// ---------------------------------------------------------------------------
-
-interface OperatorDef {
-  /** RAQB 操作符 key */
-  key: string;
-  /** 显示标签 */
-  label: string;
-  /** 是否为单目操作符（无右值，如 为空/不为空） */
-  unary?: boolean;
-  /** 是否为多值操作符（如 属于/不属于） */
-  multiValue?: boolean;
-}
-
-/** 按字段类型映射可用操作符（使用 RAQB 内置操作符 key） */
-const OPERATORS_BY_TYPE: Record<string, OperatorDef[]> = {
-  text: [
-    { key: 'equal', label: '等于' },
-    { key: 'not_equal', label: '不等于' },
-    { key: 'like', label: '包含' },
-    { key: 'not_like', label: '不包含' },
-    { key: 'is_empty', label: '为空', unary: true },
-    { key: 'is_not_empty', label: '不为空', unary: true },
-  ],
-  number: [
-    { key: 'equal', label: '等于' },
-    { key: 'not_equal', label: '不等于' },
-    { key: 'less', label: '小于' },
-    { key: 'less_or_equal', label: '小于等于' },
-    { key: 'greater', label: '大于' },
-    { key: 'greater_or_equal', label: '大于等于' },
-    { key: 'is_empty', label: '为空', unary: true },
-    { key: 'is_not_empty', label: '不为空', unary: true },
-  ],
-  boolean: [
-    { key: 'equal', label: '等于' },
-    { key: 'not_equal', label: '不等于' },
-  ],
-  date: [
-    { key: 'equal', label: '等于' },
-    { key: 'not_equal', label: '不等于' },
-    { key: 'less', label: '早于' },
-    { key: 'less_or_equal', label: '早于等于' },
-    { key: 'greater', label: '晚于' },
-    { key: 'greater_or_equal', label: '晚于等于' },
-    { key: 'is_empty', label: '为空', unary: true },
-    { key: 'is_not_empty', label: '不为空', unary: true },
-  ],
-};
-
-/** 获取字段类型对应的操作符列表 */
-function getOperatorsForType(fieldType: string): OperatorDef[] {
-  return OPERATORS_BY_TYPE[fieldType] ?? OPERATORS_BY_TYPE['text']!;
-}
-
-// ---------------------------------------------------------------------------
-// 值类型定义
-// ---------------------------------------------------------------------------
-
-const VALUE_SRC_OPTIONS = [
-  { label: '引用', value: 'field' },
-  { label: '公式', value: 'expr' },
-  { label: '指定值', value: 'value' },
-];
-
-// ---------------------------------------------------------------------------
-// 辅助：从 config.fields 获取字段选项列表
-// ---------------------------------------------------------------------------
-
-function getFieldOptions(config: Config): { label: string; value: string; type: string }[] {
-  const fields = config.fields as Record<string, Field>;
-  return Object.entries(fields)
-    .filter(([key]) => !key.startsWith('__'))
-    .map(([key, field]) => ({
-      label: field.label ?? key,
-      value: key,
-      type: (field as { type?: string }).type ?? 'text',
-    }));
-}
-
-// ---------------------------------------------------------------------------
-// 辅助：获取字段可用的操作符列表
-// ---------------------------------------------------------------------------
-
-function getOperatorOptions(config: Config, fieldName: string | undefined): OperatorDef[] {
-  if (!fieldName) return [];
-  const fieldConfig = (config.fields as Record<string, Field>)[fieldName];
-  if (!fieldConfig) return [];
-  const fieldType = (fieldConfig as { type?: string }).type ?? 'text';
-  return getOperatorsForType(fieldType);
-}
-
-// ---------------------------------------------------------------------------
-// 辅助：获取当前选中的字段名
-// ---------------------------------------------------------------------------
-
-function getSelectedField(props: ItemBuilderProps): string | undefined {
-  const field = props.properties?.get('field');
-  if (!field) return undefined;
-  if (Array.isArray(field)) return field[field.length - 1] as string;
-  return typeof field === 'string' ? field : undefined;
-}
-
-function getSelectedOperator(props: ItemBuilderProps): string | undefined {
-  const op = props.properties?.get('operator');
-  return typeof op === 'string' ? op : undefined;
-}
-
-function getSelectedValue(props: ItemBuilderProps): string {
-  const value = props.properties?.get('value');
-  if (!value) return '';
-  const first = value.get?.(0);
-  if (first === undefined || first === null) return '';
-  return String(first);
-}
-
-function getSelectedValueSrc(props: ItemBuilderProps): string {
-  const valueSrc = props.properties?.get('valueSrc');
-  if (!valueSrc) return 'value';
-  const first = valueSrc.get?.(0);
-  return typeof first === 'string' ? first : 'value';
-}
+import { getOperatorsForType } from './custom-rule/operators.js';
+import {
+  VALUE_SRC_OPTIONS,
+  getFieldOptions,
+  getOperatorOptions,
+  getSelectedField,
+  getSelectedOperator,
+  getSelectedValue,
+  getSelectedValueSrc,
+} from './custom-rule/rule-helpers.js';
+import { MultiValueInput, ValueInputByType } from './custom-rule/ValueInputs.js';
 
 // ---------------------------------------------------------------------------
 // 主组件
@@ -329,107 +215,6 @@ function CustomRuleImpl(props: ItemBuilderProps): React.ReactElement | null {
     ),
     // 字段为空时红色提示
     isFieldEmpty && createElement('div', { className: 'rule-error' }, '该字段为必填项'),
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 按字段类型渲染值输入
-// ---------------------------------------------------------------------------
-
-interface ValueInputByTypeProps {
-  fieldType: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}
-
-function ValueInputByType({
-  fieldType,
-  value,
-  onChange,
-  disabled,
-}: ValueInputByTypeProps): React.ReactElement {
-  if (fieldType === 'boolean') {
-    return createElement(Select, {
-      size: 'small',
-      value,
-      onChange: (v: unknown) => onChange(v as string),
-      disabled,
-      options: [
-        { label: 'true', value: 'true' },
-        { label: 'false', value: 'false' },
-      ],
-      style: { width: '100%' },
-    });
-  }
-  // 文本/数字/日期：统一用 Input
-  return createElement(Input, {
-    size: 'small',
-    placeholder: '输入值',
-    value,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value),
-    disabled,
-    type: fieldType === 'number' ? 'number' : 'text',
-    style: { width: '100%' },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// 多值输入（属于/不属于操作符）
-// ---------------------------------------------------------------------------
-
-interface MultiValueInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  fieldType: string;
-}
-
-function MultiValueInput({ value, onChange, disabled }: MultiValueInputProps): React.ReactElement {
-  const [inputValue, setInputValue] = useState('');
-
-  // 值以逗号分隔存储
-  const tags = value
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
-
-  const handleAdd = (): void => {
-    const v = inputValue.trim();
-    if (v && !tags.includes(v)) {
-      onChange([...tags, v].join(', '));
-    }
-    setInputValue('');
-  };
-
-  const handleRemove = (tag: string): void => {
-    onChange(tags.filter((t) => t !== tag).join(', '));
-  };
-
-  return createElement(
-    'div',
-    { style: { display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' } },
-    ...tags.map((tag) =>
-      createElement(
-        Tag,
-        {
-          key: tag,
-          closable: !disabled,
-          onClose: () => handleRemove(tag),
-          style: { margin: 0 },
-        },
-        tag,
-      ),
-    ),
-    createElement(Input, {
-      size: 'small',
-      placeholder: '输入值后回车',
-      value: inputValue,
-      onChange: (e: React.ChangeEvent<HTMLInputElement>) => setInputValue(e.target.value),
-      onPressEnter: handleAdd,
-      disabled,
-      style: { width: '80px', fontSize: '12px' },
-    }),
   );
 }
 

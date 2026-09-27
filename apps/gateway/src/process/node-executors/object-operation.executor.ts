@@ -8,15 +8,34 @@
  * 输出：create→{ recordId } / update·delete→{ affectedCount } / query→{ records, record }。
  */
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../types.js';
 import { jsonLogicToPrismaWhere } from '../../shared/jsonlogic-to-prisma.js';
+import { RecordService } from '../../record/record.service.js';
+import { resolveFlowActorId } from './flow-actor.js';
 
+/** 筛选范围删除的候选行上限（与批量操作一致，防止无界删除）。 */
+const FILTER_DELETE_MAX_ROWS = Number(process.env.BATCH_MAX_ROWS) || 500;
+
+/**
+ * 对象操作节点。
+ *
+ * 评审 P1-5：写操作统一走 RecordService（记录写内核），与主 API 路径共享
+ * 字段校验、AutoNumber/Formula/Rollup 计算、行级权限条件注入与
+ * triggerService.onRecordEvent 事件触发（此前直接 prisma.record.* 写库，
+ * 导致流程写入的记录缺编号/公式、父记录 Rollup 不更新、且不触发其他流程）。
+ * 查询路径仍为系统范围直读（流程上下文无终端用户行级条件）。
+ */
 @Injectable()
 export class ObjectOperationExecutor implements NodeExecutor {
   private readonly logger = new Logger(ObjectOperationExecutor.name);
   readonly type = 'object_operation';
+
+  constructor(
+    @Inject(forwardRef(() => RecordService))
+    private readonly recordService: RecordService,
+  ) {}
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
@@ -31,7 +50,7 @@ export class ObjectOperationExecutor implements NodeExecutor {
       case 'create':
         return this.create(ctx, objectId);
       case 'update':
-        return this.update(ctx, objectId);
+        return this.update(ctx);
       case 'delete':
         return this.delete(ctx, objectId);
       case 'query':
@@ -41,27 +60,19 @@ export class ObjectOperationExecutor implements NodeExecutor {
     }
   }
 
-  /** 创建记录。 */
+  /** 创建记录（评审 P1-5：复用记录写内核）。 */
   private async create(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId: ctx.tenantId },
-    });
-    if (!obj) throw new NotFoundException(`对象 ${objectId} 不存在`);
-
-    const recordData = { ...ctx.inputs };
-    const record = await prisma.record.create({
-      data: {
-        tenantId: ctx.tenantId,
-        appId: obj.appId,
-        objectId,
-        data: recordData as Prisma.InputJsonValue,
-      },
-    });
+    const record = await this.recordService.create(
+      ctx.tenantId,
+      objectId,
+      resolveFlowActorId(ctx),
+      { ...ctx.inputs },
+    );
     return { output: { recordId: record.id, record } };
   }
 
   /** 更新记录。 */
-  private async update(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
+  private async update(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
     const recordId = (data['recordId'] as string) ?? (ctx.inputs['recordId'] as string);
     if (!recordId) throw new Error('对象更新节点缺少 recordId');
@@ -70,22 +81,17 @@ export class ObjectOperationExecutor implements NodeExecutor {
     const updateData: Record<string, unknown> = { ...ctx.inputs };
     delete updateData['recordId'];
 
-    // 与 RecordService.update 一致：先读现有 data 再 merge（部分更新），
-    // 避免 process 节点把未在 inputs 中的字段整体清空
-    const existing = await prisma.record.findFirst({
-      where: { id: recordId, tenantId: ctx.tenantId, objectId },
-      select: { data: true },
-    });
-    const mergedData: Record<string, unknown> = {
-      ...((existing?.data as Record<string, unknown>) ?? {}),
-      ...updateData,
-    };
-
-    const result = await prisma.record.updateMany({
-      where: { id: recordId, tenantId: ctx.tenantId, objectId },
-      data: { data: mergedData as Prisma.InputJsonValue },
-    });
-    return { output: { affectedCount: result.count, recordId } };
+    // 评审 P1-5：复用记录写内核（部分更新 merge + 公式/Rollup 重算 + 记录事件）
+    try {
+      await this.recordService.update(ctx.tenantId, recordId, resolveFlowActorId(ctx), updateData);
+    } catch (err) {
+      // 保持原语义：recordId/objectId 不匹配或不存在时显式失败（此前静默 COMPLETED）
+      if (err instanceof NotFoundException) {
+        throw new Error('对象更新节点未命中任何记录（recordId 或 objectId 不匹配）');
+      }
+      throw err;
+    }
+    return { output: { affectedCount: 1, recordId } };
   }
 
   /** 删除记录。 */
@@ -93,19 +99,27 @@ export class ObjectOperationExecutor implements NodeExecutor {
     const data = ctx.node.data as Record<string, unknown>;
     const recordId = (data['recordId'] as string) ?? (ctx.inputs['recordId'] as string);
 
-    let count: number;
+    const actor = resolveFlowActorId(ctx);
     if (recordId) {
-      const result = await prisma.record.deleteMany({
-        where: { id: recordId, tenantId: ctx.tenantId, objectId },
-      });
-      count = result.count;
-    } else {
-      // 按筛选条件删除
-      const where = this.buildWhere(ctx.tenantId, objectId, data['filter']);
-      const result = await prisma.record.deleteMany({ where });
-      count = result.count;
+      // 评审 P1-5：走记录写内核（含删除事件触发）
+      await this.recordService.delete(ctx.tenantId, recordId, undefined, actor);
+      return { output: { affectedCount: 1 } };
     }
-    return { output: { affectedCount: count } };
+
+    // 按筛选条件删除：先解析受影响的记录 ID（有界），再走批量删除内核
+    const where = this.buildWhere(ctx.tenantId, objectId, data['filter']);
+    const targets = await prisma.record.findMany({
+      where,
+      select: { id: true },
+      take: FILTER_DELETE_MAX_ROWS,
+    });
+    if (targets.length === 0) return { output: { affectedCount: 0 } };
+
+    const result = await this.recordService.batchDelete(
+      ctx.tenantId,
+      targets.map((t) => t.id),
+    );
+    return { output: { affectedCount: result.deleted } };
   }
 
   /** 查询记录。 */

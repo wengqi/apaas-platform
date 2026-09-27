@@ -5,28 +5,25 @@
  * 渲染流程编辑器(SimplifiedEditor,基于 flowgram.ai Free Layout)。
  * 顶部工具栏:返回/流程名/撤销重做/预览/保存/发布。
  * 全屏三栏,撑满 calc(100vh - 56px)(StudioLayout Header)。
+ *
+ * 工具栏 / ErrorBoundary / 触发器配置弹窗已拆分至 ./process-editor/。
  */
 
-import { useEffect, useRef, useState, Component, type ReactNode } from 'react';
-import { Button, Modal, Popconfirm, Skeleton, Space, Tag, Typography, message } from 'antd';
-import {
-  ArrowLeftOutlined,
-  EyeOutlined,
-  SaveOutlined,
-  SendOutlined,
-  UndoOutlined,
-  RedoOutlined,
-} from '@ant-design/icons';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Modal, Skeleton, Typography, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { processesApi, type ProcessDef, type WorkflowSchema } from '../api/processes.js';
+import { qk } from '@apaas/shared/stores';
+import { processesApi, type WorkflowSchema } from '../api/processes.js';
 import { objectsApi } from '../api/objects.js';
 import { pagesApi } from '../api/pages.js';
 import { useProcessEditorStore } from '../stores/processEditor.js';
-import { getProcessStatusMeta, getTriggerMeta } from '../constants/process.js';
 import SimplifiedEditor from '../components/process/SimplifiedEditor.js';
+import ProcessEditorToolbar from './process-editor/ProcessEditorToolbar.js';
+import EditorErrorBoundary from './process-editor/EditorErrorBoundary.js';
+import TriggerConfigModal from './process-editor/TriggerConfigModal.js';
 
-const { Title } = Typography;
+export { default as EditorErrorBoundary } from './process-editor/EditorErrorBoundary.js';
 
 export default function ProcessEditor() {
   const navigate = useNavigate();
@@ -35,14 +32,32 @@ export default function ProcessEditor() {
 
   const store = useProcessEditorStore();
   const loadedRef = useRef<string | null>(null);
+  /** 编辑器 initialData：挂载期捕获一次。编辑器已按 processId key 重挂载，
+   *  store.schema 的后续更新不得回灌 initialData——否则形成
+   *  编辑器→onSchemaChange→store→props→编辑器 的反馈环（画布永不收敛）。 */
+  const initialSchemaRef = useRef<WorkflowSchema | undefined>(undefined);
 
-  /** flowgram 撤销/重做 API(由 SimplifiedEditor 内部 HistoryBridge 暴露)。 */
-  const [historyApi, setHistoryApi] = useState<{
+  /** flowgram 撤销/重做 API(由 SimplifiedEditor 内部 HistoryBridge 暴露)。
+   *  API 对象每次上报都是新引用，只能入 ref；重渲染经由布尔 state 驱动——
+   *  值不变时返回 prev 使 setState 退出，保证上报循环有界（不会饿死画布）。 */
+  const historyApiRef = useRef<{
     undo: () => void;
     redo: () => void;
     canUndo: boolean;
     canRedo: boolean;
   } | null>(null);
+  const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
+  const handleHistoryReady = useCallback(
+    (api: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) => {
+      historyApiRef.current = api;
+      setHistoryFlags((prev) =>
+        prev.canUndo === api.canUndo && prev.canRedo === api.canRedo
+          ? prev
+          : { canUndo: api.canUndo, canRedo: api.canRedo },
+      );
+    },
+    [],
+  );
 
   /** 加载流程详情。 */
   const { data: processDef, isLoading } = useQuery({
@@ -54,7 +69,7 @@ export default function ProcessEditor() {
 
   /** 加载对象列表(配置面板用)。 */
   const { data: objects } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId!),
     queryFn: () => objectsApi.list(appId as string),
     enabled: !!appId,
   });
@@ -63,7 +78,7 @@ export default function ProcessEditor() {
 
   /** 加载页面列表(任务表单选择用)。 */
   const { data: pages } = useQuery({
-    queryKey: ['pages', appId],
+    queryKey: qk.appPages(appId!),
     queryFn: () => pagesApi.list(appId as string),
     enabled: !!appId,
   });
@@ -86,10 +101,14 @@ export default function ProcessEditor() {
       // 先重置 store，清除上一个流程的残留状态
       store.reset();
       loadedRef.current = processDef.id;
+      initialSchemaRef.current = processDef.workflowSchema;
       store.loadProcess(processDef);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processDef]);
+
+  /** 评审整改：触发器配置弹窗开关 */
+  const [triggerOpen, setTriggerOpen] = useState(false);
 
   /** store 是否已加载当前流程。 */
   const storeLoaded = store.processDef?.id === processId;
@@ -128,6 +147,15 @@ export default function ProcessEditor() {
       const currentSchema = store.schema ?? processDef?.workflowSchema;
       if (currentSchema?.edges && currentSchema.edges.length > 0) {
         finalSchema = { ...schema, edges: currentSchema.edges };
+      }
+    }
+    // 评审 P1-1：打开已保存流程时，挂载期 reconcile 的首次导出若与已保存
+    // 基线内容一致，则不置脏（此前"打开即脏"+撤销栈被污染）
+    if (!store.dirty) {
+      const baseline = JSON.stringify(processDef?.workflowSchema ?? null);
+      if (JSON.stringify(finalSchema) === baseline) {
+        store.markSaved();
+        return;
       }
     }
     store.setSchema(finalSchema, { skipHistory: true });
@@ -202,212 +230,34 @@ export default function ProcessEditor() {
         onPublish={() => publishMutation.mutate()}
         saving={saveMutation.isPending}
         publishing={publishMutation.isPending}
-        canUndo={historyApi?.canUndo ?? false}
-        canRedo={historyApi?.canRedo ?? false}
-        onUndo={() => historyApi?.undo()}
-        onRedo={() => historyApi?.redo()}
+        canUndo={historyFlags.canUndo}
+        canRedo={historyFlags.canRedo}
+        onUndo={() => historyApiRef.current?.undo()}
+        onRedo={() => historyApiRef.current?.redo()}
+        onConfigureTrigger={() => setTriggerOpen(true)}
+      />
+      <TriggerConfigModal
+        open={triggerOpen}
+        processDef={processDef}
+        onClose={() => setTriggerOpen(false)}
+        onSaved={() => {
+          setTriggerOpen(false);
+          void queryClient.invalidateQueries({ queryKey: ['process', processId] });
+        }}
       />
       {/* 编辑器主体 — key={processId} 确保切换流程时组件重新挂载 */}
       <EditorErrorBoundary key={processId}>
         <SimplifiedEditor
           key={processId}
-          initialSchema={store.schema ?? processDef.workflowSchema}
+          initialSchema={initialSchemaRef.current ?? processDef.workflowSchema}
           readonly={isReadonly}
           onSchemaChange={handleSchemaChange}
           objectOptions={objectOptions}
           formOptions={formOptions}
           processOptions={processOptions}
-          onHistoryReady={setHistoryApi}
+          onHistoryReady={handleHistoryReady}
         />
       </EditorErrorBoundary>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// 编辑器工具栏
-// ---------------------------------------------------------------------------
-
-interface ProcessEditorToolbarProps {
-  processDef: ProcessDef;
-  readonly: boolean;
-  dirty: boolean;
-  onBack: () => void;
-  onSave: () => void;
-  onPublish: () => void;
-  saving: boolean;
-  publishing: boolean;
-  canUndo: boolean;
-  canRedo: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
-}
-
-function ProcessEditorToolbar({
-  processDef,
-  readonly,
-  dirty,
-  onBack,
-  onSave,
-  onPublish,
-  saving,
-  publishing,
-  canUndo,
-  canRedo,
-  onUndo,
-  onRedo,
-}: ProcessEditorToolbarProps) {
-  const statusMeta = getProcessStatusMeta(processDef.status);
-  const triggerMeta = getTriggerMeta(processDef.triggerType as string | undefined);
-  const TriggerIcon = triggerMeta.icon;
-
-  return (
-    <div
-      style={{
-        height: 48,
-        padding: '0 16px',
-        background: '#fff',
-        borderBottom: '1px solid #eef0f4',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-        zIndex: 10,
-      }}
-    >
-      {/* 左侧:返回 + 流程名 */}
-      <Space size={12}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} />
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: `linear-gradient(135deg, ${triggerMeta.color}, ${triggerMeta.color}dd)`,
-            color: '#fff',
-            fontSize: 16,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <TriggerIcon style={{ fontSize: 16 }} />
-        </div>
-        <Space size={6} align="center">
-          <Title level={5} style={{ margin: 0 }}>
-            {processDef.name}
-          </Title>
-          <Tag color={statusMeta.tagColor}>{statusMeta.label}</Tag>
-          {dirty && <Tag color="orange">未保存</Tag>}
-        </Space>
-      </Space>
-
-      {/* 右侧:撤销/重做 + 预览 + 保存 + 发布 */}
-      <Space size={8}>
-        {!readonly && (
-          <>
-            <Button
-              type="text"
-              icon={<UndoOutlined />}
-              size="small"
-              disabled={!canUndo}
-              onClick={onUndo}
-            />
-            <Button
-              type="text"
-              icon={<RedoOutlined />}
-              size="small"
-              disabled={!canRedo}
-              onClick={onRedo}
-            />
-          </>
-        )}
-        <Button icon={<EyeOutlined />} size="small">
-          预览
-        </Button>
-        {!readonly && (
-          <Button icon={<SaveOutlined />} size="small" loading={saving} onClick={onSave}>
-            保存
-          </Button>
-        )}
-        {!readonly && (
-          <Popconfirm
-            title="发布流程"
-            description="发布后将生成新版本,已发布版本不可编辑"
-            okButtonProps={{ danger: false }}
-            onConfirm={onPublish}
-          >
-            <Button type="primary" icon={<SendOutlined />} size="small" loading={publishing}>
-              发布
-            </Button>
-          </Popconfirm>
-        )}
-      </Space>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Error Boundary — 捕获编辑器渲染崩溃
-// ---------------------------------------------------------------------------
-
-interface ErrorBoundaryProps {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error?: Error;
-}
-
-export class EditorErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  override componentDidCatch(error: Error, info: unknown) {
-    console.error('[ProcessEditor] 渲染崩溃:', error, info);
-  }
-
-  override render() {
-    if (this.state.hasError) {
-      return (
-        this.props.fallback ?? (
-          <div
-            style={{
-              padding: 48,
-              textAlign: 'center',
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-          >
-            <Typography.Title level={5} type="danger">
-              编辑器渲染失败
-            </Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ maxWidth: 400 }}>
-              {this.state.error?.message ?? '未知错误'}
-            </Typography.Paragraph>
-            <Button
-              type="primary"
-              size="small"
-              onClick={() => this.setState({ hasError: false, error: undefined })}
-            >
-              重试
-            </Button>
-          </div>
-        )
-      );
-    }
-    return this.props.children;
-  }
 }

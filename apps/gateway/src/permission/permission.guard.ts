@@ -1,4 +1,4 @@
-import { Injectable, ExecutionContext, Optional } from '@nestjs/common';
+import { Injectable, ExecutionContext, Logger, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
 import { PERMISSION_KEY, type PermissionMetadata } from './require-permission.decorator.js';
@@ -21,12 +21,27 @@ import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
  */
 @Injectable()
 export class PermissionGuard extends JwtAuthGuard {
+  private readonly logger = new Logger(PermissionGuard.name);
+  private warnedMissingAudit = false;
+
   constructor(
     private readonly reflector: Reflector,
     private readonly permissionService: PermissionService,
     @Optional() private readonly auditLogService?: AuditLogService,
   ) {
     super();
+  }
+
+  /** 审计写入入口——注入缺失时告警一次（静默丢弃审计是不可接受的生产缺陷）。 */
+  private audit(params: Parameters<NonNullable<typeof this.auditLogService>['log']>[0]) {
+    if (!this.auditLogService) {
+      if (!this.warnedMissingAudit) {
+        this.warnedMissingAudit = true;
+        this.logger.warn('AuditLogService 未注入，审计日志将全部丢失——请检查模块导入');
+      }
+      return;
+    }
+    void this.auditLogService.log(params).catch(() => {});
   }
 
   override async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -46,13 +61,26 @@ export class PermissionGuard extends JwtAuthGuard {
     // 无装饰器 → 仅认证即可
     if (!permission) return true;
 
-    // 超级管理员短路
-    if (user.isSuperAdmin) return true;
-
     // 从 params 取 targetId
     const targetId = permission.targetIdParam
       ? request.params?.[permission.targetIdParam]
       : undefined;
+
+    // 超级管理员短路
+    if (user.isSuperAdmin) {
+      // 短路也必须留审计痕迹（TENANT_ADMIN 恰是最需要审计的角色）
+      this.audit({
+        tenantId: user.tenantId ?? '',
+        userId: user.id,
+        action: 'PERMISSION_CHECK',
+        resource: permission.type,
+        resourceId: targetId,
+        appId: (request.params?.appId as string | undefined) ?? null,
+        detail: { action: permission.action, result: 'ALLOWED_SUPERADMIN' },
+        ip: request.ip,
+      });
+      return true;
+    }
 
     // 有 targetId → 检查具体目标级权限
     // 无 targetId（CREATE 等路由 targetId 在 body 中）→ 仍需检查类型+动作级权限
@@ -75,12 +103,13 @@ export class PermissionGuard extends JwtAuthGuard {
       };
 
       // 记录审计日志（权限检查通过）
-      void this.auditLogService?.log({
+      this.audit({
         tenantId: user.tenantId ?? '',
         userId: user.id,
         action: 'PERMISSION_CHECK',
         resource: permission.type,
         resourceId: targetId,
+        appId: (request.params?.appId as string | undefined) ?? null,
         detail: { action: permission.action, result: 'ALLOWED' },
         ip: request.ip,
       });
@@ -88,13 +117,17 @@ export class PermissionGuard extends JwtAuthGuard {
       return true;
     } catch (err) {
       // 记录审计日志（权限检查拒绝）
-      void this.auditLogService?.log({
+      this.audit({
         tenantId: user.tenantId ?? '',
         userId: user.id,
         action: 'PERMISSION_DENIED',
         resource: permission.type,
         resourceId: targetId,
-        detail: { action: permission.action, reason: err instanceof Error ? err.message : String(err) },
+        appId: (request.params?.appId as string | undefined) ?? null,
+        detail: {
+          action: permission.action,
+          reason: err instanceof Error ? err.message : String(err),
+        },
         ip: request.ip,
       });
 

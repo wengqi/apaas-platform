@@ -4,11 +4,14 @@
  * 用法：
  *   pnpm --filter @apaas/db exec tsx seed.ts
  *
- * 测试账号：
+ * 测试账号（仅 development/test 环境，或生产环境显式提供 SEED_BOOTSTRAP_PASSWORD）：
  *   平台超管:  superadmin@apaas.dev / superadmin123（无需租户标识）
  *   租户管理员: admin@apaas.dev / admin123（租户标识: demo）
  *   搭建者:    builder@apaas.dev / builder123（租户标识: demo）
  *   终端用户:  user@apaas.dev / user123（租户标识: demo）
+ *
+ * 评审 C-1：生产环境禁止明文默认口令——未设置 SEED_BOOTSTRAP_PASSWORD 时
+ * 跳过全部用户/角色种子（已有数据不受影响），杜绝默认凭证链。
  */
 
 import { prisma, runAsSystem } from './src/index.js';
@@ -16,10 +19,21 @@ import { seedDemoContent } from './seed-demo.js';
 import * as bcrypt from 'bcrypt';
 
 async function main() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const bootstrapPassword = process.env.SEED_BOOTSTRAP_PASSWORD;
+  if (isProduction && !bootstrapPassword) {
+    console.warn(
+      '⚠️ 生产环境未设置 SEED_BOOTSTRAP_PASSWORD，跳过默认账号种子（评审 C-1 防默认凭证链）。' +
+        '首次部署请设置该变量后重新执行 seed。',
+    );
+    return;
+  }
+  const seedPassword = isProduction ? (bootstrapPassword as string) : null;
+  const hashFor = (plain: string) => bcrypt.hash(seedPassword ?? plain, 10);
   console.log('🌱 开始种子数据...');
 
   // 0. 创建平台超管（跨租户，tenantId=null）
-  const superAdminHash = await bcrypt.hash('superadmin123', 10);
+  const superAdminHash = await hashFor('superadmin123');
   const existingSuperAdmin = await prisma.user.findFirst({
     where: { email: 'superadmin@apaas.dev', isPlatformAdmin: true },
   });
@@ -105,9 +119,9 @@ async function main() {
   console.log(`✅ 角色: ${tenantAdminRole.name}, ${builderRole.name}, ${endUserRole.name}`);
 
   // 4. 创建用户
-  const adminHash = await bcrypt.hash('admin123', 10);
-  const builderHash = await bcrypt.hash('builder123', 10);
-  const userHash = await bcrypt.hash('user123', 10);
+  const adminHash = await hashFor('admin123');
+  const builderHash = await hashFor('builder123');
+  const userHash = await hashFor('user123');
 
   const admin = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'admin@apaas.dev' } },

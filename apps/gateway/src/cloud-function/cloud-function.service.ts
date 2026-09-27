@@ -20,6 +20,10 @@ import type {
   CloudFunctionCallResult,
 } from '@apaas/shared';
 
+/** 评审 M-8：进程内并发 Isolate 上限——防止 50 并发 × 128MB 堆上限打爆网关 */
+const MAX_CONCURRENT_ISOLATES = Number(process.env.CLOUD_FUNCTION_MAX_CONCURRENT) || 4;
+const ISOLATE_QUEUE_TIMEOUT_MS = 5_000;
+
 @Injectable()
 export class CloudFunctionService {
   constructor(
@@ -112,6 +116,19 @@ export class CloudFunctionService {
     });
     if (!existing) throw new NotFoundException('云函数不存在');
 
+    // 评审 M-4：PUBLISHED 后代码仍可静默替换——发布评审形同虚设。
+    // 已发布函数锁定代码与 schema，须先撤回（状态回 DRAFT）再修改。
+    if (existing.status === 'PUBLISHED') {
+      const codeChanged =
+        data.code !== undefined && JSON.stringify(data.code) !== JSON.stringify(existing.code);
+      const schemaChanged =
+        data.inputSchema !== undefined &&
+        JSON.stringify(data.inputSchema) !== JSON.stringify(existing.inputSchema);
+      if (codeChanged || schemaChanged) {
+        throw new BadRequestException('已发布的云函数不可修改代码/输入模式，请先将函数撤回为草稿');
+      }
+    }
+
     const updateData: Record<string, unknown> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
@@ -190,6 +207,38 @@ export class CloudFunctionService {
     return this.toDto(fn);
   }
 
+  /** 评审 M-8：简单计数信号量——并发超限时排队，排队超时返回 429。 */
+  private isolateSlots = MAX_CONCURRENT_ISOLATES;
+  private readonly isolateWaiters: Array<() => void> = [];
+
+  private async acquireIsolateSlot(): Promise<void> {
+    if (this.isolateSlots > 0) {
+      this.isolateSlots -= 1;
+      return;
+    }
+    const start = Date.now();
+    await new Promise<void>((resolve, reject) => {
+      const waiter = () => {
+        if (Date.now() - start > ISOLATE_QUEUE_TIMEOUT_MS) {
+          // 超时出队
+          const idx = this.isolateWaiters.indexOf(waiter);
+          if (idx >= 0) this.isolateWaiters.splice(idx, 1);
+          reject(new Error('isolate queue timeout'));
+        } else {
+          this.isolateSlots -= 1;
+          resolve();
+        }
+      };
+      this.isolateWaiters.push(waiter);
+    });
+  }
+
+  private releaseIsolateSlot(): void {
+    const waiter = this.isolateWaiters.shift();
+    if (waiter) waiter();
+    else this.isolateSlots += 1;
+  }
+
   /** 执行云函数。 */
   async invoke(
     tenantId: string,
@@ -205,7 +254,17 @@ export class CloudFunctionService {
     const code = fn.code as unknown as CloudFunctionCode;
     const input = params.input ?? {};
 
-    return this.runner.execute(code.source, input, tenantId, fn.appId);
+    await this.acquireIsolateSlot();
+    try {
+      return await this.runner.execute(code.source, input, tenantId, fn.appId);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'isolate queue timeout') {
+        throw new BadRequestException('云函数执行排队超时，请稍后重试');
+      }
+      throw err;
+    } finally {
+      this.releaseIsolateSlot();
+    }
   }
 
   /** Prisma 实体 → DTO。 */

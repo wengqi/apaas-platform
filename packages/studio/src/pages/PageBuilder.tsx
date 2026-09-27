@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Skeleton, Typography } from 'antd';
+import { Button, Skeleton, Typography } from 'antd';
 import {
   DndContext,
   DragOverlay,
@@ -12,8 +12,9 @@ import {
 } from '@dnd-kit/core';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { usePageBuilderStore, createDefaultSchema } from '../stores/pageBuilder.js';
-import { pagesApi, type ComponentType, type PageMeta } from '../api/pages.js';
+import { qk } from '@apaas/shared/stores';
+import { usePageBuilderStore } from '../stores/pageBuilder.js';
+import { pagesApi, type ComponentType } from '../api/pages.js';
 import { getComponentMeta } from '../constants/pageComponents.js';
 import BuilderToolbar from '../components/page-builder/BuilderToolbar.js';
 import ComponentPanel, { type PanelDragData } from '../components/page-builder/ComponentPanel.js';
@@ -32,7 +33,7 @@ const { Text } = Typography;
  * 全屏布局,撑满 calc(100vh - 56px)(StudioLayout Header)。
  */
 export default function PageBuilder() {
-  const { appId, pageId } = useParams<{ appId: string; pageId: string }>();
+  const { pageId } = useParams<{ appId: string; pageId: string }>();
 
   const schema = usePageBuilderStore((s) => s.schema);
   const loadPage = usePageBuilderStore((s) => s.loadPage);
@@ -41,8 +42,13 @@ export default function PageBuilder() {
   const loadedPageIdRef = useRef<string | null>(null);
 
   /** 加载页面详情(含 Schema)。 */
-  const { data: page, isLoading, isError } = useQuery({
-    queryKey: ['page', pageId],
+  const {
+    data: page,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: qk.page(pageId!),
     queryFn: () => pagesApi.get(pageId as string),
     enabled: !!pageId,
     retry: 1,
@@ -56,31 +62,14 @@ export default function PageBuilder() {
     }
   }, [page, loadPage]);
 
-  /** API 失败时使用默认 Schema 回退(便于无后端时开发调试)。 */
-  useEffect(() => {
-    if (isError && !loadedPageIdRef.current && pageId) {
-      loadedPageIdRef.current = pageId;
-      const fallbackPage: PageMeta = {
-        id: pageId,
-        appId: appId ?? '',
-        name: '未命名页面',
-        apiName: 'untitled',
-        type: 'custom',
-        schema: createDefaultSchema('custom'),
-        published: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      loadPage(fallbackPage);
-    }
-  }, [isError, pageId, appId, loadPage]);
+  // 评审 P1-2：此前 API 失败会静默回退到空 Schema，用户随后"保存/发布"
+  // 会用伪造的空页面覆盖真实已发布页面（数据覆盖事故路径）。
+  // 现在改为显式错误态 + 重试，绝不写入来源不明的 Schema。
 
   // —— DnD ——
   const [activeDrag, setActiveDrag] = useState<{ componentType: ComponentType } | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const handleDragStart = (event: DragStartEvent) => {
     const data = event.active.data.current as PanelDragData | undefined;
@@ -120,6 +109,18 @@ export default function PageBuilder() {
     return (
       <div style={{ padding: 24 }}>
         <Skeleton active paragraph={{ rows: 8 }} />
+      </div>
+    );
+  }
+
+  // 评审 P1-2：加载失败必须显式暴露，禁止静默降级为空页面
+  if (isError) {
+    return (
+      <div style={{ padding: 48, textAlign: 'center' }}>
+        <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>
+          页面加载失败，为避免覆盖线上内容，编辑器已停止加载。
+        </Text>
+        <Button onClick={() => void refetch()}>重新加载</Button>
       </div>
     );
   }

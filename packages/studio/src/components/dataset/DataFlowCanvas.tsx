@@ -21,6 +21,7 @@ import ReactFlow, {
 import { Button, Space, Typography, Modal, message } from 'antd';
 import { SaveOutlined, PlayCircleOutlined, EyeOutlined, CloseOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '@apaas/shared/stores';
 import { useParams } from 'react-router-dom';
 import { dataFlowsApi } from '../../api/datasets.js';
 import type { DataFlowConfig, DataFlow } from '../../api/datasets.js';
@@ -161,7 +162,7 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
 
   // 加载对象列表
   const { data: objects = [] } = useQuery({
-    queryKey: ['objects', appId],
+    queryKey: qk.appObjects(appId),
     queryFn: () => objectsApi.list(appId),
   });
 

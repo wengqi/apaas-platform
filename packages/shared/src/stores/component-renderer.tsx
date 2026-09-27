@@ -63,12 +63,26 @@ import {
   renderDivider,
   renderText,
 } from './renderers-display.js';
+import {
+  renderIcon,
+  renderImage,
+  renderTag,
+  renderLink,
+  renderQrcode,
+  renderAlert,
+  renderNumberDisplay,
+  renderDatetimeDisplay,
+  renderUserDisplay,
+  renderFileDisplay,
+  renderIframe,
+  renderMarkdownDisplay,
+} from './renderers-display-ext.js';
 
 // ---------------------------------------------------------------------------
 // 组件渲染器注册表
 // ---------------------------------------------------------------------------
 
-/** 全部 27 个组件渲染器（studio 超集形式）。 */
+/** 全部组件渲染器（studio 超集形式；批次C1 扩展后 39 个）。 */
 export const RENDERERS: Record<ComponentType, RendererFn> = {
   // —— 容器类 ——
   page: renderPage,
@@ -106,6 +120,20 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   rich_text_display: renderRichTextDisplay,
   divider: renderDivider,
   text: renderText,
+
+  // —— 展示类·扩展（页面模块对齐批次C1） ——
+  icon: renderIcon,
+  image: renderImage,
+  tag: renderTag,
+  link: renderLink,
+  qrcode: renderQrcode,
+  alert: renderAlert,
+  number_display: renderNumberDisplay,
+  datetime_display: renderDatetimeDisplay,
+  user_display: renderUserDisplay,
+  file_display: renderFileDisplay,
+  iframe: renderIframe,
+  markdown: renderMarkdownDisplay,
 };
 
 // ---------------------------------------------------------------------------

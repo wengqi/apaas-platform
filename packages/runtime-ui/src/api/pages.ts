@@ -39,7 +39,20 @@ export type ComponentType =
   | 'chart'
   | 'rich_text_display'
   | 'divider'
-  | 'text';
+  | 'text'
+  // —— 展示类·扩展（页面模块对齐批次C1） ——
+  | 'icon'
+  | 'image'
+  | 'tag'
+  | 'link'
+  | 'qrcode'
+  | 'alert'
+  | 'number_display'
+  | 'datetime_display'
+  | 'user_display'
+  | 'file_display'
+  | 'iframe'
+  | 'markdown';
 
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
 

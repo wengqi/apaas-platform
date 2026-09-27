@@ -92,7 +92,20 @@ export type ComponentType =
   | 'chart'
   | 'rich_text_display'
   | 'divider'
-  | 'text';
+  | 'text'
+  // —— 展示类·扩展（页面模块对齐批次C1） ——
+  | 'icon'
+  | 'image'
+  | 'tag'
+  | 'link'
+  | 'qrcode'
+  | 'alert'
+  | 'number_display'
+  | 'datetime_display'
+  | 'user_display'
+  | 'file_display'
+  | 'iframe'
+  | 'markdown';
 
 /** 组件节点。页面 Schema 的基本单元，组成树形结构。 */
 export interface ComponentNode {

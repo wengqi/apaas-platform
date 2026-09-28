@@ -5,7 +5,7 @@
  * tree_select_single / tree_select_multi。
  *
  * 复用 FormFieldItem（标题/必填/禁用/12栅格）与 getFieldBinding（vm 绑定）。
- * rich_text_input 为 v1：多行输入 HTML/文本，富文本工具条后续批次补。
+ * rich_text_input 使用 RichTextInput（contentEditable 工具条版）。
  */
 
 import type { ReactNode } from 'react';
@@ -16,9 +16,12 @@ import type { RenderContext } from './renderer-helpers.js';
 import {
   getPropAsNumber,
   getPropAsString,
+  getPropAsBool,
   extractSelectOptions,
   FormFieldItem,
+  getFieldBinding,
 } from './renderer-helpers.js';
+import { RichTextInput } from './rich-text-input.js';
 
 export function renderEmailInput(node: ComponentNode, ctx: RenderContext): ReactNode {
   const placeholder = getPropAsString(node, 'placeholder', ctx) || '请输入邮箱';
@@ -87,9 +90,17 @@ export function renderImageUpload(node: ComponentNode, ctx: RenderContext): Reac
 export function renderRichTextInput(node: ComponentNode, ctx: RenderContext): ReactNode {
   const placeholder = getPropAsString(node, 'placeholder', ctx) || '请输入内容';
   const rows = getPropAsNumber(node, 'rows', ctx) || 6;
+  const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
+  const binding = getFieldBinding(node, ctx);
   return (
     <FormFieldItem node={node} ctx={ctx}>
-      <Input.TextArea rows={rows} placeholder={placeholder} size="small" />
+      <RichTextInput
+        value={typeof binding.value === 'string' ? binding.value : undefined}
+        onChange={binding.setValue}
+        placeholder={placeholder}
+        minHeight={rows * 22 + 8}
+        editable={binding.isPreview && !disabled}
+      />
     </FormFieldItem>
   );
 }

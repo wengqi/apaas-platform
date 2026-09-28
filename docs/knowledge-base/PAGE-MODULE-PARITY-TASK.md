@@ -71,12 +71,13 @@
 | A | 底部调试面板：错误检查(校验/schema 错误列表)+控制台(过滤/计数/时间戳/REPL/日志 API)+请求时间轴+性能(组件计数)+更多；与搭建器运行时接事件 | ✅ 2026-09-27 commit f7efda2（useDebugStore + collectSchemaIssues 9 单测 + BottomPanel/ConsoleTab/TimelinePerfTabs；RuntimeStore adapter 请求埋点）|
 | B | 状态数据页签：数据请求/自定义变量/JS方法/组件状态树/URL参数（读取自 viewModel 运行时） | ✅ 2026-09-27（StateDataTab 五分组 + 预览态 RuntimeVmBridge 同步运行时值 + 自定义变量增删写回 viewModel + splitVariables 等 7 单测）|
 | C1 | 简单展示类组件 12 个：图标/图片/标签/链接/二维码/常驻提示/数字/日期时间/人员/文件/Iframe/Markdown | ✅ 2026-09-27 commit 247f095（renderers-display-ext.tsx + page/markdown.ts 6单测 + 物料守卫13单测，总数 29→41；三包 ComponentType 同步）|
-| C2 | 输入类 10 个：邮箱/手机号/人员多选/关联对象多选/图片上传/富文本输入/级联单选/级联多选/树形单选/树形多选 | ✅ 2026-09-27 commit（renderers-form-ext.tsx，组件总数 41→51；富文本输入为 v1 多行实现，工具条后续批）|
+| C2 | 输入类 10 个：邮箱/手机号/人员多选/关联对象多选/图片上传/富文本输入/级联单选/级联多选/树形单选/树形多选 | ✅ 2026-09-27 commit（renderers-form-ext.tsx，组件总数 41→51；富文本输入 v1 见 E1 批次升级）|
 | C3 | 布局导航弹层 9 个：分页器/步骤条/折叠面板/轮播图/按钮组/平铺筛选/弹窗/侧拉窗/气泡卡片 | ✅ 2026-09-28 commit（renderers-layout-ext.tsx，总数 51→60；物料分组重构为飞书序：常用/导航/布局/数据展示/数据输入/通用/弹层；collapse/carousel/modal/drawer/popover 为容器类）|
 | C4 | 图表扩展 9 个 + 指标卡组：雷达图/面积图/散点图/条形图/瀑布图/词云图/组合图/进度图/矩阵表/指标卡组 | ✅ 2026-09-28（ChartType 扩展 area/scatter/bar_horizontal/radar/waterfall/wordcloud/combo + buildChartOptionFromAggregated 6 单测；变体复用 renderChart；进度图=antd Progress、矩阵表=动态列表格、指标卡组=Statistic 排；总数 60→70，新增「图表」分组对齐飞书）|
-| C5 | 数据展示 6 个：筛选/排序/操作日志/树形组件单选/树形组件多选/复合组件框架(自定义页签) | ⬜ |
+| C5 | 数据展示 6 个：筛选/排序/操作日志/树形组件单选/树形组件多选/复合组件框架(自定义页签) | ✅ 2026-09-28 commit b5d422f（renderers-data-ext 追加 + useCompositesStore localStorage 持久化 + 属性面板「保存为复合组件」+ 自定义页签拖拽复用 insertSubtree）|
 | C6 | 业务审批 5 个：个人中心/系统通知/任务详情/我的任务/审批管理（数据经 vm 绑定传入，props.data 数组同 audit_list 模式；新增 业务/审批 分组） | ✅ 2026-09-28（总数 75→80，守卫断言 80）|
 | D | 交互补齐：Delete/Ctrl+Z/Ctrl+Y 快捷键、胶囊[数据绑定][JS][隐藏]图标、画布左右 resize 手柄、多语/全局代码入口评估 | ✅ 2026-09-28（utils/designer-shortcuts.ts 纯函数 9 单测 + PageBuilder 键盘监听；胶囊新增 数据绑定(打开视图模型)/事件JS(定位滚动)/隐藏(切换 hidden) 图标与分隔线；选中节点左右 resize 手柄拖拽调整 span 12栅格（松手单次提交防历史污染）+ 隐藏组件半透明显示；多语/全局代码按 ADR-0002 明确不做）|
+| E1 | 富文本输入工具条升级：contentEditable + execCommand 工具条（加粗/斜体/下划线/删除线/有序/无序列表/链接/清除格式）+ DOMPurify 白名单净化写回 vm + 选中态高亮（selectionchange 事件驱动） | ✅ 2026-09-28（stores/rich-text-input.tsx 零新依赖；净化白名单/命令表 6 单测 + e2e 03 预览态加粗/列表真实 UI 用例）|
 
 ## 三、接续说明（新目标/新会话如何继续）
 

@@ -1,7 +1,8 @@
 /**
  * E2E 测试 — 页面搭建器。
  *
- * 覆盖场景：创建页面 → 打开搭建器 → 保存 → 预览模式验证
+ * 覆盖场景：创建页面 → 打开搭建器 → 保存 → 预览模式验证；
+ * 富文本输入工具条（预览态加粗/列表 → DOM 生效）。
  */
 
 import { test, expect } from '@playwright/test';
@@ -81,5 +82,52 @@ test.describe('页面搭建器', () => {
     const children = detail.schema.root.children ?? [];
     const firstChild = children[0] as { props?: { content?: string } } | undefined;
     expect(firstChild?.props?.content).toBe('E2E测试文本');
+  });
+
+  test('富文本输入工具条：预览态加粗与列表生效', async ({ page }) => {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_richtext_page',
+      name: '测试富文本页',
+      type: 'custom',
+    });
+    await api.put(`/pages/${page_meta.id}`, {
+      schema: {
+        version: '1',
+        pageType: 'custom',
+        viewModel: { variables: {} },
+        root: {
+          id: 'root',
+          type: 'page',
+          props: {},
+          children: [
+            {
+              id: 'f1',
+              type: 'form',
+              props: {},
+              children: [
+                {
+                  id: 'r1',
+                  type: 'rich_text_input',
+                  props: { label: '富文本', apiName: 'rich_field', rows: 4 },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    // 切到预览模式（Canvas 以 mode 为 key 重挂载 RuntimeStoreProvider）
+    await page.locator('.ant-segmented-item', { hasText: '预览' }).click();
+    const editor = page.locator('.apaas-richtext [contenteditable="true"]');
+    await editor.click();
+    await page.keyboard.type('hello');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.getByRole('button', { name: '加粗' }).click();
+    await expect(editor.locator('b')).toHaveCount(1);
+    await expect(editor).toContainText('hello');
+    await page.getByRole('button', { name: '有序列表' }).click();
+    await expect(editor.locator('ol li')).toHaveCount(1);
   });
 });

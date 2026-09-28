@@ -26,6 +26,10 @@ import {
   ZoomOutOutlined,
   GlobalOutlined,
   CodeOutlined,
+  HistoryOutlined,
+  DesktopOutlined,
+  TabletOutlined,
+  MobileOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -34,6 +38,7 @@ import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { pagesApi } from '../../api/pages.js';
 import { PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
 import { GlobalCodeModal, I18nModal } from './builder-toolbar/BuilderToolbarModals.js';
+import { HistoryDrawer } from './HistoryDrawer.js';
 
 const { Text } = Typography;
 
@@ -68,8 +73,11 @@ export default function BuilderToolbar() {
   const loadPage = usePageBuilderStore((s) => s.loadPage);
   const canvasZoom = usePageBuilderStore((s) => s.canvasZoom);
   const setCanvasZoom = usePageBuilderStore((s) => s.setCanvasZoom);
+  const canvasWidth = usePageBuilderStore((s) => s.canvasWidth);
+  const setCanvasWidth = usePageBuilderStore((s) => s.setCanvasWidth);
   const [i18nOpen, setI18nOpen] = useState(false);
   const [globalCodeOpen, setGlobalCodeOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   /** 保存页面(Schema + 元数据)。 */
   const saveMutation = useMutation({
@@ -226,6 +234,38 @@ export default function BuilderToolbar() {
 
       {/* 中部:缩放（对应飞书「自动（96%）」）+ 撤销重做 + 设置 + 刷新 */}
       <Space size={4} align="center">
+        <Segmented
+          size="small"
+          value={canvasWidth === null ? 'desktop' : String(canvasWidth)}
+          onChange={(v) => setCanvasWidth(v === 'desktop' ? null : Number(v))}
+          options={[
+            {
+              label: (
+                <Tooltip title="桌面 960">
+                  <DesktopOutlined />
+                </Tooltip>
+              ),
+              value: 'desktop',
+            },
+            {
+              label: (
+                <Tooltip title="平板 768">
+                  <TabletOutlined />
+                </Tooltip>
+              ),
+              value: '768',
+            },
+            {
+              label: (
+                <Tooltip title="手机 375">
+                  <MobileOutlined />
+                </Tooltip>
+              ),
+              value: '375',
+            },
+          ]}
+        />
+        <div style={{ width: 1, height: 18, background: '#e5e6eb', margin: '0 6px' }} />
         <Tooltip title="缩小画布">
           <Button
             type="text"
@@ -235,9 +275,11 @@ export default function BuilderToolbar() {
             onClick={() => setCanvasZoom(Math.max(MIN_ZOOM, canvasZoom - ZOOM_STEP))}
           />
         </Tooltip>
-        <Text type="secondary" style={{ fontSize: 12, minWidth: 72, textAlign: 'center' }}>
-          自动（{Math.round(canvasZoom * 100)}%）
-        </Text>
+        <Tooltip title="缩放（点两侧按钮调整）">
+          <Text type="secondary" style={{ fontSize: 12, minWidth: 40, textAlign: 'center' }}>
+            {Math.round(canvasZoom * 100)}%
+          </Text>
+        </Tooltip>
         <Tooltip title="放大画布">
           <Button
             type="text"
@@ -299,8 +341,11 @@ export default function BuilderToolbar() {
 
       <I18nModal open={i18nOpen} onClose={() => setI18nOpen(false)} />
       <GlobalCodeModal open={globalCodeOpen} onClose={() => setGlobalCodeOpen(false)} />
+      {pageId && (
+        <HistoryDrawer pageId={pageId} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      )}
 
-      {/* 右侧:编辑预览 + 保存 + 发布 */}
+      {/* 右侧:编辑预览 + 历史 + 保存 + 发布 */}
       <Space size={8} align="center" style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Segmented
           size="small"
@@ -317,6 +362,16 @@ export default function BuilderToolbar() {
             { label: '预览', value: 'preview', icon: <EyeOutlined /> },
           ]}
         />
+        <Tooltip title="历史保存点">
+          <Button
+            icon={<HistoryOutlined />}
+            size="small"
+            disabled={mode !== 'edit'}
+            onClick={() => setHistoryOpen(true)}
+          >
+            历史
+          </Button>
+        </Tooltip>
         <Button
           icon={<SaveOutlined />}
           size="small"

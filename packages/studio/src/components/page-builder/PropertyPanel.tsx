@@ -18,6 +18,7 @@ import { PagePropertyForm } from './property-sections/PagePropertyForm.js';
 import { StylePropsTab } from './property-sections/StylePropsTab.js';
 import { DataBindingTab } from './property-sections/DataBindingTab.js';
 import { ChartPropsSection } from './property-sections/ChartPropsSection.js';
+import { RegionPropsSection } from './property-sections/RegionPropsSection.js';
 import { StatisticPropsSection } from './property-sections/StatisticPropsSection.js';
 import { DashboardGridPropsSection } from './property-sections/DashboardGridPropsSection.js';
 import { DataTablePropsSection } from './property-sections/DataTablePropsSection.js';
@@ -228,6 +229,11 @@ function ComponentPropertyPanel({ node, path }: { node: ComponentNode; path: Com
         {node.type === 'dashboard_grid' && (
           <PropGroup title="仪表盘网格">
             <DashboardGridPropsSection node={node} updateComponentProps={updateComponentProps} />
+          </PropGroup>
+        )}
+        {(node.type === 'region_cascader_single' || node.type === 'region_cascader_multi') && (
+          <PropGroup title="行政区划配置">
+            <RegionPropsSection node={node} />
           </PropGroup>
         )}
 

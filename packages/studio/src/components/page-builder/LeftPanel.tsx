@@ -10,6 +10,7 @@ import { Empty, Skeleton, Typography } from 'antd';
 import {
   AppstoreOutlined,
   CaretRightOutlined,
+  CodeOutlined,
   DatabaseOutlined,
   DownOutlined,
   PartitionOutlined,
@@ -22,6 +23,7 @@ import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import ComponentPanel from './ComponentPanel.js';
 import OutlineTree from './OutlineTree.js';
 import StateDataTab from './StateDataTab.js';
+import CodeTab from './CodeTab.js';
 
 const { Text } = Typography;
 
@@ -29,7 +31,7 @@ const PANEL_WIDTH = 280;
 
 /** 左侧面板主组件。 */
 export default function LeftPanel() {
-  const [tab, setTab] = useState<'components' | 'outline' | 'state'>('components');
+  const [tab, setTab] = useState<'components' | 'outline' | 'state' | 'code'>('components');
 
   return (
     <div
@@ -75,11 +77,18 @@ export default function LeftPanel() {
           active={tab === 'state'}
           onClick={() => setTab('state')}
         />
+        <TabButton
+          label="代码"
+          icon={<CodeOutlined />}
+          active={tab === 'code'}
+          onClick={() => setTab('code')}
+        />
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {tab === 'components' && <ComponentPanel />}
         {tab === 'outline' && <OutlineTree />}
         {tab === 'state' && <StateDataTab />}
+        {tab === 'code' && <CodeTab />}
       </div>
     </div>
   );

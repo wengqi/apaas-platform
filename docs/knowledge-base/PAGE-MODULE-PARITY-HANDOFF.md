@@ -21,20 +21,21 @@
 | 2a0bb8c | D | 交互补齐：快捷键（utils/designer-shortcuts.ts：Delete删除/Ctrl+Z撤销/Ctrl+Y重做）、胶囊五图标（数据绑定/事件JS定位/复制/删除/隐藏）、左右 resize 手柄（span 12栅格） |
 | 8e10e95 | C7 | 收尾 6：HTML展示(DOMPurify)/JSX展示/部门选择×2(TreeSelect)/行政区划级联×2(内置34省级 region-data.ts) + 顶栏「多语」(schema.i18n 文案表) +「全局代码」(schema.globalCss/globalJs 预览与运行时注入) |
 | （本批） | E1 | 富文本输入工具条：stores/rich-text-input.tsx（contentEditable + execCommand 八键工具条，DOMPurify 白名单净化写回 vm，选中态高亮 selectionchange 事件驱动，零新依赖）+ 守卫单测 6 + e2e 03 预览态真实 UI 用例 |
+| （E2-1） | E2-1 | 行政区划市县级数据：page/region-data-full.ts（民政部口径 34省/342市/3056区县 + 港澳台补齐，直辖市「市辖区」规范化）+ regionOptions(level) 三层级联（province/city/district）+ 渲染器 level 属性 + studio RegionPropsSection（展示层级/占位符）+ 9 单测 + e2e 03 三级选择用例 |
+| （E2-2） | E2-2 | 字段半宽并排布局：stores/field-span.ts 纯函数（显式 span > 容器列数折算 > 整行）+ FormColumnsContext（FormRenderer 注入 columns）+ FormFieldItem span<12 inline-block 流式并排 + 6 单测 + e2e 03 同行断言；表单容器「每行列数」1/2/3 列自此真实生效 |
+| （E2-3） | E2-3 | 跨容器拖拽：PageBuilder 碰撞策略重构（节点+放置区并集 pointerWithin，节点命中优先，仅放置区命中取最小面积最内层容器=当前父容器则回退同层最近中心）；dragEnd 跨父分支：容器节点=放入末尾/普通节点=插其之前/放置区=追加；复用 store.moveComponent（祖先环+容器校验）；e2e 03 真实 mouse 拖入空分区 + API 断言落点 |
+| （E2-4） | E2-4 | 飞书式服务端保存点历史：Prisma PageSavePoint 模型+迁移（page_save_points，schema JSONB+source save/restore，每页保留 50 条自动裁剪）；gateway 保存自动捕获 + GET save-points + POST restore（事务写回+追加 restore 回滚点+changelog）；studio 顶栏「历史」抽屉（列表/恢复二次确认/loadSchema+markSaved）；service 7 单测 + e2e 03 自动捕获/恢复/抽屉用例 |
+| （E2-5） | E2-5 | 代码页签：左栏第四页签 CodeTab（全局样式/全局 JS 编辑器 500ms 防抖 patchSchema、页面 Schema 只读 JSON+复制+下载、页面 JS 方法引导）；qk.pageSavePoints 构造器登记；e2e 03 编辑写回断言 |
+| （E2-6） | E2-6 | 画布宽度预设（双端独立配置的 ADR-0002 合规过渡）：store.canvasWidth + 顶栏设备切换（桌面960/平板768/手机375，纯图标+Tooltip 防顶栏换行）+ Canvas data-canvas-card；e2e 1920 视口断言三档宽度；移动端独立 schema 仍按 ADR-0002 暂缓 |
 
-**组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 530 / studio 168 / db 42 / shared 24 全绿，e2e 59/59。
+**组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 537 / studio 168 / db 42 / shared 39 全绿，e2e 64/64。
 
 另有更早批次（本会话前段）：表单页面设计器重构（表单生成器/字段属性面板/大纲树/顶栏，commit 0d0e90b 之前数个），设计文档 `docs/design/DESIGN-page-builder-feishu-parity-2026-09-27.md`。
 
 ## 三、剩余事项（可选增强，非阻塞）
 
-1. **行政区划市县级数据**：现仅内置 34 省级（page/region-data.ts），市县级可经组件 options 覆盖或引入区划数据。
-2. **双端独立配置**：移动端画布独立配置（ADR-0002 明确暂缓）。
-3. **服务端保存点历史**：飞书「历史」为服务端保存点列表，本地用撤销栈(50)+保存状态文案替代。
-4. **字段左右并排布局**：span 半宽只缩窄单行，不做并排（需布局引擎）。
-5. **跨容器拖拽**：画布内仅同层排序。
-6. **状态数据/代码页签深化**：代码页签未做；状态数据已做五分组。
-7. **9+ 个 commit 在 feat/identity-cas-ldap 未合 PR**（与身份对接层 M1 提交同分支，PR #3 位置）。
+1. **双端独立配置**：移动端画布独立配置（ADR-0002 明确暂缓）→ E2-6 以移动端画布宽度预设过渡。
+5. **PR #3 已合并**（2026-09-28，merge commit 536ddb4）；E2 批次在 feat/page-parity-e-batch 分支（PR #4）推进。
 
 ## 四、关键踩坑（务必遵守）
 

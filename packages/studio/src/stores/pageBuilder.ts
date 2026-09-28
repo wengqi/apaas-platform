@@ -37,6 +37,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   vmPanelOpen: false,
   formGeneratorNodeId: null,
   canvasZoom: 1,
+  canvasWidth: null,
   past: [],
   future: [],
   savedSnapshot: null,
@@ -398,6 +399,7 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   setFormGeneratorNodeId: (id) => set({ formGeneratorNodeId: id }),
 
   setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
+  setCanvasWidth: (width) => set({ canvasWidth: width }),
 
   // —— 历史 ——
 

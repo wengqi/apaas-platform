@@ -9,8 +9,11 @@ import { RuntimeStoreProvider } from './RuntimeStore.js';
 
 const { Text } = Typography;
 
-/** 页面卡宽度（对齐飞书「自动 960px」）。 */
+/** 页面卡宽度（桌面，对齐飞书「自动 960px」）。 */
 const PAGE_CARD_WIDTH = 960;
+
+/** 手机/平板画布宽度预设（E2-6 移动端预览；独立移动端配置按 ADR-0002 暂缓）。 */
+export const CANVAS_WIDTH_PRESETS = { mobile: 375, tablet: 768 } as const;
 
 /**
  * 画布(中栏) — 对齐飞书 aPaaS：灰底 + 白色页面卡片(960px、圆角、阴影)；
@@ -22,6 +25,7 @@ export default function Canvas() {
   const currentPage = usePageBuilderStore((s) => s.currentPage);
   const selectNode = usePageBuilderStore((s) => s.selectNode);
   const zoom = usePageBuilderStore((s) => s.canvasZoom);
+  const canvasWidth = usePageBuilderStore((s) => s.canvasWidth);
 
   const handleBackgroundClick = () => {
     selectNode(null);
@@ -63,8 +67,9 @@ export default function Canvas() {
         }}
       >
         <div
+          data-canvas-card
           style={{
-            width: PAGE_CARD_WIDTH,
+            width: canvasWidth ?? PAGE_CARD_WIDTH,
             maxWidth: '100%',
             minHeight: 720,
             background: '#fff',

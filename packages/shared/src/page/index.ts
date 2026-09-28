@@ -221,6 +221,19 @@ export interface PageSchema {
 }
 
 /** 页面元数据（存储于 pages 表）。 */
+/**
+ * 页面保存点信息（E2-4 飞书式历史）。
+ * 列表接口不含 schema 全量（体积大），恢复时经 restore 接口取回。
+ */
+export interface PageSavePointInfo {
+  id: string;
+  pageId: PageId;
+  /** save = 保存自动捕获；restore = 历史恢复回滚点 */
+  source: 'save' | 'restore';
+  createdBy: string;
+  createdAt: ISODateString;
+}
+
 export interface PageMeta {
   id: PageId;
   tenantId: TenantId;
@@ -346,4 +359,5 @@ export interface LayoutItem {
 // 图表 ECharts option 构建工具
 export { buildChartOption, buildChartOptionFromAggregated } from './chart-options.js';
 export { applyGlobalCss, runGlobalJs, translate } from './global-code.js';
-export { regionOptions } from './region-data.js';
+export { regionOptions, REGION_PROVINCES } from './region-data.js';
+export type { RegionOption, RegionLevel } from './region-data.js';

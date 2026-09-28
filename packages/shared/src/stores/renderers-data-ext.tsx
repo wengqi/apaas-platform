@@ -27,6 +27,7 @@ import { UserOutlined } from '@ant-design/icons';
 import DOMPurify from 'dompurify';
 import dayjs from 'dayjs';
 import { regionOptions as builtinRegionOptions } from '../page/region-data.js';
+import type { RegionLevel, RegionOption } from '../page/region-data.js';
 import type { ComponentNode } from './types.js';
 import type { RenderContext } from './renderer-helpers.js';
 import { extractSelectOptions, getPropAsString, FormFieldItem } from './renderer-helpers.js';
@@ -312,12 +313,14 @@ export function renderDeptPickerMulti(node: ComponentNode, ctx: RenderContext): 
   );
 }
 
-/** 内置省级行政区划级联（可经 options 覆盖扩展市县级）。 */
-function regionOptions(node: ComponentNode): { label: string; value: string }[] {
+/** 内置省市区县级行政区划级联（level 属性控制深度，可经 options 覆盖）。 */
+function regionOptions(node: ComponentNode): RegionOption[] {
   const custom = extractSelectOptions(node);
-  return custom.length
-    ? custom.map((o) => ({ label: o.label, value: o.value }))
-    : builtinRegionOptions();
+  if (custom.length) return custom.map((o) => ({ label: o.label, value: o.value }));
+  const raw = node.props.level;
+  const level: RegionLevel =
+    raw === 'province' || raw === 'city' || raw === 'district' ? raw : 'district';
+  return builtinRegionOptions(level);
 }
 
 export function renderRegionCascaderSingle(node: ComponentNode, ctx: RenderContext): ReactNode {

@@ -13,12 +13,13 @@
  * - 共享组件（renderContainerChildren / FormFieldItem / PageLoadEffect）
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { Form } from 'antd';
 import type { DescriptionsProps, TableProps } from 'antd';
 import type { ActionConfig, ComponentNode, PropValue, ViewModel } from './types.js';
 import type { RuntimeState } from './runtime-store.js';
 import { resolvePropValue, getByPath } from './expression-engine.js';
+import { effectiveFieldSpan } from './field-span.js';
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -268,13 +269,19 @@ export function renderContainerChildren(
 // ---------------------------------------------------------------------------
 
 /**
+ * 表单容器「每行列数」上下文（FormRenderer 注入；字段未显式设置 span 时按列折算）。
+ * E2-2 并排布局：span<12 的字段 inline-block 流式排列实现同行并排。
+ */
+export const FormColumnsContext = createContext(1);
+
+/**
  * 表单字段包裹组件：Form.Item + 标签 + 必填验证 + 禁用 + 12 栅格宽度。
  *
  * F-B2 修复：此前 required 仅作红星装饰（无 rules），validateFields 永远通过。
  * 现在生成 rules 数组让 AntD 表单验证生效，并补 name 属性以支持 form.getFieldsValue()。
  *
- * 飞书对齐：支持 span 属性（1-12 栅格，默认 12 = 整行）；
- * 默认值下渲染结果与旧版一致（整行）。
+ * 飞书对齐：支持 span 属性（1-12 栅格，默认 12 = 整行）；E2-2 起未显式设置
+ * span 的字段按容器 columns 折算（2列=6/3列=4），span<12 并排同行。
  */
 export function FormFieldItem({
   node,
@@ -288,9 +295,9 @@ export function FormFieldItem({
   const label = getPropAsString(node, 'label', ctx) || node.name || '';
   const required = getPropAsBool(node, 'required', ctx);
   const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
-  // getPropAsNumber 对缺失属性返回 0，缺省/非法值一律按整行（12 栅格）处理
-  const spanRaw = getPropAsNumber(node, 'span', ctx);
-  const span = spanRaw >= 1 && spanRaw <= 12 ? Math.floor(spanRaw) : 12;
+  const columns = useContext(FormColumnsContext);
+  const span = effectiveFieldSpan(node, columns);
+  const inline = span < 12;
 
   // F-B2: 生成验证规则 — required 时生成 required rule
   const rules = required
@@ -306,6 +313,9 @@ export function FormFieldItem({
       style={{
         marginBottom: 16,
         width: span >= 12 ? undefined : `${(span / 12) * 100}%`,
+        display: inline ? 'inline-block' : undefined,
+        verticalAlign: inline ? 'top' : undefined,
+        paddingRight: inline ? 12 : undefined,
       }}
     >
       <div style={{ pointerEvents: disabled ? 'none' : 'auto', opacity: disabled ? 0.6 : 1 }}>

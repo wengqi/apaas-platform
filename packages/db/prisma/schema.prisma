@@ -22,39 +22,40 @@ datasource db {
 // ============================================================================
 
 model Tenant {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   name        String
-  slug        String   @unique // 租户短标识，用于 URL 路由
-  description String?  // 租户描述
+  slug        String       @unique // 租户短标识，用于 URL 路由
+  description String? // 租户描述
   status      TenantStatus @default(ACTIVE)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
 
-  users       User[]
-  roles       Role[]
-  orgNodes    OrgNode[]
-  applications Application[]
-  objects     ObjectMeta[]
-  pages       PageMeta[]
-  processes   ProcessDef[]
-  records     Record[]
-  permissionRules PermissionRule[]
-  orgRoleGrants  OrgRoleGrant[]
-  auditLogs   AuditLog[]
-  appVersions AppVersion[]
-  changeLogs  ChangeLog[]
-  appChecks   AppCheck[]
-  inAppMessages InAppMessage[]
-  connectors  Connector[]
-  connectorCredentials ConnectorCredential[]
-  datasets    Dataset[]
-  dataFlows   DataFlow[]
-  cloudFunctions CloudFunction[]
+  users                 User[]
+  roles                 Role[]
+  orgNodes              OrgNode[]
+  applications          Application[]
+  objects               ObjectMeta[]
+  pages                 PageMeta[]
+  pageSavePoints        PageSavePoint[]
+  processes             ProcessDef[]
+  records               Record[]
+  permissionRules       PermissionRule[]
+  orgRoleGrants         OrgRoleGrant[]
+  auditLogs             AuditLog[]
+  appVersions           AppVersion[]
+  changeLogs            ChangeLog[]
+  appChecks             AppCheck[]
+  inAppMessages         InAppMessage[]
+  connectors            Connector[]
+  connectorCredentials  ConnectorCredential[]
+  datasets              Dataset[]
+  dataFlows             DataFlow[]
+  cloudFunctions        CloudFunction[]
   notificationTemplates NotificationTemplate[]
-  autoNumberCounters AutoNumberCounter[]
-  userIdentities       UserIdentity[]
-  integrationConfigs   IntegrationConfig[]
-  directorySyncLogs    DirectorySyncLog[]
+  autoNumberCounters    AutoNumberCounter[]
+  userIdentities        UserIdentity[]
+  integrationConfigs    IntegrationConfig[]
+  directorySyncLogs     DirectorySyncLog[]
 
   @@map("tenants")
 }
@@ -129,36 +130,36 @@ enum TenantStatus {
 // ============================================================================
 
 model Application {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  apiName     String   @map("api_name") // 开发者标识，如 "asset_management"
-  name        String   // 显示名
-  description String?
-  icon        String?
-  color       String?  // 主题色
-  status      AppStatus @default(DRAFT)
-  version     Int      @default(0) // 发布版本号，每次发布递增
+  id                String    @id @default(cuid())
+  tenantId          String    @map("tenant_id")
+  apiName           String    @map("api_name") // 开发者标识，如 "asset_management"
+  name              String // 显示名
+  description       String?
+  icon              String?
+  color             String? // 主题色
+  status            AppStatus @default(DRAFT)
+  version           Int       @default(0) // 发布版本号，每次发布递增
   // 已发布的应用快照 JSON（含对象/页面/流程定义的完整副本）
-  publishedSnapshot Json? @map("published_snapshot")
-  publishedAt DateTime? @map("published_at")
-  createdBy   String   @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  publishedSnapshot Json?     @map("published_snapshot")
+  publishedAt       DateTime? @map("published_at")
+  createdBy         String    @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  objects     ObjectMeta[]
-  pages       PageMeta[]
-  processes   ProcessDef[]
-  records     Record[]
-  roles       Role[]
-  versions    AppVersion[]
-  changeLogs  ChangeLog[]
-  checks      AppCheck[]
-  connectors  Connector[]
-  connectorCredentials ConnectorCredential[]
-  datasets    Dataset[]
-  dataFlows   DataFlow[]
-  cloudFunctions CloudFunction[]
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  objects               ObjectMeta[]
+  pages                 PageMeta[]
+  processes             ProcessDef[]
+  records               Record[]
+  roles                 Role[]
+  versions              AppVersion[]
+  changeLogs            ChangeLog[]
+  checks                AppCheck[]
+  connectors            Connector[]
+  connectorCredentials  ConnectorCredential[]
+  datasets              Dataset[]
+  dataFlows             DataFlow[]
+  cloudFunctions        CloudFunction[]
   notificationTemplates NotificationTemplate[]
 
   @@unique([tenantId, apiName])
@@ -173,24 +174,24 @@ enum AppStatus {
 }
 
 model User {
-  id              String   @id @default(cuid())
-  tenantId        String?  @map("tenant_id") // null = 平台超管（跨租户）
-  email           String
-  name            String
-  avatar          String?
-  passwordHash    String   @map("password_hash") // bcrypt
-  isPlatformAdmin Boolean  @default(false) @map("is_platform_admin") // 平台超管标识
-  status          UserStatus @default(ACTIVE)
-  failedLoginAttempts Int     @default(0) @map("failed_login_attempts") // 登录失败计数（评审 H-2 防爆破）
-  lockedUntil     DateTime? @map("locked_until") // 账号锁定截止时间
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                  String     @id @default(cuid())
+  tenantId            String?    @map("tenant_id") // null = 平台超管（跨租户）
+  email               String
+  name                String
+  avatar              String?
+  passwordHash        String     @map("password_hash") // bcrypt
+  isPlatformAdmin     Boolean    @default(false) @map("is_platform_admin") // 平台超管标识
+  status              UserStatus @default(ACTIVE)
+  failedLoginAttempts Int        @default(0) @map("failed_login_attempts") // 登录失败计数（评审 H-2 防爆破）
+  lockedUntil         DateTime?  @map("locked_until") // 账号锁定截止时间
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  tenant          Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userRoles       UserRole[]
-  orgMemberships  OrgMember[]
-  cloudFunctions  CloudFunction[]
-  identities      UserIdentity[]
+  tenant         Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles      UserRole[]
+  orgMemberships OrgMember[]
+  cloudFunctions CloudFunction[]
+  identities     UserIdentity[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -208,17 +209,17 @@ model Role {
   tenantId    String   @map("tenant_id")
   appId       String?  @map("app_id") // 为空=租户级角色，非空=应用级角色
   name        String
-  code        String   // 角色编码，如 ADMIN / BUILDER / END_USER
+  code        String // 角色编码，如 ADMIN / BUILDER / END_USER
   description String?
   isBuiltIn   Boolean  @default(false) @map("is_built_in")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  application Application? @relation(fields: [appId], references: [id], onDelete: Cascade)
-  userRoles   UserRole[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application     Application?     @relation(fields: [appId], references: [id], onDelete: Cascade)
+  userRoles       UserRole[]
   permissionRules PermissionRule[]
-  orgRoleGrants  OrgRoleGrant[]
+  orgRoleGrants   OrgRoleGrant[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -227,8 +228,8 @@ model Role {
 }
 
 model UserRole {
-  userId String @map("user_id")
-  roleId String @map("role_id")
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
   assignedAt DateTime @default(now()) @map("assigned_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -250,10 +251,10 @@ model OrgNode {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent      OrgNode?   @relation("OrgTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children    OrgNode[]  @relation("OrgTree")
-  memberships OrgMember[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent        OrgNode?       @relation("OrgTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children      OrgNode[]      @relation("OrgTree")
+  memberships   OrgMember[]
   orgRoleGrants OrgRoleGrant[]
 
   @@unique([tenantId, code])
@@ -263,8 +264,8 @@ model OrgNode {
 }
 
 model OrgMember {
-  userId  String @map("user_id")
-  orgId   String @map("org_id")
+  userId   String   @map("user_id")
+  orgId    String   @map("org_id")
   joinedAt DateTime @default(now()) @map("joined_at")
 
   user User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -282,28 +283,28 @@ model OrgMember {
 /// 权限规则 — 声明某角色对某资源有何动作权限，是否附带行级条件。
 /// RBAC + ABAC 混合模型：角色判定有无权限(RBAC)，条件表达式过滤可见数据(ABAC)。
 model PermissionRule {
-  id            String   @id @default(cuid())
-  tenantId      String   @map("tenant_id")
-  appId         String?  @map("app_id")        // 空=租户级规则；非空=应用级规则
-  roleId        String   @map("role_id")
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  appId        String?  @map("app_id") // 空=租户级规则；非空=应用级规则
+  roleId       String   @map("role_id")
   // 权限维度（五级）
-  type          String   @map("type")          // PAGE | RECORD | PROCESS | DATA_MODEL | CONNECTOR
+  type         String   @map("type") // PAGE | RECORD | PROCESS | DATA_MODEL | CONNECTOR
   // 权限动作
-  action        String   @map("action")        // VIEW | CREATE | EDIT | DELETE | EXECUTE | APPROVE | MANAGE
+  action       String   @map("action") // VIEW | CREATE | EDIT | DELETE | EXECUTE | APPROVE | MANAGE
   // 作用目标
-  targetId      String   @map("target_id")     // 页面ID / 对象ID / 流程定义ID / 连接器ID
-  targetNodeId  String?  @map("target_node_id") // 流程节点ID（仅 PROCESS:APPROVE 用）
+  targetId     String   @map("target_id") // 页面ID / 对象ID / 流程定义ID / 连接器ID
+  targetNodeId String?  @map("target_node_id") // 流程节点ID（仅 PROCESS:APPROVE 用）
   // 行级条件（仅 RECORD 类型用，JSON 条件表达式）
-  condition     Json?    @map("condition")     // 条件表达式 JSON，null=无条件
+  condition    Json?    @map("condition") // 条件表达式 JSON，null=无条件
   // 字段级范围（仅 DATA_MODEL 类型用）
-  fieldScope    Json?    @map("field_scope")    // string[] 白名单字段，null=全部字段
+  fieldScope   Json?    @map("field_scope") // string[] 白名单字段，null=全部字段
   // 权限效果
-  effect        String   @default("ALLOW") @map("effect") // ALLOW | DENY
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  effect       String   @default("ALLOW") @map("effect") // ALLOW | DENY
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  role          Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([roleId])
@@ -322,12 +323,12 @@ model OrgRoleGrant {
   tenantId  String   @map("tenant_id")
   orgId     String   @map("org_id")
   roleId    String   @map("role_id")
-  appId     String?  @map("app_id")            // 应用级角色需指定应用
+  appId     String?  @map("app_id") // 应用级角色需指定应用
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  orgNode   OrgNode  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orgNode OrgNode @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, roleId, appId])
   @@index([tenantId])
@@ -341,19 +342,19 @@ model OrgRoleGrant {
 
 /// 审计日志 — 记录权限变更、敏感操作等审计事件。
 model AuditLog {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  userId    String   @map("user_id")
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  userId     String   @map("user_id")
   // 应用维度（ROADMAP 9.9 应用级审计 UI）：平台级事件为空
-  appId     String?  @map("app_id")
-  action    String                              // CREATE_ROLE | UPDATE_PERMISSION | DELETE_USER | ...
-  resource  String?                              // 操作资源类型
-  resourceId String?  @map("resource_id")       // 资源 ID
-  detail    Json?                               // 操作详情 JSON
-  ip        String?
-  createdAt DateTime @default(now()) @map("created_at")
+  appId      String?  @map("app_id")
+  action     String // CREATE_ROLE | UPDATE_PERMISSION | DELETE_USER | ...
+  resource   String? // 操作资源类型
+  resourceId String?  @map("resource_id") // 资源 ID
+  detail     Json? // 操作详情 JSON
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([userId])
@@ -371,7 +372,7 @@ model ObjectMeta {
   tenantId    String   @map("tenant_id")
   appId       String   @map("app_id")
   apiName     String   @map("api_name") // 开发者标识，如 "asset"
-  name        String   // 显示名
+  name        String // 显示名
   description String?
   icon        String?
   // 字段定义数组 JSON：[{ id, apiName, name, type, config, ... }]
@@ -380,7 +381,7 @@ model ObjectMeta {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
   views       View[]
   records     Record[]
@@ -395,7 +396,7 @@ model View {
   id        String   @id @default(cuid())
   objectId  String   @map("object_id")
   name      String
-  type      String   // LIST | DETAIL | FORM
+  type      String // LIST | DETAIL | FORM
   // 视图配置 JSON：筛选/排序/分组/字段显隐/表单布局
   config    Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
@@ -422,9 +423,9 @@ model Record {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
-  object   ObjectMeta @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  object      ObjectMeta  @relation(fields: [objectId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([appId])
@@ -441,22 +442,23 @@ model Record {
 // ============================================================================
 
 model PageMeta {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  appId     String   @map("app_id")
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  appId       String   @map("app_id")
   // 页面可关联对象（列表/详情/表单页），自定义页可为空
-  objectId  String?  @map("object_id")
-  apiName   String   @map("api_name")
-  name      String
-  type      String   // LIST | DETAIL | FORM | DASHBOARD | CUSTOM
+  objectId    String?  @map("object_id")
+  apiName     String   @map("api_name")
+  name        String
+  type        String // LIST | DETAIL | FORM | DASHBOARD | CUSTOM
   // 页面 Schema JSON：组件树 + 视图模型 + 绑定关系
-  schema    Json     @default("{}")
-  isPublished Boolean @default(false) @map("is_published")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  schema      Json     @default("{}")
+  isPublished Boolean  @default(false) @map("is_published")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application     @relation(fields: [appId], references: [id], onDelete: Cascade)
+  savePoints  PageSavePoint[]
 
   @@unique([appId, apiName])
   @@index([tenantId])
@@ -464,24 +466,43 @@ model PageMeta {
   @@map("page_metas")
 }
 
+// 页面保存点（E2-4 飞书式历史）：每次保存 Schema 自动快照，保留最近 N 条
+model PageSavePoint {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  pageId    String   @map("page_id")
+  schema    Json     @default("{}")
+  // save = 保存时自动捕获；restore = 历史恢复产生的回滚点
+  source    String   @default("save")
+  createdBy String   @default("system") @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   PageMeta @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([pageId, createdAt(sort: Desc)])
+  @@map("page_save_points")
+}
+
 // ============================================================================
 // 四、流程引擎（自研：WorkflowSchema 为 SSOT）
 // ============================================================================
 
 model ProcessDef {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  appId     String   @map("app_id")
-  apiName   String   @map("api_name")
-  name      String
+  id             String           @id @default(cuid())
+  tenantId       String           @map("tenant_id")
+  appId          String           @map("app_id")
+  apiName        String           @map("api_name")
+  name           String
   // ★ 核心：WorkflowSchema JSON（节点图 + 边），自研引擎直接消费
-  workflowSchema Json @default("{}") @map("workflow_schema")
-  version   Int      @default(1)
-  status    ProcessDefStatus @default(DRAFT)
-  triggerType String? @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | RECORD_DELETED | SCHEDULED | MANUAL | API | BUTTON_CLICK
-  cron        String? // Cron 表达式（仅 triggerType=SCHEDULED 时使用）
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  workflowSchema Json             @default("{}") @map("workflow_schema")
+  version        Int              @default(1)
+  status         ProcessDefStatus @default(DRAFT)
+  triggerType    String?          @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | RECORD_DELETED | SCHEDULED | MANUAL | API | BUTTON_CLICK
+  cron           String? // Cron 表达式（仅 triggerType=SCHEDULED 时使用）
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
 
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   application Application       @relation(fields: [appId], references: [id], onDelete: Cascade)
@@ -500,23 +521,23 @@ enum ProcessDefStatus {
 }
 
 model ProcessInstance {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  processDefId String  @map("process_def_id")
+  id             String                @id @default(cuid())
+  tenantId       String                @map("tenant_id")
+  processDefId   String                @map("process_def_id")
   // 触发上下文 JSON：触发记录 ID / 触发用户 / 输入参数
-  triggerContext Json  @default("{}") @map("trigger_context")
+  triggerContext Json                  @default("{}") @map("trigger_context")
   // 流程变量快照 JSON：执行中的完整变量作用域
-  variables   Json     @default("{}")
-  status      ProcessInstanceStatus @default(RUNNING)
+  variables      Json                  @default("{}")
+  status         ProcessInstanceStatus @default(RUNNING)
   // 当前活跃节点 ID 列表（token 位置）
-  activeNodeIds String[] @default([]) @map("active_node_ids")
-  startedAt   DateTime @default(now()) @map("started_at")
-  finishedAt  DateTime? @map("finished_at")
-  error       String?
+  activeNodeIds  String[]              @default([]) @map("active_node_ids")
+  startedAt      DateTime              @default(now()) @map("started_at")
+  finishedAt     DateTime?             @map("finished_at")
+  error          String?
 
-  processDef ProcessDef @relation(fields: [processDefId], references: [id], onDelete: Cascade)
+  processDef     ProcessDef      @relation(fields: [processDefId], references: [id], onDelete: Cascade)
   nodeExecutions NodeExecution[]
-  tasks       ProcessTask[]
+  tasks          ProcessTask[]
 
   @@index([tenantId])
   @@index([processDefId])
@@ -533,18 +554,18 @@ enum ProcessInstanceStatus {
 }
 
 model NodeExecution {
-  id          String   @id @default(cuid())
-  instanceId  String   @map("instance_id")
-  nodeId      String   @map("node_id") // WorkflowSchema 中的节点 ID
-  nodeType    String   @map("node_type")
-  status      NodeExecStatus @default(PENDING)
+  id         String         @id @default(cuid())
+  instanceId String         @map("instance_id")
+  nodeId     String         @map("node_id") // WorkflowSchema 中的节点 ID
+  nodeType   String         @map("node_type")
+  status     NodeExecStatus @default(PENDING)
   // 节点输入/输出 JSON
-  input       Json?
-  output      Json?
-  startedAt   DateTime? @map("started_at")
-  finishedAt  DateTime? @map("finished_at")
-  error       String?
-  retries     Int      @default(0)
+  input      Json?
+  output     Json?
+  startedAt  DateTime?      @map("started_at")
+  finishedAt DateTime?      @map("finished_at")
+  error      String?
+  retries    Int            @default(0)
 
   instance ProcessInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
 
@@ -615,8 +636,8 @@ model NotificationTemplate {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  application   Application  @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, appId, name])
   @@index([tenantId])
@@ -626,14 +647,14 @@ model NotificationTemplate {
 
 /// 站内消息 — 流程通知节点 in_app 渠道写入，用户在运行时查看。
 model InAppMessage {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  appId     String   @map("app_id")
-  userId    String   @map("user_id") // 收件人
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  appId     String    @map("app_id")
+  userId    String    @map("user_id") // 收件人
   title     String
   body      String
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+  read      Boolean   @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
   readAt    DateTime? @map("read_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -653,20 +674,20 @@ model AppVersion {
   id            String           @id @default(cuid())
   tenantId      String           @map("tenant_id")
   appId         String           @map("app_id")
-  versionNumber String           // 语义化版本号，如 "0.1.0"
-  description   String           // 更新说明
+  versionNumber String // 语义化版本号，如 "0.1.0"
+  description   String // 更新说明
   snapshot      Json             @default("{}") // 完整应用配置快照 (AppSnapshot JSON)
-  changeSet     Json?            // 变更清单 (ChangeSet JSON)，首次发布为 null
+  changeSet     Json? // 变更清单 (ChangeSet JSON)，首次发布为 null
   status        AppVersionStatus @default(PUBLISHED)
   publishedBy   String           @map("published_by")
   publishedAt   DateTime         @default(now()) @map("published_at")
 
-  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  application   Application  @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
 
+  @@unique([appId, versionNumber])
   @@index([tenantId])
   @@index([appId])
-  @@unique([appId, versionNumber])
   @@map("app_versions")
 }
 
@@ -680,17 +701,17 @@ model ChangeLog {
   id                String   @id @default(cuid())
   tenantId          String   @map("tenant_id")
   appId             String   @map("app_id")
-  module            String   // PAGE | OBJECT | PROCESS | PERMISSION
-  entityType        String   // ObjectMeta | PageMeta | ProcessDef | Role
+  module            String // PAGE | OBJECT | PROCESS | PERMISSION
+  entityType        String // ObjectMeta | PageMeta | ProcessDef | Role
   entityId          String   @map("entity_id")
   entityName        String?  @map("entity_name")
-  changeType        String   // CREATE | UPDATE | DELETE
+  changeType        String // CREATE | UPDATE | DELETE
   changedBy         String   @map("changed_by")
   changeDescription String?  @map("change_description")
   changedAt         DateTime @default(now()) @map("changed_at")
 
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  application       Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([appId])
@@ -700,16 +721,16 @@ model ChangeLog {
 
 /// 应用预检记录 — 记录每次预检的结果。
 model AppCheck {
-  id           String   @id @default(cuid())
-  tenantId     String   @map("tenant_id")
-  appId        String   @map("app_id")
-  result       String   // PASS | FAIL
-  issues       Json?    // 问题列表 JSON
-  checkedBy    String   @map("checked_by")
-  checkedAt    DateTime @default(now()) @map("checked_at")
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  appId     String   @map("app_id")
+  result    String // PASS | FAIL
+  issues    Json? // 问题列表 JSON
+  checkedBy String   @map("checked_by")
+  checkedAt DateTime @default(now()) @map("checked_at")
 
-  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  application  Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([appId])
@@ -722,25 +743,25 @@ model AppCheck {
 
 /// 连接器 — 可复用的外部 API 调用配置（HTTP 出站 / Webhook 入站）。
 model Connector {
-  id            String   @id @default(cuid())
-  tenantId      String   @map("tenant_id")
-  appId         String   @map("app_id")
-  apiName       String   @map("api_name") // 应用内唯一标识
-  name          String // 显示名称
-  description   String?
-  type          String // HTTP | WEBHOOK
-  baseUrl       String?  @map("base_url") // HTTP 类型的基础 URL
-  config        Json     @default("{}") // 类型特定配置（操作定义/默认 headers 等）
-  credentialId  String?  @map("credential_id") // 关联凭证（可选）
-  status        String   @default("ACTIVE") // ACTIVE | INACTIVE
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  appId        String   @map("app_id")
+  apiName      String   @map("api_name") // 应用内唯一标识
+  name         String // 显示名称
+  description  String?
+  type         String // HTTP | WEBHOOK
+  baseUrl      String?  @map("base_url") // HTTP 类型的基础 URL
+  config       Json     @default("{}") // 类型特定配置（操作定义/默认 headers 等）
+  credentialId String?  @map("credential_id") // 关联凭证（可选）
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE
   // Webhook 专用：生成的入站 token（用于验证请求合法性）
-  webhookToken  String?  @unique @map("webhook_token")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  webhookToken String?  @unique @map("webhook_token")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  app          Application           @relation(fields: [appId], references: [id], onDelete: Cascade)
-  credential   ConnectorCredential?  @relation(fields: [credentialId], references: [id])
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app        Application          @relation(fields: [appId], references: [id], onDelete: Cascade)
+  credential ConnectorCredential? @relation(fields: [credentialId], references: [id])
 
   @@unique([tenantId, appId, apiName])
   @@index([tenantId])
@@ -750,19 +771,19 @@ model Connector {
 
 /// 连接器凭证 — 独立管理，可被多个连接器引用。
 model ConnectorCredential {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  appId       String   @map("app_id")
-  name        String // 显示名称（如"生产环境 API Key"）
-  type        String // BASIC | API_KEY | BEARER
-  data        Json @default("{}") // 加密存储的凭证数据
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  appId     String   @map("app_id")
+  name      String // 显示名称（如"生产环境 API Key"）
+  type      String // BASIC | API_KEY | BEARER
+  data      Json     @default("{}") // 加密存储的凭证数据
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  connectors  Connector[]
+  connectors Connector[]
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  app         Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app    Application @relation(fields: [appId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, appId, name])
   @@index([tenantId])
@@ -791,10 +812,10 @@ model DataFlow {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  datasets      Dataset[]
+  datasets Dataset[]
 
-  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  app           Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app    Application @relation(fields: [appId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, appId, apiName])
   @@index([tenantId])
@@ -804,25 +825,25 @@ model DataFlow {
 
 /// 数据集 — 由数据流生成的物化数据。
 model Dataset {
-  id              String   @id @default(cuid())
-  tenantId        String   @map("tenant_id")
-  appId           String   @map("app_id")
-  apiName         String   @map("api_name")
+  id              String    @id @default(cuid())
+  tenantId        String    @map("tenant_id")
+  appId           String    @map("app_id")
+  apiName         String    @map("api_name")
   name            String
   description     String?
-  sourceFlowId    String   @map("source_flow_id")
-  status          String   @default("EMPTY") // EMPTY | REFRESHING | READY | FAILED
-  rowCount        Int      @default(0) @map("row_count")
-  columns         Json     @default("[]") // 列定义 [{ apiName, label, type, source }]
+  sourceFlowId    String    @map("source_flow_id")
+  status          String    @default("EMPTY") // EMPTY | REFRESHING | READY | FAILED
+  rowCount        Int       @default(0) @map("row_count")
+  columns         Json      @default("[]") // 列定义 [{ apiName, label, type, source }]
   lastRefreshedAt DateTime? @map("last_refreshed_at")
-  lastError       String?  @map("last_error")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastError       String?   @map("last_error")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  app             Application  @relation(fields: [appId], references: [id], onDelete: Cascade)
-  sourceFlow      DataFlow     @relation(fields: [sourceFlowId], references: [id], onDelete: Cascade)
-  rows            DatasetRow[]
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app        Application  @relation(fields: [appId], references: [id], onDelete: Cascade)
+  sourceFlow DataFlow     @relation(fields: [sourceFlowId], references: [id], onDelete: Cascade)
+  rows       DatasetRow[]
 
   @@unique([tenantId, appId, apiName])
   @@index([tenantId])
@@ -832,13 +853,13 @@ model Dataset {
 
 /// 数据集行 — 物化数据行（JSONB 宽表模式）。
 model DatasetRow {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  datasetId   String   @map("dataset_id")
-  data        Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  datasetId String   @map("dataset_id")
+  data      Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  dataset     Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([datasetId])
@@ -862,9 +883,9 @@ model CloudFunction {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  app         Application @relation(fields: [appId], references: [id], onDelete: Cascade)
-  creator     User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app     Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  creator User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, appId, apiName])
   @@index([tenantId])
@@ -874,13 +895,13 @@ model CloudFunction {
 
 /// 自动编号计数器 — 按 (objectId, prefix) 原子自增，替代全表扫描计数（并发安全）。
 model AutoNumberCounter {
-  id       String @id @default(cuid())
-  tenantId String @map("tenant_id")
-  objectId String @map("object_id")
-  prefix   String
-  counter  Int    @default(0)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  objectId  String   @map("object_id")
+  prefix    String
+  counter   Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

@@ -37,6 +37,7 @@ import {
   extractTableColumns,
   FormFieldItem,
   renderContainerChildren,
+  FormColumnsContext,
 } from './renderer-helpers.js';
 
 const { Text } = Typography;
@@ -65,6 +66,8 @@ function FormRenderer({
 }) {
   const [form] = Form.useForm();
   const layout = getPropAsString(node, 'layout', ctx) || 'vertical';
+  const columnsRaw = node.props.columns;
+  const columns = columnsRaw === 2 || columnsRaw === 3 ? columnsRaw : 1;
 
   return (
     <Form
@@ -74,7 +77,9 @@ function FormRenderer({
       onFinish={() => ctx.onAction(node.id, 'onSubmit')}
       onReset={() => ctx.onAction(node.id, 'onReset')}
     >
-      {renderContainerChildren(node, ctx, renderChild)}
+      <FormColumnsContext.Provider value={columns}>
+        {renderContainerChildren(node, ctx, renderChild)}
+      </FormColumnsContext.Provider>
     </Form>
   );
 }

@@ -22,8 +22,9 @@
 | 8e10e95 | C7 | 收尾 6：HTML展示(DOMPurify)/JSX展示/部门选择×2(TreeSelect)/行政区划级联×2(内置34省级 region-data.ts) + 顶栏「多语」(schema.i18n 文案表) +「全局代码」(schema.globalCss/globalJs 预览与运行时注入) |
 | （本批） | E1 | 富文本输入工具条：stores/rich-text-input.tsx（contentEditable + execCommand 八键工具条，DOMPurify 白名单净化写回 vm，选中态高亮 selectionchange 事件驱动，零新依赖）+ 守卫单测 6 + e2e 03 预览态真实 UI 用例 |
 | （E2-1） | E2-1 | 行政区划市县级数据：page/region-data-full.ts（民政部口径 34省/342市/3056区县 + 港澳台补齐，直辖市「市辖区」规范化）+ regionOptions(level) 三层级联（province/city/district）+ 渲染器 level 属性 + studio RegionPropsSection（展示层级/占位符）+ 9 单测 + e2e 03 三级选择用例 |
+| （E2-2） | E2-2 | 字段半宽并排布局：stores/field-span.ts 纯函数（显式 span > 容器列数折算 > 整行）+ FormColumnsContext（FormRenderer 注入 columns）+ FormFieldItem span<12 inline-block 流式并排 + 6 单测 + e2e 03 同行断言；表单容器「每行列数」1/2/3 列自此真实生效 |
 
-**组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 530 / studio 168 / db 42 / shared 33 全绿，e2e 60/60。
+**组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 530 / studio 168 / db 42 / shared 39 全绿，e2e 61/61。
 
 另有更早批次（本会话前段）：表单页面设计器重构（表单生成器/字段属性面板/大纲树/顶栏，commit 0d0e90b 之前数个），设计文档 `docs/design/DESIGN-page-builder-feishu-parity-2026-09-27.md`。
 
@@ -31,10 +32,9 @@
 
 1. **双端独立配置**：移动端画布独立配置（ADR-0002 明确暂缓）。
 2. **服务端保存点历史**：飞书「历史」为服务端保存点列表，本地用撤销栈(50)+保存状态文案替代。
-3. **字段左右并排布局**：span 半宽只缩窄单行，不做并排（需布局引擎）。
-4. **跨容器拖拽**：画布内仅同层排序。
-5. **状态数据/代码页签深化**：代码页签未做；状态数据已做五分组。
-6. **PR #3 已合并**（2026-09-28，merge commit 536ddb4）；后续批次在 feat/page-parity-e-batch 分支推进。
+3. **跨容器拖拽**：画布内仅同层排序。
+4. **状态数据/代码页签深化**：代码页签未做；状态数据已做五分组。
+5. **PR #3 已合并**（2026-09-28，merge commit 536ddb4）；E2 批次在 feat/page-parity-e-batch 分支（PR #4）推进。
 
 ## 四、关键踩坑（务必遵守）
 

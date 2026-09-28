@@ -175,4 +175,47 @@ test.describe('页面搭建器', () => {
       '广东省 / 深圳市 / 南山区',
     );
   });
+
+  test('字段并排布局：表单 2 列时两个输入框同行', async ({ page }) => {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_columns_page',
+      name: '测试并排布局页',
+      type: 'custom',
+    });
+    await api.put(`/pages/${page_meta.id}`, {
+      schema: {
+        version: '1',
+        pageType: 'custom',
+        viewModel: { variables: {} },
+        root: {
+          id: 'root',
+          type: 'page',
+          props: {},
+          children: [
+            {
+              id: 'f1',
+              type: 'form',
+              props: { columns: 2 },
+              children: [
+                { id: 'a1', type: 'text_input', props: { label: '字段A', apiName: 'field_a' } },
+                { id: 'a2', type: 'text_input', props: { label: '字段B', apiName: 'field_b' } },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    await page.locator('.ant-segmented-item', { hasText: '预览' }).click();
+    const items = page.locator('.ant-form-item');
+    await expect(items).toHaveCount(2);
+    const boxA = await items.nth(0).boundingBox();
+    const boxB = await items.nth(1).boundingBox();
+    expect(boxA).toBeTruthy();
+    expect(boxB).toBeTruthy();
+    // 同一行（y 相近）且横向排列（B 在 A 右侧）
+    expect(Math.abs((boxA?.y ?? 0) - (boxB?.y ?? 1))).toBeLessThan(5);
+    expect((boxB?.x ?? 0) - (boxA?.x ?? 0)).toBeGreaterThan(100);
+  });
 });

@@ -779,7 +779,7 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     icon: EnvironmentOutlined,
     category: 'form',
     isContainer: false,
-    description: '省级行政区划级联单选',
+    description: '行政区划级联单选（省/市/区县，level 可调）',
     defaultProps: { placeholder: '请选择省份/地区' },
   },
   region_cascader_multi: {
@@ -787,7 +787,7 @@ export const COMPONENT_META: Record<ComponentType, ComponentMeta> = {
     icon: EnvironmentOutlined,
     category: 'form',
     isContainer: false,
-    description: '省级行政区划级联多选',
+    description: '行政区划级联多选（省/市/区县，level 可调）',
     defaultProps: { placeholder: '请选择省份/地区' },
   },
 };

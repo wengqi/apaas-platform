@@ -346,4 +346,5 @@ export interface LayoutItem {
 // 图表 ECharts option 构建工具
 export { buildChartOption, buildChartOptionFromAggregated } from './chart-options.js';
 export { applyGlobalCss, runGlobalJs, translate } from './global-code.js';
-export { regionOptions } from './region-data.js';
+export { regionOptions, REGION_PROVINCES } from './region-data.js';
+export type { RegionOption, RegionLevel } from './region-data.js';

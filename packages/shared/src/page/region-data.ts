@@ -1,9 +1,12 @@
 /**
- * 内置行政区划数据 — 省级（34 个省级行政区，含简称规范名）。
+ * 内置行政区划数据 — 省级清单 + 省→市→区县 三层级联选项。
  *
- * 对齐飞书「行政区划单选/多选」组件：v1 内置省级顶层选项，
- * 市县级可通过组件 options 覆盖（数据源可为接口/连接器填充）。
+ * 市/县明细在 region-data-full.ts（民政部口径生成，含港澳台补齐）。
+ * 对齐飞书「行政区划单选/多选」组件：默认三级（区县级），经 level 属性
+ * 可收窄为省级/市级；亦可通过组件 options 覆盖。
  */
+
+import { REGION_TREE } from './region-data-full.js';
 
 export const REGION_PROVINCES: string[] = [
   '北京市',
@@ -42,7 +45,46 @@ export const REGION_PROVINCES: string[] = [
   '台湾省',
 ];
 
-/** 转为级联/树形通用选项结构。 */
-export function regionOptions(): { label: string; value: string }[] {
-  return REGION_PROVINCES.map((p) => ({ label: p, value: p }));
+/** 级联选项（children 递归）。 */
+export interface RegionOption {
+  label: string;
+  value: string;
+  children?: RegionOption[];
+}
+
+/** 行政区划展示层级：province 省 / city 市 / district 区县（默认）。 */
+export type RegionLevel = 'province' | 'city' | 'district';
+
+function leafOption(name: string): RegionOption {
+  return { label: name, value: name };
+}
+
+function cityOptions(prov: string, level: RegionLevel): RegionOption[] {
+  const cities = REGION_TREE[prov] ?? {};
+  const names = Object.keys(cities);
+  if (level === 'city' || names.length === 0) {
+    // 市级止步；无下级的省（如无）直接产出叶子省
+    return names.map(leafOption);
+  }
+  return names.map((city) => {
+    const counties = cities[city] ?? [];
+    return {
+      label: city,
+      value: city,
+      children: counties.length ? counties.map(leafOption) : undefined,
+    };
+  });
+}
+
+/** 转为级联/树形通用选项结构（level 控制深度，默认到区县级）。 */
+export function regionOptions(level: RegionLevel = 'district'): RegionOption[] {
+  if (level === 'province') return REGION_PROVINCES.map(leafOption);
+  return REGION_PROVINCES.map((prov) => {
+    const children = cityOptions(prov, level);
+    return {
+      label: prov,
+      value: prov,
+      children: children.length ? children : undefined,
+    };
+  });
 }

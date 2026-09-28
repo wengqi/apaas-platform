@@ -130,4 +130,49 @@ test.describe('页面搭建器', () => {
     await page.getByRole('button', { name: '有序列表' }).click();
     await expect(editor.locator('ol li')).toHaveCount(1);
   });
+
+  test('行政区划级联：预览态省→市→区县三级选择', async ({ page }) => {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_region_page',
+      name: '测试行政区划页',
+      type: 'custom',
+    });
+    await api.put(`/pages/${page_meta.id}`, {
+      schema: {
+        version: '1',
+        pageType: 'custom',
+        viewModel: { variables: {} },
+        root: {
+          id: 'root',
+          type: 'page',
+          props: {},
+          children: [
+            {
+              id: 'f1',
+              type: 'form',
+              props: {},
+              children: [
+                {
+                  id: 'r1',
+                  type: 'region_cascader_single',
+                  props: { label: '所在地区', apiName: 'region_field' },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    await page.locator('.ant-segmented-item', { hasText: '预览' }).click();
+    await page.locator('.ant-cascader').first().click();
+    const dropdown = page.locator('.ant-cascader-dropdown');
+    await dropdown.getByTitle('广东省').click();
+    await dropdown.getByTitle('深圳市').click();
+    await dropdown.getByTitle('南山区').click();
+    await expect(page.locator('.ant-cascader .ant-select-selection-item')).toHaveText(
+      '广东省 / 深圳市 / 南山区',
+    );
+  });
 });

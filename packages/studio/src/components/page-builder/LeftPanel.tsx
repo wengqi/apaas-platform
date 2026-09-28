@@ -53,8 +53,8 @@ export default function LeftPanel() {
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
-          gap: 20,
-          padding: '0 16px',
+          gap: 10,
+          padding: '0 12px',
           borderTop: '1px solid #f2f3f5',
           borderBottom: '1px solid #f2f3f5',
         }}
@@ -223,9 +223,10 @@ function TabButton({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 4,
+        gap: 3,
         padding: '8px 0',
-        fontSize: 13,
+        fontSize: 12,
+        whiteSpace: 'nowrap',
         fontWeight: active ? 600 : 400,
         color: active ? '#1456f0' : 'rgba(0,0,0,0.65)',
         borderBottom: `2px solid ${active ? '#1456f0' : 'transparent'}`,

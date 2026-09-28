@@ -352,7 +352,7 @@ export function renderRegionCascaderMulti(node: ComponentNode, ctx: RenderContex
 
 /** HTML 展示 — 消毒后注入（XSS 防线对齐 rich_text_display）。 */
 export function renderHtmlDisplay(node: ComponentNode, ctx: RenderContext): ReactNode {
-  const html = getPropAsString(node, 'html', ctx);
+  const html = getPropAsString(node, 'content', ctx) || getPropAsString(node, 'html', ctx);
   if (!html) {
     return <div style={placeholderStyle}>HTML（未设置内容）</div>;
   }
@@ -363,7 +363,7 @@ export function renderHtmlDisplay(node: ComponentNode, ctx: RenderContext): Reac
 
 /** JSX 展示 — 代码源码只读展示（执行需经全局代码/脚本动作）。 */
 export function renderJsxDisplay(node: ComponentNode, ctx: RenderContext): ReactNode {
-  const code = getPropAsString(node, 'code', ctx);
+  const code = getPropAsString(node, 'content', ctx) || getPropAsString(node, 'code', ctx);
   if (!code) {
     return <div style={placeholderStyle}>JSX（未设置代码）</div>;
   }

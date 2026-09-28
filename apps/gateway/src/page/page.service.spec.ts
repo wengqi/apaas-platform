@@ -121,4 +121,126 @@ describe('PageService', () => {
       );
     });
   });
+
+  describe('保存点（E2-4 飞书式历史）', () => {
+    it('update 携带 schema 时自动捕获保存点', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.pageMeta.updateMany.mockResolvedValue({ count: 1 });
+
+      const { service } = createService();
+      await service.update('tenant-001', 'page-001', { schema: makePageRow().schema as never });
+
+      expect(prisma.pageSavePoint.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: 'tenant-001',
+            pageId: 'page-001',
+            source: 'save',
+          }),
+        }),
+      );
+    });
+
+    it('update 不带 schema（改名/发布）不捕获保存点', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.pageMeta.updateMany.mockResolvedValue({ count: 1 });
+
+      const { service } = createService();
+      await service.update('tenant-001', 'page-001', { name: '改名' });
+
+      expect(prisma.pageSavePoint.create).not.toHaveBeenCalled();
+    });
+
+    it('listSavePoints 返回映射后的保存点信息（不含 schema）', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.pageSavePoint.findMany.mockResolvedValue([
+        {
+          id: 'sp-1',
+          pageId: 'page-001',
+          source: 'save',
+          createdBy: 'user-1',
+          createdAt: now,
+        },
+      ]);
+
+      const { service } = createService();
+      const points = await service.listSavePoints('tenant-001', 'page-001');
+
+      expect(points).toHaveLength(1);
+      expect(points[0]).toMatchObject({
+        id: 'sp-1',
+        pageId: 'page-001',
+        source: 'save',
+        createdBy: 'user-1',
+      });
+      expect('schema' in (points[0] ?? {})).toBe(false);
+    });
+
+    it('listSavePoints 页面不存在时抛 404', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(null);
+
+      const { service } = createService();
+      await expect(service.listSavePoints('tenant-001', 'page-404')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('restoreSavePoint 写回 schema 并追加 restore 回滚点', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.pageSavePoint.findFirst.mockResolvedValue({
+        id: 'sp-1',
+        tenantId: 'tenant-001',
+        pageId: 'page-001',
+        schema: makePageRow().schema,
+        source: 'save',
+        createdBy: 'user-1',
+        createdAt: now,
+      });
+
+      const { service } = createService();
+      await service.restoreSavePoint('tenant-001', 'page-001', 'sp-1', 'user-2');
+
+      // mock 环境下事务数组元素为 undefined，仅验证事务执行 + 回滚点写入
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.pageMeta.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'page-001', tenantId: 'tenant-001' },
+        }),
+      );
+      expect(prisma.pageSavePoint.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ source: 'restore', createdBy: 'user-2' }),
+        }),
+      );
+    });
+
+    it('restoreSavePoint 保存点不存在时抛 404 且不写库', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.pageSavePoint.findFirst.mockResolvedValue(null);
+
+      const { service } = createService();
+      await expect(service.restoreSavePoint('tenant-001', 'page-001', 'sp-404')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('保存点超过上限时裁剪最旧的', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.pageMeta.updateMany.mockResolvedValue({ count: 1 });
+      // 51 条现存保存点 → 应删除 1 条（最旧的 id 在末尾）
+      // 最新在前（createdAt desc）：rows[50] 即最旧的一条
+      const rows = Array.from({ length: 51 }, (_, i) => ({
+        id: `sp-${String(i).padStart(2, '0')}`,
+      })).reverse();
+      prisma.pageSavePoint.findMany.mockResolvedValue(rows);
+
+      const { service } = createService();
+      await service.update('tenant-001', 'page-001', { schema: makePageRow().schema as never });
+
+      expect(prisma.pageSavePoint.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['sp-00'] }, tenantId: 'tenant-001' },
+      });
+    });
+  });
 });

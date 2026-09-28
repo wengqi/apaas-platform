@@ -9,6 +9,7 @@ import {
   type AppSnapshot,
   type CreatePageRequest,
   type PageMeta,
+  type PageSavePointInfo,
   type PageSchema,
   type PageType,
   type UpdatePageRequest,
@@ -23,9 +24,122 @@ import { ChangeLogService } from '../application/changelog.service.js';
  * - Prisma `apiName` ↔ 共享类型 `slug`（页面路径，运行时路由用）
  * - Prisma `isPublished` ↔ 共享类型 `published`
  */
+/** 每页保留的保存点上限（超出后清理最旧的）。 */
+const MAX_SAVE_POINTS_PER_PAGE = 50;
+
 @Injectable()
 export class PageService {
   constructor(private readonly changeLogService: ChangeLogService) {}
+
+  /**
+   * 列出页面保存点（E2-4 飞书式历史，不含 schema 全量，按时间倒序）。
+   */
+  async listSavePoints(tenantId: string, pageId: string): Promise<PageSavePointInfo[]> {
+    await this.requirePage(tenantId, pageId);
+    const rows = await prisma.pageSavePoint.findMany({
+      where: { tenantId, pageId },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_SAVE_POINTS_PER_PAGE,
+      select: { id: true, pageId: true, source: true, createdBy: true, createdAt: true },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      pageId: asPageId(r.pageId),
+      source: r.source === 'restore' ? 'restore' : 'save',
+      createdBy: r.createdBy,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 恢复页面到指定保存点：schema 写回页面，并追加一条 restore 回滚点
+   * （用户可再次恢复以撤销本次恢复）。
+   */
+  async restoreSavePoint(
+    tenantId: string,
+    pageId: string,
+    savePointId: string,
+    changedBy?: string,
+  ): Promise<PageMeta> {
+    await this.requirePage(tenantId, pageId);
+    const point = await prisma.pageSavePoint.findFirst({
+      where: { id: savePointId, tenantId, pageId },
+    });
+    if (!point) throw new NotFoundException('保存点不存在');
+
+    const schema = point.schema as unknown as Prisma.InputJsonValue;
+    await prisma.$transaction([
+      prisma.pageMeta.updateMany({
+        where: { id: pageId, tenantId },
+        data: { schema },
+      }),
+      prisma.pageSavePoint.create({
+        data: {
+          tenantId,
+          pageId,
+          schema,
+          source: 'restore',
+          createdBy: changedBy ?? 'system',
+        },
+      }),
+    ]);
+    await this.pruneSavePoints(tenantId, pageId);
+
+    const current = await prisma.pageMeta.findFirst({
+      where: { id: pageId, tenantId },
+      select: { appId: true, name: true },
+    });
+    if (current) {
+      await this.changeLogService.log({
+        tenantId,
+        appId: current.appId,
+        module: 'PAGE',
+        entityType: 'PageMeta',
+        entityId: pageId,
+        entityName: current.name,
+        changeType: 'UPDATE',
+        changedBy: changedBy ?? 'system',
+        changeDescription: `恢复页面历史保存点: ${current.name} @ ${point.createdAt.toISOString()}`,
+      });
+    }
+
+    return this.get(tenantId, pageId);
+  }
+
+  /** 断言页面存在（租户隔离），不存在抛 404。 */
+  private async requirePage(tenantId: string, pageId: string): Promise<void> {
+    const page = await prisma.pageMeta.findFirst({
+      where: { id: pageId, tenantId },
+      select: { id: true },
+    });
+    if (!page) throw new NotFoundException('页面不存在');
+  }
+
+  /** 捕获保存点并裁剪到上限。 */
+  private async captureSavePoint(
+    tenantId: string,
+    pageId: string,
+    schema: Prisma.InputJsonValue,
+    source: 'save' | 'restore',
+    createdBy?: string,
+  ): Promise<void> {
+    await prisma.pageSavePoint.create({
+      data: { tenantId, pageId, schema, source, createdBy: createdBy ?? 'system' },
+    });
+    await this.pruneSavePoints(tenantId, pageId);
+  }
+
+  /** 裁剪保存点：仅保留最近 MAX_SAVE_POINTS_PER_PAGE 条。 */
+  private async pruneSavePoints(tenantId: string, pageId: string): Promise<void> {
+    const rows = await prisma.pageSavePoint.findMany({
+      where: { tenantId, pageId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    if (rows.length <= MAX_SAVE_POINTS_PER_PAGE) return;
+    const staleIds = rows.slice(MAX_SAVE_POINTS_PER_PAGE).map((r) => r.id);
+    await prisma.pageSavePoint.deleteMany({ where: { id: { in: staleIds }, tenantId } });
+  }
   /**
    * 列出应用下所有页面。
    */
@@ -169,6 +283,17 @@ export class PageService {
         isPublished: req.isPublished,
       },
     });
+
+    // E2-4 飞书式历史：携带 schema 的保存自动捕获保存点
+    if (req.schema !== undefined) {
+      await this.captureSavePoint(
+        tenantId,
+        pageId,
+        req.schema as unknown as Prisma.InputJsonValue,
+        'save',
+        changedBy,
+      );
+    }
 
     if (existing) {
       await this.changeLogService.log({

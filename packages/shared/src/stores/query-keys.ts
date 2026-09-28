@@ -40,6 +40,8 @@ export const qk = {
   // —— 页面级 ——
   /** 页面详情（搭建器 schema） */
   page: (pageId: string) => ['page', pageId] as const,
+  /** 页面保存点列表（E2-4 飞书式历史） */
+  pageSavePoints: (pageId: string) => ['page', pageId, 'save-points'] as const,
 } as const;
 
 /**

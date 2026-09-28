@@ -283,4 +283,50 @@ test.describe('页面搭建器', () => {
     expect((f1?.children ?? []).some((c) => c.id === 't1')).toBe(false);
     expect((s1?.children ?? []).some((c) => c.id === 't1')).toBe(true);
   });
+
+  test('飞书式保存点历史：保存自动捕获 + 恢复回滚 + 历史抽屉', async ({ page }) => {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_savepoint_page',
+      name: '测试保存点页',
+      type: 'custom',
+    });
+    const schemaOf = (marker: string) => ({
+      version: '1' as const,
+      pageType: 'custom',
+      viewModel: { variables: {} },
+      root: {
+        id: 'root',
+        type: 'page',
+        props: {},
+        children: [{ id: marker, type: 'text', props: { content: marker } }],
+      },
+    });
+    await api.put(`/pages/${page_meta.id}`, { schema: schemaOf('marker-a') });
+    await api.put(`/pages/${page_meta.id}`, { schema: schemaOf('marker-b') });
+
+    // 列表：保存点倒序，至少 2 条（marker-b 在前）
+    const points = await api.get<Array<{ id: string; source: string; createdAt: string }>>(
+      `/pages/${page_meta.id}/save-points`,
+    );
+    expect(points.length).toBeGreaterThanOrEqual(2);
+
+    // 恢复到最早保存点（marker-a）
+    const oldest = points[points.length - 1];
+    expect(oldest).toBeTruthy();
+    await api.post(`/pages/${page_meta.id}/save-points/${oldest?.id}/restore`, {});
+    const detail = await api.get<{
+      schema: { root: { children: Array<{ id: string }> } };
+    }>(`/pages/${page_meta.id}`);
+    expect(detail.schema.root.children[0]?.id).toBe('marker-a');
+
+    // 恢复动作本身产生 restore 回滚点（可在历史中再次恢复以撤销）
+    const points2 = await api.get<Array<{ source: string }>>(`/pages/${page_meta.id}/save-points`);
+    expect(points2[0]?.source).toBe('restore');
+
+    // UI：顶栏「历史」打开抽屉，保存点列表可见
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    await page.locator('button', { hasText: /^历史$/ }).click();
+    await expect(page.getByText('历史保存点')).toBeVisible();
+    await expect(page.locator('.ant-drawer .ant-list-item').first()).toBeVisible();
+  });
 });

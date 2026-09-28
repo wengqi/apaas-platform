@@ -16,9 +16,11 @@ import { CreatePageDto, UpdatePageDto } from './dto/page.dto.js';
  *   GET    /api/v1/apps/:appId/pages          — 列出应用下页面
  *   POST   /api/v1/apps/:appId/pages          — 创建页面
  *   GET    /api/v1/pages/:pageId              — 获取页面详情(含 Schema)
- *   PUT    /api/v1/pages/:pageId              — 更新页面(含保存 Schema)
+ *   PUT    /api/v1/pages/:pageId              — 更新页面(含保存 Schema，自动捕获保存点)
  *   DELETE /api/v1/pages/:pageId              — 删除页面
  *   POST   /api/v1/pages/:pageId/publish      — 发布页面
+ *   GET    /api/v1/pages/:pageId/save-points  — 保存点列表（飞书式历史）
+ *   POST   /api/v1/pages/:pageId/save-points/:savePointId/restore — 恢复到保存点
  */
 @ApiTags('Page')
 @ApiBearerAuth()
@@ -83,6 +85,28 @@ export class PageController {
   @RequirePermission('PAGE', 'EDIT', 'pageId')
   async publish(@Req() req: AuthenticatedRequest, @Param('pageId') pageId: string) {
     const page = await this.pageService.publish(requireTenantId(req), pageId);
+    return { ok: true as const, data: page };
+  }
+
+  @Get('pages/:pageId/save-points')
+  async listSavePoints(@Req() req: AuthenticatedRequest, @Param('pageId') pageId: string) {
+    const points = await this.pageService.listSavePoints(requireTenantId(req), pageId);
+    return { ok: true as const, data: points };
+  }
+
+  @Post('pages/:pageId/save-points/:savePointId/restore')
+  @RequirePermission('PAGE', 'EDIT', 'pageId')
+  async restoreSavePoint(
+    @Req() req: AuthenticatedRequest,
+    @Param('pageId') pageId: string,
+    @Param('savePointId') savePointId: string,
+  ) {
+    const page = await this.pageService.restoreSavePoint(
+      requireTenantId(req),
+      pageId,
+      savePointId,
+      req.user.id,
+    );
     return { ok: true as const, data: page };
   }
 }

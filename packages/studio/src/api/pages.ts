@@ -240,6 +240,16 @@ export interface PageMeta {
   updatedAt: string;
 }
 
+/** 页面保存点（E2-4 飞书式历史；列表不含 schema 全量）。 */
+export interface PageSavePointInfo {
+  id: string;
+  pageId: string;
+  /** save = 保存自动捕获；restore = 历史恢复回滚点 */
+  source: 'save' | 'restore';
+  createdBy: string;
+  createdAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // 请求体
 // ---------------------------------------------------------------------------
@@ -300,5 +310,17 @@ export const pagesApi = {
   publish: (pageId: string) =>
     client
       .post<ApiResponse<PageMeta>>(`/api/pages/${pageId}/publish`)
+      .then((res) => res.data.data as PageMeta),
+
+  /** 保存点列表（E2-4 飞书式历史，按时间倒序） */
+  listSavePoints: (pageId: string) =>
+    client
+      .get<ApiResponse<PageSavePointInfo[]>>(`/api/pages/${pageId}/save-points`)
+      .then((res) => res.data.data as PageSavePointInfo[]),
+
+  /** 恢复到保存点（返回恢复后的页面全量） */
+  restoreSavePoint: (pageId: string, savePointId: string) =>
+    client
+      .post<ApiResponse<PageMeta>>(`/api/pages/${pageId}/save-points/${savePointId}/restore`)
       .then((res) => res.data.data as PageMeta),
 };

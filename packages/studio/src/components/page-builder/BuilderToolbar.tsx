@@ -26,6 +26,7 @@ import {
   ZoomOutOutlined,
   GlobalOutlined,
   CodeOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -34,6 +35,7 @@ import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { pagesApi } from '../../api/pages.js';
 import { PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
 import { GlobalCodeModal, I18nModal } from './builder-toolbar/BuilderToolbarModals.js';
+import { HistoryDrawer } from './HistoryDrawer.js';
 
 const { Text } = Typography;
 
@@ -70,6 +72,7 @@ export default function BuilderToolbar() {
   const setCanvasZoom = usePageBuilderStore((s) => s.setCanvasZoom);
   const [i18nOpen, setI18nOpen] = useState(false);
   const [globalCodeOpen, setGlobalCodeOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   /** 保存页面(Schema + 元数据)。 */
   const saveMutation = useMutation({
@@ -299,8 +302,11 @@ export default function BuilderToolbar() {
 
       <I18nModal open={i18nOpen} onClose={() => setI18nOpen(false)} />
       <GlobalCodeModal open={globalCodeOpen} onClose={() => setGlobalCodeOpen(false)} />
+      {pageId && (
+        <HistoryDrawer pageId={pageId} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      )}
 
-      {/* 右侧:编辑预览 + 保存 + 发布 */}
+      {/* 右侧:编辑预览 + 历史 + 保存 + 发布 */}
       <Space size={8} align="center" style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Segmented
           size="small"
@@ -317,6 +323,16 @@ export default function BuilderToolbar() {
             { label: '预览', value: 'preview', icon: <EyeOutlined /> },
           ]}
         />
+        <Tooltip title="历史保存点">
+          <Button
+            icon={<HistoryOutlined />}
+            size="small"
+            disabled={mode !== 'edit'}
+            onClick={() => setHistoryOpen(true)}
+          >
+            历史
+          </Button>
+        </Tooltip>
         <Button
           icon={<SaveOutlined />}
           size="small"

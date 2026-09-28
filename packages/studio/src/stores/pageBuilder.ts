@@ -35,6 +35,8 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   selectedNodeId: null,
   mode: 'edit',
   vmPanelOpen: false,
+  formGeneratorNodeId: null,
+  canvasZoom: 1,
   past: [],
   future: [],
   savedSnapshot: null,
@@ -77,6 +79,14 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   },
 
   getSchema: () => get().schema,
+
+  patchSchema: (partial) => {
+    const state = get();
+    if (!state.schema) return;
+    const past = pushHistory(state.past, state.schema);
+    const schema = cloneSchema(state.schema);
+    set({ schema: { ...schema, ...partial }, past, future: [] });
+  },
 
   updatePageMeta: (updates) => {
     const state = get();
@@ -159,6 +169,66 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     newParent.children.splice(targetIndex, 0, moved);
 
     set({ schema, past, future: [] });
+  },
+
+  reorderSibling: (activeId, overId) => {
+    const state = get();
+    if (!state.schema || activeId === overId) return;
+
+    const schema = cloneSchema(state.schema);
+    const parent = findParent(schema.root, activeId);
+    const overParent = findParent(schema.root, overId);
+    // 仅支持同父节点内排序（跨容器拖拽暂不支持）
+    if (!parent || !overParent || parent.id !== overParent.id || !parent.children) return;
+
+    const fromIndex = parent.children.findIndex((c) => c.id === activeId);
+    const toIndex = parent.children.findIndex((c) => c.id === overId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const past = pushHistory(state.past, state.schema);
+    const [moved] = parent.children.splice(fromIndex, 1);
+    if (!moved) {
+      set({ past });
+      return;
+    }
+    parent.children.splice(toIndex, 0, moved);
+    set({ schema, past, future: [] });
+  },
+
+  replaceChildren: (parentId, children) => {
+    const state = get();
+    if (!state.schema) return;
+
+    const schema = cloneSchema(state.schema);
+    const parent = findNode(schema.root, parentId);
+    if (!parent) return;
+
+    const past = pushHistory(state.past, state.schema);
+    parent.children = children.map((child) => structuredClone(child));
+    set({ schema, past, future: [], selectedNodeId: parentId });
+  },
+
+  insertSubtree: (parentId, node) => {
+    const state = get();
+    if (!state.schema) return null;
+
+    const past = pushHistory(state.past, state.schema);
+    const schema = cloneSchema(state.schema);
+    const parent = findNode(schema.root, parentId);
+    if (!parent) {
+      set({ past });
+      return null;
+    }
+    if (!parent.children && !COMPONENT_META[parent.type]?.isContainer) {
+      set({ past });
+      return null;
+    }
+
+    const newNode = deepCloneWithNewIds(node);
+    if (!parent.children) parent.children = [];
+    parent.children.push(newNode);
+    set({ schema, past, future: [], selectedNodeId: newNode.id });
+    return newNode.id;
   },
 
   removeComponent: (id) => {
@@ -265,6 +335,23 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     set({ schema, past, future: [] });
   },
 
+  ensureRecordVariable: (objectId) => {
+    const state = get();
+    if (!state.schema) return;
+
+    const existing = state.schema.viewModel.variables.record;
+    if (existing?.datasource?.objectId === objectId) return;
+
+    const past = pushHistory(state.past, state.schema);
+    const schema = cloneSchema(state.schema);
+    schema.viewModel.variables.record = {
+      type: 'record',
+      initialValue: existing?.initialValue ?? {},
+      datasource: { objectId, autoQuery: false },
+    };
+    set({ schema, past, future: [] });
+  },
+
   removeVariable: (key) => {
     const state = get();
     if (!state.schema) return;
@@ -307,6 +394,10 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
   setMode: (mode) => set({ mode }),
 
   setVmPanelOpen: (open) => set({ vmPanelOpen: open }),
+
+  setFormGeneratorNodeId: (id) => set({ formGeneratorNodeId: id }),
+
+  setCanvasZoom: (zoom) => set({ canvasZoom: zoom }),
 
   // —— 历史 ——
 

@@ -1,28 +1,27 @@
-import { useState } from 'react';
-import { Button, Space, Typography } from 'antd';
-import {
-  ZoomInOutlined,
-  ZoomOutOutlined,
-  BorderOutlined,
-} from '@ant-design/icons';
+import { useEffect } from 'react';
+import { applyGlobalCss, runGlobalJs } from '@apaas/shared/page';
+import { Space, Typography } from 'antd';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
+import { useDebugStore } from '../../stores/page-builder/debug.js';
+import { useRuntimeCtx } from './RuntimeStore.js';
 import ComponentRenderer from './ComponentRenderer.js';
 import { RuntimeStoreProvider } from './RuntimeStore.js';
 
 const { Text } = Typography;
 
+/** 页面卡宽度（对齐飞书「自动 960px」）。 */
+const PAGE_CARD_WIDTH = 960;
+
 /**
- * 画布(中栏)。
- * 缩放工具 + 页面画布(居中白底)+ 组件树渲染。
- * 点击空白区域取消选中。
+ * 画布(中栏) — 对齐飞书 aPaaS：灰底 + 白色页面卡片(960px、圆角、阴影)；
+ * 点击空白区域取消选中。缩放控件已移至顶栏（store.canvasZoom），画布零占用。
  */
 export default function Canvas() {
   const schema = usePageBuilderStore((s) => s.schema);
   const mode = usePageBuilderStore((s) => s.mode);
   const currentPage = usePageBuilderStore((s) => s.currentPage);
   const selectNode = usePageBuilderStore((s) => s.selectNode);
-  const [zoom, setZoom] = useState(1);
-  const [showGrid, setShowGrid] = useState(false);
+  const zoom = usePageBuilderStore((s) => s.canvasZoom);
 
   const handleBackgroundClick = () => {
     selectNode(null);
@@ -34,6 +33,14 @@ export default function Canvas() {
   const viewModel = schema?.viewModel ?? { variables: {} };
   const objectId = currentPage?.objectId;
 
+  // 全局代码（批次C7）：预览态注入 CSS / 执行一次 JS，切回编辑时清理
+  useEffect(() => {
+    if (mode !== 'preview' || !schema) return;
+    applyGlobalCss(schema);
+    runGlobalJs(schema);
+    return () => applyGlobalCss(null);
+  }, [mode, schema]);
+
   return (
     <div
       onClick={handleBackgroundClick}
@@ -41,57 +48,13 @@ export default function Canvas() {
         flex: 1,
         minWidth: 0,
         height: '100%',
-        background: '#f5f7fa',
+        background: '#eff1f3',
         overflow: 'auto',
         position: 'relative',
         padding: 24,
       }}
     >
-      {/* 缩放工具(右上浮动) */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          position: 'sticky',
-          top: 0,
-          float: 'right',
-          zIndex: 5,
-          background: '#fff',
-          border: '1px solid #eef0f4',
-          borderRadius: 8,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          padding: '4px 8px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-        }}
-      >
-        <Button
-          type="text"
-          size="small"
-          icon={<ZoomOutOutlined />}
-          disabled={zoom <= 0.5}
-          onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}
-        />
-        <Text style={{ fontSize: 13, minWidth: 40, textAlign: 'center' }}>
-          {Math.round(zoom * 100)}%
-        </Text>
-        <Button
-          type="text"
-          size="small"
-          icon={<ZoomInOutlined />}
-          disabled={zoom >= 1.5}
-          onClick={() => setZoom((z) => Math.min(1.5, z + 0.1))}
-        />
-        <Button
-          type="text"
-          size="small"
-          icon={<BorderOutlined />}
-          style={{ color: showGrid ? '#1677ff' : undefined }}
-          onClick={() => setShowGrid((v) => !v)}
-        />
-      </div>
-
-      {/* 页面画布(居中,白底,缩放) */}
+      {/* 页面画布(居中,白底 960px 卡片,缩放) */}
       <div
         style={{
           display: 'flex',
@@ -101,32 +64,21 @@ export default function Canvas() {
       >
         <div
           style={{
-            width: 1200,
+            width: PAGE_CARD_WIDTH,
             maxWidth: '100%',
-            minHeight: 800,
+            minHeight: 720,
             background: '#fff',
-            border: '1px solid #eef0f4',
-            borderRadius: 8,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            borderRadius: 12,
+            boxShadow: '0 2px 12px rgba(31,35,41,0.08)',
             transform: `scale(${zoom})`,
             transformOrigin: 'top center',
-            padding: 16,
-            ...(showGrid
-              ? {
-                  backgroundImage:
-                    'radial-gradient(circle, #eef0f4 1px, transparent 1px)',
-                  backgroundSize: '20px 20px',
-                }
-              : {}),
+            padding: 20,
           }}
         >
           {schema ? (
             mode === 'preview' ? (
-              <RuntimeStoreProvider
-                key="preview"
-                viewModel={viewModel}
-                objectId={objectId}
-              >
+              <RuntimeStoreProvider key="preview" viewModel={viewModel} objectId={objectId}>
+                <RuntimeVmBridge />
                 <ComponentRenderer node={schema.root} isRoot />
               </RuntimeStoreProvider>
             ) : (
@@ -145,4 +97,18 @@ export default function Canvas() {
       </div>
     </div>
   );
+}
+
+/**
+ * 运行时 vm 桥接 — 把预览态 vm 快照同步到调试 store，
+ * 供左栏「状态数据」页签展示运行时值；卸载（切回编辑）时清空。
+ */
+function RuntimeVmBridge(): null {
+  const vm = useRuntimeCtx((s) => s.vm);
+  const setRuntimeVm = useDebugStore((s) => s.setRuntimeVm);
+  useEffect(() => {
+    setRuntimeVm(vm);
+  }, [vm, setRuntimeVm]);
+  useEffect(() => () => setRuntimeVm(null), [setRuntimeVm]);
+  return null;
 }

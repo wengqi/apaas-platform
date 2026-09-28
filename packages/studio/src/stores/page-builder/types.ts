@@ -28,6 +28,10 @@ export interface PageBuilderState {
   mode: 'edit' | 'preview';
   /** 视图模型面板是否展开 */
   vmPanelOpen: boolean;
+  /** 表单生成器目标表单节点（null = 关闭；画布空态与属性面板共用入口） */
+  formGeneratorNodeId: string | null;
+  /** 画布缩放（0.5-1.5；控件在顶栏，画布消费） */
+  canvasZoom: number;
   /** 撤销栈 */
   past: PageSchema[];
   /** 重做栈 */
@@ -42,6 +46,8 @@ export interface PageBuilderState {
   markSaved: () => void;
   /** 获取当前 Schema(命令式,用于保存) */
   getSchema: () => PageSchema | null;
+  /** 浅合并更新 Schema 顶层字段（全局代码/多语等） */
+  patchSchema: (partial: Partial<PageSchema>) => void;
   /** 更新页面元数据(名称/apiName/类型等) */
   updatePageMeta: (
     updates: Partial<Pick<PageMeta, 'name' | 'apiName' | 'type' | 'objectId' | 'published'>>,
@@ -52,6 +58,12 @@ export interface PageBuilderState {
   addComponent: (type: ComponentType, parentId: string, index?: number) => string | null;
   /** 移动组件到新的父节点和位置 */
   moveComponent: (id: string, newParentId: string, newIndex: number) => void;
+  /** 同父节点内拖拽排序：把 active 移动到 over 所在位置（飞书式画布内排序） */
+  reorderSibling: (activeId: string, overId: string) => void;
+  /** 整体替换容器子节点（表单生成器写回） */
+  replaceChildren: (parentId: string, children: ComponentNode[]) => void;
+  /** 插入子树（复合组件拖入；深拷贝重置 ID） */
+  insertSubtree: (parentId: string, node: ComponentNode) => string | null;
   /** 删除组件 */
   removeComponent: (id: string) => void;
   /** 复制组件(同层级,新 ID) */
@@ -64,6 +76,8 @@ export interface PageBuilderState {
   // —— 视图模型动作 ——
   /** 添加视图模型变量(key 冲突时忽略) */
   addVariable: (key: string, def: VariableDef) => void;
+  /** 幂等写入 vm.record 变量（表单生成器用；已存在时更新 datasource.objectId） */
+  ensureRecordVariable: (objectId: string) => void;
   /** 删除视图模型变量 */
   removeVariable: (key: string) => void;
   /** 更新视图模型变量(可重命名 key) */
@@ -78,6 +92,10 @@ export interface PageBuilderState {
   setMode: (mode: 'edit' | 'preview') => void;
   /** 切换视图模型面板展开 */
   setVmPanelOpen: (open: boolean) => void;
+  /** 打开/关闭表单生成器（传表单节点 ID 或 null） */
+  setFormGeneratorNodeId: (id: string | null) => void;
+  /** 设置画布缩放 */
+  setCanvasZoom: (zoom: number) => void;
 
   // —— 历史 ——
   /** 撤销 */

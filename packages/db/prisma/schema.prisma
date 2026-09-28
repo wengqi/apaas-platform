@@ -52,8 +52,70 @@ model Tenant {
   cloudFunctions CloudFunction[]
   notificationTemplates NotificationTemplate[]
   autoNumberCounters AutoNumberCounter[]
+  userIdentities       UserIdentity[]
+  integrationConfigs   IntegrationConfig[]
+  directorySyncLogs    DirectorySyncLog[]
 
   @@map("tenants")
+}
+
+// ----------------------------------------------------------------------------
+// 一·十一、企业身份对接 (Identity Integration) — CAS/LDAP/人力主数据适配层
+// ----------------------------------------------------------------------------
+
+/// 外部身份 ↔ 平台用户绑定（一人可绑多源：cas / ldap / hr-api / feishu）
+/// externalId 为源系统全局唯一键（CAS username / LDAP 工号 employeeNumber / entryUUID）
+model UserIdentity {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  provider   String // cas | ldap | hr-api | feishu
+  externalId String    @map("external_id")
+  lastSyncAt DateTime? @map("last_sync_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, externalId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("user_identities")
+}
+
+/// 租户级对接配置（kind=auth-provider|directory-source；type=cas|ldap|hr-api|feishu）
+/// config 内敏感字段（bindPassword/headers 等）以 AES-256-GCM 加密存储（复用连接器加密工具）
+model IntegrationConfig {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  kind      String
+  type      String
+  config    Json     @default("{}")
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind, type])
+  @@index([tenantId])
+  @@map("integration_configs")
+}
+
+/// 目录同步审计日志（全量/diff 统计、冲突、错误）
+model DirectorySyncLog {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  source    String // ldap | hr-api
+  status    String // success | error
+  stats     Json     @default("{}")
+  error     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("directory_sync_logs")
 }
 
 enum TenantStatus {
@@ -128,6 +190,7 @@ model User {
   userRoles       UserRole[]
   orgMemberships  OrgMember[]
   cloudFunctions  CloudFunction[]
+  identities      UserIdentity[]
 
   @@unique([tenantId, email])
   @@index([tenantId])

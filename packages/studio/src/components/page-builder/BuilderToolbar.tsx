@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
+  Input,
   Modal,
   Popconfirm,
   Segmented,
@@ -19,23 +20,37 @@ import {
   EditOutlined,
   SaveOutlined,
   RocketOutlined,
+  SettingOutlined,
+  ReloadOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
+  GlobalOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { qk } from '@apaas/shared/stores';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { pagesApi } from '../../api/pages.js';
 import { PAGE_TYPE_OPTIONS } from '../../constants/pageComponents.js';
+import { GlobalCodeModal, I18nModal } from './builder-toolbar/BuilderToolbarModals.js';
 
 const { Text } = Typography;
 
+/** 画布缩放边界与步长（对齐飞书「自动（96%）」）。 */
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 1.5;
+const ZOOM_STEP = 0.1;
+
 /**
- * 搭建器工具栏(顶部,吸顶)。
- * 返回 / 页面名称(内联编辑) / 页面类型 / 撤销重做 / 编辑预览切换 / 保存 / 发布。
+ * 设计器顶栏 — 对齐飞书 aPaaS：返回 + 页面名/状态（左）·
+ * 缩放/撤销重做/设置/刷新页面（中）· 预览/保存/发布（右）。
  */
 export default function BuilderToolbar() {
   const navigate = useNavigate();
   const { appId, pageId } = useParams<{ appId: string; pageId: string }>();
   const queryClient = useQueryClient();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const currentPage = usePageBuilderStore((s) => s.currentPage);
   const mode = usePageBuilderStore((s) => s.mode);
@@ -50,6 +65,11 @@ export default function BuilderToolbar() {
   const undo = usePageBuilderStore((s) => s.undo);
   const redo = usePageBuilderStore((s) => s.redo);
   const setMode = usePageBuilderStore((s) => s.setMode);
+  const loadPage = usePageBuilderStore((s) => s.loadPage);
+  const canvasZoom = usePageBuilderStore((s) => s.canvasZoom);
+  const setCanvasZoom = usePageBuilderStore((s) => s.setCanvasZoom);
+  const [i18nOpen, setI18nOpen] = useState(false);
+  const [globalCodeOpen, setGlobalCodeOpen] = useState(false);
 
   /** 保存页面(Schema + 元数据)。 */
   const saveMutation = useMutation({
@@ -127,6 +147,32 @@ export default function BuilderToolbar() {
     });
   };
 
+  /** 刷新页面：放弃本地修改并从服务端重载（脏状态需确认）。 */
+  const handleReload = () => {
+    const doReload = () => {
+      if (!pageId) return;
+      void queryClient
+        .fetchQuery({ queryKey: qk.page(pageId), queryFn: () => pagesApi.get(pageId) })
+        .then((fresh) => {
+          loadPage(fresh);
+          message.success('已从服务端重新加载');
+        })
+        .catch(() => message.error('重新加载失败'));
+    };
+    if (!isDirty) {
+      doReload();
+      return;
+    }
+    Modal.confirm({
+      title: '存在未保存的修改',
+      content: '刷新页面将放弃本地未保存的修改，是否继续？',
+      okText: '放弃并刷新',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: doReload,
+    });
+  };
+
   // 评审 P2-5：浏览器关闭/刷新拦截
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -145,8 +191,7 @@ export default function BuilderToolbar() {
         height: 48,
         flexShrink: 0,
         background: '#fff',
-        borderBottom: '1px solid #eef0f4',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
+        borderBottom: '1px solid #e5e6eb',
         padding: '0 16px',
         display: 'flex',
         alignItems: 'center',
@@ -157,35 +202,52 @@ export default function BuilderToolbar() {
         zIndex: 10,
       }}
     >
-      {/* 左侧:返回 + 页面名 + 类型 */}
-      <Space size={12} align="center">
+      {/* 左侧:返回 + 页面名 + 状态 */}
+      <Space size={8} align="center" style={{ flex: 1, minWidth: 0 }}>
         <Button
           type="text"
+          size="small"
           icon={<ArrowLeftOutlined />}
           onClick={handleBack}
-          style={{ fontSize: 13 }}
-        >
-          返回
-        </Button>
-        <Text strong style={{ fontSize: 15, maxWidth: 200 }} ellipsis>
+          title="返回页面列表"
+        />
+        <Text strong style={{ fontSize: 14, maxWidth: 200 }} ellipsis>
           {currentPage?.name ?? '未命名页面'}
         </Text>
-        {currentPage?.published && (
+        {currentPage?.published ? (
           <Tag color="success" style={{ margin: 0, fontSize: 11 }}>
             已发布
           </Tag>
-        )}
-        <Select
-          size="small"
-          value={currentPage?.type}
-          onChange={(v) => updatePageMeta({ type: v })}
-          style={{ width: 110 }}
-          options={PAGE_TYPE_OPTIONS}
-        />
+        ) : null}
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {isDirty ? '未保存' : '已保存'}
+        </Text>
       </Space>
 
-      {/* 右侧:撤销重做 + 编辑预览 + 保存 + 发布 */}
-      <Space size={8} align="center">
+      {/* 中部:缩放（对应飞书「自动（96%）」）+ 撤销重做 + 设置 + 刷新 */}
+      <Space size={4} align="center">
+        <Tooltip title="缩小画布">
+          <Button
+            type="text"
+            size="small"
+            icon={<ZoomOutOutlined />}
+            disabled={canvasZoom <= MIN_ZOOM}
+            onClick={() => setCanvasZoom(Math.max(MIN_ZOOM, canvasZoom - ZOOM_STEP))}
+          />
+        </Tooltip>
+        <Text type="secondary" style={{ fontSize: 12, minWidth: 72, textAlign: 'center' }}>
+          自动（{Math.round(canvasZoom * 100)}%）
+        </Text>
+        <Tooltip title="放大画布">
+          <Button
+            type="text"
+            size="small"
+            icon={<ZoomInOutlined />}
+            disabled={canvasZoom >= MAX_ZOOM}
+            onClick={() => setCanvasZoom(Math.min(MAX_ZOOM, canvasZoom + ZOOM_STEP))}
+          />
+        </Tooltip>
+        <div style={{ width: 1, height: 18, background: '#e5e6eb', margin: '0 6px' }} />
         <Tooltip title="撤销">
           <Button
             type="text"
@@ -204,7 +266,42 @@ export default function BuilderToolbar() {
             onClick={redo}
           />
         </Tooltip>
+        <Button
+          type="text"
+          size="small"
+          icon={<SettingOutlined />}
+          onClick={() => setSettingsOpen(true)}
+        >
+          设置
+        </Button>
+        <Tooltip title="放弃本地修改并从服务端重新加载">
+          <Button type="text" size="small" icon={<ReloadOutlined />} onClick={handleReload}>
+            刷新页面
+          </Button>
+        </Tooltip>
+        <Button
+          type="text"
+          size="small"
+          icon={<GlobalOutlined />}
+          onClick={() => setI18nOpen(true)}
+        >
+          多语
+        </Button>
+        <Button
+          type="text"
+          size="small"
+          icon={<CodeOutlined />}
+          onClick={() => setGlobalCodeOpen(true)}
+        >
+          全局代码
+        </Button>
+      </Space>
 
+      <I18nModal open={i18nOpen} onClose={() => setI18nOpen(false)} />
+      <GlobalCodeModal open={globalCodeOpen} onClose={() => setGlobalCodeOpen(false)} />
+
+      {/* 右侧:编辑预览 + 保存 + 发布 */}
+      <Space size={8} align="center" style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Segmented
           size="small"
           value={mode}
@@ -220,15 +317,14 @@ export default function BuilderToolbar() {
             { label: '预览', value: 'preview', icon: <EyeOutlined /> },
           ]}
         />
-
         <Button
           icon={<SaveOutlined />}
+          size="small"
           loading={saveMutation.isPending}
           onClick={() => saveMutation.mutate()}
         >
           保存
         </Button>
-
         <Popconfirm
           title="发布页面"
           description="发布后用户即可访问此页面,确定发布吗?"
@@ -236,11 +332,72 @@ export default function BuilderToolbar() {
           cancelText="取消"
           onConfirm={() => publishMutation.mutate()}
         >
-          <Button type="primary" icon={<RocketOutlined />} loading={publishMutation.isPending}>
+          <Button
+            type="primary"
+            size="small"
+            icon={<RocketOutlined />}
+            loading={publishMutation.isPending}
+          >
             发布
           </Button>
         </Popconfirm>
       </Space>
+
+      {/* 页面设置弹窗（对应飞书「设置」） */}
+      <PageSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
+  );
+}
+
+/** 页面设置弹窗：名称 / ID(apiName) / 类型。 */
+function PageSettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const currentPage = usePageBuilderStore((s) => s.currentPage);
+  const updatePageMeta = usePageBuilderStore((s) => s.updatePageMeta);
+
+  if (!currentPage) return null;
+
+  return (
+    <Modal
+      title="页面设置"
+      open={open}
+      onCancel={onClose}
+      footer={
+        <Button type="primary" onClick={onClose}>
+          完成
+        </Button>
+      }
+      width={480}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 8 }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Text style={{ fontSize: 13 }}>页面名称</Text>
+          <Input
+            value={currentPage.name}
+            onChange={(e) => updatePageMeta({ name: e.target.value })}
+            placeholder="请输入页面名称"
+          />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Text style={{ fontSize: 13 }}>API 名称（ID）</Text>
+          <Input
+            value={currentPage.apiName}
+            onChange={(e) => updatePageMeta({ apiName: e.target.value })}
+            placeholder="页面 URL 地址拼接用"
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            ID 用于页面 URL 地址的拼接与权限判断。
+          </Text>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Text style={{ fontSize: 13 }}>页面类型</Text>
+          <Select
+            value={currentPage.type}
+            onChange={(v) => updatePageMeta({ type: v })}
+            options={PAGE_TYPE_OPTIONS}
+            style={{ width: 200 }}
+          />
+        </label>
+      </div>
+    </Modal>
   );
 }

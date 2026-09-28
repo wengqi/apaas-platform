@@ -31,11 +31,14 @@ export function renderButton(node: ComponentNode, ctx: RenderContext): ReactNode
   const text = getPropAsString(node, 'text', ctx) || getPropAsString(node, 'label', ctx) || '按钮';
   const type = getPropAsString(node, 'type', ctx) || 'default';
   const danger = getPropAsBool(node, 'danger', ctx);
+  // 飞书对齐：htmlType="submit" 的按钮在真实 <form> 内触发整表校验提交
+  const htmlType = getPropAsString(node, 'htmlType', ctx);
   return (
     <Button
       type={type as 'primary' | 'default' | 'dashed' | 'link' | 'text'}
       danger={danger || undefined}
       size="small"
+      htmlType={htmlType === 'submit' ? 'submit' : undefined}
       onClick={() => ctx.onAction(node.id, 'onClick')}
     >
       {text}

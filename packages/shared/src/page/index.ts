@@ -209,6 +209,15 @@ export interface PageSchema {
   viewModel: ViewModel;
   /** 组件树根节点 */
   root: ComponentNode;
+  /** 全局 CSS（预览/运行时注入页面，可选） */
+  globalCss?: string;
+  /** 全局 JS（页面挂载后执行一次，可选） */
+  globalJs?: string;
+  /** 页面多语文案（可选）：默认语言 + 各 locale 的 key→文案 表 */
+  i18n?: {
+    defaultLocale?: string;
+    locales: Record<string, Record<string, string>>;
+  };
 }
 
 /** 页面元数据（存储于 pages 表）。 */
@@ -260,7 +269,19 @@ export interface UpdatePageRequest {
 // ---------------------------------------------------------------------------
 
 /** 图表类型。 */
-export type ChartType = 'bar' | 'line' | 'pie' | 'funnel';
+export type ChartType =
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'funnel'
+  // —— 页面模块对齐批次C4 扩展 ——
+  | 'area'
+  | 'scatter'
+  | 'bar_horizontal'
+  | 'radar'
+  | 'waterfall'
+  | 'wordcloud'
+  | 'combo';
 
 /** 聚合方式。 */
 export type ChartAggregation = 'sum' | 'count' | 'avg' | 'max' | 'min';
@@ -324,3 +345,5 @@ export interface LayoutItem {
 
 // 图表 ECharts option 构建工具
 export { buildChartOption, buildChartOptionFromAggregated } from './chart-options.js';
+export { applyGlobalCss, runGlobalJs, translate } from './global-code.js';
+export { regionOptions } from './region-data.js';

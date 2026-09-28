@@ -50,6 +50,9 @@ const { Text } = Typography;
  *
  * F-B2 修复：此前 Form 无 onFinish/onReset，EventsTab 配置的 onSubmit 动作永不触发。
  * 现在通过 Form.useForm() 获取 form 实例，验证通过后触发 onSubmit 动作链。
+ *
+ * 飞书对齐：渲染真实 <form> 元素（component="form"），使 htmlType="submit"
+ * 的提交按钮可触发整表校验 + onSubmit 动作链（表单生成器生成的提交按钮依赖此行为）。
  */
 function FormRenderer({
   node,
@@ -67,7 +70,7 @@ function FormRenderer({
     <Form
       form={form}
       layout={layout as 'vertical' | 'horizontal'}
-      component={false}
+      component="form"
       onFinish={() => ctx.onAction(node.id, 'onSubmit')}
       onReset={() => ctx.onAction(node.id, 'onReset')}
     >

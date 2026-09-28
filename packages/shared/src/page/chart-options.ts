@@ -164,6 +164,102 @@ export function buildChartOptionFromAggregated(
         series: [{ type: 'line', data: values, smooth: true }],
       };
 
+    case 'area':
+      return {
+        title: baseTitle,
+        tooltip,
+        xAxis: { type: 'category', data: categories },
+        yAxis: { type: 'value' },
+        series: [{ type: 'line', data: values, smooth: true, areaStyle: {} }],
+      };
+
+    case 'scatter':
+      return {
+        title: baseTitle,
+        tooltip,
+        xAxis: { type: 'category', data: categories },
+        yAxis: { type: 'value' },
+        series: [{ type: 'scatter', data: values, symbolSize: 12 }],
+      };
+
+    case 'bar_horizontal':
+      return {
+        title: baseTitle,
+        tooltip,
+        xAxis: { type: 'value' },
+        yAxis: { type: 'category', data: categories },
+        series: [{ type: 'bar', data: values }],
+      };
+
+    case 'radar': {
+      const maxVal = Math.max(...values, 1);
+      return {
+        title: baseTitle,
+        tooltip,
+        radar: {
+          indicator: categories.map((name) => ({
+            name,
+            max: Math.ceil(maxVal * 1.2),
+          })),
+        },
+        series: [
+          {
+            type: 'radar',
+            data: [{ value: values, name: title || 'radar' }],
+          },
+        ],
+      } as never;
+    }
+
+    case 'waterfall': {
+      // 经典透明基座堆叠瀑布：base[i] = 前序累计值
+      const base: number[] = [];
+      let running = 0;
+      for (const v of values) {
+        base.push(running);
+        running += v;
+      }
+      return {
+        title: baseTitle,
+        tooltip,
+        xAxis: { type: 'category', data: categories },
+        yAxis: { type: 'value' },
+        series: [
+          { type: 'bar', stack: 'wf', data: base, itemStyle: { color: 'transparent' } },
+          { type: 'bar', stack: 'wf', data: values },
+        ],
+      };
+    }
+
+    case 'wordcloud':
+      // 无插件词云：以散点气泡模拟（字号/气泡大小按值缩放）
+      return {
+        title: baseTitle,
+        tooltip,
+        xAxis: { type: 'category', data: categories, axisLabel: { show: false } },
+        yAxis: { type: 'value', axisLabel: { show: false }, splitLine: { show: false } },
+        series: [
+          {
+            type: 'scatter',
+            data: values,
+            symbolSize: (v: number) => Math.max(10, Math.min(48, v)),
+            label: { show: true, formatter: (p: { name: string }) => p.name },
+          },
+        ],
+      } as never;
+
+    case 'combo':
+      return {
+        title: baseTitle,
+        tooltip,
+        xAxis: { type: 'category', data: categories },
+        yAxis: { type: 'value' },
+        series: [
+          { type: 'bar', data: values, name: 'bar' },
+          { type: 'line', data: values, smooth: true, name: 'line' },
+        ],
+      };
+
     case 'bar':
     default:
       return {

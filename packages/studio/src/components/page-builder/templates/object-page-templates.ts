@@ -134,7 +134,8 @@ export function generateDetailPageTemplate(meta: ObjectWithFields): PageSchema {
 // ---------------------------------------------------------------------------
 
 /**
- * 表单页模板:Section(标题) + Form(绑定 vm.record,字段自动生成) + 保存/取消按钮。
+ * 表单页模板:Section(标题) + Form(绑定 vm.record,字段自动生成) + 提交按钮。
+ * 对齐表单生成器行为：提交按钮 htmlType=submit + onSubmit=create_record 接线。
  * ViewModel: record(record, autoQuery false, initialValue 空对象)。
  */
 export function generateFormPageTemplate(meta: ObjectWithFields): PageSchema {
@@ -144,14 +145,11 @@ export function generateFormPageTemplate(meta: ObjectWithFields): PageSchema {
   // 按字段类型生成表单项
   const fieldNodes = fields.map(fieldToFormNode);
 
-  // 保存 / 取消按钮
-  const saveButton = makeNode('button', '保存', {
-    text: '保存',
+  // 提交按钮（飞书样式：底部主按钮，触发整表校验 + onSubmit 动作）
+  const submitButton = makeNode('button', '提交', {
+    text: '提交',
     type: 'primary',
-  });
-  const cancelButton = makeNode('button', '取消', {
-    text: '取消',
-    type: 'default',
+    htmlType: 'submit',
   });
 
   const form = makeNode(
@@ -162,8 +160,14 @@ export function generateFormPageTemplate(meta: ObjectWithFields): PageSchema {
       objectId: meta.id,
       layout: 'vertical',
       columns: 1,
+      onSubmit: {
+        __action: {
+          type: 'create_record',
+          params: { objectId: meta.id, data: bind('vm.record') },
+        },
+      },
     },
-    [...fieldNodes, saveButton, cancelButton],
+    [...fieldNodes, submitButton],
   );
 
   const section = makeNode('section', label, { title: label }, [form]);

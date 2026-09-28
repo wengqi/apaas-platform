@@ -268,10 +268,13 @@ export function renderContainerChildren(
 // ---------------------------------------------------------------------------
 
 /**
- * 表单字段包裹组件：Form.Item + 标签 + 必填验证 + 禁用。
+ * 表单字段包裹组件：Form.Item + 标签 + 必填验证 + 禁用 + 12 栅格宽度。
  *
  * F-B2 修复：此前 required 仅作红星装饰（无 rules），validateFields 永远通过。
  * 现在生成 rules 数组让 AntD 表单验证生效，并补 name 属性以支持 form.getFieldsValue()。
+ *
+ * 飞书对齐：支持 span 属性（1-12 栅格，默认 12 = 整行）；
+ * 默认值下渲染结果与旧版一致（整行）。
  */
 export function FormFieldItem({
   node,
@@ -285,6 +288,9 @@ export function FormFieldItem({
   const label = getPropAsString(node, 'label', ctx) || node.name || '';
   const required = getPropAsBool(node, 'required', ctx);
   const disabled = getPropAsBool(node, 'disabled', ctx) || getPropAsBool(node, 'readonly', ctx);
+  // getPropAsNumber 对缺失属性返回 0，缺省/非法值一律按整行（12 栅格）处理
+  const spanRaw = getPropAsNumber(node, 'span', ctx);
+  const span = spanRaw >= 1 && spanRaw <= 12 ? Math.floor(spanRaw) : 12;
 
   // F-B2: 生成验证规则 — required 时生成 required rule
   const rules = required
@@ -297,7 +303,10 @@ export function FormFieldItem({
       label={label || undefined}
       required={required}
       rules={rules}
-      style={{ marginBottom: 16 }}
+      style={{
+        marginBottom: 16,
+        width: span >= 12 ? undefined : `${(span / 12) * 100}%`,
+      }}
     >
       <div style={{ pointerEvents: disabled ? 'none' : 'auto', opacity: disabled ? 0.6 : 1 }}>
         {children}

@@ -243,6 +243,13 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
   详见 docs/knowledge-base/REMEDIATION-2026-09-26.md 第五节之八
 - ✅ BUG-05 已闭环：流程配置侧栏改为在应用 root 内渲染（原 body portal 事件
   委托不可靠），新增 e2e/12-process-sidebar.spec.ts 守护（含负向对照）
+- ✅ Phase 2.12 表单页面设计器飞书对齐重构（2026-09-27）：实测飞书 aPaaS v3
+  搭建器后重构——表单生成器（对象字段表格勾选/标题/组件映射/必填/拖拽排序 →
+  一键生成表单 + vm.record + onSubmit=create_record 接线）/ 字段级属性面板
+  （内容/校验/交互/12 栅格，面包屑 + 单列分组）/ 左栏组件+大纲树页签 /
+  画布内拖拽排序与蓝胶囊工具条 / 飞书式顶栏（页面设置/撤销重做/刷新页面）与
+  物料分组；Schema 向后兼容零迁移，studio 119 单测全绿，E2E 56 全绿；
+  设计文档 docs/design/DESIGN-page-builder-feishu-parity-2026-09-27.md
 - ✅ 数据层高严重度项已闭环：可空列 partial unique index（users/org_role_grants）、
   records JSONB 等值过滤改 `@>` 命中 GIN、业务字段排序按类型 cast（A-H1/A-H2）
 - ✅ 流程写库已复用记录写内核（P1-5）：对象/批量操作节点走 RecordService

@@ -43,13 +43,76 @@ export type ComponentType =
   | 'sub_form_table'
   | 'attachment_upload'
   | 'user_picker'
+  // —— 表单类·扩展（页面模块对齐批次C2） ——
+  | 'email_input'
+  | 'phone_input'
+  | 'user_picker_multi'
+  | 'lookup_picker_multi'
+  | 'image_upload'
+  | 'rich_text_input'
+  | 'cascader_single'
+  | 'cascader_multi'
+  | 'tree_select_single'
+  | 'tree_select_multi'
   // —— 展示类 ——
   | 'button'
   | 'statistic'
   | 'chart'
   | 'rich_text_display'
   | 'divider'
-  | 'text';
+  | 'text'
+  // —— 展示类·扩展（页面模块对齐批次C1） ——
+  | 'icon'
+  | 'image'
+  | 'tag'
+  | 'link'
+  | 'qrcode'
+  | 'alert'
+  | 'number_display'
+  | 'datetime_display'
+  | 'user_display'
+  | 'file_display'
+  | 'iframe'
+  | 'markdown'
+  // —— 布局导航弹层·扩展（页面模块对齐批次C3） ——
+  | 'pagination'
+  | 'steps'
+  | 'collapse_panel'
+  | 'carousel'
+  | 'button_group'
+  | 'flat_filter'
+  | 'modal_dialog'
+  | 'drawer'
+  | 'popover_card'
+  // —— 图表·扩展（页面模块对齐批次C4） ——
+  | 'chart_radar'
+  | 'chart_area'
+  | 'chart_scatter'
+  | 'chart_bar_horizontal'
+  | 'chart_waterfall'
+  | 'chart_wordcloud'
+  | 'chart_combo'
+  | 'progress_chart'
+  | 'matrix_table'
+  | 'statistic_group'
+  | 'filter'
+  | 'sort'
+  | 'audit_list'
+  | 'tree_list_single'
+  | 'tree_list_multi'
+  // —— 业务审批·扩展（页面模块对齐批次C6） ——
+  | 'profile_center'
+  | 'notification_list'
+  | 'task_detail'
+  | 'my_tasks'
+  | 'approval_admin'
+  // —— 收尾·扩展（页面模块对齐批次C7） ——
+  | 'html_display'
+  | 'jsx_display'
+  | 'dept_picker'
+  | 'dept_picker_multi'
+  | 'region_cascader_single'
+  | 'region_cascader_multi';
 
 /** 页面类型(标准页面模板)。 */
 export type PageType = 'list_page' | 'detail_page' | 'form_page' | 'dashboard' | 'custom';
@@ -147,6 +210,15 @@ export interface PageSchema {
   pageType: PageType;
   viewModel: ViewModel;
   root: ComponentNode;
+  /** 全局 CSS（预览/运行时注入页面，可选） */
+  globalCss?: string;
+  /** 全局 JS（页面挂载后执行一次，可选） */
+  globalJs?: string;
+  /** 页面多语文案（可选）：默认语言 + 各 locale 的 key→文案 表 */
+  i18n?: {
+    defaultLocale?: string;
+    locales: Record<string, Record<string, string>>;
+  };
 }
 
 /** 页面元数据(存储于 pages 表)。 */

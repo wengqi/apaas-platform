@@ -63,12 +63,74 @@ import {
   renderDivider,
   renderText,
 } from './renderers-display.js';
+import {
+  renderRegionCascaderSingle,
+  renderRegionCascaderMulti,
+  renderDeptPicker,
+  renderDeptPickerMulti,
+  renderHtmlDisplay,
+  renderJsxDisplay,
+} from './renderers-data-ext.js';
+import {
+  renderProfileCenter,
+  renderNotificationList,
+  renderTaskDetail,
+  renderMyTasks,
+  renderApprovalAdmin,
+  renderFilter,
+  renderSort,
+  renderAuditList,
+  renderTreeListSingle,
+  renderTreeListMulti,
+} from './renderers-data-ext.js';
+import {
+  renderProgressChart,
+  renderMatrixTable,
+  renderStatisticGroup,
+} from './renderers-display-ext.js';
+import {
+  renderPagination,
+  renderSteps,
+  renderCollapsePanel,
+  renderCarousel,
+  renderButtonGroup,
+  renderFlatFilter,
+  renderModalDialog,
+  renderDrawer,
+  renderPopoverCard,
+} from './renderers-layout-ext.js';
+import {
+  renderEmailInput,
+  renderPhoneInput,
+  renderUserPickerMulti,
+  renderLookupPickerMulti,
+  renderImageUpload,
+  renderRichTextInput,
+  renderCascaderSingle,
+  renderCascaderMulti,
+  renderTreeSelectSingle,
+  renderTreeSelectMulti,
+} from './renderers-form-ext.js';
+import {
+  renderIcon,
+  renderImage,
+  renderTag,
+  renderLink,
+  renderQrcode,
+  renderAlert,
+  renderNumberDisplay,
+  renderDatetimeDisplay,
+  renderUserDisplay,
+  renderFileDisplay,
+  renderIframe,
+  renderMarkdownDisplay,
+} from './renderers-display-ext.js';
 
 // ---------------------------------------------------------------------------
 // 组件渲染器注册表
 // ---------------------------------------------------------------------------
 
-/** 全部 27 个组件渲染器（studio 超集形式）。 */
+/** 全部组件渲染器（studio 超集形式；批次C1 扩展后 39 个）。 */
 export const RENDERERS: Record<ComponentType, RendererFn> = {
   // —— 容器类 ——
   page: renderPage,
@@ -106,6 +168,77 @@ export const RENDERERS: Record<ComponentType, RendererFn> = {
   rich_text_display: renderRichTextDisplay,
   divider: renderDivider,
   text: renderText,
+
+  // —— 展示类·扩展（页面模块对齐批次C1） ——
+  icon: renderIcon,
+  image: renderImage,
+  tag: renderTag,
+  link: renderLink,
+  qrcode: renderQrcode,
+  alert: renderAlert,
+  number_display: renderNumberDisplay,
+  datetime_display: renderDatetimeDisplay,
+  user_display: renderUserDisplay,
+  file_display: renderFileDisplay,
+  iframe: renderIframe,
+  markdown: renderMarkdownDisplay,
+
+  // —— 表单类·扩展（页面模块对齐批次C2） ——
+  email_input: renderEmailInput,
+  phone_input: renderPhoneInput,
+  user_picker_multi: renderUserPickerMulti,
+  lookup_picker_multi: renderLookupPickerMulti,
+  image_upload: renderImageUpload,
+  rich_text_input: renderRichTextInput,
+  cascader_single: renderCascaderSingle,
+  cascader_multi: renderCascaderMulti,
+  tree_select_single: renderTreeSelectSingle,
+  tree_select_multi: renderTreeSelectMulti,
+
+  // —— 布局导航弹层·扩展（页面模块对齐批次C3） ——
+  pagination: renderPagination,
+  steps: renderSteps,
+  collapse_panel: renderCollapsePanel,
+  carousel: renderCarousel,
+  button_group: renderButtonGroup,
+  flat_filter: renderFlatFilter,
+  modal_dialog: renderModalDialog,
+  drawer: renderDrawer,
+  popover_card: renderPopoverCard,
+
+  // —— 图表·扩展（页面模块对齐批次C4；变体复用 renderChart + defaultProps.chartType） ——
+  chart_radar: renderChart,
+  chart_area: renderChart,
+  chart_scatter: renderChart,
+  chart_bar_horizontal: renderChart,
+  chart_waterfall: renderChart,
+  chart_wordcloud: renderChart,
+  chart_combo: renderChart,
+  progress_chart: renderProgressChart,
+  matrix_table: renderMatrixTable,
+  statistic_group: renderStatisticGroup,
+
+  // —— 数据展示·扩展（页面模块对齐批次C5） ——
+  filter: renderFilter,
+  sort: renderSort,
+  audit_list: renderAuditList,
+  tree_list_single: renderTreeListSingle,
+  tree_list_multi: renderTreeListMulti,
+
+  // —— 业务审批·扩展（页面模块对齐批次C6） ——
+  profile_center: renderProfileCenter,
+  notification_list: renderNotificationList,
+  task_detail: renderTaskDetail,
+  my_tasks: renderMyTasks,
+  approval_admin: renderApprovalAdmin,
+
+  // —— 收尾·扩展（页面模块对齐批次C7） ——
+  html_display: renderHtmlDisplay,
+  jsx_display: renderJsxDisplay,
+  dept_picker: renderDeptPicker,
+  dept_picker_multi: renderDeptPickerMulti,
+  region_cascader_single: renderRegionCascaderSingle,
+  region_cascader_multi: renderRegionCascaderMulti,
 };
 
 // ---------------------------------------------------------------------------

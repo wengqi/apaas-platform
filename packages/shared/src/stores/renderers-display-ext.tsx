@@ -107,7 +107,7 @@ export function renderLink(node: ComponentNode, ctx: RenderContext): ReactNode {
 }
 
 export function renderQrcode(node: ComponentNode, ctx: RenderContext): ReactNode {
-  const value = getPropAsString(node, 'value', ctx);
+  const value = getPropAsString(node, 'content', ctx) || getPropAsString(node, 'value', ctx);
   const size = getPropAsNumber(node, 'size', ctx) || 96;
   if (!value) {
     return (
@@ -198,8 +198,23 @@ export function renderUserDisplay(node: ComponentNode, ctx: RenderContext): Reac
 }
 
 export function renderFileDisplay(node: ComponentNode, ctx: RenderContext): ReactNode {
-  const name = getPropAsString(node, 'name', ctx);
-  const url = getPropAsString(node, 'url', ctx);
+  // content 支持字符串文件名或 { name, url } 对象；回退 name/url 直配
+  const contentProp = node.props.content;
+  let cName = '';
+  let cUrl = '';
+  if (typeof contentProp === 'string') {
+    cName = contentProp;
+  } else if (
+    contentProp &&
+    typeof contentProp === 'object' &&
+    !('__bind' in (contentProp as object))
+  ) {
+    const obj = contentProp as { name?: unknown; url?: unknown };
+    if (typeof obj.name === 'string') cName = obj.name;
+    if (typeof obj.url === 'string') cUrl = obj.url;
+  }
+  const name = cName || getPropAsString(node, 'name', ctx) || getPropAsString(node, 'value', ctx);
+  const url = cUrl || getPropAsString(node, 'url', ctx);
   if (!name && !url) {
     return (
       <Text type="secondary" style={PLACEHOLDER_STYLE}>
@@ -317,7 +332,7 @@ export function renderMatrixTable(node: ComponentNode, ctx: RenderContext): Reac
 
 /** 指标卡组 — 选项（label/value）渲染一排统计卡。 */
 export function renderStatisticGroup(node: ComponentNode, _ctx: RenderContext): ReactNode {
-  const raw = node.props.options;
+  const raw = node.props.items ?? node.props.options;
   const options = Array.isArray(raw)
     ? (raw.filter(
         (o): o is { label: string; value: number } =>

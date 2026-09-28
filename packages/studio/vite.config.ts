@@ -35,4 +35,26 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    // e2e/人工验收消费预构建产物；index.html 禁缓存（hash 资源可长缓存），
+    // 防止重新构建后浏览器仍持有旧 index.html → 加载旧 JS bundle
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+    proxy: {
+      '/api/v1': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api/docs': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/(?!v1|docs)/, '/api/v1/'),
+      },
+    },
+  },
 });

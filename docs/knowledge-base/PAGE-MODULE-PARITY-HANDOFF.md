@@ -27,6 +27,7 @@
 | （E2-4） | E2-4 | 飞书式服务端保存点历史：Prisma PageSavePoint 模型+迁移（page_save_points，schema JSONB+source save/restore，每页保留 50 条自动裁剪）；gateway 保存自动捕获 + GET save-points + POST restore（事务写回+追加 restore 回滚点+changelog）；studio 顶栏「历史」抽屉（列表/恢复二次确认/loadSchema+markSaved）；service 7 单测 + e2e 03 自动捕获/恢复/抽屉用例 |
 | （E2-5） | E2-5 | 代码页签：左栏第四页签 CodeTab（全局样式/全局 JS 编辑器 500ms 防抖 patchSchema、页面 Schema 只读 JSON+复制+下载、页面 JS 方法引导）；qk.pageSavePoints 构造器登记；e2e 03 编辑写回断言 |
 | （E2-6） | E2-6 | 画布宽度预设（双端独立配置的 ADR-0002 合规过渡）：store.canvasWidth + 顶栏设备切换（桌面960/平板768/手机375，纯图标+Tooltip 防顶栏换行）+ Canvas data-canvas-card；e2e 1920 视口断言三档宽度；移动端独立 schema 仍按 ADR-0002 暂缓 |
+| （实测修复） | 全组件目检 | 浏览器实测 86 组件（112 节点全组件页）修复 9 项（PR #5，57149a0）：①渲染器 prop 口径统一——html/jsx/qrcode/file/button_group/statistic_group/collapse_panel 加 content/buttons/items/title/header 回退链（属性面板写入字段渲染器读不到的根因）；②弹窗/侧拉窗预览态无入口→内置触发按钮（open 未配置时本地 state）；③左栏四页签 280px 竖排换行→压缩+nowrap；④vite preview index.html no-store（重建后浏览器持旧 index 加载旧 bundle 的根因）。验证：shared 39/studio 168 单测、e2e 65/65、CI 全绿 |
 
 **组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 537 / studio 168 / db 42 / shared 39 全绿，e2e 64/64。
 

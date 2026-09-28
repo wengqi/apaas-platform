@@ -218,4 +218,69 @@ test.describe('页面搭建器', () => {
     expect(Math.abs((boxA?.y ?? 0) - (boxB?.y ?? 1))).toBeLessThan(5);
     expect((boxB?.x ?? 0) - (boxA?.x ?? 0)).toBeGreaterThan(100);
   });
+
+  test('跨容器拖拽：表单内字段拖入空分区容器', async ({ page }) => {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_crossdrag_page',
+      name: '测试跨容器拖拽页',
+      type: 'custom',
+    });
+    await api.put(`/pages/${page_meta.id}`, {
+      schema: {
+        version: '1',
+        pageType: 'custom',
+        viewModel: { variables: {} },
+        root: {
+          id: 'root',
+          type: 'page',
+          props: {},
+          children: [
+            {
+              id: 'f1',
+              type: 'form',
+              props: {},
+              children: [
+                { id: 't1', type: 'text_input', props: { label: '姓名', apiName: 'name' } },
+              ],
+            },
+            { id: 's1', type: 'section', props: {}, children: [] },
+          ],
+        },
+      },
+    });
+
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    // 悬停字段节点 → 胶囊工具条出现 → 取握把
+    await page.getByPlaceholder('请输入').hover();
+    const handle = page.locator('span[title="拖拽排序"]').first();
+    await handle.waitFor({ state: 'visible' });
+    const hb = await handle.boundingBox();
+    const target = page.getByText('拖拽组件到此处');
+    const tb = await target.boundingBox();
+    expect(hb).toBeTruthy();
+    expect(tb).toBeTruthy();
+    await page.mouse.move(
+      (hb?.x ?? 0) + (hb?.width ?? 0) / 2,
+      (hb?.y ?? 0) + (hb?.height ?? 0) / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      (tb?.x ?? 0) + (tb?.width ?? 0) / 2,
+      (tb?.y ?? 0) + (tb?.height ?? 0) / 2,
+      { steps: 18 },
+    );
+    await page.mouse.up();
+
+    // 保存后从 API 断言：t1 已归属 s1，f1 不再包含
+    await page.getByRole('button', { name: '保存' }).click();
+    await page.waitForTimeout(1200);
+    const detail = await api.get<{
+      schema: { root: { children: Array<Record<string, unknown>> } };
+    }>(`/pages/${page_meta.id}`);
+    const children = detail.schema.root.children;
+    const f1 = children.find((c) => c.id === 'f1') as { children?: Array<{ id: string }> };
+    const s1 = children.find((c) => c.id === 's1') as { children?: Array<{ id: string }> };
+    expect((f1?.children ?? []).some((c) => c.id === 't1')).toBe(false);
+    expect((s1?.children ?? []).some((c) => c.id === 't1')).toBe(true);
+  });
 });

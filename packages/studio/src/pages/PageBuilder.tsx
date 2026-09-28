@@ -5,6 +5,7 @@ import {
   DragOverlay,
   PointerSensor,
   closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -15,6 +16,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { usePageBuilderStore } from '../stores/pageBuilder.js';
+import { findParent, findNode } from '../stores/page-builder/utils.js';
 import { pagesApi, type ComponentType } from '../api/pages.js';
 import { getComponentMeta } from '../constants/pageComponents.js';
 import BuilderToolbar from '../components/page-builder/BuilderToolbar.js';
@@ -48,6 +50,7 @@ export default function PageBuilder() {
   const addComponent = usePageBuilderStore((s) => s.addComponent);
   const reorderSibling = usePageBuilderStore((s) => s.reorderSibling);
   const insertSubtree = usePageBuilderStore((s) => s.insertSubtree);
+  const moveComponent = usePageBuilderStore((s) => s.moveComponent);
 
   const loadedPageIdRef = useRef<string | null>(null);
 
@@ -119,18 +122,44 @@ export default function PageBuilder() {
     }
   };
 
-  /** 画布内节点拖拽时只与同级节点碰撞（容器放置区会因面积大抢走最近命中）。 */
+  /** 画布内节点拖拽的碰撞策略（E2-3 跨容器）：
+   * 候选 = 画布节点 + 容器放置区并集；节点命中优先（放置区包裹子节点、面积大易抢命中）；
+   * 仅放置区命中时取面积最小的最内层容器——若它就是当前父容器，回退「仅同级节点最近中心」
+   * 维持原同层排序手感，否则为跨容器放置（移动到该容器末尾）。 */
   const collisionDetection: CollisionDetection = (args) => {
     const activeData = args.active.data.current as CanvasNodeDragData | undefined;
-    if (activeData?.source === 'canvas-node') {
-      return closestCenter({
-        ...args,
-        droppableContainers: args.droppableContainers.filter(
-          (c) => c.data.current?.source === 'canvas-node',
-        ),
-      });
+    if (activeData?.source !== 'canvas-node') return closestCenter(args);
+
+    const candidates = args.droppableContainers.filter((c) => {
+      const src = c.data.current?.source;
+      return src === 'canvas-node' || src === 'dropzone';
+    });
+    const nodeOnly = candidates.filter((c) => c.data.current?.source === 'canvas-node');
+    const within = pointerWithin({ ...args, droppableContainers: candidates });
+    const nodeHits = within.filter(
+      (c) => c.data?.droppableContainer.data.current?.source === 'canvas-node',
+    );
+    if (nodeHits.length > 0) return nodeHits;
+
+    const zoneHits = within.filter(
+      (c) => c.data?.droppableContainer.data.current?.source === 'dropzone',
+    );
+    if (zoneHits.length > 0) {
+      const areaOf = (c: (typeof zoneHits)[number]) => {
+        const rect = c.data?.droppableContainer.rect.current;
+        return rect ? rect.width * rect.height : Number.MAX_SAFE_INTEGER;
+      };
+      const innermost = zoneHits.reduce((best, cur) => (areaOf(cur) < areaOf(best) ? cur : best));
+      const innerParentId = String(innermost.id).startsWith('dropzone-')
+        ? String(innermost.id).slice('dropzone-'.length)
+        : null;
+      const activeParentId = activeParentOf(activeData.node.id);
+      if (innerParentId === activeParentId) {
+        return closestCenter({ ...args, droppableContainers: nodeOnly });
+      }
+      return [innermost];
     }
-    return closestCenter(args);
+    return closestCenter({ ...args, droppableContainers: nodeOnly });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -154,9 +183,31 @@ export default function PageBuilder() {
       return;
     }
 
-    // 画布内节点 → 同层节点：同父排序（store 内校验同父）
+    // 画布内节点 → 同层节点：同父排序；跨父则按飞书语义——目标是容器节点时
+    // 放入该容器末尾，普通节点则移动至其父容器中该节点之前
     if (activeData?.source === 'canvas-node' && overData?.source === 'canvas-node') {
-      reorderSibling(activeData.node.id, overData.node.id);
+      const st = usePageBuilderStore.getState();
+      if (!st.schema) return;
+      const activeParent = findParent(st.schema.root, activeData.node.id);
+      const overParent = findParent(st.schema.root, overData.node.id);
+      if (!activeParent || !overParent) return;
+      if (activeParent.id === overParent.id) {
+        reorderSibling(activeData.node.id, overData.node.id);
+      } else if (getComponentMeta(overData.node.type).isContainer) {
+        moveComponent(activeData.node.id, overData.node.id, 0);
+      } else {
+        const idx = (overParent.children ?? []).findIndex((c) => c.id === overData.node.id);
+        moveComponent(activeData.node.id, overParent.id, idx === -1 ? 0 : idx);
+      }
+      return;
+    }
+
+    // 画布内节点 → 容器放置区：移动至该容器末尾（空容器承接 + 跨容器追加）
+    if (activeData?.source === 'canvas-node' && overData?.source === 'dropzone') {
+      const st = usePageBuilderStore.getState();
+      if (!st.schema) return;
+      const parent = findNode(st.schema.root, overData.parentId);
+      moveComponent(activeData.node.id, overData.parentId, parent?.children?.length ?? 0);
     }
   };
 
@@ -224,6 +275,17 @@ export default function PageBuilder() {
       <ViewModelPanel />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// 拖拽辅助
+// ---------------------------------------------------------------------------
+
+/** 查询节点当前父容器 id（碰撞策略判定同层/跨容器用）。 */
+function activeParentOf(nodeId: string): string | null {
+  const schema = usePageBuilderStore.getState().schema;
+  if (!schema) return null;
+  return findParent(schema.root, nodeId)?.id ?? null;
 }
 
 // ---------------------------------------------------------------------------

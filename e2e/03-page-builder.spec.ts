@@ -347,4 +347,25 @@ test.describe('页面搭建器', () => {
     const detail = await api.get<{ schema: { globalCss?: string } }>(`/pages/${page_meta.id}`);
     expect(detail.schema.globalCss).toContain('.demo-title');
   });
+
+  test('画布宽度切换：手机 375 预设生效', async ({ page }) => {
+    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_canvaswidth_page',
+      name: '测试画布宽度页',
+      type: 'custom',
+    });
+    // 放大视口：1280 下设计器画布被左右面板压缩（<960），无法断言桌面宽度
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    const card = page.locator('[data-canvas-card]');
+    await expect(card).toHaveCount(1);
+    // 桌面默认 960
+    expect((await card.boundingBox())?.width).toBe(960);
+    await page.locator('.ant-segmented-item:has(.anticon-mobile)').click();
+    expect((await card.boundingBox())?.width).toBe(375);
+    await page.locator('.ant-segmented-item:has(.anticon-tablet)').click();
+    expect((await card.boundingBox())?.width).toBe(768);
+    await page.locator('.ant-segmented-item:has(.anticon-desktop)').click();
+    expect((await card.boundingBox())?.width).toBe(960);
+  });
 });

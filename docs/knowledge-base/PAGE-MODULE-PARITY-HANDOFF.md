@@ -26,8 +26,9 @@
 | （E2-3） | E2-3 | 跨容器拖拽：PageBuilder 碰撞策略重构（节点+放置区并集 pointerWithin，节点命中优先，仅放置区命中取最小面积最内层容器=当前父容器则回退同层最近中心）；dragEnd 跨父分支：容器节点=放入末尾/普通节点=插其之前/放置区=追加；复用 store.moveComponent（祖先环+容器校验）；e2e 03 真实 mouse 拖入空分区 + API 断言落点 |
 | （E2-4） | E2-4 | 飞书式服务端保存点历史：Prisma PageSavePoint 模型+迁移（page_save_points，schema JSONB+source save/restore，每页保留 50 条自动裁剪）；gateway 保存自动捕获 + GET save-points + POST restore（事务写回+追加 restore 回滚点+changelog）；studio 顶栏「历史」抽屉（列表/恢复二次确认/loadSchema+markSaved）；service 7 单测 + e2e 03 自动捕获/恢复/抽屉用例 |
 | （E2-5） | E2-5 | 代码页签：左栏第四页签 CodeTab（全局样式/全局 JS 编辑器 500ms 防抖 patchSchema、页面 Schema 只读 JSON+复制+下载、页面 JS 方法引导）；qk.pageSavePoints 构造器登记；e2e 03 编辑写回断言 |
+| （E2-6） | E2-6 | 画布宽度预设（双端独立配置的 ADR-0002 合规过渡）：store.canvasWidth + 顶栏设备切换（桌面960/平板768/手机375，纯图标+Tooltip 防顶栏换行）+ Canvas data-canvas-card；e2e 1920 视口断言三档宽度；移动端独立 schema 仍按 ADR-0002 暂缓 |
 
-**组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 537 / studio 168 / db 42 / shared 39 全绿，e2e 63/63。
+**组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 537 / studio 168 / db 42 / shared 39 全绿，e2e 64/64。
 
 另有更早批次（本会话前段）：表单页面设计器重构（表单生成器/字段属性面板/大纲树/顶栏，commit 0d0e90b 之前数个），设计文档 `docs/design/DESIGN-page-builder-feishu-parity-2026-09-27.md`。
 

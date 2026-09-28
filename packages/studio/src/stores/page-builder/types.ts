@@ -32,6 +32,8 @@ export interface PageBuilderState {
   formGeneratorNodeId: string | null;
   /** 画布缩放（0.5-1.5；控件在顶栏，画布消费） */
   canvasZoom: number;
+  /** 画布宽度预设：null=桌面(960)，375=手机，768=平板（E2-6 移动端预览） */
+  canvasWidth: number | null;
   /** 撤销栈 */
   past: PageSchema[];
   /** 重做栈 */
@@ -96,6 +98,7 @@ export interface PageBuilderState {
   setFormGeneratorNodeId: (id: string | null) => void;
   /** 设置画布缩放 */
   setCanvasZoom: (zoom: number) => void;
+  setCanvasWidth: (width: number | null) => void;
 
   // —— 历史 ——
   /** 撤销 */

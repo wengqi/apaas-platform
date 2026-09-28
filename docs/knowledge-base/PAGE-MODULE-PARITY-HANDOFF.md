@@ -25,6 +25,7 @@
 | （E2-2） | E2-2 | 字段半宽并排布局：stores/field-span.ts 纯函数（显式 span > 容器列数折算 > 整行）+ FormColumnsContext（FormRenderer 注入 columns）+ FormFieldItem span<12 inline-block 流式并排 + 6 单测 + e2e 03 同行断言；表单容器「每行列数」1/2/3 列自此真实生效 |
 | （E2-3） | E2-3 | 跨容器拖拽：PageBuilder 碰撞策略重构（节点+放置区并集 pointerWithin，节点命中优先，仅放置区命中取最小面积最内层容器=当前父容器则回退同层最近中心）；dragEnd 跨父分支：容器节点=放入末尾/普通节点=插其之前/放置区=追加；复用 store.moveComponent（祖先环+容器校验）；e2e 03 真实 mouse 拖入空分区 + API 断言落点 |
 | （E2-4） | E2-4 | 飞书式服务端保存点历史：Prisma PageSavePoint 模型+迁移（page_save_points，schema JSONB+source save/restore，每页保留 50 条自动裁剪）；gateway 保存自动捕获 + GET save-points + POST restore（事务写回+追加 restore 回滚点+changelog）；studio 顶栏「历史」抽屉（列表/恢复二次确认/loadSchema+markSaved）；service 7 单测 + e2e 03 自动捕获/恢复/抽屉用例 |
+| （E2-5） | E2-5 | 代码页签：左栏第四页签 CodeTab（全局样式/全局 JS 编辑器 500ms 防抖 patchSchema、页面 Schema 只读 JSON+复制+下载、页面 JS 方法引导）；qk.pageSavePoints 构造器登记；e2e 03 编辑写回断言 |
 
 **组件总数 86/86（去重口径）对齐完成**；物料分组=飞书序（常用/导航/布局/数据展示/数据输入/通用/弹层/图表/业务/审批）。单测 gateway 537 / studio 168 / db 42 / shared 39 全绿，e2e 63/63。
 
@@ -32,8 +33,7 @@
 
 ## 三、剩余事项（可选增强，非阻塞）
 
-1. **双端独立配置**：移动端画布独立配置（ADR-0002 明确暂缓）。
-2. **状态数据/代码页签深化**：代码页签未做；状态数据已做五分组。
+1. **双端独立配置**：移动端画布独立配置（ADR-0002 明确暂缓）→ E2-6 以移动端画布宽度预设过渡。
 5. **PR #3 已合并**（2026-09-28，merge commit 536ddb4）；E2 批次在 feat/page-parity-e-batch 分支（PR #4）推进。
 
 ## 四、关键踩坑（务必遵守）

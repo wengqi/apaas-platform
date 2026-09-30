@@ -213,16 +213,25 @@ describe('UserTaskExecutor', () => {
     const result = await executor.execute(ctx);
 
     expect(result.wait).toBe(true);
-    expect(result.output).toEqual({ taskId: 'task-1', assignee: 'user-1' });
-    const arg = prisma.processTask.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
-    expect(arg.data).toMatchObject({
-      taskName: '审批',
-      assignee: 'user-1',
-      candidateGroups: ['role-1'],
-      status: 'PENDING',
-      instanceId: 'pi-1',
-      nodeId: 'ut-1',
+    // R1.3：单任务也走 createMany（多审批模式统一通道），output 返回受理人列表
+    expect(result.output).toEqual({
+      taskId: null,
+      assignees: ['user-1'],
+      approvalMode: 'single',
     });
+    const arg = prisma.processTask.createMany.mock.calls[0]?.[0] as {
+      data: Record<string, unknown>;
+    };
+    expect(arg.data).toMatchObject([
+      {
+        taskName: '审批',
+        assignee: 'user-1',
+        candidateGroups: ['role-1'],
+        status: 'PENDING',
+        instanceId: 'pi-1',
+        nodeId: 'ut-1',
+      },
+    ]);
   });
 });
 

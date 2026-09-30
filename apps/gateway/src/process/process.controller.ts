@@ -51,7 +51,7 @@ import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { ProcessService } from './process.service.js';
 import { CreateProcessDefDto, UpdateProcessDefDto, StartInstanceDto } from './dto/process.dto.js';
-import { CompleteTaskDto, DelegateTaskDto } from './dto/task.dto.js';
+import { CompleteTaskDto, DelegateTaskDto, AddSignDto } from './dto/task.dto.js';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto.js';
 
 @ApiTags('Process')
@@ -253,6 +253,39 @@ export class ProcessController {
       taskId,
       req.user.id,
       body.delegatedTo,
+    );
+    return { ok: true as const, data };
+  }
+
+  /** 加签（R1.3）：在当前审批任务上追加审批人（依次补审 / 并行会签）。 */
+  @Post('tasks/:taskId/add-sign')
+  @RequirePermission('PROCESS', 'EXECUTE')
+  async addSign(
+    @Req() req: AuthenticatedRequest,
+    @Param('taskId') taskId: string,
+    @Body() body: AddSignDto,
+  ) {
+    const data = await this.processService.addSign(
+      requireTenantId(req),
+      taskId,
+      req.user.id,
+      body.userId,
+      body.position ?? 'after',
+    );
+    return { ok: true as const, data };
+  }
+
+  /** 撤回流程实例（R1.3）：仅发起人，撤回后全部待办作废、实例 TERMINATED。 */
+  @Post('instances/:instanceId/withdraw')
+  @RequirePermission('PROCESS', 'EXECUTE')
+  async withdrawInstance(
+    @Req() req: AuthenticatedRequest,
+    @Param('instanceId') instanceId: string,
+  ) {
+    const data = await this.processService.withdrawInstance(
+      requireTenantId(req),
+      instanceId,
+      req.user.id,
     );
     return { ok: true as const, data };
   }

@@ -29,6 +29,8 @@ export interface ProcessTask {
     triggerContext: Record<string, unknown> | null;
     processDef: { name: string; apiName: string };
   };
+  /** 审批节点绑定的页面 ID（R1.3，无绑定为 null → 回退默认审批 UI）。 */
+  boundPageId?: string | null;
 }
 
 /** 分页任务结果。 */
@@ -42,27 +44,21 @@ export interface PaginatedTasks {
 export const tasksApi = {
   /** 列出我的待办任务 */
   list: (params: { status?: string; page?: number; pageSize?: number }) =>
-    apiClient
-      .get('/tasks', { params })
-      .then((res) => res.data.data as PaginatedTasks),
+    apiClient.get('/tasks', { params }).then((res) => res.data.data as PaginatedTasks),
 
   /** 获取任务详情 */
   get: (taskId: string) =>
-    apiClient
-      .get(`/tasks/${taskId}`)
-      .then((res) => res.data.data as ProcessTask),
+    apiClient.get(`/tasks/${taskId}`).then((res) => res.data.data as ProcessTask),
 
   /** 完成任务（审批） */
-  complete: (taskId: string, body: { decision: string; comment?: string; formData?: Record<string, unknown> }) =>
-    apiClient
-      .post(`/tasks/${taskId}/complete`, body)
-      .then((res) => res.data.data),
+  complete: (
+    taskId: string,
+    body: { decision: string; comment?: string; formData?: Record<string, unknown> },
+  ) => apiClient.post(`/tasks/${taskId}/complete`, body).then((res) => res.data.data),
 
   /** 转办任务 */
   delegate: (taskId: string, delegatedTo: string) =>
-    apiClient
-      .post(`/tasks/${taskId}/delegate`, { delegatedTo })
-      .then((res) => res.data.data),
+    apiClient.post(`/tasks/${taskId}/delegate`, { delegatedTo }).then((res) => res.data.data),
 
   /** 获取流程轨迹 */
   getTrace: (instanceId: string) =>

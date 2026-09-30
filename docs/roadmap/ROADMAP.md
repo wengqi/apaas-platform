@@ -4,6 +4,7 @@
 > 功能对齐基准：`docs/research/RESEARCH-feishu-apaas-full.md`（飞书 aPaaS 完整功能体系调研）
 > 应用生命周期与发布流程对齐基准：`docs/research/RESEARCH-feishu-apaas-app-lifecycle.md`（飞书 aPaaS 应用创建→发布→管理全流程深度调研）
 > **定位修订（2026-09-27）**：`docs/adr/0002-platform-positioning-enterprise-non-feishu.md`（企业内部真实使用 / 非飞书环境 / 先开发者后业务）
+> **方向修订（2026-09-30）**：`docs/adr/0003-ai-native-schema-first-platform.md`（AI 原生底座 / amis 单方言 / 全环境人审闸门 / 采购合同验收应用；蓝图 docs/design/DESIGN-refactor-blueprint-2026-09-30.md）
 > 实地对标基准：`docs/research/RESEARCH-feishu-apaas-live-benchmark-2026-09-27.md`（36 项能力矩阵，2026-09-27 实机调研）
 
 ## 2026-09-27 定位修订与重规划（当前有效，覆盖下方历史 Phase 的优先级）
@@ -25,7 +26,22 @@
 观测事件分类（函数执行/慢查询/页面报错/OpenAPI 调用 + 事件链路 ID）；流程效率分析（平均耗时/完成率/超时数）；权限查询调试工具；对象级搜索配置与全局选项复用；审计日志对齐观测分类。
 
 ### 暂缓/不做（对照 ADR-0002）
-AI 生成页面/流程、AI 组件、MCP Server、模板市场与方案中心、移动端适配、多语言 i18n、全局代码、飞书生态集成。
+~~AI 生成页面/流程、AI 组件、MCP Server~~（**2026-09-30 经 ADR-0003 撤销**，升为 R1.6/R1.7，见下方方向修订节）、模板市场与方案中心、移动端适配、多语言 i18n、全局代码、飞书生态集成。
+
+### 2026-09-30 方向修订（ADR-0003：AI 原生底座，当前最优先，覆盖上方排序）
+
+依据 ADR-0003（产品论：受约束的 AI 应用生成底座；界面层 = amis 单方言三用法，不引入 formily；治理闸门 = 全环境人审；底座自建瘦身 ~50k 行）。新增/重排如下（R1.1-R1.5 语义不变，R1.2 按"AI 出稿人审批 + diff 快审"设计，R1.5 验收应用场景锁定为采购合同类审批）：
+
+| # | 任务 | 说明 | 状态 |
+|---|------|------|------|
+| R1.S | **前置 spike ×2（P0 准入门槛）** | ① amis antd 主题视觉贴合度实测；② LLM 生成 amis schema 合法率 vs 自有 PageSchema 对比 → **✅ 双通过（2026-09-30，GO）：贴合生产级 / 首过 80% 一轮修正 100%；官方 schema.json 不可机判，G3 校验器需自建；集成红线见 docs/knowledge-base/SPIKE-AMIS-ADOPTION-2026-09-30.md** | ✅ 完成 |
+| R1.3 | **流程页面绑定 + 审批语义补齐（升 P0 首位）** | 绑定验收场景=采购合同类审批：金额条件分支/多级顺序审批/**会签或签/依次审批（2026-09-30 落地：approvalMode 四模式+聚合决策+锁内并发封窗）/加签转办撤回（add-sign/withdraw 端点）/审批页面（节点绑定页面 pageId，任务中心 amis 渲染）**/流程出入参（start/end 面板对齐 inputsValues）/合同附件 | ✅ 完成（158cfa4/3b1798a/bc54d51/dc11266/3ca11e4，e2e 16 号全链路验证） |
+| R1.5 | **端到端验收：真实业务应用交付（采购合同）** | procurement 应用：供应商/合同对象 + 台账/提交页（v1 方言）+ amis 审批页（v2）+ 金额分支/会签/依次审批流 + 发布快照；**e2e/16 全链路通过（2026-09-30）：创建触发→分支路由→会签聚合→依次终审→完成/撤回；全量 e2e 68/68** | ✅ 完成 |
+| G3/R1.6 前置 | **Schema 校验合同（自建）** | 三类 schema 校验器：amis 页面（渲染器真值白名单~150 型+黑名单+别名/编辑距离建议+外联拒绝）、WorkflowSchema（20 节点+R1.3 审批配置+幽灵边/孤立节点）、对象元数据（18 类型）；结构化错误面向 agent 自修正（25 单测）——官方 schema.json 与渲染器不一致故自建 | ✅ 完成（46e0916） |
+| R1.6 | **AI 生成接口（MCP）** | AI 经 Schema 接口读写对象/流程/页面/表单 → 仅产出草稿；写入路径过 Schema 校验合同（G3 ✅）；全环境人审闸门 | ⬜ 未开始 |
+| R1.7 | **页面层 amis 迁移（P2）** | PageSchema v2=amis 方言；渲染器换 amis；组件 86→约 30 核心集；搭建器 amis 化兜底改造；v1 存量一次性迁移 | ⬜ 未开始 |
+
+并行小项：数据集引擎下沉 PostgreSQL SQL（删内存 join ~2.5k 行）；纯流程形态 API 产品化（API 触发器 + API Key + 流程版本稳定性承诺）。阶段划分、准入 spike、风险登记详见蓝图 `docs/design/DESIGN-refactor-blueprint-2026-09-30.md`。
 
 ---
 
@@ -350,3 +366,5 @@ TypeScript 全栈，独立 Web 应用，交互体验对齐飞书 aPaaS。
 - 2026-09-25（第二批）：**对齐收口第二批落地**——① Phase 4.5 组织授权扩散（上级自动继承下级权限：getEffectiveOrgIds 组织树 BFS + 防环 + 7 单测）；② 视图类型渲染补齐（看板/画廊/日历，data_table 按 viewType 分派，Studio 预览与 Runtime 共享渲染核心同步生效）；③ 连接器 OAuth2（client_credentials 自动换 token + 内存缓存 + authStyle + 前端凭证表单 + 8 单测）；④ 覆盖率 40%→60%（真实执行器/工具层/管理服务/发布支撑/env 校验共 +88 项测试，gateway 492 全绿，总 620；阈值锁定）。当前唯一剩余未实现项：Phase 2.9 移动端适配 / 2.10 JS 页面扩展（前端增强类，下一批次）。
 - 2026-09-25（第三批）：**Phase 2 收口（最后一批未实现项）**——① 2.9 移动端适配（useIsMobile matchMedia 事件驱动 + RuntimeLayout 响应式）；② 2.10 JS 页面扩展（run_script 动作全链路：四处 ActionType/executePageScript 沙箱化作用域/EventsTab 配置/5 单测）；③ 2.11 QA 标记完成（既有 E2E 覆盖）。至此 ROADMAP 全部 Phase 0-10 任务无 ⬜ 项，最初设定的 10 大模块目标全量达成。
 - 2026-09-27：**Phase 2.12 表单页面设计器飞书对齐重构**——实测飞书 aPaaS v3 搭建器（试用环境 DOM + 截图取证）后重构页面设计器：飞书式外壳（顶栏 设置/撤销重做/刷新页面/已保存状态、左栏 组件/大纲树页签、960px 页面卡、物料分组 4 列图标卡）+ 表单生成器（对象字段表格勾选/标题/输入组件映射/必填锁定/拖拽排序 → 生成字段组件 + vm.record + onSubmit=create_record 接线）+ 字段级属性面板（内容/校验/交互/尺寸 12 栅格）+ 画布内同层拖拽排序与蓝色胶囊工具条 + 共享渲染层原生表单提交（htmlType=submit）。Schema 完全向后兼容；AI 相关能力按定位不做。设计文档：`docs/DESIGN-page-builder-feishu-parity-2026-09-27.md`。
+- 2026-09-30：**产品方向修订（ADR-0003）**——经两轮会话问答收敛：产品论改为"受约束的 AI 应用生成底座"（AI 第一公民用户、拖拽降级兜底）；撤销 AI 生成/MCP 排除条款（新增 R1.S spike / R1.6 AI 生成接口 / R1.7 页面层 amis 迁移，R1.3 升 P0 首位）；治理闸门=全环境人审（AI 仅出草稿）；界面层定 amis 单方言三用法（表单/页面/兜底搭建），**不引入 formily**（2025-06 起停更）；R1.5 验收应用锁定采购合同类流程审批；底座自建瘦身 ~50k 行（渲染矩阵换 amis、数据集引擎下沉 SQL、组件 86→30），NocoBase 仅作参照 + Plan B。蓝图：`docs/design/DESIGN-refactor-blueprint-2026-09-30.md`；选型证据：`docs/knowledge-base/OSS-SELECTION-VERIFICATION-2026-09-30.md`。
+- 2026-09-30（第二批）：**P0 落地——R1.3 审批语义 + R1.5 验收应用达成**——amis 接入 runtime-ui（审批页面渲染，0e08794）；审批四模式+聚合决策+锁内并发封窗+加签/撤回（158cfa4）；节点配置面板与流程出入参对齐引擎契约（3b1798a/bc54d51）；采购合同应用种子+触发 inputs 平铺（dc11266）；e2e/16 全链路验收 4 用例+全量 68/68（3ca11e4）。修复：种子流程幽灵无条件边致双分支齐活、分支条件方向写反、triggerContext 缺 triggeredByUser（撤回权限依赖）。

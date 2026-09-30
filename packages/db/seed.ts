@@ -16,6 +16,7 @@
 
 import { prisma, runAsSystem } from './src/index.js';
 import { seedDemoContent } from './seed-demo.js';
+import { seedProcurementContent } from './seed-procurement.js';
 import * as bcrypt from 'bcrypt';
 
 async function main() {
@@ -263,6 +264,25 @@ async function main() {
   // 9. 填充 Demo 应用内容（对象/页面/流程/记录/发布）
   await seedDemoContent(tenant.id, app.id, admin.id, admin.email);
 
+  // 10. 采购合同验收应用（R1.5：金额分支/会签/依次/审批页面绑定）
+  const procurementApp = await prisma.application.upsert({
+    where: { tenantId_apiName: { tenantId: tenant.id, apiName: 'procurement' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      apiName: 'procurement',
+      name: '采购合同管理',
+      description: '供应商档案、采购合同台账与分级审批',
+      icon: '📄',
+      color: '#722ed1',
+      status: 'DRAFT',
+      version: 0,
+      createdBy: admin.id,
+    },
+  });
+  console.log(`✅ 应用: ${procurementApp.name} (${procurementApp.id})`);
+  await seedProcurementContent(tenant.id, procurementApp.id, admin.id);
+
   console.log('');
   console.log('📋 测试账号:');
   console.log('  平台超管:  superadmin@apaas.dev / superadmin123（无需租户标识）');
@@ -270,7 +290,7 @@ async function main() {
   console.log('  搭建者:    builder@apaas.dev / builder123（租户标识: demo）');
   console.log('  终端用户:  user@apaas.dev / user123（租户标识: demo）');
   console.log('');
-  console.log('📦 示例应用: 资产管理 (asset_management)');
+  console.log('📦 示例应用: 资产管理 (asset_management) / 采购合同管理 (procurement)');
   console.log('');
   console.log('🌱 种子数据完成!');
 }

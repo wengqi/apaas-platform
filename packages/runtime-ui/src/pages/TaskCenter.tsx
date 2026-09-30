@@ -11,6 +11,7 @@ import { buildColumns } from './task-center/columns.js';
 import { normalizeItems } from './task-center/utils.js';
 import { TaskDetailTabs } from './task-center/TaskDetailTabs.js';
 import { TaskModalFooter } from './task-center/TaskModalFooter.js';
+import ApprovalPageRenderer from '../runtime/ApprovalPageRenderer.js';
 
 const { Title, Paragraph } = Typography;
 
@@ -161,16 +162,32 @@ export default function TaskCenter() {
         ) : (
           selectedTask &&
           taskDetail && (
-            <TaskDetailTabs
-              taskDetail={taskDetail}
-              triggerData={triggerData}
-              formData={formData}
-              activeTab={activeTab}
-              comment={comment}
-              onCommentChange={setComment}
-              traceData={traceData ?? null}
-              traceLoading={traceLoading}
-            />
+            <>
+              {/* R1.3：审批节点绑定了页面 → 渲染页面（amis 方言，可含表单/关联信息）；
+                  数据域 = 流程变量 + 触发上下文 + taskId，页面内 api 可用 ${taskId} */}
+              {taskDetail.boundPageId && activeTab === 'pending' ? (
+                <div style={{ marginBottom: 16 }}>
+                  <ApprovalPageRenderer
+                    pageId={taskDetail.boundPageId}
+                    data={{
+                      taskId: taskDetail.id,
+                      ...(taskDetail.instance?.variables ?? {}),
+                      ...(taskDetail.instance?.triggerContext ?? {}),
+                    }}
+                  />
+                </div>
+              ) : null}
+              <TaskDetailTabs
+                taskDetail={taskDetail}
+                triggerData={taskDetail.boundPageId ? [] : triggerData}
+                formData={taskDetail.boundPageId ? [] : formData}
+                activeTab={activeTab}
+                comment={comment}
+                onCommentChange={setComment}
+                traceData={traceData ?? null}
+                traceLoading={traceLoading}
+              />
+            </>
           )
         )}
       </Modal>

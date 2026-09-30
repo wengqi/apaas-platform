@@ -141,6 +141,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+        # runtime-ui 引入 amis 后 vite 构建处理其巨型 antd.css，默认 ~2GB 堆 OOM（exit 134）
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   e2e:
     name: E2E Tests (Playwright)

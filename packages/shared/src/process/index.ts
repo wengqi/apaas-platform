@@ -288,6 +288,9 @@ export interface NotificationConfig {
   content: string;
 }
 
+/** 审批模式（R1.3）：多人审批时的决策聚合语义。 */
+export type ApprovalMode = 'single' | 'countersign' | 'or_sign' | 'sequential';
+
 /** 人工任务配置。 */
 export interface UserTaskConfig {
   assignee?: string;
@@ -295,6 +298,23 @@ export interface UserTaskConfig {
   formKey?: string;
   taskName: string;
   dueDate?: string;
+  /**
+   * 审批模式（R1.3）：
+   * - single（默认）：单人审批，assignee/candidateGroups 单任务
+   * - countersign 会签：全员审批，全部 approved 才通过，任一 rejected 即驳回
+   * - or_sign 或签：任一人决策即生效（首个决策终结该节点全部任务）
+   * - sequential 依次审批：按 approveUsers 顺序逐个生成任务（前一人 approved 才轮到下一人；
+   *   任一人 rejected 直接驳回）
+   */
+  approvalMode?: ApprovalMode;
+  /** 会签/或签/依次模式的审批人列表（用户 ID） */
+  approveUsers?: string[];
+  /** 依次模式下当前进度（运行时写入，勿手工配置）：已完成的 approveUsers 下标 */
+  sequentialIndex?: number;
+  /** 审批页面绑定（R1.3：一切界面皆页面——user_task 绑定页面 ID，可含表单或关联信息） */
+  pageId?: string;
+  /** 驳回跳转目标节点 ID */
+  rejectToNodeId?: string;
 }
 
 /** 抄送触发时机。 */

@@ -57,6 +57,12 @@ function findNodeInBlocks(blocks: WorkflowNode[], nodeId: string): WorkflowNode 
   return undefined;
 }
 
+/** 依次审批（R1.3）进度存于节点变量 sequentialIndex（variables[nodeId].sequentialIndex）。 */
+function nodeIdSeqKey(nodeId: string): string {
+  return nodeId;
+}
+void nodeIdSeqKey;
+
 /**
  * 并行/包容分支汇聚等待状态（存储于 variables[JOIN_STATE_KEY]，键 = 汇聚节点 ID）。
  * 引擎在分支分裂时注册 expected（分支数），令牌逐个到达时累加 arrived，
@@ -491,8 +497,109 @@ export class ProcessEngine {
       });
     }
 
+    // R1.3 多人审批聚合：同节点同批次还有其他 PENDING 任务时不立即推进令牌。
+    //   countersign 会签：等全部 approved；任一 rejected → 节点立即驳回
+    //   or_sign 或签：首个决策即节点决策，终结同批次其余 PENDING 任务
+    //   sequential 依次：approved → 下标 +1 重新进入 user_task 执行器生成下一个任务；
+    //     最后一人 approved 才推进；任一 rejected 直接驳回
+    // 判定依据：该 nodeId 下（同实例）全部任务的决策集合 vs 节点配置的审批模式。
+    const siblingTasks = await prisma.processTask.findMany({
+      where: { instanceId: task.instanceId, nodeId: task.nodeId },
+      select: { id: true, status: true, assignee: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const nodeDef = (
+      task.instance.processDef.workflowSchema as {
+        nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
+      } | null
+    )?.nodes?.find((n) => n.id === task.nodeId);
+    const approvalMode = (nodeDef?.data?.['approvalMode'] as string | undefined) ?? 'single';
+    const approveUsers = (nodeDef?.data?.['approveUsers'] as string[] | undefined) ?? [];
+
+    if (approvalMode !== 'single') {
+      const pendingCount = siblingTasks.filter((t) => t.status === 'PENDING').length;
+      const approvedCount = siblingTasks.filter((t) => t.status === 'APPROVED').length;
+
+      if (approvalMode === 'or_sign') {
+        // 或签：首个决策终结其余 PENDING 任务，立即按该决策推进
+        await prisma.processTask.updateMany({
+          where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+          data: { status: 'CANCELLED', completedAt: new Date() },
+        });
+        this.logger.log(
+          `或签节点 ${task.nodeId} 由任务 ${taskId} 决策（${decisionUpper}）终结，取消 ${pendingCount} 个并行任务`,
+        );
+        // 落到下方正常推进逻辑（isRejected/isApproved 已按首个决策确定）
+      } else if (approvalMode === 'countersign') {
+        if (isRejected) {
+          // 会签任一拒绝：立即驳回，取消其余 PENDING
+          await prisma.processTask.updateMany({
+            where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+            data: { status: 'CANCELLED', completedAt: new Date() },
+          });
+          this.logger.log(`会签节点 ${task.nodeId} 任一拒绝，取消 ${pendingCount} 个并行任务`);
+        } else if (pendingCount > 0) {
+          // 还有未决任务：不推进，等齐（无需写变量——决策已在任务行上）
+          this.logger.log(
+            `会签节点 ${task.nodeId} 进度 ${approvedCount}/${siblingTasks.length}，等待剩余 ${pendingCount} 任务`,
+          );
+          return;
+        }
+        // 全部 approved → 落到下方正常推进
+      } else if (approvalMode === 'sequential') {
+        if (isRejected) {
+          // 依次审批任一环节拒绝：直接按驳回推进
+          this.logger.log(`依次审批节点 ${task.nodeId} 发生拒绝，驳回`);
+        } else {
+          // 进度真值 = 节点变量 sequentialIndex（当前完成人的下标+1 指向下一位），
+          // 不用任务行计数（驳回重跳/加签会产生历史任务导致计数失真）。
+          // 语义：sequentialIndex 指向"当前在审/刚审完"的人；approve 后 +1 指向下一人。
+          const nodeScope =
+            ((task.instance.variables as Record<string, unknown> | null)?.[task.nodeId] as
+              Record<string, unknown> | undefined) ?? {};
+          const currentIdx =
+            typeof nodeScope['sequentialIndex'] === 'number'
+              ? (nodeScope['sequentialIndex'] as number)
+              : 0;
+          const nextIndex = currentIdx + 1;
+          if (nextIndex < approveUsers.length) {
+            // 未到最后一人：推进进度下标，生成下一人任务
+            const seqVars = (task.instance.variables as Record<string, unknown>) ?? {};
+            await prisma.processInstance.update({
+              where: { id: task.instance.id },
+              data: {
+                variables: {
+                  ...seqVars,
+                  [task.nodeId]: { ...nodeScope, sequentialIndex: nextIndex },
+                } as Prisma.InputJsonValue,
+              },
+            });
+            await prisma.processTask.create({
+              data: {
+                tenantId: task.tenantId,
+                instanceId: task.instanceId,
+                nodeExecutionId: task.nodeExecutionId,
+                nodeId: task.nodeId,
+                taskName: task.taskName,
+                assignee: approveUsers[nextIndex]!,
+                candidateGroups: [],
+                status: 'PENDING',
+              },
+            });
+            this.logger.log(
+              `依次审批节点 ${task.nodeId} 进入第 ${nextIndex + 1}/${approveUsers.length} 人`,
+            );
+            return;
+          }
+          // 最后一人 approved → 落到下方正常推进
+          this.logger.log(`依次审批节点 ${task.nodeId} 全部 ${approveUsers.length} 人通过`);
+        }
+      }
+    }
+
     // 实例状态推进与 worker 的令牌推进互斥（同进程内）
-    await this.withInstanceLock(task.instance.id, async () => {
+    // 锁回调返回 false = 聚合未完成（会签等待中），跳过令牌推进
+    const lockResult = await this.withInstanceLock(task.instance.id, async (): Promise<boolean> => {
       // B2 修复：锁内重新加载实例，确保拿到最新 activeNodeIds/variables。
       // 此前使用锁外读取的 task.instance.* 快照，并行双任务会读到相同快照
       // 导致后写入者覆盖先写入者的令牌（令牌丢失 → 实例卡死）。
@@ -524,6 +631,21 @@ export class ProcessEngine {
         formData,
         assignee: userId,
       });
+
+      // R1.3 会签并发封窗：锁内重验同节点 PENDING——聚合判定在锁外读数存在
+      // 竞态窗口（两个会签任务并发 complete 双推进），以锁内为准做最终裁决。
+      // 或签的兄弟任务已被锁外取消，这里 PENDING 计数自然为 0，不受影响。
+      if (approvalMode === 'countersign' && isApproved) {
+        const stillPending = await prisma.processTask.count({
+          where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+        });
+        if (stillPending > 0) {
+          this.logger.log(
+            `会签节点 ${task.nodeId} 锁内重验仍有 ${stillPending} 个 PENDING，等待（防并发双推进）`,
+          );
+          return false;
+        }
+      }
 
       const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
       const currentActive = (instance.activeNodeIds as string[]) ?? [];
@@ -583,7 +705,12 @@ export class ProcessEngine {
         decisionUpper,
         comment,
       );
+      return true;
     });
+
+    // 锁回调返回 false = 聚合未完成（会签等待），不推进令牌
+    const shouldAdvance = await lockResult;
+    if (!shouldAdvance) return;
 
     // 异步入队：由 BullMQ Worker 消费推进令牌
     await this.processQueue.add('execute', { instanceId: task.instance.id }, DEFAULT_JOB_OPTS);

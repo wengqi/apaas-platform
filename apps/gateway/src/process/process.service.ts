@@ -677,6 +677,121 @@ export class ProcessService {
   }
 
   /**
+   * 撤回流程实例（R1.3）——发起人撤回仍在审批中的实例。
+   * 权限：仅实例发起人（triggerContext.triggeredByUser / startedBy）可撤回；
+   * 语义：复用 cancelProcess（全部待办作废，实例 TERMINATED），撤回不可逆。
+   */
+  async withdrawInstance(tenantId: string, instanceId: string, userId: string) {
+    const instance = await prisma.processInstance.findFirst({
+      where: { id: instanceId, tenantId },
+      select: { id: true, status: true, triggerContext: true },
+    });
+    if (!instance) throw new NotFoundException('流程实例不存在');
+
+    const triggerCtx = (instance.triggerContext as Record<string, unknown> | null) ?? {};
+    const initiator =
+      typeof triggerCtx['triggeredByUser'] === 'string'
+        ? (triggerCtx['triggeredByUser'] as string)
+        : typeof triggerCtx['startedBy'] === 'string'
+          ? (triggerCtx['startedBy'] as string)
+          : null;
+    if (!initiator || initiator !== userId) {
+      throw new ForbiddenException('仅流程发起人可撤回');
+    }
+    if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
+      throw new BadRequestException({ code: 'CONFLICT', message: '流程已结束或已取消，无法撤回' });
+    }
+
+    await this.engine.cancelProcess(instanceId, tenantId);
+    return { withdrawn: true };
+  }
+
+  /**
+   * 加签（R1.3）——在当前审批任务上临时追加审批人。
+   * - after（默认）：在被签人之后依次补审——将目标用户插入该节点 approveUsers
+   *   当前进度位之后，并把新任务排在当前批次完成后生成（sequential 语义扩展）。
+   * - parallel：立即为目标用户创建并行 PENDING 任务（并入会签批次）。
+   * 权限：仅当前任务受理人可加签。
+   */
+  async addSign(
+    tenantId: string,
+    taskId: string,
+    userId: string,
+    addUserId: string,
+    position: 'after' | 'parallel',
+  ) {
+    const task = await prisma.processTask.findFirst({
+      where: { id: taskId, tenantId },
+      include: { instance: { include: { processDef: true } } },
+    });
+    if (!task) throw new NotFoundException('任务不存在');
+    if (task.status !== 'PENDING') {
+      throw new BadRequestException({ code: 'CONFLICT', message: '任务已完成或已取消' });
+    }
+    await this.assertTaskMembership(task, userId);
+
+    const addSignUser = await prisma.user.findFirst({
+      where: { id: addUserId, tenantId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!addSignUser) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '加签用户不存在或已停用',
+      });
+    }
+
+    if (position === 'parallel') {
+      // 并行加签：直接并入当前批次（会签语义下与既有 PENDING 一起等齐）
+      await prisma.processTask.create({
+        data: {
+          tenantId,
+          instanceId: task.instanceId,
+          nodeExecutionId: task.nodeExecutionId,
+          nodeId: task.nodeId,
+          taskName: task.taskName,
+          assignee: addUserId,
+          candidateGroups: [],
+          status: 'PENDING',
+        },
+      });
+      return { added: true, position, assignee: addUserId };
+    }
+
+    // 依次加签：改写流程定义中该节点的 approveUsers，把加签人插到当前进度位之后。
+    // 进度位 = 节点变量 sequentialIndex（缺省 0）；当前在审的人保持在位，
+    // 加签人在其完成后紧随补审。
+    const schema = task.instance.processDef.workflowSchema as {
+      nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
+    } | null;
+    const nodeDef = schema?.nodes?.find((n) => n.id === task.nodeId);
+    if (!nodeDef) throw new BadRequestException('节点定义不存在，无法加签');
+
+    const nodeScope =
+      ((task.instance.variables as Record<string, unknown> | null)?.[task.nodeId] as
+        Record<string, unknown> | undefined) ?? {};
+    const currentIdx =
+      typeof nodeScope['sequentialIndex'] === 'number'
+        ? (nodeScope['sequentialIndex'] as number)
+        : 0;
+    const users = Array.isArray(nodeDef.data?.['approveUsers'])
+      ? ([...((nodeDef.data?.['approveUsers'] as string[]) ?? [])] as string[])
+      : [userId];
+    if (!users.includes(addUserId)) {
+      users.splice(currentIdx + 1, 0, addUserId);
+      nodeDef.data = { ...nodeDef.data, approveUsers: users };
+      await prisma.processDef.update({
+        where: { id: task.instance.processDefId },
+        data: { workflowSchema: (schema ?? {}) as object },
+      });
+    }
+
+    // 依次语义下为加签人即时生成后续任务由 completeTask 推进时生成——
+    // 这里只改定义；当前任务完成后引擎按新 approveUsers 顺序继续。
+    return { added: true, position, approveUsers: users };
+  }
+
+  /**
    * 校验当前用户是否为任务的受理人或候选组成员。
    * assignee 可能存 userId 或邮箱，均需匹配；candidateGroups 存角色 ID（含组织授权）。
    */

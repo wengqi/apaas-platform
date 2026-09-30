@@ -4,7 +4,7 @@
  * 对应 process.controller.ts 中内联的 @Body() 类型。
  */
 
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CompleteTaskDto {
@@ -27,4 +27,18 @@ export class DelegateTaskDto {
   @ApiProperty({ example: 'user_xxx', description: '被转办人用户 ID' })
   @IsString()
   delegatedTo!: string;
+}
+
+export class AddSignDto {
+  @ApiProperty({ example: 'user_xxx', description: '加签目标用户 ID' })
+  @IsString()
+  userId!: string;
+
+  @ApiPropertyOptional({
+    example: 'after',
+    description: '加签位置：after=在被签人之后依次补审（默认）；parallel=并行会签补审',
+  })
+  @IsOptional()
+  @IsIn(['after', 'parallel'])
+  position?: 'after' | 'parallel';
 }

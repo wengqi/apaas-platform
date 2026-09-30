@@ -403,15 +403,19 @@ function generateContractApprovalWorkflow(adminUserId: string): Record<string, u
       },
     ],
     edges: [
-      { sourceNodeID: 'start_0', targetNodeID: 'condition_amount' },
       {
         // 金额条件分支在 start 之后、审批之前（引擎在 split 处求值分支条件）
         sourceNodeID: 'start_0',
         targetNodeID: 'user_task_countersign',
         label: '≥100万',
-        condition: '{"==":[{"if":[{"<":[{"var":"amount"},1000000]},true,false]},true]}',
+        condition: '{"or":[{"<=":[1000000,{"var":"amount"}]}]}',
       },
-      { sourceNodeID: 'start_0', targetNodeID: 'user_task_minor', label: '<100万' },
+      {
+        sourceNodeID: 'start_0',
+        targetNodeID: 'user_task_minor',
+        label: '<100万',
+        condition: '{"<":[{"var":"amount"},1000000]}',
+      },
       { sourceNodeID: 'user_task_countersign', targetNodeID: 'user_task_final' },
       { sourceNodeID: 'user_task_final', targetNodeID: 'condition_0' },
       { sourceNodeID: 'user_task_minor', targetNodeID: 'condition_0' },

@@ -218,6 +218,8 @@ export class TriggerService implements OnModuleInit {
           recordId: recordData['id'] ?? null,
           record: recordData,
           triggeredBy: triggerType,
+          // 发起人（撤回权限/操作者语义依赖）：记录创建人
+          triggeredByUser: recordData['created_by'] ?? null,
           inputs,
         };
 

@@ -36,6 +36,7 @@
 | [REMEDIATION-2026-09-26](./REMEDIATION-2026-09-26.md) | 2026-09-26 | 评审整改记录（评审→修复→验证对照：安全 / 引擎与数据 / 产品与前端 / 质量 / 规范五类闭环，遗留项归类为技术边界与设计取舍）|
 | [OSS-SELECTION-VERIFICATION-2026-09-30](./OSS-SELECTION-VERIFICATION-2026-09-30.md) | 2026-09-30 | 产品重构方向选型核实（amis/formily/NocoBase/OpenTiny/lowcode-engine 源码-协议-活跃度实证 + 表单模块痛点根因 + 两轮方向讨论结论 → ADR-0003）|
 | [SPIKE-AMIS-ADOPTION-2026-09-30](./SPIKE-AMIS-ADOPTION-2026-09-30.md) | 2026-09-30 | R1.S 准入 Spike 双通过（S1a antd 主题贴合生产级 / S1b 生成合法率首过 80% 一轮修正 100%；官方 schema.json 不可机判、mobx 版本矩阵/去 StrictMode 等集成红线；GO → P0 立项）|
+| [STATUS-MATRIX-2026-09-30](./STATUS-MATRIX-2026-09-30.md) | 2026-09-30 | 状态矩阵（ADR-0003 方向修订 + P0 全量落地：R1.S/S2-S5/G3 ✅；e2e 68/68、单测 834；P1 待推进）|
 
 ## 文档维护规则
 

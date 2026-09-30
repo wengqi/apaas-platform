@@ -219,7 +219,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 ## 当前阶段（2026-09-30 方向修订快照，基线为 2026-09-27 定位修订）
 
-- 🔄 **产品方向修订（ADR-0003，2026-09-30）**：两轮会话问答收敛——产品论 = 受约束的 AI 应用生成底座；AI 生成/MCP 排除条款撤销（新 R1.S spike / R1.6 AI 生成接口 / R1.7 页面层 amis 迁移）；治理闸门 = 全环境人审；界面层 = amis 单方言三用法（不引入 formily）；R1.3 升 P0 首位并绑定采购合同验收应用；底座自建瘦身 ~50k 行。蓝图 docs/design/DESIGN-refactor-blueprint-2026-09-30.md；选型证据 docs/knowledge-base/OSS-SELECTION-VERIFICATION-2026-09-30.md；**P0-P2 工程实施待分阶段立项，下一步 = R1.S 两项 spike**
+- 🔄 **产品方向修订（ADR-0003，2026-09-30）**：产品论 = 受约束的 AI 应用生成底座；AI 生成/MCP 排除条款撤销（R1.S / R1.6 AI 生成接口 / R1.7 页面层 amis 迁移）；治理闸门 = 全环境人审；界面层 = amis 单方言（**一切界面皆页面**，不设页面/表单之分）；底座自建瘦身 ~50k 行。蓝图 docs/design/DESIGN-refactor-blueprint-2026-09-30.md
+- ✅ **P0 全量落地（2026-09-30）**：R1.S spike 双通过 GO；S2 amis 接入 runtime-ui（审批页面渲染链路）；S3 R1.3 审批语义（会签/或签/依次聚合+锁内并发封窗+加签/撤回+页面绑定+出入参）；S4/S5 采购合同验收应用全链路 e2e 验证——**R1.3 ✅ R1.5 ✅（e2e 68/68、单测 834）**；G3 Schema 校验合同 ✅（自建三校验器，25 单测）。状态矩阵：docs/knowledge-base/STATUS-MATRIX-2026-09-30.md。**P1 待推进：G4 MCP（前置就绪）→ R1.2 → R1.4 → G5 → G6**
 - ✅ 整改 PR #1 已合并 main（2026-09-27，CI 四 job 全绿）
 - ✅ 实地对标调研完成：docs/research/RESEARCH-feishu-apaas-live-benchmark-2026-09-27.md（36 项矩阵，实测对齐度 ~53%）
 - ✅ **定位修订（ADR-0002）**：企业内部真实使用 / 非飞书环境 / 先开发者后业务；新 P0 = 身份与组织对接层、草稿→提交版本模型、流程表单与审批语义、多环境化、端到端真实应用交付（见 ROADMAP 重规划节）

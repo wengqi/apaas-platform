@@ -21,7 +21,7 @@
 参与者         构建端（开发态 · studio SPA）                 运行端（运行时 · runtime-ui SPA / API 面）
 ──────   ┌─────────────────────────────────┐      ┌──────────────────────────────────┐
 开发者 ──▶│ 对象设计器✅   流程设计器✅(flowgram)  │      │ 应用门户/页面渲染 ✅ →🔵P2 amis渲染  │
-         │ 页面搭建器✅ →🔵P2 amis化(兜底)      │      │ 任务中心/审批 🔥P0(amis form渲染)   │
+         │ 页面搭建器✅ →🔵P2 amis化(兜底)      │      │ 任务中心/审批 🔥P0(渲染绑定页面)    │
 AI Agent │ 流程表单设计 🔥P0  权限中心✅         │      │ 消息中心(站内信/邮件)✅             │
 (平台外)  │ 审核中心 🟡P1(diff快审,人批闸门)     │      │ Open API 🟡P1(API Key+版本承诺)    │
   │      │ 版本/发布✅ →🟡P1(三级版本+hotfix谱系)│      └───────────────┬──────────────────┘
@@ -60,7 +60,7 @@ flowchart TB
     OBJ["对象设计器 ✅<br/>18字段/视图/公式/Rollup"]
     FLW["流程设计器 ✅<br/>flowgram.ai + 20节点物料"]
     PB["页面搭建器 ✅ → 🔵P2 amis化兜底"]
-    FD["流程表单设计 🔥P0<br/>amis form 绑定 user_task"]
+    FD["页面设计器（含表单页）🔥P0<br/>审批节点绑定页面"]
     RV["审核中心 🟡P1<br/>diff 快审 · 全环境人批闸门"]
     VR["版本/发布向导 ✅ → 🟡P1<br/>R1.2 谱系 + hotfix 取回"]
     PM["权限中心 ✅ / 连接器✅ / 数据集✅ / 云函数✅"]
@@ -68,7 +68,7 @@ flowchart TB
 
   subgraph Run[运行端 · 运行时]
     RT["页面渲染 ✅ → 🔵P2 amis渲染器+antd主题"]
-    TK["任务中心/审批 🔥P0<br/>amis form static(查看)/edit(补录)"]
+    TK["任务中心/审批 🔥P0<br/>渲染审批绑定的页面（查看/补录）"]
     OA["Open API 🟡G6<br/>API Key/服务身份 + 流程版本承诺"]
     MSG["门户/消息/通知 ✅"]
   end
@@ -109,7 +109,7 @@ flowchart TB
 | 对象设计器（18 字段类型/视图/公式/Rollup/Lookup/自动编号） | ✅ | ✅ 保留 |
 | 流程设计器（flowgram 单模式，20 节点物料 + 配置面板） | ✅ | ✅ + 🔥 R1.3 新审批节点属性 |
 | 页面/表单搭建器（dnd 画布+属性面板，86 组件） | ✅ | 🔵 P2 改造为 amis 兜底编辑器 |
-| **表单设计（与页面同一搭建器、同一实体；kind=form：对象字段绑定 + 审批节点挂载）** | ⬜ | 🔥 P0 |
+| **页面设计（统一概念：审批节点绑定的是页面——可以是纯表单页，也可以是含表单+关联信息的任意页面；同一搭建器、同一实体）** | ⬜ | 🔥 P0 |
 | **审核中心（AI/提交稿 diff 快审、按对象/流程/页面粒度、批/驳）** | ⬜ | 🟡 G1 验收项 |
 | 权限中心（角色/规则 fieldScope/组织授权） | ✅ | ✅ + 🟡 权限查询调试工具 |
 | 连接器管理 / 数据集画布 / 云函数 IDE / 通知模板 | ✅ | ✅ + 🟡 G5 数据集简化 |
@@ -136,7 +136,7 @@ flowchart TB
 | object / record | 对象元数据 + records JSONB 宽表（GIN、类型 cast 排序、公式/Rollup/AutoNumber） | ✅（GIN-LIKE 边界为遗留技术边界） |
 | permission | RBAC 五级 + ABAC 条件下推 + 组织继承扩散 | ✅（🟡 补权限调试工具） |
 | **process（引擎 + 执行器）** | 状态机 + BullMQ + Redis 锁 + 20 执行器；**R1.3：会签/或签/依次/加签/转办/撤回/流程表单/出入参** | ✅ + 🔥 |
-| page（界面元数据，统一承载页面与审批表单） | 页面/表单 schema CRUD + savepoint。**form 不是独立方言/模块**：amis 中 form 是 page 体系内的组件类型；审批表单 = 根组件为 form 的界面元数据，同表存储（`kind` 区分 page／form）、同搭建器、同校验器，随应用快照统一版本（无独立表单版本链） | ✅ + 🔥（P0 补 kind=form）+ 🔵（P2 方言切 amis） |
+| page（界面元数据） | 页面 schema CRUD + savepoint。**不设"页面/表单"两套概念**：amis 中 form 是 page 体系内组件类型，应用的一切界面都是页面；审批节点（user_task）绑定的是页面——可以是纯表单页，也可以是包含表单+关联信息的任意页面；同一搭建器、同一校验器，随应用快照统一版本 | ✅ + 🔥（P0 审批页面绑定）+ 🔵（P2 方言切 amis） |
 | page | 页面 schema CRUD + savepoint | ✅（🔵 P2 方言切 amis） |
 | application / version / environment | 发布快照/预检/回滚 → **R1.2 三级版本+谱系 / R1.4 environmentId 多环境** | ✅ + 🟡 |
 | **schema-contract（校验合同）** | 三类 JSON Schema 校验器（amis 表单/页面、WorkflowSchema、对象元数据）；非法即拒 | 🟡 G3（先于 G4） |
@@ -224,6 +224,6 @@ nginx(TLS/静态资源: studio+runtime-ui 构建产物)
 
 | 阶段 | 蓝图编号 | 对应本文模块 |
 |---|---|---|
-| P0 | S1 spike / S2 amis 表单通道 / S3 R1.3 审批语义 / S4 采购合同应用 / S5 e2e | §3 表单设计、§4 任务中心、§5 process/page 模块 |
+| P0 | S1 spike / S2 amis 渲染接入 / S3 R1.3 审批语义 / S4 采购合同应用 / S5 e2e | §3 页面设计、§4 任务中心、§5 process/page 模块 |
 | P1 | G1 版本+审核中心 / G2 多环境 / G3 校验合同 / G4 MCP / G5 数据下沉 / G6 Open API | §7 版本管控、§8 权限 AI 主体、§5 🟡 项 |
 | P2 | W1-W4 amis page/组件裁剪/搭建器改造/v1 迁移 | §3 搭建器、§4 页面渲染、§5 page 模块 |

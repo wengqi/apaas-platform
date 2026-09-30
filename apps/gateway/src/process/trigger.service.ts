@@ -204,12 +204,21 @@ export class TriggerService implements OnModuleInit {
 
       // 为每个匹配的流程启动实例
       for (const def of defs) {
+        // inputs：记录标量字段平铺到顶层，供流程边条件/模板直接引用
+        // （如金额条件分支 {"==":[{"var":"status"},"APPROVED"]}——startProcess 会把
+        //   inputs 展开到 variables 顶层，buildEvalScope 再合并入条件求值域）
+        const inputs: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(recordData)) {
+          if (v === null || v === undefined) continue;
+          if (typeof v !== 'object') inputs[k] = v;
+        }
         const triggerContext = {
           eventType,
           objectId,
           recordId: recordData['id'] ?? null,
           record: recordData,
           triggeredBy: triggerType,
+          inputs,
         };
 
         try {

@@ -109,7 +109,7 @@ flowchart TB
 | 对象设计器（18 字段类型/视图/公式/Rollup/Lookup/自动编号） | ✅ | ✅ 保留 |
 | 流程设计器（flowgram 单模式，20 节点物料 + 配置面板） | ✅ | ✅ + 🔥 R1.3 新审批节点属性 |
 | 页面/表单搭建器（dnd 画布+属性面板，86 组件） | ✅ | 🔵 P2 改造为 amis 兜底编辑器 |
-| **流程表单设计（amis form 编辑/对象字段绑定/审批节点挂载）** | ⬜ | 🔥 P0 |
+| **表单设计（与页面同一搭建器、同一实体；kind=form：对象字段绑定 + 审批节点挂载）** | ⬜ | 🔥 P0 |
 | **审核中心（AI/提交稿 diff 快审、按对象/流程/页面粒度、批/驳）** | ⬜ | 🟡 G1 验收项 |
 | 权限中心（角色/规则 fieldScope/组织授权） | ✅ | ✅ + 🟡 权限查询调试工具 |
 | 连接器管理 / 数据集画布 / 云函数 IDE / 通知模板 | ✅ | ✅ + 🟡 G5 数据集简化 |
@@ -136,7 +136,7 @@ flowchart TB
 | object / record | 对象元数据 + records JSONB 宽表（GIN、类型 cast 排序、公式/Rollup/AutoNumber） | ✅（GIN-LIKE 边界为遗留技术边界） |
 | permission | RBAC 五级 + ABAC 条件下推 + 组织继承扩散 | ✅（🟡 补权限调试工具） |
 | **process（引擎 + 执行器）** | 状态机 + BullMQ + Redis 锁 + 20 执行器；**R1.3：会签/或签/依次/加签/转办/撤回/流程表单/出入参** | ✅ + 🔥 |
-| **form（流程表单 schema）** | amis form schema 存取/版本/绑定（新建或并入 page 模块，P0 立项定） | 🔥 |
+| page（界面元数据，统一承载页面与审批表单） | 页面/表单 schema CRUD + savepoint。**form 不是独立方言/模块**：amis 中 form 是 page 体系内的组件类型；审批表单 = 根组件为 form 的界面元数据，同表存储（`kind` 区分 page／form）、同搭建器、同校验器，随应用快照统一版本（无独立表单版本链） | ✅ + 🔥（P0 补 kind=form）+ 🔵（P2 方言切 amis） |
 | page | 页面 schema CRUD + savepoint | ✅（🔵 P2 方言切 amis） |
 | application / version / environment | 发布快照/预检/回滚 → **R1.2 三级版本+谱系 / R1.4 environmentId 多环境** | ✅ + 🟡 |
 | **schema-contract（校验合同）** | 三类 JSON Schema 校验器（amis 表单/页面、WorkflowSchema、对象元数据）；非法即拒 | 🟡 G3（先于 G4） |
@@ -204,7 +204,7 @@ gitGraph
                                               → 🟡G1 审核中心 diff 快审 → 人批 → 发布
 ```
 
-- 生成物为**四类元数据**（amis page / amis form / WorkflowSchema / 对象元数据），**不出码**；界面方言=amis（语料红利），流程/对象为自有方言（few-shot+校验器兜底）。
+- 生成物为**三类元数据**（界面元数据 = amis 方言，form 是其中的组件类型而非独立方言；WorkflowSchema；对象元数据），**不出码**；界面方言=amis（语料红利），流程/对象为自有方言（few-shot+校验器兜底）。
 - 规范传导四层：校验反馈闭环 / 工具参数即合同 / 规范 Resources 下发 / 服务端 few-shot。详见蓝图 G3/G4 补充节。
 - 准入门槛：R1.S 两项 spike（antd 主题贴合度 / LLM 生成 amis schema 合法率）。
 
@@ -224,6 +224,6 @@ nginx(TLS/静态资源: studio+runtime-ui 构建产物)
 
 | 阶段 | 蓝图编号 | 对应本文模块 |
 |---|---|---|
-| P0 | S1 spike / S2 amis 表单通道 / S3 R1.3 审批语义 / S4 采购合同应用 / S5 e2e | §3 流程表单设计、§4 任务中心、§5 process/form 模块 |
+| P0 | S1 spike / S2 amis 表单通道 / S3 R1.3 审批语义 / S4 采购合同应用 / S5 e2e | §3 表单设计、§4 任务中心、§5 process/page 模块 |
 | P1 | G1 版本+审核中心 / G2 多环境 / G3 校验合同 / G4 MCP / G5 数据下沉 / G6 Open API | §7 版本管控、§8 权限 AI 主体、§5 🟡 项 |
 | P2 | W1-W4 amis page/组件裁剪/搭建器改造/v1 迁移 | §3 搭建器、§4 页面渲染、§5 page 模块 |

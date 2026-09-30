@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ProcessEngine } from './process-engine.js';
 import { UserTaskExecutor } from './node-executors/user-task.executor.js';
 import { ProcessService } from './process.service.js';
@@ -407,5 +407,191 @@ describe('R1.3 撤回 — withdrawInstance', () => {
     const result = await service.withdrawInstance('t1', 'inst-1', 'owner-1');
     expect(result).toEqual({ withdrawn: true });
     expect(engine.cancelProcess).toHaveBeenCalledWith('inst-1', 't1');
+  });
+});
+
+describe('R1.3 加签 — addSign', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.processTask.findFirst.mockResolvedValue(null);
+    prisma.user.findFirst.mockResolvedValue({ id: 'add-signer' });
+    prisma.processTask.create.mockResolvedValue({});
+    prisma.processDef.update.mockResolvedValue({});
+  });
+
+  function makeService(task: Record<string, unknown> | null) {
+    const engine = { cancelProcess: vi.fn().mockResolvedValue(undefined) };
+    const service = new ProcessService(
+      engine as unknown as ConstructorParameters<typeof ProcessService>[0],
+      {} as unknown as ConstructorParameters<typeof ProcessService>[1],
+      {} as unknown as ConstructorParameters<typeof ProcessService>[2],
+    );
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    return { service, engine };
+  }
+
+  const baseTask = () =>
+    makeProcessTask({
+      id: 't1',
+      status: 'PENDING',
+      assignee: 'owner',
+      nodeId: 'ut1',
+      instance: makeProcessInstance({
+        id: 'inst-1',
+        variables: { ut1: { sequentialIndex: 0 } },
+        processDef: makeProcessDef({
+          workflowSchema: {
+            nodes: [
+              {
+                id: 'ut1',
+                type: 'user_task',
+                data: { taskName: 'x', approvalMode: 'sequential', approveUsers: ['owner'] },
+              },
+            ],
+            edges: [],
+          },
+        }),
+      }),
+    });
+
+  it('非 PENDING 任务加签 → CONFLICT', async () => {
+    const { service } = makeService(baseTask());
+    prisma.processTask.findFirst.mockResolvedValue({
+      ...baseTask(),
+      status: 'APPROVED',
+    });
+    await expect(service.addSign('t1', 't1', 'owner', 'u9', 'after')).rejects.toThrow(
+      '已完成或已取消',
+    );
+  });
+
+  it('加签用户不存在 → VALIDATION_ERROR', async () => {
+    const { service } = makeService(baseTask());
+    prisma.user.findFirst.mockResolvedValue(null);
+    await expect(service.addSign('t1', 't1', 'owner', 'ghost', 'parallel')).rejects.toThrow(
+      '加签用户不存在',
+    );
+  });
+
+  it('parallel 加签 → 立即创建并行 PENDING 任务', async () => {
+    const { service } = makeService(baseTask());
+    const r = await service.addSign('t1', 't1', 'owner', 'add-signer', 'parallel');
+    expect(r).toEqual({ added: true, position: 'parallel', assignee: 'add-signer' });
+    expect(prisma.processTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignee: 'add-signer', status: 'PENDING' }),
+      }),
+    );
+    // 并行加签不改流程定义
+    expect(prisma.processDef.update).not.toHaveBeenCalled();
+  });
+
+  it('after 加签 → 插入 approveUsers 当前进度位之后并写回定义', async () => {
+    const { service } = makeService(baseTask());
+    const r = await service.addSign('t1', 't1', 'owner', 'add-signer', 'after');
+    expect(r.added).toBe(true);
+    expect(prisma.processDef.update).toHaveBeenCalledTimes(1);
+    const call = prisma.processDef.update.mock.calls[0]![0] as {
+      data: {
+        workflowSchema: { nodes: Array<{ id: string; data: { approveUsers: string[] } }> };
+      };
+    };
+    const node = call.data.workflowSchema.nodes.find((n) => n.id === 'ut1')!;
+    expect(node.data.approveUsers).toEqual(['owner', 'add-signer']);
+  });
+});
+
+describe('实例启动与查询 — startInstance/getInstance', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeService() {
+    const engine = {
+      startProcess: vi.fn().mockResolvedValue('inst-1'),
+      cancelProcess: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new ProcessService(
+      engine as unknown as ConstructorParameters<typeof ProcessService>[0],
+      {} as unknown as ConstructorParameters<typeof ProcessService>[1],
+      {} as unknown as ConstructorParameters<typeof ProcessService>[2],
+    );
+    return { service, engine };
+  }
+
+  it('startInstance 传递 MANUAL 触发上下文与 inputs 并回查实例详情', async () => {
+    const instance = makeProcessInstance({ id: 'inst-1' });
+    const { service, engine } = makeService();
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    prisma.processTask.findMany.mockResolvedValue([]);
+
+    const dto = { variables: { amount: 356000 }, triggeredByUser: 'u1' };
+    await service.startInstance('t1', 'def-1', dto);
+
+    expect(engine.startProcess).toHaveBeenCalledWith(
+      't1',
+      'def-1',
+      expect.objectContaining({
+        triggerType: 'MANUAL',
+        triggeredByUser: 'u1',
+        inputs: { amount: 356000 },
+      }),
+    );
+  });
+});
+
+describe('通知模版 CRUD — update/delete', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.notificationTemplate.update.mockResolvedValue({ updatedAt: new Date() });
+    prisma.notificationTemplate.delete.mockResolvedValue({});
+  });
+
+  function makeService() {
+    return new ProcessService(
+      { cancelProcess: vi.fn() } as unknown as ConstructorParameters<typeof ProcessService>[0],
+      {} as unknown as ConstructorParameters<typeof ProcessService>[1],
+      {} as unknown as ConstructorParameters<typeof ProcessService>[2],
+    );
+  }
+
+  it('updateTemplate 不存在 → NotFoundException', async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue(null);
+    const service = makeService();
+    await expect(service.updateTemplate('t1', 'tpl-404', { name: 'x' })).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('updateTemplate 更新名称与渠道', async () => {
+    const templateRow = {
+      id: 'tpl-1',
+      name: '新名',
+      channel: 'EMAIL',
+      titleTemplate: '',
+      bodyTemplate: '',
+      variables: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    prisma.notificationTemplate.findFirst.mockResolvedValue(templateRow);
+    const service = makeService();
+    const r = await service.updateTemplate('t1', 'tpl-1', { name: '新名', channel: 'EMAIL' });
+    expect(r.name).toBe('新名');
+    expect(prisma.notificationTemplate.update).toHaveBeenCalled();
+  });
+
+  it('deleteTemplate 删除并返回确认', async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue({ id: 'tpl-1' });
+    const service = makeService();
+    const r = await service.deleteTemplate('t1', 'tpl-1');
+    expect(r).toEqual({ deleted: true });
+    expect(prisma.notificationTemplate.delete).toHaveBeenCalledWith({ where: { id: 'tpl-1' } });
   });
 });

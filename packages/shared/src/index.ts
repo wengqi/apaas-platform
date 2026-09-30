@@ -18,6 +18,9 @@ export * from './page/index.js';
 // 流程引擎
 export * from './process/index.js';
 
+// Schema 校验合同（G3：AI 产出的元数据合法性契约）
+export * from './schema-contract/index.js';
+
 // 权限（Phase 4 补充）
 export * from './permission/index.js';
 

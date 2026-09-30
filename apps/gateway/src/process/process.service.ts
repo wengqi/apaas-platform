@@ -574,7 +574,9 @@ export class ProcessService {
             status: true,
             variables: true,
             triggerContext: true,
-            processDef: { select: { name: true, apiName: true } },
+            processDef: {
+              select: { name: true, apiName: true, workflowSchema: true },
+            },
           },
         },
       },
@@ -587,7 +589,17 @@ export class ProcessService {
       await this.assertTaskMembership(task, userId);
     }
 
-    return task;
+    // R1.3 审批页面绑定：从流程定义 WorkflowSchema 中读取该节点绑定的页面 ID。
+    // 一切界面皆页面（ADR-0003）：user_task 绑定的是页面，可含表单或关联信息；
+    // 未绑定返回 null，任务中心回退默认审批 UI。
+    const defSchema = task.instance.processDef.workflowSchema as {
+      nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
+    } | null;
+    const nodeDef = defSchema?.nodes?.find((n) => n.id === task.nodeId);
+    const boundPageId =
+      typeof nodeDef?.data?.['pageId'] === 'string' ? (nodeDef.data['pageId'] as string) : null;
+
+    return { ...task, boundPageId };
   }
 
   /** 完成任务（审批）。 */

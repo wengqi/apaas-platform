@@ -33,7 +33,7 @@
 | # | 任务 | 说明 |
 |---|------|------|
 | S1 | **前置 spike ×2（P0 准入门槛）** | ① amis antd 主题视觉贴合度实测（关键页面截图对比）；② LLM 生成 amis schema 合法率 vs 自有 PageSchema 对比（同一需求，多轮采样）。任一不过 → 回到 ADR-0003 重新评估 |
-| S2 | amis 渲染器接入（审批页面先行） | runtime 引入 amis（锁版本；**必须配 mobx@4.15.7 + mobx-react-lite@2.2.2 + 去 StrictMode**，见知识库 spike 记录）；审批页面 = 审批节点绑定的页面（可含表单，与普通页面同实体同校验），数据域绑定 vm.record；页面内 form 的 static 只读态承接"审批查看"，补录态=可编辑 |
+| S2 | amis 渲染器接入（审批页面先行） | ✅ 完成（2026-09-30）：runtime-ui 引入 amis@6.13.0 + amis-ui/amis-core（pnpm 隔离需显式声明）+ mobx@4.15.7/mobx-react-lite@2.2.2（spike 红线）；AmisRenderer（antd 主题/zh-CN/平台 fetcher 响应适配）+ ApprovalPageRenderer（user_task 绑定页面渲染，未绑定回退默认审批 UI）；getTask 返回 boundPageId（从 WorkflowSchema 节点 data.pageId 读取）；任务中心弹窗接入；runtime-ui 新增 vitest（jsdom+stub amis 运行时）8 单测，gateway 537 回归全绿 |
 | S3 | R1.3 审批语义补齐 | 审批人分环境配置、**会签/或签/依次**、加签/转办/撤回、审批结果变量；**流程页面**：user_task 节点绑定页面（页面内 form 提交=completeTask，支持保存草稿）；**流程出入参** |
 | S4 | 采购合同应用骨架 | 对象建模：供应商/合同/审批台账（合同附件=attachment 字段）；流程：提交→金额条件分支→多级顺序审批（含会签节点）→归档→通知；台账页面+简单报表 |
 | S5 | e2e 验收链路 | 验收应用全链路：表单提交→条件分支路由→会签/或签行为→撤回/加签→归档→台账/报表可见 |

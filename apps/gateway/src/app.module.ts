@@ -18,6 +18,8 @@ import { CloudFunctionModule } from './cloud-function/cloud-function.module.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { SchemaContractModule } from './schema-contract/schema-contract.module.js';
 import { ReviewModule } from './review/review.module.js';
+import { ServiceIdentityModule } from './service-identity/service-identity.module.js';
+import { OpenApiModule } from './open-api/open-api.module.js';
 import { EnvironmentCoreModule } from './environment/environment-core.module.js';
 import { EnvironmentModule } from './environment/environment.module.js';
 import { McpModule } from './mcp/mcp.module.js';
@@ -54,6 +56,12 @@ import { envValidation } from './config/env.validation.js';
         ttl: Number(process.env.THROTTLE_TTL_MS) || 60_000,
         limit: Number(process.env.THROTTLE_AUTH_LIMIT) || 10,
       },
+      {
+        // G6 开放 API（/api/v1/open/*，X-API-Key 外部调用）
+        name: 'open',
+        ttl: Number(process.env.THROTTLE_TTL_MS) || 60_000,
+        limit: Number(process.env.THROTTLE_OPEN_LIMIT) || 120,
+      },
     ]),
     AuthModule,
     TenantModule,
@@ -72,6 +80,8 @@ import { envValidation } from './config/env.validation.js';
     ReviewModule,
     EnvironmentCoreModule,
     EnvironmentModule,
+    ServiceIdentityModule,
+    OpenApiModule,
     McpModule,
   ],
   controllers: [HealthController],

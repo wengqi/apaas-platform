@@ -50,6 +50,13 @@ export const qk = {
   /** 环境变量定义 + 指定环境的值 */
   envVars: (appId: string, envKey: string) => ['env-vars', appId, envKey] as const,
 
+  // —— 开放 API（G6）——
+  /** 服务身份列表 */
+  serviceIdentities: (appId: string) => ['service-identities', appId] as const,
+  /** 流程 API 版本发布列表（按流程） */
+  apiReleases: (appId: string, processDefId: string) =>
+    ['api-releases', appId, processDefId] as const,
+
   // —— 对象级 ——
   /** 对象详情（含字段定义） */
   object: (objectId: string) => ['object', objectId] as const,

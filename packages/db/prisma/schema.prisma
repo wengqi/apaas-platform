@@ -48,6 +48,8 @@ model Tenant {
   deployments           Deployment[]
   envVarDefs            EnvVarDef[]
   envVarValues          EnvVarValue[]
+  serviceIdentities     ServiceIdentity[]
+  processApiReleases    ProcessApiRelease[]
   changeLogs            ChangeLog[]
   appChecks             AppCheck[]
   inAppMessages         InAppMessage[]
@@ -162,6 +164,7 @@ model Application {
   environments          AppEnvironment[]
   deployments           Deployment[]
   envVarDefs            EnvVarDef[]
+  processApiReleases    ProcessApiRelease[]
   changeLogs            ChangeLog[]
   checks                AppCheck[]
   connectors            Connector[]
@@ -978,6 +981,67 @@ model AutoNumberCounter {
   @@unique([objectId, prefix, environmentId])
   @@index([tenantId])
   @@map("auto_number_counters")
+}
+
+// ============================================================================
+// 十二、纯流程 API（G6）—— 服务身份（入站 API Key）/ 流程 API 版本发布
+// ============================================================================
+
+/// 服务身份（G6）：外部系统以 X-API-Key 调用开放 API 的主体。
+/// keyHash = sha256(完整 key)，明文仅创建时返回一次；keyPrefix 供列表识别。
+model ServiceIdentity {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  // 可选绑定应用（省略 = 租户级身份）
+  appId      String?  @map("app_id")
+  name       String
+  keyPrefix  String   @map("key_prefix")
+  keyHash    String   @unique @map("key_hash")
+  status     ServiceIdentityStatus @default(ACTIVE)
+  lastUsedAt DateTime? @map("last_used_at")
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("service_identities")
+}
+
+enum ServiceIdentityStatus {
+  ACTIVE
+  REVOKED
+}
+
+/// 流程 API 版本发布（G6 版本稳定性承诺）：apiName+major → 冻结 workflowSchema。
+/// v1 快照发布后永不修改；破坏性变更走新 major（旧 major 置 DEPRECATED 但仍可调用）。
+model ProcessApiRelease {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  appId          String   @map("app_id")
+  processDefId   String   @map("process_def_id")
+  apiName        String
+  majorVersion   Int      @map("major_version")
+  // 冻结的流程契约（workflowSchema + triggerType），发布后不可变
+  workflowSchema Json
+  triggerType    String   @map("trigger_type")
+  status         ProcessApiReleaseStatus @default(ACTIVE)
+  releasedBy     String   @map("released_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, apiName, majorVersion])
+  @@index([tenantId])
+  @@index([appId, apiName])
+  @@map("process_api_releases")
+}
+
+enum ProcessApiReleaseStatus {
+  ACTIVE
+  DEPRECATED
 }
 
 // ============================================================================

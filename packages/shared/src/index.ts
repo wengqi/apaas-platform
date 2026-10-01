@@ -27,6 +27,9 @@ export * from './review/index.js';
 // 多环境域（R1.4：环境指针 / 发布历史 / 应用环境变量 / ${env.*} 解析）
 export * from './environment/index.js';
 
+// 开放 API 域（G6：服务身份 / 流程 API 版本发布 / 开放触发契约）
+export * from './open-api/index.js';
+
 // 权限（Phase 4 补充）
 export * from './permission/index.js';
 

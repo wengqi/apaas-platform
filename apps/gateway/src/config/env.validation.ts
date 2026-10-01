@@ -80,6 +80,8 @@ export const envValidation = Joi.object({
   THROTTLE_TTL_MS: Joi.number().default(60_000),
   THROTTLE_DEFAULT_LIMIT: Joi.number().default(100),
   THROTTLE_AUTH_LIMIT: Joi.number().default(10),
+  // G6 开放 API 限流桶（/api/v1/open/*）
+  THROTTLE_OPEN_LIMIT: Joi.number().default(120),
 
   // ---- 日志 ----
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),

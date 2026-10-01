@@ -25,6 +25,13 @@ export function getMockTransaction(): ReturnType<typeof vi.fn> {
 }
 
 /**
+ * 获取 $queryRawUnsafe mock（G5：数据流引擎 raw SQL 路径）。
+ */
+export function getMockQueryRawUnsafe(): ReturnType<typeof vi.fn> {
+  return (globalThis as Record<string, unknown>).__mockQueryRawUnsafe as ReturnType<typeof vi.fn>;
+}
+
+/**
  * 创建一个 mock BullMQ Queue（用于 process-engine 测试）。
  * 返回 { add: vi.fn() }，模拟 BullMQ Queue 的 add 方法。
  */

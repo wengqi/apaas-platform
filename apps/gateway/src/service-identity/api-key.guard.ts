@@ -16,7 +16,8 @@ export class ApiKeyGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<Request & { user?: ServiceIdentityUser }>();
-    const apiKey = (req.headers['x-api-key'] ?? req.headers['X-API-Key']) as string | undefined;
+    // Node 将入站 header 统一小写，仅 x-api-key 键存在
+    const apiKey = req.headers['x-api-key'] as string | undefined;
     if (!apiKey) {
       throw new UnauthorizedException('缺少 X-API-Key 请求头');
     }

@@ -29,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { processesApi, type ProcessDef } from '../../api/processes.js';
 import { openApiAdminApi } from '../../api/open-api.js';
+import { qk } from '@apaas/shared/stores';
 import { getProcessStatusMeta, getTriggerMeta } from '../../constants/process.js';
 
 const { Text } = Typography;
@@ -59,7 +60,7 @@ export function ProcessCard({
   const [urlOpen, setUrlOpen] = useState(false);
   const [majorVersion, setMajorVersion] = useState<number>(1);
   const { data: releases = [] } = useQuery({
-    queryKey: ['api-releases', process.appId, process.id],
+    queryKey: qk.apiReleases(process.appId, process.id),
     queryFn: () => openApiAdminApi.listReleases(process.appId, process.id),
     enabled: urlOpen,
   });
@@ -74,7 +75,7 @@ export function ProcessCard({
         `已发布 v${r.majorVersion}${r.diff && r.diff.changeCount > 0 ? `（变更 ${r.diff.changeCount} 处）` : ''}`,
       );
       void queryClient.invalidateQueries({
-        queryKey: ['api-releases', process.appId, process.id],
+        queryKey: qk.apiReleases(process.appId, process.id),
       });
       setReleaseOpen(false);
       setUrlOpen(true);

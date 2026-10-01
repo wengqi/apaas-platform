@@ -121,6 +121,7 @@ export class OpenApiController {
         {
           triggerType: 'API',
           triggeredBy: 'API',
+          triggeredByUser: dto.triggeredByUser ?? null,
           serviceIdentityId: identity.serviceIdentityId,
           apiName,
           inputs: dto.inputs ?? {},

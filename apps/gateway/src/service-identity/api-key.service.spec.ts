@@ -94,6 +94,29 @@ describe('ApiKeyService', () => {
     await expect(svc.verify('ak_deadbeef')).rejects.toThrow(UnauthorizedException);
   });
 
+  it('revoke：where 含 tenantId（跨租户 id 不可命中——IDOR 防御）', async () => {
+    const svc = new ApiKeyService();
+    const prisma = getMockPrisma();
+    prisma.serviceIdentity.update.mockResolvedValue({
+      id: 'si-victim',
+      tenantId: 't-other',
+      appId: null,
+      name: 'x',
+      keyPrefix: 'ak_123',
+      status: 'REVOKED',
+      lastUsedAt: null,
+      createdBy: 'u1',
+      createdAt: new Date(),
+    });
+
+    await svc.revoke(TENANT, 'u1', 'si-victim');
+    // Layer 1 显式过滤：调用方租户必须进 where（$extends 白名单为 Layer 2 双保险）
+    expect(prisma.serviceIdentity.update).toHaveBeenCalledWith({
+      where: { id: 'si-victim', tenantId: TENANT },
+      data: { status: 'REVOKED' },
+    });
+  });
+
   it('revoke：置 REVOKED + 审计', async () => {
     const svc = new ApiKeyService();
     const prisma = getMockPrisma();
@@ -112,7 +135,7 @@ describe('ApiKeyService', () => {
     const r = await svc.revoke(TENANT, 'u1', 'si-1');
     expect(r.status).toBe('REVOKED');
     expect(prisma.serviceIdentity.update).toHaveBeenCalledWith({
-      where: { id: 'si-1' },
+      where: { id: 'si-1', tenantId: TENANT },
       data: { status: 'REVOKED' },
     });
   });

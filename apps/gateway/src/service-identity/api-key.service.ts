@@ -67,7 +67,7 @@ export class ApiKeyService {
 
   async revoke(tenantId: string, userId: string, identityId: string): Promise<ServiceIdentityDto> {
     const row = await prisma.serviceIdentity.update({
-      where: { id: identityId },
+      where: { id: identityId, tenantId },
       data: { status: 'REVOKED' },
     });
     writeAudit({

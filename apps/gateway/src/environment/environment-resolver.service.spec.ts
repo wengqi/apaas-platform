@@ -50,7 +50,7 @@ describe('resolve（降级链）', () => {
     const r = await svc.resolve(TENANT, APP, 'prod');
     expect(r.bundleMode).toBe(true);
     expect(r.versionId).toBe('v-1');
-    expect((r.bundle as { title: string }).title).toBe('hello');
+    expect(((r.bundle ?? {}) as { title: string }).title).toBe('hello');
   });
 
   it('无环境行 → 旧 publishedSnapshot 降级（bundleMode=false）', async () => {

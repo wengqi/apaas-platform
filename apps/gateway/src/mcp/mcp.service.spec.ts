@@ -1,10 +1,11 @@
 /**
- * McpService 单测（G4）——AI 写路径的治理不变量。
+ * McpService 单测（G4 + R1.2 治理轨道接入）——AI 写路径的治理不变量。
  *
  * 核心断言：
  * 1. 校验闸：非法 schema 被拒且返回结构化 issues（agent 自修正输入）
- * 2. 草稿不变量：submit_* 只创建/更新草稿，绝不触碰发布状态
+ * 2. 待审不变量：submit_* 一律进 R1.2 待审队列（PENDING），绝不直写活表
  * 3. 流程草稿的 pageId 跨引用校验（引用不存在的审批页面 → 拒绝）
+ * 4. 治理查询：list_review_submissions 透传审批状态与驳回意见
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -13,7 +14,8 @@ import { SchemaContractService } from '../schema-contract/schema-contract.servic
 import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
-import { getMockPrisma } from '../test/test-helpers.js';
+import { ReviewService } from '../review/review.service.js';
+import type { ResourceVersionListItemDto } from '@apaas/shared';
 
 /** 合法的 amis 页面 schema（审批页同构）。 */
 const validPageSchema = {
@@ -36,66 +38,97 @@ const invalidPageSchema = {
   body: [{ type: 'input-cascader', name: 'region', label: '地区' }],
 };
 
+function makePendingDto(
+  overrides?: Partial<ResourceVersionListItemDto>,
+): ResourceVersionListItemDto {
+  return {
+    id: 'sub-1',
+    appId: 'app-1',
+    module: 'PAGE',
+    entityId: null,
+    apiName: 'contract_form_v2',
+    name: '合同提交页',
+    versionNumber: 1,
+    status: 'PENDING',
+    source: 'AI_MCP',
+    submittedBy: 'ai-agent',
+    submittedVia: 'mcp',
+    baselineVersionId: null,
+    reviewedBy: null,
+    reviewedAt: null,
+    reviewComment: null,
+    createdAt: '2026-10-01T00:00:00.000Z',
+    diff: { changeCount: 1, summary: '新增 1 · 修改 0 · 删除 0', items: [] },
+    ...overrides,
+  };
+}
+
 function makeService() {
-  const prisma = getMockPrisma();
+  const reviewService = {
+    submitAiDraft: vi
+      .fn()
+      .mockImplementation(
+        async (
+          _tenantId: string,
+          input: { module: string; apiName: string; name: string; entityId?: string },
+        ) =>
+          makePendingDto({
+            module: input.module as ResourceVersionListItemDto['module'],
+            apiName: input.apiName,
+            name: input.name,
+            entityId: input.entityId ?? null,
+          }),
+      ),
+    listSubmissions: vi.fn().mockResolvedValue([makePendingDto()]),
+  };
   const pageService = {
-    create: vi.fn().mockResolvedValue({ id: 'page-new', isPublished: false }),
-    update: vi.fn().mockResolvedValue({ id: 'page-1', isPublished: false }),
+    create: vi.fn(),
+    update: vi.fn(),
     list: vi.fn().mockResolvedValue([{ id: 'page-real' }]),
     get: vi.fn(),
   };
   const processService = {
-    createProcess: vi.fn().mockResolvedValue({ id: 'proc-new', status: 'DRAFT' }),
-    updateProcess: vi.fn().mockResolvedValue({ id: 'proc-1', status: 'DRAFT' }),
+    createProcess: vi.fn(),
+    updateProcess: vi.fn(),
     listProcesses: vi.fn().mockResolvedValue([]),
     getProcess: vi.fn(),
   };
   const objectService = {
-    create: vi.fn().mockResolvedValue({
-      id: 'obj-new',
-      fields: [{ id: 'f0', apiName: 'created_by', isSystem: true }],
-    }),
+    create: vi.fn(),
   };
   const svc = new McpService(
     new SchemaContractService(),
     pageService as unknown as PageService,
     processService as unknown as ProcessService,
     objectService as unknown as ObjectService,
+    reviewService as unknown as ReviewService,
   );
-  return { svc, prisma, pageService, processService, objectService };
+  return { svc, reviewService, pageService, processService, objectService };
 }
 
 describe('MCP 校验闸（G3 前置）', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('validate_schema：非法 schema 返回 issues 且 ok=false', async () => {
-    const r = await new McpService(
-      new SchemaContractService(),
-      {} as PageService,
-      {} as ProcessService,
-      {} as ObjectService,
-    ).validateSchema('t1', 'amis_page', invalidPageSchema);
+    const { svc } = makeService();
+    const r = await svc.validateSchema('t1', 'amis_page', invalidPageSchema);
     expect(r.ok).toBe(false);
     expect(r.issues?.some((i) => i.code === 'TYPE_FORBIDDEN')).toBe(true);
   });
 
   it('validate_schema：合法 schema 通过', async () => {
-    const r = await new McpService(
-      new SchemaContractService(),
-      {} as PageService,
-      {} as ProcessService,
-      {} as ObjectService,
-    ).validateSchema('t1', 'amis_page', validPageSchema);
+    const { svc } = makeService();
+    const r = await svc.validateSchema('t1', 'amis_page', validPageSchema);
     expect(r.ok).toBe(true);
     expect(r.issues).toHaveLength(0);
   });
 });
 
-describe('MCP 页面草稿（submit_page_draft）', () => {
+describe('MCP 页面提交（submit_page_draft → 待审）', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('合法 schema → 创建草稿（isPublished 恒为 false 语义）', async () => {
-    const { svc, pageService } = makeService();
+  it('合法 schema → 进入待审队列（PENDING，不落活表）', async () => {
+    const { svc, reviewService, pageService } = makeService();
     const r = await svc.submitPageDraft('t1', 'ai-agent', {
       appId: 'app-1',
       apiName: 'contract_form_v2',
@@ -105,17 +138,26 @@ describe('MCP 页面草稿（submit_page_draft）', () => {
       objectId: 'obj-1',
     });
     expect(r.ok).toBe(true);
+    expect(r.status).toBe('PENDING');
+    expect(r.submissionId).toBe('sub-1');
     expect(r.published).toBe(false);
-    expect(pageService.create).toHaveBeenCalledWith(
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
       't1',
-      'app-1',
-      expect.objectContaining({ apiName: 'contract_form_v2', type: 'form_page' }),
-      'mcp:ai-agent',
+      expect.objectContaining({
+        module: 'PAGE',
+        appId: 'app-1',
+        apiName: 'contract_form_v2',
+        snapshot: expect.objectContaining({ type: 'form_page', objectId: 'obj-1' }),
+      }),
+      'ai-agent',
     );
+    // 治理不变量：提交不直写活表
+    expect(pageService.create).not.toHaveBeenCalled();
+    expect(pageService.update).not.toHaveBeenCalled();
   });
 
-  it('非法 schema → 拒绝且不落库', async () => {
-    const { svc, pageService } = makeService();
+  it('非法 schema → 拒绝且不进待审队列', async () => {
+    const { svc, reviewService } = makeService();
     const r = await svc.submitPageDraft('t1', 'ai-agent', {
       appId: 'app-1',
       apiName: 'bad_page',
@@ -124,12 +166,11 @@ describe('MCP 页面草稿（submit_page_draft）', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.issues?.length).toBeGreaterThan(0);
-    expect(pageService.create).not.toHaveBeenCalled();
-    expect(pageService.update).not.toHaveBeenCalled();
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
   });
 
-  it('传 pageId → 走更新路径', async () => {
-    const { svc, pageService } = makeService();
+  it('传 pageId → 更新语义（entityId 透传）', async () => {
+    const { svc, reviewService } = makeService();
     const r = await svc.submitPageDraft('t1', 'ai-agent', {
       appId: 'app-1',
       apiName: 'contract_form',
@@ -137,17 +178,16 @@ describe('MCP 页面草稿（submit_page_draft）', () => {
       schema: validPageSchema,
       pageId: 'page-1',
     });
-    expect(r.action).toBe('updated');
-    expect(pageService.update).toHaveBeenCalledWith(
+    expect(r.action).toBe('submitted_update');
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
       't1',
-      'page-1',
-      expect.objectContaining({ name: '合同提交页' }),
-      'mcp:ai-agent',
+      expect.objectContaining({ entityId: 'page-1' }),
+      'ai-agent',
     );
   });
 });
 
-describe('MCP 流程草稿（submit_workflow_draft）', () => {
+describe('MCP 流程提交（submit_workflow_draft → 待审）', () => {
   beforeEach(() => vi.clearAllMocks());
 
   const validWorkflow = {
@@ -166,8 +206,8 @@ describe('MCP 流程草稿（submit_workflow_draft）', () => {
     ],
   };
 
-  it('合法流程 → 创建 DRAFT', async () => {
-    const { svc, processService } = makeService();
+  it('合法流程 → 进入待审队列', async () => {
+    const { svc, reviewService, processService } = makeService();
     const r = await svc.submitWorkflowDraft('t1', 'ai-agent', {
       appId: 'app-1',
       apiName: 'contract_flow',
@@ -175,12 +215,17 @@ describe('MCP 流程草稿（submit_workflow_draft）', () => {
       workflowSchema: validWorkflow,
     });
     expect(r.ok).toBe(true);
-    expect(r.status).toBe('DRAFT');
-    expect(processService.createProcess).toHaveBeenCalled();
+    expect(r.status).toBe('PENDING');
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({ module: 'PROCESS', apiName: 'contract_flow' }),
+      'ai-agent',
+    );
+    expect(processService.createProcess).not.toHaveBeenCalled();
   });
 
   it('pageId 引用不存在的页面 → 拒绝（跨引用校验）', async () => {
-    const { svc, processService } = makeService();
+    const { svc, reviewService } = makeService();
     const badWorkflow = {
       ...validWorkflow,
       nodes: [
@@ -201,7 +246,7 @@ describe('MCP 流程草稿（submit_workflow_draft）', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.issues?.some((i) => i.message.includes('page-ghost'))).toBe(true);
-    expect(processService.createProcess).not.toHaveBeenCalled();
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
   });
 
   it('幽灵边（终点不存在）→ 拒绝', async () => {
@@ -227,22 +272,16 @@ describe('MCP 流程草稿（submit_workflow_draft）', () => {
   });
 });
 
-describe('MCP 对象草稿（submit_object_draft）', () => {
-  const prisma = getMockPrisma();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    prisma.objectMeta.findFirst.mockResolvedValue(null);
-    prisma.objectMeta.update.mockResolvedValue({});
-  });
+describe('MCP 对象提交（submit_object_draft → 待审）', () => {
+  beforeEach(() => vi.clearAllMocks());
 
   const validFields = [
     { apiName: 'contract_name', label: '合同名称', type: 'text', config: { maxLength: 150 } },
     { apiName: 'amount', label: '金额', type: 'currency', config: { number: { precision: 2 } } },
   ];
 
-  it('合法字段 → 创建对象并合并系统字段', async () => {
-    const { svc, objectService } = makeService();
+  it('合法字段 → 快照仅含业务字段，进入待审队列', async () => {
+    const { svc, reviewService, objectService } = makeService();
     const r = await svc.submitObjectDraft('t1', 'ai-agent', {
       appId: 'app-1',
       apiName: 'contract',
@@ -250,42 +289,22 @@ describe('MCP 对象草稿（submit_object_draft）', () => {
       fields: validFields,
     });
     expect(r.ok).toBe(true);
-    expect(r.action).toBe('created');
-    expect(objectService.create).toHaveBeenCalled();
-    // 合并后 = 系统字段 + 业务字段
-    const merged = prisma.objectMeta.update.mock.calls[0]![0] as {
-      data: { fields: Array<{ apiName?: string; isSystem?: boolean }> };
-    };
-    expect(merged.data.fields.some((f) => f.isSystem === true)).toBe(true);
-    expect(merged.data.fields.some((f) => f.apiName === 'amount')).toBe(true);
+    expect(r.status).toBe('PENDING');
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({
+        module: 'OBJECT',
+        snapshot: expect.objectContaining({
+          fields: expect.arrayContaining([expect.objectContaining({ apiName: 'amount' })]),
+        }),
+      }),
+      'ai-agent',
+    );
+    expect(objectService.create).not.toHaveBeenCalled();
   });
 
-  it('更新已存在对象 → 保留系统字段、替换业务字段', async () => {
-    prisma.objectMeta.findFirst.mockResolvedValue({
-      id: 'obj-1',
-      fields: [
-        { id: 'f0', apiName: 'created_by', label: '创建人', type: 'user', isSystem: true },
-        { apiName: 'old_field', label: '旧字段', type: 'text', isSystem: false },
-      ],
-    });
-    const { svc } = makeService();
-    const r = await svc.submitObjectDraft('t1', 'ai-agent', {
-      appId: 'app-1',
-      apiName: 'contract',
-      name: '采购合同',
-      fields: validFields,
-    });
-    expect(r.action).toBe('updated');
-    const merged = prisma.objectMeta.update.mock.calls[0]![0] as {
-      data: { fields: Array<{ apiName: string; isSystem?: boolean }> };
-    };
-    expect(merged.data.fields.some((f) => f.apiName === 'created_by' && f.isSystem)).toBe(true);
-    expect(merged.data.fields.some((f) => f.apiName === 'old_field')).toBe(false);
-    expect(merged.data.fields.some((f) => f.apiName === 'amount')).toBe(true);
-  });
-
-  it('非法字段类型 → 拒绝且不落库', async () => {
-    const { svc, objectService } = makeService();
+  it('非法字段类型 → 拒绝且不进待审队列', async () => {
+    const { svc, reviewService } = makeService();
     const r = await svc.submitObjectDraft('t1', 'ai-agent', {
       appId: 'app-1',
       apiName: 'bad_obj',
@@ -294,6 +313,21 @@ describe('MCP 对象草稿（submit_object_draft）', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.issues?.some((i) => i.code === 'UNKNOWN_TYPE')).toBe(true);
-    expect(objectService.create).not.toHaveBeenCalled();
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('MCP 治理查询（list_review_submissions）', () => {
+  it('透传提交单状态与驳回意见', async () => {
+    const { svc, reviewService } = makeService();
+    reviewService.listSubmissions.mockResolvedValue([
+      makePendingDto({ status: 'REJECTED', reviewComment: '金额字段命名不符合规范' }),
+    ]);
+    const r = await svc.listReviewSubmissions('t1', 'app-1');
+    expect(r.ok).toBe(true);
+    const submissions = r.submissions as Array<{ status: string; reviewComment: string | null }>;
+    expect(submissions[0]!.status).toBe('REJECTED');
+    expect(submissions[0]!.reviewComment).toBe('金额字段命名不符合规范');
+    expect(reviewService.listSubmissions).toHaveBeenCalledWith('t1', 'app-1');
   });
 });

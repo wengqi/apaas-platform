@@ -1,10 +1,11 @@
 /**
- * McpService — MCP 工具实现（G4/R1.6 AI 生成接口）。
+ * McpService — MCP 工具实现（G4/R1.6 AI 生成接口 + R1.2 治理轨道接入）。
  *
  * 定位：AI Agent 经 MCP 读写平台元数据的业务层。读 = 平台既有查询；
- * 写 = **仅草稿**（G1 治理轨道的合同闸 + 治理闸：AI 产出不发布，人工在
- * 搭建器审核/发布）。全部写入过 G3 SchemaContractService（非法即拒，
- * 结构化 issues 返回给 agent 自修正），并写业务审计（AI 操作可追溯）。
+ * 写 = **仅草稿提交**（G1 治理轨道：AI 产出一律 PENDING 待审，人工在审核
+ * 中心 diff 快审，批准后才落活表；驳回意见经 list_review_submissions 回传
+ * agent 自修正）。全部写入先过 G3 SchemaContractService（非法即拒，结构化
+ * issues 返回），并写业务审计（AI 操作可追溯）。
  *
  * 租户隔离：工具在 HTTP 请求上下文内执行，prisma $extends 自动注入
  * tenantId（ALS），tenantId 同时作为显式参数传入服务方法（双层防御）。
@@ -13,11 +14,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { prisma } from '@apaas/db';
 import type { SchemaKind, SchemaValidationResult } from '@apaas/shared';
-import type { PageSchema, PageType } from '@apaas/shared';
 import { SchemaContractService } from '../schema-contract/schema-contract.service.js';
 import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
+import { ReviewService } from '../review/review.service.js';
 import { writeAudit } from '../common/audit.js';
 
 /** MCP 工具的结构化返回（JSON-RPC result.content 前的数据负载）。 */
@@ -37,6 +38,7 @@ export class McpService {
     private readonly pageService: PageService,
     private readonly processService: ProcessService,
     private readonly objectService: ObjectService,
+    private readonly reviewService: ReviewService,
   ) {}
 
   // ===========================================================================
@@ -107,7 +109,7 @@ export class McpService {
   }
 
   // ===========================================================================
-  // 写工具（一律草稿；先过 G3 校验合同）
+  // 写工具（一律草稿提交；先过 G3 校验合同，再进 R1.2 待审队列）
   // ===========================================================================
 
   async submitPageDraft(
@@ -126,44 +128,45 @@ export class McpService {
     const check = this.schemaContract.validate('amis_page', args.schema);
     if (!check.valid) return this.rejected(check);
 
-    // schema 列为 JSONB：过渡期存 v1/amis 双方言（P2 统一 amis 后收窄类型）
-    const schemaJson = args.schema as unknown as PageSchema;
-    const result = args.pageId
-      ? await this.pageService.update(
-          tenantId,
-          args.pageId,
-          { name: args.name, schema: schemaJson },
-          `mcp:${userId}`,
-        )
-      : await this.pageService.create(
-          tenantId,
-          args.appId,
-          {
-            apiName: args.apiName,
-            name: args.name,
-            type: (args.type ?? 'custom') as PageType,
-            objectId: args.objectId ?? undefined,
-            schema: schemaJson,
-          },
-          `mcp:${userId}`,
-        );
+    // 提交快照为完整页面定义；批准前不触碰活表
+    const snapshot = {
+      apiName: args.apiName,
+      name: args.name,
+      type: args.type ?? 'custom',
+      objectId: args.objectId ?? null,
+      schema: args.schema as Record<string, unknown>,
+    };
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'PAGE',
+        appId: args.appId,
+        apiName: args.apiName,
+        name: args.name,
+        snapshot,
+        entityId: args.pageId,
+      },
+      userId,
+    );
 
     this.auditDraft(
       tenantId,
       userId,
       args.appId,
       'PAGE',
-      result.id,
+      submission.id,
       args.pageId ? 'update' : 'create',
     );
-    this.logger.log(
-      `MCP 页面草稿${args.pageId ? '更新' : '创建'}: ${result.id}（${args.apiName}）by ${userId}`,
-    );
+    this.logger.log(`MCP 页面草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
     return {
       ok: true,
-      pageId: result.id,
-      action: args.pageId ? 'updated' : 'created',
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      pageId: submission.entityId,
+      action: args.pageId ? 'submitted_update' : 'submitted_create',
       published: false,
+      hint: '已进入待审队列（未落活表）：人工在审核中心 diff 快审，批准后生效；可用 list_review_submissions 查询审批结果',
     };
   }
 
@@ -186,42 +189,43 @@ export class McpService {
     const check = this.schemaContract.validate('workflow', args.workflowSchema, { pageIds });
     if (!check.valid) return this.rejected(check);
 
-    const result = args.processId
-      ? await this.processService.updateProcess(
-          tenantId,
-          args.processId,
-          { name: args.name, workflowSchema: args.workflowSchema as Record<string, unknown> },
-          `mcp:${userId}`,
-        )
-      : await this.processService.createProcess(
-          tenantId,
-          args.appId,
-          {
-            apiName: args.apiName,
-            name: args.name,
-            workflowSchema: args.workflowSchema as Record<string, unknown>,
-            triggerType: args.triggerType ?? 'MANUAL',
-          },
-          `mcp:${userId}`,
-        );
+    const snapshot = {
+      apiName: args.apiName,
+      name: args.name,
+      workflowSchema: args.workflowSchema as Record<string, unknown>,
+      triggerType: args.triggerType ?? 'MANUAL',
+      cron: null,
+    };
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'PROCESS',
+        appId: args.appId,
+        apiName: args.apiName,
+        name: args.name,
+        snapshot,
+        entityId: args.processId,
+      },
+      userId,
+    );
 
     this.auditDraft(
       tenantId,
       userId,
       args.appId,
       'PROCESS',
-      result.id,
+      submission.id,
       args.processId ? 'update' : 'create',
     );
-    this.logger.log(
-      `MCP 流程草稿${args.processId ? '更新' : '创建'}: ${result.id}（${args.apiName}）by ${userId}`,
-    );
-    const status = (result as { status?: string }).status ?? 'DRAFT';
+    this.logger.log(`MCP 流程草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
     return {
       ok: true,
-      processId: result.id,
-      action: args.processId ? 'updated' : 'created',
-      status,
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      processId: submission.entityId,
+      action: args.processId ? 'submitted_update' : 'submitted_create',
+      hint: '已进入待审队列（未落活表）：批准后流程以 DRAFT 落地，需人工发布流程才会激活',
     };
   }
 
@@ -242,48 +246,69 @@ export class McpService {
     const check = this.schemaContract.validate('object_meta', meta);
     if (!check.valid) return this.rejected(check);
 
-    // 已存在 → 保留系统字段、业务字段整体替换（草稿语义：对象随应用发布快照生效）
-    const existing = await prisma.objectMeta.findFirst({
-      where: { tenantId, appId: args.appId, apiName: args.apiName },
-      select: { id: true, fields: true },
-    });
-
-    let objectId: string;
-    let action: 'created' | 'updated';
-    if (existing) {
-      const existingFields = (existing.fields as unknown as Array<Record<string, unknown>>) ?? [];
-      const systemFields = existingFields.filter((f) => f['isSystem'] === true);
-      const merged = [...systemFields, ...(args.fields as Array<Record<string, unknown>>)];
-      await prisma.objectMeta.update({
-        where: { id: existing.id },
-        data: { fields: merged as object[] },
-      });
-      objectId = existing.id;
-      action = 'updated';
-    } else {
-      // 先建对象（注入系统字段），再合并业务字段
-      const created = await this.objectService.create(tenantId, args.appId, userId, {
+    // 快照仅含业务字段（系统字段批准落地时注入，不参与 diff）
+    const snapshot = {
+      apiName: args.apiName,
+      name: args.name,
+      description: args.description,
+      icon: args.icon,
+      fields: args.fields,
+    };
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'OBJECT',
+        appId: args.appId,
         apiName: args.apiName,
         name: args.name,
-        description: args.description,
-        icon: args.icon ?? '📦',
-      });
-      const systemFields = (
-        (created.fields ?? []) as unknown as Array<Record<string, unknown>>
-      ).filter((f) => f['isSystem'] === true);
-      await prisma.objectMeta.update({
-        where: { id: created.id },
-        data: {
-          fields: [...systemFields, ...(args.fields as Array<Record<string, unknown>>)] as object[],
-        },
-      });
-      objectId = created.id;
-      action = 'created';
-    }
+        snapshot,
+        entityId: args.objectId,
+      },
+      userId,
+    );
 
-    this.auditDraft(tenantId, userId, args.appId, 'OBJECT', objectId, action);
-    this.logger.log(`MCP 对象草稿${action}: ${objectId}（${args.apiName}）by ${userId}`);
-    return { ok: true, objectId, action };
+    this.auditDraft(
+      tenantId,
+      userId,
+      args.appId,
+      'OBJECT',
+      submission.id,
+      args.objectId ? 'update' : 'create',
+    );
+    this.logger.log(`MCP 对象草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
+    return {
+      ok: true,
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      objectId: submission.entityId,
+      action: args.objectId ? 'submitted_update' : 'submitted_create',
+      hint: '已进入待审队列（未落活表）：批准后对象字段生效（系统字段自动保留）',
+    };
+  }
+
+  // ===========================================================================
+  // 治理轨道查询（agent 闭环：读取审批结果与驳回意见）
+  // ===========================================================================
+
+  async listReviewSubmissions(tenantId: string, appId: string): Promise<McpToolResult> {
+    const submissions = await this.reviewService.listSubmissions(tenantId, appId);
+    return {
+      ok: true,
+      submissions: submissions.map((s) => ({
+        id: s.id,
+        module: s.module,
+        apiName: s.apiName,
+        name: s.name,
+        versionNumber: s.versionNumber,
+        status: s.status,
+        source: s.source,
+        diffSummary: s.diff.summary,
+        reviewComment: s.reviewComment,
+        submittedAt: s.createdAt,
+      })),
+      hint: 'PENDING=待人审；REJECTED 含 reviewComment（人类驳回意见，按意见修正后重新 submit）',
+    };
   }
 
   // ===========================================================================

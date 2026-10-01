@@ -2,17 +2,33 @@
  * 流程卡片 —— 从 pages/ProcessList.tsx 拆分（AGENTS.md 单文件 400 行规范）。
  */
 
-import { Button, Card, Dropdown, Modal, Space, Tag, Typography, message } from 'antd';
+import {
+  Button,
+  Card,
+  Dropdown,
+  InputNumber,
+  Modal,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import {
   ApartmentOutlined,
+  CloudUploadOutlined,
   EditOutlined,
   EyeOutlined,
+  LinkOutlined,
   MoreOutlined,
   DeleteOutlined,
   PlayCircleOutlined,
 } from '@ant-design/icons';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { processesApi, type ProcessDef } from '../../api/processes.js';
+import { openApiAdminApi } from '../../api/open-api.js';
 import { getProcessStatusMeta, getTriggerMeta } from '../../constants/process.js';
 
 const { Text } = Typography;
@@ -37,6 +53,34 @@ export function ProcessCard({
   const triggerMeta = getTriggerMeta(process.triggerType as string | undefined);
   const statusMeta = getProcessStatusMeta(process.status);
   const TriggerIcon = triggerMeta.icon;
+
+  // G6：发布为 API / 触发地址
+  const [releaseOpen, setReleaseOpen] = useState(false);
+  const [urlOpen, setUrlOpen] = useState(false);
+  const [majorVersion, setMajorVersion] = useState<number>(1);
+  const { data: releases = [] } = useQuery({
+    queryKey: ['api-releases', process.appId, process.id],
+    queryFn: () => openApiAdminApi.listReleases(process.appId, process.id),
+    enabled: urlOpen,
+  });
+  const latestMajor = releases[0]?.majorVersion ?? null;
+  const triggerUrl = `${window.location.origin}/api/v1/open/apps/${process.appId}/processes/${process.apiName}/start`;
+
+  const queryClient = useQueryClient();
+  const releaseMutation = useMutation({
+    mutationFn: () => openApiAdminApi.release(process.appId, process.id, majorVersion),
+    onSuccess: (r) => {
+      message.success(
+        `已发布 v${r.majorVersion}${r.diff && r.diff.changeCount > 0 ? `（变更 ${r.diff.changeCount} 处）` : ''}`,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ['api-releases', process.appId, process.id],
+      });
+      setReleaseOpen(false);
+      setUrlOpen(true);
+    },
+    onError: (err) => message.error(err instanceof Error ? err.message : String(err)),
+  });
 
   return (
     <Card
@@ -141,12 +185,23 @@ export function ProcessCard({
                       },
                     ]
                   : []),
+                // G6：API 触发流程的开放 API 发布/触发地址入口
+                ...(process.triggerType === 'API' && process.status === 'PUBLISHED'
+                  ? [
+                      { key: 'api-release', label: '发布为 API', icon: <CloudUploadOutlined /> },
+                      { key: 'api-url', label: '触发地址', icon: <LinkOutlined /> },
+                    ]
+                  : []),
                 { key: 'export-schema', label: '导出 Schema', icon: <ApartmentOutlined /> },
                 { type: 'divider' as const },
                 { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
               ],
               onClick: ({ key }) => {
-                if (key === 'export-schema') {
+                if (key === 'api-release') {
+                  setReleaseOpen(true);
+                } else if (key === 'api-url') {
+                  setUrlOpen(true);
+                } else if (key === 'export-schema') {
                   processesApi
                     .get(process.id)
                     .then((fullProcess) => {
@@ -200,6 +255,76 @@ export function ProcessCard({
           </Dropdown>
         </div>
       </Space>
+
+      {/* G6：发布为 API（major 半自动——与上一 major 的 diff 随结果返回） */}
+      <Modal
+        title={`发布为开放 API：${process.name}`}
+        open={releaseOpen}
+        onCancel={() => setReleaseOpen(false)}
+        onOk={() => releaseMutation.mutate()}
+        confirmLoading={releaseMutation.isPending}
+        okText="发布"
+      >
+        <p>
+          将冻结当前已发布 schema 为该 major 的契约（发布后不可修改）。
+          {latestMajor !== null && (
+            <span>当前最新 major 为 v{latestMajor}；破坏性变更请 +1（旧版本仍可调用）。</span>
+          )}
+        </p>
+        <InputNumber
+          min={1}
+          precision={0}
+          value={majorVersion}
+          onChange={(v) => setMajorVersion(Number(v) || 1)}
+          style={{ width: 160 }}
+        />
+      </Modal>
+
+      {/* G6：触发地址 + 版本历史 */}
+      <Modal
+        title={`触发地址：${process.name}`}
+        open={urlOpen}
+        onCancel={() => setUrlOpen(false)}
+        footer={null}
+        width={720}
+      >
+        <p>外部系统以请求头 X-API-Key 调用（密钥在「API 密钥」页创建）：</p>
+        <Typography.Paragraph code copyable>
+          {`curl -X POST "${triggerUrl}" \\
+  -H "X-API-Key: ak_xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{"inputs": {"order_id": "SO-001"}}'`}
+        </Typography.Paragraph>
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={releases}
+          columns={[
+            {
+              title: 'Major',
+              dataIndex: 'majorVersion',
+              width: 80,
+              render: (v: number) => `v${v}`,
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 120,
+              render: (s: string) => (
+                <Tag color={s === 'ACTIVE' ? 'green' : 'orange'}>
+                  {s === 'ACTIVE' ? '最新生效' : '已废弃（仍可调用）'}
+                </Tag>
+              ),
+            },
+            {
+              title: '发布时间',
+              dataIndex: 'createdAt',
+              render: (v: string) => v.replace('T', ' ').slice(0, 19),
+            },
+          ]}
+        />
+      </Modal>
     </Card>
   );
 }

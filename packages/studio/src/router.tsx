@@ -23,6 +23,7 @@ import AuditLogs from './pages/AuditLogs.js';
 import AppAuditLogs from './pages/AppAuditLogs.js';
 import ReviewCenter from './pages/ReviewCenter.js';
 import Environments from './pages/Environments.js';
+import ApiKeys from './pages/ApiKeys.js';
 import TenantManagement from './pages/TenantManagement.js';
 import TenantDetail from './pages/TenantDetail.js';
 import { useAuthStore } from '@apaas/shared/stores';
@@ -183,6 +184,7 @@ export function AppRoutes() {
         <Route path="publish" element={<PublishWizard />} />
         <Route path="versions" element={<VersionHistory />} />
         <Route path="environments" element={<Environments />} />
+        <Route path="api-keys" element={<ApiKeys />} />
       </Route>
 
       {/* 根路径与未匹配路由重定向 */}

@@ -39,14 +39,14 @@ describe('tenant-context (AsyncLocalStorage)', () => {
     it('租户上下文返回 { tenantId, explicit: true }', () => {
       runWithTenant('tenant-456', () => {
         const ctx = getTenantContext();
-        expect(ctx).toEqual({ tenantId: 'tenant-456', explicit: true });
+        expect(ctx).toEqual({ tenantId: 'tenant-456', explicit: true, environmentId: null });
       });
     });
 
     it('系统上下文返回 { tenantId: null, explicit: true }', () => {
       runAsSystem(() => {
         const ctx = getTenantContext();
-        expect(ctx).toEqual({ tenantId: null, explicit: true });
+        expect(ctx).toEqual({ tenantId: null, explicit: true, environmentId: null });
       });
     });
   });

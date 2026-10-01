@@ -52,6 +52,11 @@
       "import": "./dist/review/index.js",
       "require": "./dist/review/index.js"
     },
+    "./environment": {
+      "types": "./dist/environment/index.d.ts",
+      "import": "./dist/environment/index.js",
+      "require": "./dist/environment/index.js"
+    },
     "./stores": {
       "types": "./dist/stores/index.d.ts",
       "import": "./dist/stores/index.js"

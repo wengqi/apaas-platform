@@ -27,14 +27,18 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { getTenantContext } from './tenant-context.js';
+import { getEnvironmentId, getTenantContext } from './tenant-context.js';
 import {
+  decideEnvInjection,
   decideInjection,
+  injectEnvToData,
+  injectEnvToUpsert,
+  injectEnvToWhere,
   injectToData,
   injectToUpsert,
   injectToWhere,
 } from './tenant-injection.js';
-import { TENANT_SCOPED_MODELS } from './tenant-models.js';
+import { ENV_SCOPED_MODELS, TENANT_SCOPED_MODELS } from './tenant-models.js';
 
 // 开发热重载防泄漏：globalThis 缓存
 const globalForPrisma = globalThis as unknown as {
@@ -49,6 +53,22 @@ const basePrisma =
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = basePrisma;
+}
+
+/**
+ * R1.4 多环境：对 ENV_SCOPED_MODELS 白名单模型注入 environmentId（第二维）。
+ * ALS 环境上下文为空时跳过（不告警——兼容无环境概念的既有路径）。
+ */
+function applyEnvInjection(
+  model: string,
+  args: Record<string, unknown>,
+  kind: 'read' | 'create' | 'upsert',
+): void {
+  const envDecision = decideEnvInjection(model, getEnvironmentId(), ENV_SCOPED_MODELS);
+  if (!envDecision.inject || !envDecision.environmentId) return;
+  if (kind === 'create') injectEnvToData(args, envDecision.environmentId);
+  else if (kind === 'upsert') injectEnvToUpsert(args, envDecision.environmentId);
+  else injectEnvToWhere(args, envDecision.environmentId);
 }
 
 /** 记录无租户上下文的告警（fail-open 模式） */
@@ -72,6 +92,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'findMany');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -82,6 +103,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'findFirst');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -92,6 +114,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'findUnique');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -102,6 +125,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'count');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -113,6 +137,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'create');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'create');
         return query(args);
       },
 
@@ -123,6 +148,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'createMany');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'create');
         return query(args);
       },
 
@@ -134,6 +160,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'update');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -144,6 +171,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'updateMany');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -155,6 +183,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'delete');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -165,6 +194,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'deleteMany');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'read');
         return query(args);
       },
 
@@ -176,6 +206,7 @@ export const prisma = basePrisma.$extends({
         } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
           warnNoTenantContext(model, 'upsert');
         }
+        applyEnvInjection(model, args as Record<string, unknown>, 'upsert');
         return query(args);
       },
     },
@@ -186,15 +217,21 @@ export { PrismaClient } from '@prisma/client';
 export * from '@prisma/client';
 export {
   getTenantId,
+  getEnvironmentId,
   getTenantContext,
   isSystemContext,
   runWithTenant,
+  runWithEnv,
   runAsSystem,
 } from './tenant-context.js';
 export {
   decideInjection,
+  decideEnvInjection,
   injectToWhere,
   injectToData,
   injectToUpsert,
+  injectEnvToWhere,
+  injectEnvToData,
+  injectEnvToUpsert,
 } from './tenant-injection.js';
-export { TENANT_SCOPED_MODELS } from './tenant-models.js';
+export { ENV_SCOPED_MODELS, TENANT_SCOPED_MODELS } from './tenant-models.js';

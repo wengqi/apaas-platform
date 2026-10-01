@@ -42,6 +42,14 @@ export const qk = {
   resourceVersions: (appId: string, module: string, entityId: string) =>
     ['resource-versions', appId, module, entityId] as const,
 
+  // —— 环境管理（R1.4 多环境）——
+  /** 应用环境列表（dev/prod 指针状态） */
+  environments: (appId: string) => ['environments', appId] as const,
+  /** 发布历史（按环境） */
+  deployments: (appId: string, envKey: string) => ['deployments', appId, envKey] as const,
+  /** 环境变量定义 + 指定环境的值 */
+  envVars: (appId: string, envKey: string) => ['env-vars', appId, envKey] as const,
+
   // —— 对象级 ——
   /** 对象详情（含字段定义） */
   object: (objectId: string) => ['object', objectId] as const,

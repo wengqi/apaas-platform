@@ -28,12 +28,29 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'NotificationTemplate',
   'InAppMessage',
   'AppVersion',
+  'ResourceVersion',
   'ChangeLog',
   'AppCheck',
+  'AppEnvironment',
+  'Deployment',
+  'EnvVarDef',
+  'EnvVarValue',
   'Connector',
   'ConnectorCredential',
   'DataFlow',
   'Dataset',
   'DatasetRow',
   'CloudFunction',
+]);
+
+/**
+ * 环境作用域模型白名单（R1.4 多环境）— 有 environmentId 列（值域 'dev'|'prod'），
+ * 且数据按环境隔离的运行时模型。ALS 环境上下文非空时 $extends 自动注入
+ * where/data.environmentId；未指定环境时不注入（兼容无环境概念的既有路径）。
+ */
+export const ENV_SCOPED_MODELS = new Set<string>([
+  'Record',
+  'ProcessInstance',
+  'NodeExecution',
+  'AutoNumberCounter',
 ]);

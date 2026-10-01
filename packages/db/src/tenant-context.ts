@@ -23,6 +23,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 interface TenantStore {
   readonly tenantId: string | null;
   readonly explicit: boolean;
+  /** R1.4 多环境：当前环境 key（'dev'|'prod'）；null=未指定（不注入环境过滤，兼容旧语义） */
+  readonly environmentId: string | null;
 }
 
 const tenantAls = new AsyncLocalStorage<TenantStore>();
@@ -34,6 +36,15 @@ const tenantAls = new AsyncLocalStorage<TenantStore>();
  */
 export function getTenantId(): string | null {
   return tenantAls.getStore()?.tenantId ?? null;
+}
+
+/**
+ * 获取当前环境 key（R1.4）。
+ *
+ * @returns 'dev'|'prod'；未指定环境时返回 null（$extends 跳过环境注入）
+ */
+export function getEnvironmentId(): string | null {
+  return tenantAls.getStore()?.environmentId ?? null;
 }
 
 /**
@@ -67,7 +78,22 @@ export function isSystemContext(): boolean {
  * @returns fn 的返回值
  */
 export function runWithTenant<T>(tenantId: string, fn: () => T): T {
-  return tenantAls.run({ tenantId, explicit: true }, fn);
+  return tenantAls.run({ tenantId, explicit: true, environmentId: null }, fn);
+}
+
+/**
+ * 在租户 + 环境上下文中执行 fn（R1.4 多环境）。
+ *
+ * environmentId 非空时，$extends 对 ENV_SCOPED_MODELS 白名单模型自动注入
+ * where/data.environmentId（值域 'dev'|'prod'）。为 null 时仅注入租户，
+ * 环境过滤由调用方显式处理（兼容无环境概念的既有路径）。
+ *
+ * @param tenantId 租户 ID
+ * @param environmentId 环境 key（'dev'|'prod'）
+ * @param fn 在环境上下文中执行的函数
+ */
+export function runWithEnv<T>(tenantId: string, environmentId: string, fn: () => T): T {
+  return tenantAls.run({ tenantId, explicit: true, environmentId }, fn);
 }
 
 /**
@@ -80,5 +106,5 @@ export function runWithTenant<T>(tenantId: string, fn: () => T): T {
  * @returns fn 的返回值
  */
 export function runAsSystem<T>(fn: () => T): T {
-  return tenantAls.run({ tenantId: null, explicit: true }, fn);
+  return tenantAls.run({ tenantId: null, explicit: true, environmentId: null }, fn);
 }

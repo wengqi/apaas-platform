@@ -171,6 +171,8 @@ export interface AppSnapshot {
     name: string;
     workflowSchema: Record<string, unknown>;
     triggerType: string | null;
+    /** R1.4：SCHEDULED 触发器随环境重建需要 cron（旧快照缺失时触发器回退活表读取） */
+    cron?: string | null;
   }>;
   permissions: {
     roles: Array<{

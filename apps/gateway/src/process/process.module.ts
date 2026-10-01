@@ -46,11 +46,13 @@ import { ContinueExecutor } from './node-executors/continue.executor.js';
 import { WaitForConditionExecutor } from './node-executors/wait-for-condition.executor.js';
 import { BatchOperationExecutor } from './node-executors/batch-operation.executor.js';
 import { TriggerService } from './trigger.service.js';
+import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
 import { RedisLockService } from '../common/redis/redis-lock.service.js';
 import { RecordModule } from '../record/record.module.js';
 
 @Module({
   imports: [
+    EnvironmentCoreModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

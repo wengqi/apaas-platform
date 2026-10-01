@@ -81,3 +81,53 @@ export function injectToUpsert(args: QueryArgs, tenantId: string): void {
   args.where = { ...(args.where as Record<string, unknown> | undefined), tenantId };
   args.create = { ...(args.create as Record<string, unknown> | undefined), tenantId };
 }
+
+// ===========================================================================
+// R1.4 多环境：environmentId 第二维注入（ENV_SCOPED_MODELS 白名单模型）
+// ===========================================================================
+
+/** 环境注入决策结果 */
+export interface EnvInjectionDecision {
+  /** 是否注入 environmentId */
+  inject: boolean;
+  /** 环境 key（inject=true 时非空，'dev'|'prod'） */
+  environmentId: string | null;
+}
+
+/**
+ * 根据模型名与 ALS 环境 key，判断是否需要注入 environmentId。
+ *
+ * 语义：仅 ENV_SCOPED_MODELS 且 ALS 环境上下文非空时注入；
+ * 未指定环境 → 不注入且不告警（兼容无环境概念的既有路径，与租户 fail-open 不同）。
+ */
+export function decideEnvInjection(
+  model: string,
+  environmentId: string | null,
+  envScopedModels: Set<string>,
+): EnvInjectionDecision {
+  if (!envScopedModels.has(model) || !environmentId) {
+    return { inject: false, environmentId: null };
+  }
+  return { inject: true, environmentId };
+}
+
+/** 将 environmentId 注入到查询的 where 子句（浅拷贝后追加） */
+export function injectEnvToWhere(args: QueryArgs, environmentId: string): void {
+  args.where = { ...(args.where as Record<string, unknown> | undefined), environmentId };
+}
+
+/** 将 environmentId 注入到 create/createMany 的 data 字段（支持单对象与数组） */
+export function injectEnvToData(args: QueryArgs, environmentId: string): void {
+  const data = args.data;
+  if (Array.isArray(data)) {
+    args.data = data.map((item) => ({ ...item, environmentId }));
+  } else {
+    args.data = { ...(data as Record<string, unknown> | undefined), environmentId };
+  }
+}
+
+/** 将 environmentId 注入到 upsert 的 where + create（双重注入） */
+export function injectEnvToUpsert(args: QueryArgs, environmentId: string): void {
+  args.where = { ...(args.where as Record<string, unknown> | undefined), environmentId };
+  args.create = { ...(args.create as Record<string, unknown> | undefined), environmentId };
+}

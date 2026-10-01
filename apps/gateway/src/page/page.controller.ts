@@ -52,6 +52,17 @@ export class PageController {
     return { ok: true as const, data: page };
   }
 
+  @Get('apps/:appId/pages/runtime/:pageId')
+  async getRuntime(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('pageId') pageId: string,
+  ) {
+    // R1.4 运行时按 ID 读页面（审批页渲染）：环境 bundle 优先，降级活表
+    const page = await this.pageService.getRuntimeById(requireTenantId(req), appId, pageId);
+    return { ok: true as const, data: page };
+  }
+
   @Get('apps/:appId/pages/slug/:slug')
   async getBySlug(
     @Req() req: AuthenticatedRequest,

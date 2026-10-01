@@ -41,6 +41,14 @@ function createService() {
   const changeLogService = createMockChangeLogService();
   const service = new PageService(
     changeLogService as unknown as ConstructorParameters<typeof PageService>[0],
+    {
+      resolve: vi.fn().mockResolvedValue({
+        environmentId: '',
+        versionId: null,
+        bundleMode: false,
+        bundle: null,
+      }),
+    } as unknown as ConstructorParameters<typeof PageService>[1],
   );
   return { service, changeLogService };
 }

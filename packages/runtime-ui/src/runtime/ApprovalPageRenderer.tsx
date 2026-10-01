@@ -20,6 +20,10 @@ interface ApprovalPageRendererProps {
   pageId: string;
   /** 页面初始数据域：流程变量/触发记录/任务上下文（含 taskId） */
   data: Record<string, unknown>;
+  /** R1.4：页面归属应用（运行时端点需要，缺省走活表读取） */
+  appId?: string;
+  /** R1.4：实例所在环境（缺省 prod） */
+  env?: string;
 }
 
 /** 从 amis page schema 中提取 form 相关性标记（含表单即 true）。 */
@@ -59,14 +63,23 @@ function usePlatformFetcher(): FetcherLike {
   );
 }
 
-export default function ApprovalPageRenderer({ pageId, data }: ApprovalPageRendererProps) {
+export default function ApprovalPageRenderer({
+  pageId,
+  data,
+  appId,
+  env,
+}: ApprovalPageRendererProps) {
+  // R1.4：审批页按环境 bundle 渲染（实例所在环境优先，URL ?env 兜底）
+  const urlEnv = new URLSearchParams(window.location.search).get('env') ?? undefined;
+  const effectiveEnv = env ?? urlEnv;
   const {
     data: page,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['approval-page', pageId],
-    queryFn: () => pagesApi.get(pageId),
+    queryKey: ['approval-page', pageId, appId ?? '', effectiveEnv ?? 'prod'],
+    queryFn: () =>
+      appId ? pagesApi.getRuntime(appId, pageId, effectiveEnv) : pagesApi.get(pageId),
     enabled: !!pageId,
     staleTime: 60_000,
   });

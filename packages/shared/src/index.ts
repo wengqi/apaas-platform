@@ -24,6 +24,9 @@ export * from './schema-contract/index.js';
 // 审核域（R1.2 版本模型：草稿→提交→发布 + diff 快审）
 export * from './review/index.js';
 
+// 多环境域（R1.4：环境指针 / 发布历史 / 应用环境变量 / ${env.*} 解析）
+export * from './environment/index.js';
+
 // 权限（Phase 4 补充）
 export * from './permission/index.js';
 

@@ -220,6 +220,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 ## 当前阶段（2026-09-30 方向修订快照，基线为 2026-09-27 定位修订）
 
 - 🔄 **产品方向修订（ADR-0003，2026-09-30）**：产品论 = 受约束的 AI 应用生成底座；AI 生成/MCP 排除条款撤销（R1.S / R1.6 AI 生成接口 / R1.7 页面层 amis 迁移）；治理闸门 = 全环境人审；界面层 = amis 单方言（**一切界面皆页面**，不设页面/表单之分）；底座自建瘦身 ~50k 行。蓝图 docs/design/DESIGN-refactor-blueprint-2026-09-30.md
+- ✅ **R1.4 多环境落地（2026-10-01，本阶段）**：完整 M3——AppEnvironment 指针/Deployment 历史/应用环境变量（G3 敏感值加密+G4 发布硬闸）；records/instances/executions/序列按 environmentId 隔离（ALS 双维注入，缺省 prod 兼容旧路径）；运行时读路径（页面/审批页/对象/流程）bundle 优先+降级链（存量零感知）；触发器随环境启停（jobId=scheduled:<env>:<defId>，顺带修复 pattern 清理互踩 bug）；实例冻结 schema；studio 环境管理页 + runtime-ui 环境切换。gateway 单测 627、e2e 77/77。实现记录 docs/knowledge-base/MULTI-ENV-2026-10-01.md
 - ✅ **G1/R1.2 版本模型 + diff 快审落地（2026-10-01，本阶段）**：资源级三态（对象/页面/流程统一）+ 提交快照链（ResourceVersion：PENDING/APPROVED/REJECTED/SUPERSEDED + 版本谱系钩子）；**治理策略=仅 AI 提交需人审**（MCP submit_* 改造为 PENDING 不落活表，批准才落地；人工提交即时 APPROVED 基线）；验收项 diff 快审 UX=审核中心（结构化 schema diff + 一键批/驳 + 驳回意见回传 agent + 漂移保护 + 撤销未提交）；MCP 新增 list_review_submissions。单测 gateway 610 / e2e 72/72（新增 17 号治理闭环）。状态矩阵 docs/knowledge-base/STATUS-MATRIX-2026-10-01.md，实现记录 docs/knowledge-base/REVIEW-VERSION-MODEL-2026-10-01.md
 - ✅ **P0 全量落地（2026-09-30）**：R1.S spike 双通过 GO；S2 amis 接入 runtime-ui（审批页面渲染链路）；S3 R1.3 审批语义（会签/或签/依次聚合+锁内并发封窗+加签/撤回+页面绑定+出入参）；S4/S5 采购合同验收应用全链路 e2e 验证——**R1.3 ✅ R1.5 ✅（e2e 68/68、单测 834）**；G3 Schema 校验合同 ✅（自建三校验器，25 单测）。状态矩阵：docs/knowledge-base/STATUS-MATRIX-2026-09-30.md。**P1 待推进：G4 MCP（前置就绪）→ R1.2 → R1.4 → G5 → G6**
 - ✅ 整改 PR #1 已合并 main（2026-09-27，CI 四 job 全绿）

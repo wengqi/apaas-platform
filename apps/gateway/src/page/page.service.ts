@@ -1,12 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, Prisma } from '@apaas/db';
+import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
 import type { PageMeta as PrismaPageMeta } from '@apaas/db';
 import {
   asAppId,
   asObjectId,
   asPageId,
   asTenantId,
-  type AppSnapshot,
   type CreatePageRequest,
   type PageMeta,
   type PageSavePointInfo,
@@ -14,6 +13,7 @@ import {
   type PageType,
   type UpdatePageRequest,
 } from '@apaas/shared';
+import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
 
 /**
@@ -29,7 +29,10 @@ const MAX_SAVE_POINTS_PER_PAGE = 50;
 
 @Injectable()
 export class PageService {
-  constructor(private readonly changeLogService: ChangeLogService) {}
+  constructor(
+    private readonly changeLogService: ChangeLogService,
+    private readonly environmentResolver: EnvironmentResolverService,
+  ) {}
 
   /**
    * 列出页面保存点（E2-4 飞书式历史，不含 schema 全量，按时间倒序）。
@@ -185,24 +188,18 @@ export class PageService {
    * Studio 预览模式不受影响 — Studio 通过 GET /pages/:pageId 读取开发态数据。
    */
   async getPublishedBySlug(tenantId: string, appId: string, slug: string): Promise<PageMeta> {
-    // 1. 查询 Application，获取 publishedSnapshot
-    const app = await prisma.application.findFirst({
-      where: { id: appId, tenantId },
-      select: { publishedSnapshot: true },
-    });
-    if (!app) throw new NotFoundException('应用不存在');
-    if (!app.publishedSnapshot) {
-      throw new NotFoundException('应用尚未发布');
-    }
+    // R1.4：环境解析（ALS env，缺省 prod）——指针→AppVersion.bundle，
+    // 降级 publishedSnapshot（存量应用行为不变）
+    const env = getEnvironmentId() ?? 'prod';
+    const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
+    if (!resolved.bundle) throw new NotFoundException('应用尚未发布');
 
-    // 2. 从快照中查找匹配 apiName 的页面
-    const snapshot = app.publishedSnapshot as unknown as AppSnapshot;
+    const snapshot = resolved.bundle;
     const pageData = snapshot.pages.find((p: { apiName: string }) => p.apiName === slug);
     if (!pageData) {
       throw new NotFoundException('页面不存在或未发布');
     }
 
-    // 3. 返回快照中的页面数据
     return {
       id: asPageId(pageData.id),
       tenantId: asTenantId(tenantId),
@@ -216,6 +213,36 @@ export class PageService {
       createdAt: snapshot.meta.publishedAt,
       updatedAt: snapshot.meta.publishedAt,
     };
+  }
+
+  /**
+   * 运行时按 ID 读页面（R1.4 审批页渲染入口）——bundle 优先（环境指针指向的
+   * 已发布 schema），降级活表（存量应用/未绑定环境的调用）。
+   * Studio 编辑器仍走 GET /pages/:pageId 读活表开发态，两者语义分离。
+   */
+  async getRuntimeById(tenantId: string, appId: string, pageId: string): Promise<PageMeta> {
+    const env = getEnvironmentId() ?? 'prod';
+    const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
+    if (resolved.bundle) {
+      const pageData = resolved.bundle.pages.find((p: { id: string }) => p.id === pageId);
+      if (pageData) {
+        return {
+          id: asPageId(pageData.id),
+          tenantId: asTenantId(tenantId),
+          appId: asAppId(appId),
+          name: pageData.name,
+          slug: pageData.apiName,
+          type: pageData.type as PageType,
+          objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
+          schema: pageData.schema as unknown as PageSchema,
+          published: true,
+          createdAt: resolved.bundle.meta.publishedAt,
+          updatedAt: resolved.bundle.meta.publishedAt,
+        };
+      }
+    }
+    // 降级：活表（bundle 未包含该页面，如发布后新建）
+    return this.get(tenantId, pageId);
   }
 
   /**

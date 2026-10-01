@@ -44,6 +44,10 @@ model Tenant {
   auditLogs             AuditLog[]
   appVersions           AppVersion[]
   resourceVersions      ResourceVersion[]
+  appEnvironments       AppEnvironment[]
+  deployments           Deployment[]
+  envVarDefs            EnvVarDef[]
+  envVarValues          EnvVarValue[]
   changeLogs            ChangeLog[]
   appChecks             AppCheck[]
   inAppMessages         InAppMessage[]
@@ -155,6 +159,9 @@ model Application {
   roles                 Role[]
   versions              AppVersion[]
   resourceVersions      ResourceVersion[]
+  environments          AppEnvironment[]
+  deployments           Deployment[]
+  envVarDefs            EnvVarDef[]
   changeLogs            ChangeLog[]
   checks                AppCheck[]
   connectors            Connector[]
@@ -417,6 +424,8 @@ model Record {
   tenantId  String   @map("tenant_id")
   appId     String   @map("app_id")
   objectId  String   @map("object_id")
+  // R1.4 多环境：运行数据按环境隔离（值域 'dev'|'prod'，存量 backfill='prod'）
+  environmentId String @default("prod") @map("environment_id")
   // 业务数据 JSONB：{ "field_api_name": value, ... }
   data      Json     @default("{}")
   // 创建/更新审计（记录级，data 内不重复存）
@@ -432,6 +441,7 @@ model Record {
   @@index([tenantId])
   @@index([appId])
   @@index([objectId])
+  @@index([environmentId])
   @@index([tenantId, objectId])
   @@index([appId, objectId])
   // GIN 索引加速 JSONB data 字段查询（Prisma 5.1+ 支持 type: Gin）
@@ -525,6 +535,9 @@ enum ProcessDefStatus {
 model ProcessInstance {
   id             String                @id @default(cuid())
   tenantId       String                @map("tenant_id")
+  // R1.4 多环境：实例归属环境 + 启动时冻结的流程 schema（版本切换不影响在途实例）
+  environmentId  String                @default("prod") @map("environment_id")
+  frozenWorkflowSchema Json?           @map("frozen_workflow_schema")
   processDefId   String                @map("process_def_id")
   // 触发上下文 JSON：触发记录 ID / 触发用户 / 输入参数
   triggerContext Json                  @default("{}") @map("trigger_context")
@@ -543,6 +556,7 @@ model ProcessInstance {
 
   @@index([tenantId])
   @@index([processDefId])
+  @@index([environmentId])
   @@index([status])
   @@map("process_instances")
 }
@@ -558,6 +572,8 @@ enum ProcessInstanceStatus {
 model NodeExecution {
   id         String         @id @default(cuid())
   instanceId String         @map("instance_id")
+  // R1.4 多环境：冗余实例环境便于直接过滤（随实例 backfill）
+  environmentId String      @default("prod") @map("environment_id")
   nodeId     String         @map("node_id") // WorkflowSchema 中的节点 ID
   nodeType   String         @map("node_type")
   status     NodeExecStatus @default(PENDING)
@@ -573,6 +589,7 @@ model NodeExecution {
 
   @@index([instanceId])
   @@index([nodeId])
+  @@index([environmentId])
   @@map("node_executions")
 }
 
@@ -944,19 +961,107 @@ model CloudFunction {
   @@map("cloud_functions")
 }
 
-/// 自动编号计数器 — 按 (objectId, prefix) 原子自增，替代全表扫描计数（并发安全）。
+/// 自动编号计数器 — 按 (objectId, prefix, environmentId) 原子自增，替代全表扫描计数（并发安全）。
+/// R1.4：dev/prod 序列独立。
 model AutoNumberCounter {
   id        String   @id @default(cuid())
   tenantId  String   @map("tenant_id")
   objectId  String   @map("object_id")
   prefix    String
+  environmentId String @default("prod") @map("environment_id")
   counter   Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([objectId, prefix])
+  @@unique([objectId, prefix, environmentId])
   @@index([tenantId])
   @@map("auto_number_counters")
+}
+
+// ============================================================================
+// 十一、多环境（R1.4）—— 环境指针 / 发布历史 / 应用环境变量
+// ============================================================================
+
+/// 应用环境（R1.4）：dev | prod（可扩展 staging）。发布=切 currentVersionId 指针。
+model AppEnvironment {
+  id               String  @id @default(cuid())
+  tenantId         String  @map("tenant_id")
+  appId            String  @map("app_id")
+  key              String // 'dev' | 'prod'
+  currentVersionId String? @map("current_version_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application    @relation(fields: [appId], references: [id], onDelete: Cascade)
+  deployments Deployment[]
+  envVarValues EnvVarValue[]
+
+  @@unique([appId, key])
+  @@index([tenantId])
+  @@map("app_environments")
+}
+
+/// 发布历史（R1.4）：deploy | rollback，记录谁在何时把哪个版本切到哪个环境。
+model Deployment {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  appId         String   @map("app_id")
+  environmentId String   @map("environment_id") // AppEnvironment.id
+  versionId     String   @map("version_id")
+  kind          String // deploy | rollback
+  operator      String
+  note          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application   @relation(fields: [appId], references: [id], onDelete: Cascade)
+  environment AppEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  @@index([environmentId, createdAt])
+  @@index([tenantId])
+  @@map("deployments")
+}
+
+/// 应用环境变量定义（R1.4 G2 三分类：随环境变的值归此处，构建态一套定义）。
+model EnvVarDef {
+  id          String  @id @default(cuid())
+  tenantId    String  @map("tenant_id")
+  appId       String  @map("app_id")
+  key         String // 引用名：${env.KEY}
+  description String?
+  required    Boolean @default(false)
+  sensitive   Boolean @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  values EnvVarValue[]
+
+  @@unique([appId, key])
+  @@index([tenantId])
+  @@map("env_var_defs")
+}
+
+/// 环境变量按环境的值（R1.4 G3：敏感值加密落库、写后不可读仅可重置、修改写审计）。
+model EnvVarValue {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  environmentId String   @map("environment_id") // AppEnvironment.id
+  defId         String   @map("def_id")
+  value         String // 敏感值 AES-256-GCM 密文
+  updatedBy     String   @map("updated_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  environment AppEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  def         EnvVarDef      @relation(fields: [defId], references: [id], onDelete: Cascade)
+
+  @@unique([environmentId, defId])
+  @@index([tenantId])
+  @@map("env_var_values")
 }

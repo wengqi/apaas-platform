@@ -10,6 +10,7 @@ import { FormulaEngine } from '../object/formula-engine.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ProcessModule } from '../process/process.module.js';
+import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
 
 /**
  * 记录模块 — 基于 JSONB 宽表的记录 CRUD + 批量操作 + CSV 导入导出。
@@ -21,6 +22,7 @@ import { ProcessModule } from '../process/process.module.js';
  */
 @Module({
   imports: [
+    EnvironmentCoreModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

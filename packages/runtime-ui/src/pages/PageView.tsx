@@ -18,13 +18,15 @@ const { Text } = Typography;
 
 export default function PageView() {
   const { appId, slug } = useParams<{ appId: string; slug: string }>();
+  // R1.4：URL ?env=dev 切换环境（缺省 prod）
+  const env = new URLSearchParams(window.location.search).get('env') ?? undefined;
   const {
     data: page,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['page', appId, slug],
-    queryFn: () => pagesApi.getBySlug(appId!, slug!),
+    queryKey: ['page', appId, slug, env ?? 'prod'],
+    queryFn: () => pagesApi.getBySlug(appId!, slug!, env),
     enabled: !!appId && !!slug,
   });
 

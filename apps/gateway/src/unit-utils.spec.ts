@@ -75,7 +75,7 @@ describe('AutoNumberGenerator', () => {
     const prefix = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-`;
     expect(code).toBe(`${prefix}001`);
     const arg = prisma.autoNumberCounter.upsert.mock.calls[0]?.[0];
-    expect(arg.where.objectId_prefix.prefix).toBe(prefix);
+    expect(arg.where.objectId_prefix_environmentId.prefix).toBe(prefix);
   });
 
   it('无序号占位符：不查询计数器，直接渲染日期', async () => {

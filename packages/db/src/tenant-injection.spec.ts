@@ -10,11 +10,16 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  decideEnvInjection,
   decideInjection,
   injectToWhere,
   injectToData,
   injectToUpsert,
+  injectEnvToData,
+  injectEnvToUpsert,
+  injectEnvToWhere,
 } from './tenant-injection.js';
+import { ENV_SCOPED_MODELS } from './tenant-models.js';
 import { TENANT_SCOPED_MODELS } from './tenant-models.js';
 import { runWithTenant, runAsSystem, getTenantContext } from './tenant-context.js';
 
@@ -81,9 +86,9 @@ describe('decideInjection', () => {
     });
   });
 
-  it('所有 24 个白名单模型在有租户上下文时都注入', () => {
+  it('所有 29 个白名单模型在有租户上下文时都注入', () => {
     const models = Array.from(TENANT_SCOPED_MODELS);
-    expect(models).toHaveLength(24);
+    expect(models).toHaveLength(29);
 
     runWithTenant('tenant-all', () => {
       for (const model of models) {
@@ -209,8 +214,8 @@ describe('injectToUpsert', () => {
 });
 
 describe('TENANT_SCOPED_MODELS', () => {
-  it('包含 24 个模型', () => {
-    expect(TENANT_SCOPED_MODELS.size).toBe(24);
+  it('包含 29 个模型', () => {
+    expect(TENANT_SCOPED_MODELS.size).toBe(29);
   });
 
   it('包含所有预期模型', () => {
@@ -250,5 +255,62 @@ describe('TENANT_SCOPED_MODELS', () => {
     for (const model of excluded) {
       expect(TENANT_SCOPED_MODELS.has(model), `${model} should NOT be in set`).toBe(false);
     }
+  });
+});
+
+// ===========================================================================
+// R1.4 多环境：environmentId 第二维注入
+// ===========================================================================
+
+describe('decideEnvInjection（R1.4）', () => {
+  it('白名单模型 + 有环境上下文 → 注入', () => {
+    const d = decideEnvInjection('Record', 'dev', ENV_SCOPED_MODELS);
+    expect(d).toEqual({ inject: true, environmentId: 'dev' });
+  });
+
+  it('白名单模型但无环境上下文 → 不注入不告警（兼容旧路径）', () => {
+    const d = decideEnvInjection('ProcessInstance', null, ENV_SCOPED_MODELS);
+    expect(d).toEqual({ inject: false, environmentId: null });
+  });
+
+  it('非白名单模型（如 Application）→ 不注入', () => {
+    const d = decideEnvInjection('Application', 'prod', ENV_SCOPED_MODELS);
+    expect(d).toEqual({ inject: false, environmentId: null });
+  });
+
+  it('ENV_SCOPED_MODELS 只含四个运行数据模型', () => {
+    expect([...ENV_SCOPED_MODELS].sort()).toEqual([
+      'AutoNumberCounter',
+      'NodeExecution',
+      'ProcessInstance',
+      'Record',
+    ]);
+  });
+});
+
+describe('injectEnvToWhere / injectEnvToData / injectEnvToUpsert（R1.4）', () => {
+  it('where 浅拷贝追加 environmentId，不改原对象', () => {
+    const args: Record<string, unknown> = { where: { tenantId: 't1' } };
+    injectEnvToWhere(args, 'dev');
+    expect(args.where).toEqual({ tenantId: 't1', environmentId: 'dev' });
+  });
+
+  it('data 单对象与数组两种形式', () => {
+    const single: Record<string, unknown> = { data: { appId: 'a' } };
+    injectEnvToData(single, 'prod');
+    expect(single.data).toEqual({ appId: 'a', environmentId: 'prod' });
+    const many: Record<string, unknown> = { data: [{ x: 1 }, { y: 2 }] };
+    injectEnvToData(many, 'dev');
+    expect(many.data).toEqual([
+      { x: 1, environmentId: 'dev' },
+      { y: 2, environmentId: 'dev' },
+    ]);
+  });
+
+  it('upsert 双重注入 where + create', () => {
+    const args: Record<string, unknown> = { where: { objectId: 'o1' }, create: { prefix: 'P' } };
+    injectEnvToUpsert(args, 'prod');
+    expect(args.where).toEqual({ objectId: 'o1', environmentId: 'prod' });
+    expect(args.create).toEqual({ prefix: 'P', environmentId: 'prod' });
   });
 });

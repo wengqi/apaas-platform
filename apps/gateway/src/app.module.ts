@@ -18,6 +18,8 @@ import { CloudFunctionModule } from './cloud-function/cloud-function.module.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { SchemaContractModule } from './schema-contract/schema-contract.module.js';
 import { ReviewModule } from './review/review.module.js';
+import { EnvironmentCoreModule } from './environment/environment-core.module.js';
+import { EnvironmentModule } from './environment/environment.module.js';
 import { McpModule } from './mcp/mcp.module.js';
 import { HealthController } from './health.controller.js';
 import { TenantContextInterceptor } from './common/tenant-context.interceptor.js';
@@ -68,6 +70,8 @@ import { envValidation } from './config/env.validation.js';
     IdentityModule,
     SchemaContractModule,
     ReviewModule,
+    EnvironmentCoreModule,
+    EnvironmentModule,
     McpModule,
   ],
   controllers: [HealthController],

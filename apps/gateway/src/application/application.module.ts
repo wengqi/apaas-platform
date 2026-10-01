@@ -9,6 +9,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ProcessModule } from '../process/process.module.js';
+import { EnvironmentModule } from '../environment/environment.module.js';
 
 /**
  * 应用模块 — Application CRUD + 发布/预检/版本管理。
@@ -27,6 +28,8 @@ import { ProcessModule } from '../process/process.module.js';
   imports: [
     // 评审 P1-7：应用级发布需要为 SCHEDULED 流程注册定时触发器（TriggerService）
     ProcessModule,
+    // R1.4：应用发布 = 部署到 prod 环境（切指针 + Deployment 历史）
+    EnvironmentModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [

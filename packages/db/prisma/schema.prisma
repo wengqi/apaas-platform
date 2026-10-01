@@ -43,6 +43,7 @@ model Tenant {
   orgRoleGrants         OrgRoleGrant[]
   auditLogs             AuditLog[]
   appVersions           AppVersion[]
+  resourceVersions      ResourceVersion[]
   changeLogs            ChangeLog[]
   appChecks             AppCheck[]
   inAppMessages         InAppMessage[]
@@ -153,6 +154,7 @@ model Application {
   records               Record[]
   roles                 Role[]
   versions              AppVersion[]
+  resourceVersions      ResourceVersion[]
   changeLogs            ChangeLog[]
   checks                AppCheck[]
   connectors            Connector[]
@@ -694,6 +696,55 @@ model AppVersion {
 enum AppVersionStatus {
   PUBLISHED
   ROLLED_BACK
+}
+
+/// 资源级提交快照（R1.2 版本模型 G1）— 对象/页面/流程统一的 草稿→提交→发布 三态载体。
+/// AI（MCP）提交一律 PENDING 待人审；人工提交即时 APPROVED 作为基线快照
+/// （供历史版本链 / diff 基线 / 撤销未提交）。应用级发布仍走 AppVersion。
+model ResourceVersion {
+  id               String   @id @default(cuid())
+  tenantId         String   @map("tenant_id")
+  appId            String   @map("app_id")
+  module           String // OBJECT | PAGE | PROCESS
+  // 提交时目标资源可能尚不存在（AI 新建资源待批后才落活表），批准后回填
+  entityId         String?  @map("entity_id")
+  apiName          String // 资源标识（新建提交的资源链锚点）
+  name             String // 冗余展示名
+  versionNumber    Int      @map("version_number") // 同资源链内自增
+  // 完整资源定义快照：OBJECT=业务字段 / PAGE=schema+元信息 / PROCESS=workflowSchema+触发配置
+  snapshot         Json
+  status           ResourceVersionStatus @default(PENDING)
+  source           ResourceVersionSource @default(HUMAN)
+  submittedBy      String   @map("submitted_by")
+  submittedVia     String   @default("studio") @map("submitted_via") // studio | mcp
+  // diff 基线（上一 approved 版本），版本谱系钩子（R1.4 hotfix 谱系复用）
+  baselineVersionId String? @map("baseline_version_id")
+  reviewedBy       String?  @map("reviewed_by")
+  reviewedAt       DateTime? @map("reviewed_at")
+  reviewComment    String?  @map("review_comment")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, module, apiName, versionNumber])
+  @@index([tenantId])
+  @@index([appId, module, entityId])
+  @@index([appId, status])
+  @@map("resource_versions")
+}
+
+enum ResourceVersionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+enum ResourceVersionSource {
+  HUMAN
+  AI_MCP
 }
 
 /// 开发态变更追踪 — 记录每次开发态操作（创建/更新/删除）。

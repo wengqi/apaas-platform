@@ -29,6 +29,19 @@ export const qk = {
   /** 发布变更清单（发布向导第 2 步） */
   publishChanges: (appId: string) => ['publish-changes', appId] as const,
 
+  // —— 审核中心（R1.2 版本模型）——
+  /** 提交单列表（status 省略 = 全部） */
+  reviews: (appId: string, status?: string) =>
+    status ? (['reviews', appId, status] as const) : (['reviews', appId] as const),
+  /** 提交单详情（含 diff 与快照） */
+  reviewDetail: (appId: string, submissionId: string) =>
+    ['reviews', appId, 'detail', submissionId] as const,
+  /** 脏资源清单（活表 ≠ 最新基线快照，可撤销未提交） */
+  reviewDirty: (appId: string) => ['reviews', appId, 'dirty'] as const,
+  /** 资源版本链（对象/页面/流程的提交历史） */
+  resourceVersions: (appId: string, module: string, entityId: string) =>
+    ['resource-versions', appId, module, entityId] as const,
+
   // —— 对象级 ——
   /** 对象详情（含字段定义） */
   object: (objectId: string) => ['object', objectId] as const,
@@ -56,4 +69,24 @@ export function publishAffectedKeys(appId: string): readonly (readonly unknown[]
     qk.appVersions(appId),
     qk.publishChanges(appId),
   ];
+}
+
+/**
+ * 审核动作（提交/批准/驳回/撤销未提交）后需要失效的键集合：
+ * 审核中心自身 + 对象/页面（批准会把快照落活表）。
+ */
+export function reviewAffectedKeys(
+  appId: string,
+  opts?: { module?: string; entityId?: string },
+): readonly (readonly unknown[])[] {
+  const keys: Array<readonly unknown[]> = [
+    qk.reviews(appId),
+    qk.reviewDirty(appId),
+    qk.appObjects(appId),
+    qk.appPages(appId),
+  ];
+  if (opts?.module && opts?.entityId) {
+    keys.push(qk.resourceVersions(appId, opts.module, opts.entityId));
+  }
+  return keys;
 }

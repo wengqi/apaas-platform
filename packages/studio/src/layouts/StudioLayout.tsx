@@ -10,6 +10,7 @@ import {
   Skeleton,
   Typography,
   Drawer,
+  Badge,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -30,11 +31,13 @@ import {
   FundProjectionScreenOutlined,
   CloudOutlined,
   FileSearchOutlined,
+  FileDoneOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
 import { appsApi } from '../api/apps.js';
+import { reviewsApi } from '../api/reviews.js';
 import CheckPanel from '../components/publish/CheckPanel.js';
 
 const { Header, Sider, Content } = Layout;
@@ -64,6 +67,14 @@ export default function StudioLayout() {
     enabled: !!appId,
   });
 
+  /** 待审提交单数（审核中心入口徽标，R1.2）。 */
+  const { data: pendingReviews } = useQuery({
+    queryKey: qk.reviews(appId!, 'PENDING'),
+    queryFn: () => reviewsApi.list(appId!, { status: 'PENDING' }),
+    enabled: !!appId,
+  });
+  const pendingCount = pendingReviews?.length ?? 0;
+
   /** 应用内导航菜单项(链接含 appId)。 */
   const menuItems: MenuProps['items'] = useMemo(
     () => [
@@ -73,12 +84,21 @@ export default function StudioLayout() {
       { key: 'datasets', icon: <FundProjectionScreenOutlined />, label: '数据集' },
       { key: 'processes', icon: <ApartmentOutlined />, label: '流程' },
       { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
+      {
+        key: 'reviews',
+        icon: <FileDoneOutlined />,
+        label: (
+          <Badge count={pendingCount} size="small" offset={[12, 0]}>
+            审核中心
+          </Badge>
+        ),
+      },
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
       { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },
       { key: 'cloud-functions', icon: <CloudOutlined />, label: '云函数' },
       { key: 'audit-logs', icon: <FileSearchOutlined />, label: '审计日志' },
     ],
-    [],
+    [pendingCount],
   );
 
   /** 当前选中菜单项:取 /app/:appId 之后的路径段(支持二级路径如 processes/notifications)。 */

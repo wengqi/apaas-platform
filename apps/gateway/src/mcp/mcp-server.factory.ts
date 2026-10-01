@@ -1,11 +1,12 @@
 /**
  * MCP Server 工厂（G4/R1.6）——为每个请求构建无状态的 MCP Server 实例。
  *
- * 工具分三类：
+ * 工具分四类：
  * - 读：get_platform_overview / list_* / get_*（平台既有查询，租户隔离）
  * - 校验：validate_schema（G3 dry-run，agent 提交前自检）
  * - 写：submit_page_draft / submit_workflow_draft / submit_object_draft
- *   —— 一律草稿（治理闸：不触碰 publish），先过 G3 校验合同
+ *   —— 一律待审提交（R1.2 治理轨道：不落活表，人工批准才生效），先过 G3 校验合同
+ * - 治理：list_review_submissions（审批结果与驳回意见回传，agent 自修正闭环）
  *
  * 方言指南以工具形式提供（get_dialect_guide）：amis 惯例/示例/陷阱清单
  * （spike 语料：nested-select 命名、static 表单 actions:[]、取数表达式等）。
@@ -110,7 +111,7 @@ const TOOLS: Array<{
   {
     name: 'submit_page_draft',
     description:
-      '提交页面草稿（amis 方言，type 必须为 "page"）。创建新页面或更新已有页面（传 pageId）。仅草稿——不会发布，需人工在搭建器审核发布。',
+      '提交页面草稿（amis 方言，type 必须为 "page"）。创建新页面或更新已有页面（传 pageId）。提交进入待审队列（不直接落库），人工在审核中心 diff 快审批准后生效。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -135,7 +136,7 @@ const TOOLS: Array<{
   {
     name: 'submit_workflow_draft',
     description:
-      '提交流程定义草稿（WorkflowSchema：start/end 必需、20 种节点、user_task 审批配置）。创建新流程或更新已有流程。仅草稿——不会发布，需人工审核发布。',
+      '提交流程定义草稿（WorkflowSchema：start/end 必需、20 种节点、user_task 审批配置）。创建新流程或更新已有流程。提交进入待审队列，人工批准后以 DRAFT 落地（激活需人工发布流程）。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -163,7 +164,7 @@ const TOOLS: Array<{
   {
     name: 'submit_object_draft',
     description:
-      '提交对象元数据草稿（18 种字段类型；系统字段自动保留）。创建新对象或更新已有对象的业务字段。对象随应用发布快照生效。',
+      '提交对象元数据草稿（18 种字段类型；系统字段批准落地时自动保留）。创建新对象或更新已有对象的业务字段。提交进入待审队列，人工批准后字段生效。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -180,6 +181,17 @@ const TOOLS: Array<{
         },
       },
       required: ['appId', 'apiName', 'name', 'fields'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_review_submissions',
+    description:
+      '查询提交单审批状态（R1.2 治理轨道）。submit_*_draft 后用本工具跟踪审批进度；REJECTED 单的 reviewComment 是人类驳回意见，按意见修正后重新提交。',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string' } },
+      required: ['appId'],
       additionalProperties: false,
     },
   },
@@ -314,6 +326,8 @@ async function dispatch(
         icon: optionalStr(args['icon']),
         objectId: optionalStr(args['objectId']),
       });
+    case 'list_review_submissions':
+      return svc.listReviewSubmissions(tenantId, str(args['appId']));
     default:
       return { ok: false, hint: `未知工具 "${name}"` };
   }

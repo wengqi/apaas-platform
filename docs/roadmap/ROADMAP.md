@@ -17,7 +17,7 @@
 | # | 任务 | 说明 | 状态 |
 |---|------|------|------|
 | R1.1 | **身份与组织对接层（可插拔）** | SSO=CAS + 目录=LDAP/人力主数据HTTP接口（预留飞书适配器）→ 写入系统对象 用户/部门；设计：docs/design/DESIGN-identity-env-versioning-2026-09-27.md | 🟨 设计完成 |
-| R1.2 | **草稿→提交→发布三级版本模型** | 对象/页面/流程统一：自动保存草稿 + 提交快照 + 历史版本 + 撤销未提交（对标飞书"已保存未提交/提交/开发中版本"） | ⬜ 未开始 |
+| R1.2 | **草稿→提交→发布三级版本模型** | 对象/页面/流程统一：自动保存草稿 + 提交快照 + 历史版本 + 撤销未提交（对标飞书"已保存未提交/提交/开发中版本"）——**✅ 见下方 ADR-0003 节 G1/R1.2（2026-10-01 完成）** | ✅ 完成 |
 | R1.3 | **流程表单触发 + 审批语义补齐** | 触发器"填写流程表单"（表单绑定/保存草稿按钮）；审批节点：审批人配置、会签/或签/依次、审批结果变量 | ⬜ 未开始 |
 | R1.4 | **运行环境多环境化** | dev/生产 双环境（同库按 environmentId 隔离；发布=切版本指针；触发器随版本启停）；设计：docs/design/DESIGN-identity-env-versioning-2026-09-27.md | 🟨 设计完成 |
 | R1.5 | **端到端验收：真实业务应用交付** | 用平台搭建并运行一个完整业务应用（如报销：表单提交→审批→台账→报表），作为 P0 完成标志 | ⬜ 未开始 |
@@ -38,7 +38,8 @@
 | R1.3 | **流程页面绑定 + 审批语义补齐（升 P0 首位）** | 绑定验收场景=采购合同类审批：金额条件分支/多级顺序审批/**会签或签/依次审批（2026-09-30 落地：approvalMode 四模式+聚合决策+锁内并发封窗）/加签转办撤回（add-sign/withdraw 端点）/审批页面（节点绑定页面 pageId，任务中心 amis 渲染）**/流程出入参（start/end 面板对齐 inputsValues）/合同附件 | ✅ 完成（158cfa4/3b1798a/bc54d51/dc11266/3ca11e4，e2e 16 号全链路验证） |
 | R1.5 | **端到端验收：真实业务应用交付（采购合同）** | procurement 应用：供应商/合同对象 + 台账/提交页（v1 方言）+ amis 审批页（v2）+ 金额分支/会签/依次审批流 + 发布快照；**e2e/16 全链路通过（2026-09-30）：创建触发→分支路由→会签聚合→依次终审→完成/撤回；全量 e2e 68/68** | ✅ 完成 |
 | G3/R1.6 前置 | **Schema 校验合同（自建）** | 三类 schema 校验器：amis 页面（渲染器真值白名单~150 型+黑名单+别名/编辑距离建议+外联拒绝）、WorkflowSchema（20 节点+R1.3 审批配置+幽灵边/孤立节点）、对象元数据（18 类型）；结构化错误面向 agent 自修正（25 单测）——官方 schema.json 与渲染器不一致故自建 | ✅ 完成（46e0916） |
-| R1.6 | **AI 生成接口（MCP）** | **✅ 后端完成（2026-09-30，PR #7）**：无状态 Streamable HTTP 端点（POST /api/v1/mcp，JWT+PermissionGuard）；11 工具（读 6+validate_schema+草稿写 3+方言指南 3 内置 spike 陷阱语料）；写不变量=一律草稿不触碰发布+G3 闸+pageId 跨引用+MCP 审计；11 单测+JSON-RPC 冒烟全链路。待接：R1.2 草稿治理轨道后接 diff 快审 | ✅ 后端完成 |
+| R1.6 | **AI 生成接口（MCP）** | **✅ 后端完成（2026-09-30，PR #7）**：无状态 Streamable HTTP 端点（POST /api/v1/mcp，JWT+PermissionGuard）；12 工具（读 6+validate_schema+治理写 3+list_review_submissions+方言指南 3 内置 spike 陷阱语料）；写不变量=一律 PENDING 待审不落活表（R1.2 治理轨道）+G3 闸+pageId 跨引用+MCP 审计；11 单测+JSON-RPC 冒烟全链路。diff 快审已接（R1.2） | ✅ 后端完成 |
+| G1/R1.2 | **草稿→提交→发布三级版本模型 + diff 快审** | **✅ 完成（2026-10-01）**：资源级三态（OBJECT/PAGE/PROCESS 统一）+ 提交快照链（ResourceVersion：PENDING/APPROVED/REJECTED/SUPERSEDED + versionNumber 链内自增 + baselineVersionId 谱系钩子）；**治理策略=仅 AI 提交需人审**（MCP submit_*_draft 改造为 PENDING 不落活表，批准才落地；人工提交即时 APPROVED 基线快照）；**验收项 diff 快审 UX**（审核中心 /app/:id/reviews：待审/已处理/未提交变更三页签 + schema 级结构化 diff 视图（shared 纯函数内核，增/删/改三色）+ 一键批/驳 + 驳回意见回传 agent（list_review_submissions）+ 漂移保护（活表偏离基线拒绝批准可 force）+ 撤销未提交（恢复基线快照））；应用级发布/回滚机制不动（R1.4 在此之上做环境指针）。单测 gateway 610/diff 11，e2e 17 号全链路 5 用例，全量 e2e 72/72 | ✅ 完成 |
 | R1.7 | **页面层 amis 迁移（P2）** | PageSchema v2=amis 方言；渲染器换 amis；组件 86→约 30 核心集；搭建器 amis 化兜底改造；v1 存量一次性迁移 | ⬜ 未开始 |
 
 并行小项：数据集引擎下沉 PostgreSQL SQL（删内存 join ~2.5k 行）；纯流程形态 API 产品化（API 触发器 + API Key + 流程版本稳定性承诺）。阶段划分、准入 spike、风险登记详见蓝图 `docs/design/DESIGN-refactor-blueprint-2026-09-30.md`。

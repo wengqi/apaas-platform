@@ -47,6 +47,11 @@
       "import": "./dist/common/index.js",
       "require": "./dist/common/index.js"
     },
+    "./review": {
+      "types": "./dist/review/index.d.ts",
+      "import": "./dist/review/index.js",
+      "require": "./dist/review/index.js"
+    },
     "./stores": {
       "types": "./dist/stores/index.d.ts",
       "import": "./dist/stores/index.js"

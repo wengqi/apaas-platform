@@ -37,6 +37,8 @@
 | [OSS-SELECTION-VERIFICATION-2026-09-30](./OSS-SELECTION-VERIFICATION-2026-09-30.md) | 2026-09-30 | 产品重构方向选型核实（amis/formily/NocoBase/OpenTiny/lowcode-engine 源码-协议-活跃度实证 + 表单模块痛点根因 + 两轮方向讨论结论 → ADR-0003）|
 | [SPIKE-AMIS-ADOPTION-2026-09-30](./SPIKE-AMIS-ADOPTION-2026-09-30.md) | 2026-09-30 | R1.S 准入 Spike 双通过（S1a antd 主题贴合生产级 / S1b 生成合法率首过 80% 一轮修正 100%；官方 schema.json 不可机判、mobx 版本矩阵/去 StrictMode 等集成红线；GO → P0 立项）|
 | [STATUS-MATRIX-2026-09-30](./STATUS-MATRIX-2026-09-30.md) | 2026-09-30 | 状态矩阵（ADR-0003 方向修订 + P0 全量落地：R1.S/S2-S5/G3 ✅；e2e 68/68、单测 834；P1 待推进）|
+| [REVIEW-VERSION-MODEL-2026-10-01](./REVIEW-VERSION-MODEL-2026-10-01.md) | 2026-10-01 | R1.2 版本模型实现记录（资源级三态 + 提交快照链 + 仅 AI 人审治理策略 + diff 快审自研内核 + 批准落地/漂移保护/撤销语义 + 踩坑）|
+| [STATUS-MATRIX-2026-10-01](./STATUS-MATRIX-2026-10-01.md) | 2026-10-01 | 状态矩阵（G4 MCP 合并 + R1.2 版本模型落地：e2e 72/72、gateway 单测 610；下一批 R1.4/G5/G6）|
 
 ## 文档维护规则
 

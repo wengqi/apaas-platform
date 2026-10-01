@@ -21,6 +21,7 @@ import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
 import AuditLogs from './pages/AuditLogs.js';
 import AppAuditLogs from './pages/AppAuditLogs.js';
+import ReviewCenter from './pages/ReviewCenter.js';
 import TenantManagement from './pages/TenantManagement.js';
 import TenantDetail from './pages/TenantDetail.js';
 import { useAuthStore } from '@apaas/shared/stores';
@@ -177,6 +178,7 @@ export function AppRoutes() {
         <Route path="connectors" element={<ConnectorList />} />
         <Route path="cloud-functions" element={<CloudFunctionList />} />
         <Route path="audit-logs" element={<AppAuditLogs />} />
+        <Route path="reviews" element={<ReviewCenter />} />
         <Route path="publish" element={<PublishWizard />} />
         <Route path="versions" element={<VersionHistory />} />
       </Route>

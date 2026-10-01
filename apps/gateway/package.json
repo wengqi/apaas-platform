@@ -15,6 +15,7 @@
   "dependencies": {
     "@apaas/db": "workspace:*",
     "@apaas/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@nestjs/common": "^10.4.6",
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.6",

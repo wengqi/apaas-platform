@@ -10,7 +10,7 @@
 
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
-import { prisma } from '@apaas/db';
+import { prisma, runAsSystem } from '@apaas/db';
 import type { ServiceIdentityDto, ServiceIdentityCreatedDto } from '@apaas/shared';
 import { writeAudit } from '../common/audit.js';
 
@@ -95,10 +95,14 @@ export class ApiKeyService {
     if (!row || row.status !== 'ACTIVE') {
       throw new UnauthorizedException('无效的 API Key');
     }
-    // fire-and-forget：最后使用时间
-    void prisma.serviceIdentity
-      .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
-      .catch(() => undefined);
+    // fire-and-forget：最后使用时间。guard 阶段 ALS 尚无租户上下文，
+    // 以系统上下文执行（ServiceIdentity 已入白名单，否则每次调用都触发隔离告警）
+    void runAsSystem(() =>
+      prisma.serviceIdentity.update({
+        where: { id: row.id },
+        data: { lastUsedAt: new Date() },
+      }),
+    ).catch(() => undefined);
     return {
       id: row.id,
       tenantId: row.tenantId,

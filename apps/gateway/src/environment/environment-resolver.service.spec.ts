@@ -120,11 +120,11 @@ describe('缓存与失效', () => {
       .mockResolvedValue([{ def: { key: 'T', sensitive: false }, value: 'new' }]);
 
     const first = await svc.resolve(TENANT, APP, 'prod');
-    expect((first.bundle as { title: string }).title).toBe('old');
+    expect(((first.bundle ?? {}) as { title: string }).title).toBe('old');
 
     // 第二次 resolve：raw bundle 命中缓存，但值重新加载
     const second = await svc.resolve(TENANT, APP, 'prod');
-    expect((second.bundle as { title: string }).title).toBe('new');
+    expect(((second.bundle ?? {}) as { title: string }).title).toBe('new');
   });
 
   it('invalidateApp 精确失效该应用的全部环境缓存', async () => {

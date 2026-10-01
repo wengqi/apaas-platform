@@ -102,6 +102,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - scope：`gateway/shared/db/studio/runtime-ui/meta-svc/process-svc/runtime-svc/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function/e2e`
 - pre-commit 钩子：lint-staged（eslint --fix + prettier --write 暂存文件）
 - commit-msg 钩子：commitlint 格式校验（`commitlint.config.mjs`）
+- **推送前 OCR 评审（工作约定，2026-10-01）**：功能分支推送前执行 `/ocr-review`（OCR 委托模式：
+  preview → 逐文件审查 → High/Medium 修复复验 → 结构化报告）。评审与修复在同一推送内完成；
+  体系性发现须同步知识库踩坑节。无 LLM 依赖（agent 自身执行），与「盯 CI」约定同级
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
 
 ### 测试规范

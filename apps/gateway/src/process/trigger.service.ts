@@ -8,17 +8,23 @@
  * - SCHEDULED: 定时触发（BullMQ repeatable job，按 cron 表达式调度）
  * - MANUAL: 手动触发（ProcessController.startInstance，不走此服务）
  *
- * 调用方：
- * - RecordService 在 create/update/delete 后调用 onRecordEvent()。
- * - onModuleInit() 启动时扫描 SCHEDULED 流程并注册 BullMQ repeatable job。
+ * R1.4 多环境：
+ * - repeatable job 以 `scheduled:<envKey>:<processDefId>` 为 jobId——dev/prod
+ *   各自独立注册；清理带 jobId（修复旧实现仅按 pattern 清理导致同 cron 流程互踩）；
+ * - 发布/回滚后 rebuildForEnvironment：先清该环境全部注册，再按 bundle 重建
+ *   （bundle 模式）或按活表 PUBLISHED 流程重建（降级模式）；
+ * - onRecordEvent 按记录所在环境匹配：bundle 模式匹配 bundle.processes
+ *   的 triggerType；降级模式保持活表 status=PUBLISHED 匹配。
  *
  * 设计为非阻塞——触发失败仅记日志，不影响记录操作本身。
  */
 
 import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
-import { prisma } from '@apaas/db';
+import { prisma, runWithEnv } from '@apaas/db';
 import { Queue } from 'bullmq';
+import type { EnvironmentKey } from '@apaas/shared';
 import { ProcessEngine } from './process-engine.js';
+import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
 import { PROCESS_QUEUE } from '../queue/queue.constants.js';
 
 /** 记录事件类型 → Prisma triggerType 映射。 */
@@ -28,8 +34,17 @@ const EVENT_TO_TRIGGER: Record<string, string> = {
   deleted: 'RECORD_DELETED',
 };
 
-/** BullMQ repeatable job 的 key 前缀，用于区分定时触发 job。 */
+/** BullMQ repeatable job 的 key 前缀，用于区分定时触发 job（含环境维度）。 */
 const SCHEDULED_JOB_PREFIX = 'scheduled:';
+
+/** 匹配流程的运行时形态（bundle 与活表行的公共子集） */
+interface TriggerableProcess {
+  id: string;
+  apiName: string;
+  name: string;
+  triggerType: string | null;
+  cron?: string | null;
+}
 
 @Injectable()
 export class TriggerService implements OnModuleInit {
@@ -37,41 +52,48 @@ export class TriggerService implements OnModuleInit {
 
   constructor(
     private readonly engine: ProcessEngine,
+    private readonly environmentResolver: EnvironmentResolverService,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
   ) {}
 
   /**
-   * 模块初始化时扫描所有 SCHEDULED 类型的已发布流程，注册 BullMQ repeatable job。
+   * 模块初始化：按环境重建全部定时触发注册。
+   * 有指针的应用按 bundle 注册；无指针的按活表 PUBLISHED 流程注册（prod 维度）。
    */
   async onModuleInit(): Promise<void> {
     await this.registerScheduledTriggers();
   }
 
-  /**
-   * 扫描并注册所有定时触发流程。
-   * 在应用启动时调用，将 SCHEDULED 流程注册为 BullMQ repeatable job。
-   */
   private async registerScheduledTriggers(): Promise<void> {
     try {
-      const scheduledDefs = await prisma.processDef.findMany({
-        where: {
-          status: 'PUBLISHED',
-          triggerType: 'SCHEDULED',
-          cron: { not: null },
-        },
-        select: { id: true, apiName: true, name: true, cron: true, tenantId: true, appId: true },
-      });
-
-      if (scheduledDefs.length === 0) {
-        this.logger.debug('无定时触发流程需要注册');
-        return;
+      const apps = await prisma.application.findMany({ select: { id: true, tenantId: true } });
+      let registered = 0;
+      for (const app of apps) {
+        const envs = await prisma.appEnvironment.findMany({
+          where: { appId: app.id, tenantId: app.tenantId, currentVersionId: { not: null } },
+        });
+        if (envs.length > 0) {
+          for (const env of envs) {
+            await this.rebuildForEnvironment(app.tenantId, app.id, env.key as EnvironmentKey);
+          }
+        } else {
+          // 降级：无环境指针的存量应用按活表注册（prod 维度）
+          const defs = await prisma.processDef.findMany({
+            where: {
+              appId: app.id,
+              status: 'PUBLISHED',
+              triggerType: 'SCHEDULED',
+              cron: { not: null },
+            },
+            select: { id: true, apiName: true, name: true, cron: true, tenantId: true },
+          });
+          for (const def of defs) {
+            await this.registerScheduledJob(def.tenantId, def.id, def.cron!, 'prod', def.apiName);
+            registered += 1;
+          }
+        }
       }
-
-      for (const def of scheduledDefs) {
-        await this.registerScheduledJob(def.id, def.cron!, def.apiName);
-      }
-
-      this.logger.log(`已注册 ${scheduledDefs.length} 个定时触发流程`);
+      if (registered > 0) this.logger.log(`已注册 ${registered} 个定时触发流程`);
     } catch (err) {
       this.logger.error(
         `注册定时触发流程失败: ${err instanceof Error ? err.message : String(err)}`,
@@ -80,37 +102,104 @@ export class TriggerService implements OnModuleInit {
   }
 
   /**
+   * 按环境重建定时触发注册（发布/回滚/应用启动后调用）。
+   * 先清该环境的全部注册，再按 bundle（或降级活表）注册。
+   */
+  async rebuildForEnvironment(
+    tenantId: string,
+    appId: string,
+    envKey: EnvironmentKey,
+  ): Promise<void> {
+    try {
+      const resolved = await this.environmentResolver.resolve(tenantId, appId, envKey);
+
+      // 1) 清空该环境现有注册（该应用全部流程 × 本环境维度）
+      const appProcessIds = new Set(
+        (
+          await prisma.processDef.findMany({
+            where: { appId, tenantId },
+            select: { id: true },
+          })
+        ).map((p) => p.id),
+      );
+      const repeatables = await this.processQueue.getRepeatableJobs();
+      for (const job of repeatables) {
+        if (!job.key?.startsWith(`${SCHEDULED_JOB_PREFIX}${envKey}:`)) continue;
+        const defId = job.key.slice(`${SCHEDULED_JOB_PREFIX}${envKey}:`.length);
+        if (appProcessIds.has(defId)) {
+          await this.processQueue.removeRepeatableByKey(job.key);
+        }
+      }
+
+      // 2) 取该环境应注册的 SCHEDULED 流程（bundle 优先，降级活表）
+      let processes: TriggerableProcess[] = [];
+      if (resolved.bundleMode && resolved.bundle) {
+        processes = resolved.bundle.processes as TriggerableProcess[];
+      } else {
+        processes = await prisma.processDef.findMany({
+          where: {
+            appId,
+            tenantId,
+            status: 'PUBLISHED',
+            triggerType: 'SCHEDULED',
+            cron: { not: null },
+          },
+          select: { id: true, apiName: true, name: true, triggerType: true, cron: true },
+        });
+      }
+
+      // 3) 注册（cron：bundle 缺失时回退活表——旧快照不含 cron）
+      for (const proc of processes) {
+        if (proc.triggerType !== 'SCHEDULED') continue;
+        const cron = proc.cron ?? (await this.liveCron(proc.id));
+        if (!cron) {
+          this.logger.warn(`SCHEDULED 流程缺少 cron，跳过注册: ${proc.apiName}`);
+          continue;
+        }
+        await this.registerScheduledJob(tenantId, proc.id, cron, envKey, proc.apiName);
+      }
+      this.logger.log(`环境触发器已重建: app=${appId} env=${envKey}`);
+    } catch (err) {
+      this.logger.error(
+        `重建环境触发器失败 (app=${appId} env=${envKey}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * 注册单个定时触发流程为 BullMQ repeatable job。
    *
-   * B3 修复：
-   * - removeRepeatable（非 removeRepeatableByKey）：传入 { pattern, jobId } 组合，
-   *   此前传 jobId 字符串给 removeRepeatableByKey 不匹配内部 repeatJobKey → 清理无效。
-   * - 此方法不仅启动时调用，也在 publishProcess 后调用（运行期发布的 SCHEDULED 流程即时生效）。
+   * jobId 含环境维度（`scheduled:<envKey>:<processDefId>`），dev/prod 各自独立；
+   * 清理传入 { pattern, jobId } 精确匹配本 job（修复旧实现仅按 pattern 清理、
+   * 同 cron 流程互踩的缺陷）。
    */
   private async registerScheduledJob(
+    tenantId: string,
     processDefId: string,
     cron: string,
+    envKey: EnvironmentKey,
     apiName: string,
   ): Promise<void> {
-    const jobId = `${SCHEDULED_JOB_PREFIX}${processDefId}`;
+    const jobId = `${SCHEDULED_JOB_PREFIX}${envKey}:${processDefId}`;
 
     try {
-      // 先移除旧的 repeatable job（使用 removeRepeatable + repeat 配置匹配）
+      // 先精确移除本 job 的旧注册（pattern + jobId 组合匹配）
       await this.processQueue.removeRepeatable('scheduled-trigger', {
         pattern: cron,
+        jobId,
       });
 
-      // 注册新的 repeatable job
+      // 注册新的 repeatable job（job data 携带 envKey，触发时直达对应环境）
       await this.processQueue.add(
         'scheduled-trigger',
-        { processDefId, type: 'scheduled' },
+        { processDefId, type: 'scheduled', envKey },
         {
           jobId,
           repeat: { pattern: cron },
         },
       );
 
-      this.logger.log(`定时触发已注册: ${apiName} (cron=${cron})`);
+      this.logger.log(`定时触发已注册: ${apiName} (env=${envKey} cron=${cron})`);
     } catch (err) {
       this.logger.error(
         `注册定时触发 ${apiName} 失败: ${err instanceof Error ? err.message : String(err)}`,
@@ -119,17 +208,47 @@ export class TriggerService implements OnModuleInit {
   }
 
   /**
-   * 取消注册定时触发流程（流程下线/删除时调用）。
+   * 流程发布后调用 — 如果是 SCHEDULED 类型，即时注册 repeatable job（活表语义，
+   * prod 维度；走环境部署的应用由 rebuildForEnvironment 统一重建）。
    */
-  private async unregisterScheduledJob(
+  async onProcessPublished(
     processDefId: string,
-    cron: string,
+    triggerType: string | null,
+    cron: string | null,
     apiName: string,
   ): Promise<void> {
+    if (triggerType !== 'SCHEDULED' || !cron) return;
+    const def = await prisma.processDef.findFirst({
+      where: { id: processDefId },
+      select: { tenantId: true },
+    });
+    if (!def) return;
+    await this.registerScheduledJob(def.tenantId, processDefId, cron, 'prod', apiName);
+  }
+
+  /**
+   * 流程下线/删除后调用 — 取消 repeatable job，防止僵尸 job 每次报错。
+   */
+  async onProcessUnpublished(
+    processDefId: string,
+    triggerType: string | null,
+    cron: string | null,
+    apiName: string,
+  ): Promise<void> {
+    if (triggerType !== 'SCHEDULED' || !cron) return;
     try {
-      await this.processQueue.removeRepeatable('scheduled-trigger', {
-        pattern: cron,
+      const def = await prisma.processDef.findFirst({
+        where: { id: processDefId },
+        select: { tenantId: true },
       });
+      const envKeys = ['dev', 'prod'] as const;
+      for (const envKey of envKeys) {
+        await this.processQueue.removeRepeatable('scheduled-trigger', {
+          pattern: cron,
+          jobId: `${SCHEDULED_JOB_PREFIX}${envKey}:${processDefId}`,
+        });
+      }
+      void def;
       this.logger.log(`定时触发已取消: ${apiName}`);
     } catch (err) {
       // 重复取消或 job 不存在时静默忽略
@@ -140,43 +259,9 @@ export class TriggerService implements OnModuleInit {
   }
 
   /**
-   * 流程发布后调用 — 如果是 SCHEDULED 类型，即时注册 repeatable job。
+   * 记录事件触发 — 查找匹配的已发布流程定义并启动（环境感知）。
    *
-   * B3 修复：此前仅在 onModuleInit 注册，运行期发布的 SCHEDULED 流程永不执行。
-   */
-  async onProcessPublished(
-    processDefId: string,
-    triggerType: string | null,
-    cron: string | null,
-    apiName: string,
-  ): Promise<void> {
-    if (triggerType !== 'SCHEDULED' || !cron) return;
-    await this.registerScheduledJob(processDefId, cron, apiName);
-  }
-
-  /**
-   * 流程下线/删除后调用 — 取消 repeatable job，防止僵尸 job 每次报错。
-   *
-   * B3 修复：此前下线后 repeatable job 仍在 BullMQ 中，每次触发找不到流程定义报错。
-   */
-  async onProcessUnpublished(
-    processDefId: string,
-    triggerType: string | null,
-    cron: string | null,
-    apiName: string,
-  ): Promise<void> {
-    if (triggerType !== 'SCHEDULED' || !cron) return;
-    await this.unregisterScheduledJob(processDefId, cron, apiName);
-  }
-
-  /**
-   * 记录事件触发 — 查找匹配的已发布流程定义并启动。
-   *
-   * @param tenantId 租户 ID
-   * @param appId 应用 ID
-   * @param objectId 对象 ID
-   * @param eventType 事件类型（created/updated/deleted）
-   * @param recordData 记录数据（传入触发上下文供流程节点引用）
+   * @param envKey 记录所在环境（bundle 模式只触发同环境流程；缺省 prod）
    */
   async onRecordEvent(
     tenantId: string,
@@ -184,29 +269,30 @@ export class TriggerService implements OnModuleInit {
     objectId: string,
     eventType: 'created' | 'updated' | 'deleted',
     recordData: Record<string, unknown>,
+    envKey = 'prod',
   ): Promise<void> {
     const triggerType = EVENT_TO_TRIGGER[eventType];
     if (!triggerType) return;
 
     try {
-      // 查找匹配的已发布流程定义
-      const defs = await prisma.processDef.findMany({
-        where: {
-          tenantId,
-          appId,
-          status: 'PUBLISHED',
-          triggerType,
-        },
-        select: { id: true, apiName: true, name: true },
-      });
+      // 解析环境（bundle 模式按 bundle 匹配；降级按活表 PUBLISHED 匹配）
+      const resolved = await this.environmentResolver.resolve(tenantId, appId, envKey);
+      let defs: Array<{ id: string; apiName: string; name: string }>;
+      if (resolved.bundleMode && resolved.bundle) {
+        defs = resolved.bundle.processes
+          .filter((p) => p.triggerType === triggerType)
+          .map((p) => ({ id: p.id, apiName: p.apiName, name: p.name }));
+      } else {
+        defs = await prisma.processDef.findMany({
+          where: { tenantId, appId, status: 'PUBLISHED', triggerType },
+          select: { id: true, apiName: true, name: true },
+        });
+      }
 
       if (defs.length === 0) return;
 
-      // 为每个匹配的流程启动实例
+      // 为每个匹配的流程启动实例（环境上下文中执行——实例/节点/记录落同一环境）
       for (const def of defs) {
-        // inputs：记录标量字段平铺到顶层，供流程边条件/模板直接引用
-        // （如金额条件分支 {"==":[{"var":"status"},"APPROVED"]}——startProcess 会把
-        //   inputs 展开到 variables 顶层，buildEvalScope 再合并入条件求值域）
         const inputs: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(recordData)) {
           if (v === null || v === undefined) continue;
@@ -224,9 +310,11 @@ export class TriggerService implements OnModuleInit {
         };
 
         try {
-          const instanceId = await this.engine.startProcess(tenantId, def.id, triggerContext);
+          const instanceId = await runWithEnv(tenantId, envKey, () =>
+            this.engine.startProcess(tenantId, def.id, triggerContext, envKey),
+          );
           this.logger.log(
-            `记录事件 ${eventType} 触发流程 ${def.apiName}(${def.name}) → 实例 ${instanceId}`,
+            `记录事件 ${eventType}(${envKey}) 触发流程 ${def.apiName}(${def.name}) → 实例 ${instanceId}`,
           );
         } catch (err) {
           // 单个流程启动失败不影响其他流程
@@ -239,5 +327,14 @@ export class TriggerService implements OnModuleInit {
       // 触发器整体失败不影响记录操作
       this.logger.error(`记录事件触发异常: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /** 活表 cron 回退读取（旧快照不含 cron 时） */
+  private async liveCron(processDefId: string): Promise<string | null> {
+    const def = await prisma.processDef.findFirst({
+      where: { id: processDefId },
+      select: { cron: true },
+    });
+    return def?.cron ?? null;
   }
 }

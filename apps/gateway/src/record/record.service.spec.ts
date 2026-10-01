@@ -53,6 +53,14 @@ function createService() {
     autoNumberGenerator as unknown as ConstructorParameters<typeof RecordService>[1],
     triggerService as unknown as ConstructorParameters<typeof RecordService>[2],
     rollupService as unknown as ConstructorParameters<typeof RecordService>[3],
+    {
+      resolve: vi.fn().mockResolvedValue({
+        environmentId: '',
+        versionId: null,
+        bundleMode: false,
+        bundle: null,
+      }),
+    } as unknown as ConstructorParameters<typeof RecordService>[4],
   );
   return { service, formulaEngine, autoNumberGenerator, triggerService, rollupService };
 }
@@ -283,6 +291,7 @@ describe('RecordService', () => {
         'ORD-{seq:0000}',
         'obj-001',
         'tenant-001',
+        'prod',
       );
     });
 
@@ -328,6 +337,7 @@ describe('RecordService', () => {
         'obj-001',
         'created',
         expect.objectContaining({ id: 'rec-001' }),
+        'prod',
       );
     });
 
@@ -427,6 +437,7 @@ describe('RecordService', () => {
         'obj-001',
         'updated',
         expect.objectContaining({ id: 'rec-001' }),
+        'prod',
       );
     });
 
@@ -589,6 +600,7 @@ describe('RecordService', () => {
         'obj-001',
         'deleted',
         expect.objectContaining({ id: 'rec-001', name: 'To Delete' }),
+        'prod',
       );
     });
 

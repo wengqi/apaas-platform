@@ -48,7 +48,12 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
     const processWorker = new Worker(
       PROCESS_QUEUE,
       async (job: Job) => {
-        const data = job.data as { instanceId?: string; processDefId?: string; type?: string };
+        const data = job.data as {
+          instanceId?: string;
+          processDefId?: string;
+          type?: string;
+          envKey?: string;
+        };
 
         // 定时触发 job：启动流程实例
         if (data.type === 'scheduled' && data.processDefId) {
@@ -56,10 +61,15 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
           // startProcessByDefId 内部从流程定义恢复 tenantId，
           // 但需在 ALS 上下文外执行首次查询（processDefId 全局唯一，安全），
           // 然后在 startProcess 内设置 ALS。此处直接调用，引擎内部处理。
-          await this.processEngine.startProcessByDefId(data.processDefId, {
-            eventType: 'scheduled',
-            triggeredBy: 'SCHEDULED',
-          });
+          await this.processEngine.startProcessByDefId(
+            data.processDefId,
+            {
+              eventType: 'scheduled',
+              triggeredBy: 'SCHEDULED',
+            },
+            // R1.4：job data 携带环境 key，定时触发直达对应环境
+            typeof data.envKey === 'string' ? data.envKey : 'prod',
+          );
           return;
         }
 

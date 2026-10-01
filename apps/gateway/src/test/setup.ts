@@ -95,6 +95,9 @@ vi.mock('@apaas/db', () => ({
   getTenantId: (): string | null => null,
   getTenantContext: () => undefined,
   isSystemContext: () => false,
+  // R1.4 多环境：测试默认无环境上下文（注入跳过，降级活表语义）
+  runWithEnv: <T>(_tenantId: string, _env: string, fn: () => T): T => fn(),
+  getEnvironmentId: (): string | null => null,
 }));
 
 // 暴露到 globalThis 供测试文件访问

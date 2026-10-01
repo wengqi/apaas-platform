@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
+import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
 
 /**
  * 页面模块 — 页面 Schema 存取 CRUD。
@@ -15,6 +16,7 @@ import { ChangeLogModule } from '../application/changelog.module.js';
  */
 @Module({
   imports: [
+    EnvironmentCoreModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -21,6 +21,7 @@ import { CheckService } from './check.service.js';
 import { ChangeLogService } from './changelog.service.js';
 import { TriggerService } from '../process/trigger.service.js';
 import { writeAudit } from '../common/audit.js';
+import { EnvironmentService } from '../environment/environment.service.js';
 
 /**
  * 应用服务 — Application CRUD + 发布/回滚/版本管理。
@@ -33,6 +34,7 @@ export class ApplicationService {
     private readonly checkService: CheckService,
     private readonly changeLogService: ChangeLogService,
     private readonly triggerService: TriggerService,
+    private readonly environmentService: EnvironmentService,
   ) {}
 
   /** 评审整改：类内日志器（不作为 DI 依赖） */
@@ -405,6 +407,19 @@ export class ApplicationService {
         .catch((err: unknown) => this.logger?.warn?.(`定时触发器注册失败: ${String(err)}`));
     }
 
+    // R1.4：应用发布 = 部署到 prod 环境（确保环境行存在 + 切指针 + Deployment 历史）
+    // 指针切换失败不回滚发布本身（publishedSnapshot 已写入，旧路径仍然可用）
+    try {
+      await this.environmentService.deploy(tenantId, appId, 'prod', publishedBy, {
+        versionId: version.id,
+        note: '应用发布（prod）',
+      });
+    } catch (err) {
+      this.logger?.warn?.(
+        `prod 环境指针切换失败（运行时将沿用旧快照）: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     // 评审整改：业务动作级审计
     writeAudit({
       tenantId,
@@ -483,6 +498,18 @@ export class ApplicationService {
 
       return newVersion;
     });
+
+    // R1.4：回滚产生新版本 → prod 指针切到回滚版本（与 publishedSnapshot 一致）
+    try {
+      await this.environmentService.deploy(tenantId, appId, 'prod', rolledBackBy, {
+        versionId: version.id,
+        note: '应用回滚（prod）',
+      });
+    } catch (err) {
+      this.logger?.warn?.(
+        `回滚后 prod 指针切换失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     return this.toAppVersion(version);
   }

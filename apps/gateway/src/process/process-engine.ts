@@ -22,7 +22,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { prisma, Prisma, runWithTenant } from '@apaas/db';
+import { prisma, Prisma, getEnvironmentId, runWithEnv } from '@apaas/db';
 import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
 import { resolveInputs, writeNodeOutput, evaluateCondition } from './process-utils.js';
@@ -30,6 +30,7 @@ import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { RedisLockService } from '../common/redis/redis-lock.service.js';
+import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
 
 /**
  * 评审 P1-6：队列作业统一重试/清理策略。
@@ -102,6 +103,7 @@ export class ProcessEngine {
     private readonly registry: NodeExecutorRegistry,
     private readonly inAppMessageService: InAppMessageService,
     private readonly redisLock: RedisLockService,
+    private readonly environmentResolver: EnvironmentResolverService,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
     @Inject(DELAY_QUEUE) private readonly delayQueue: Queue,
   ) {}
@@ -132,16 +134,57 @@ export class ProcessEngine {
     tenantId: string,
     processDefId: string,
     triggerContext: Record<string, unknown>,
+    envKey?: string,
   ): Promise<string> {
-    // 加载已发布的流程定义
-    const def = await prisma.processDef.findFirst({
-      where: { id: processDefId, tenantId, status: 'PUBLISHED' },
+    // R1.4：解析环境（显式参数 > ALS > prod）——bundle 内的流程视为已发布语义
+    const env = envKey ?? getEnvironmentId() ?? 'prod';
+
+    // 先查活表定位流程（拿 appId 供 bundle 解析；活表行始终存在，含流程元信息）
+    const liveDef = await prisma.processDef.findFirst({
+      where: { id: processDefId, tenantId },
     });
-    if (!def) {
+    if (!liveDef) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
-        message: '流程未发布，无法启动（需先发布）',
+        message: '流程不存在',
       });
+    }
+
+    const resolved = await this.environmentResolver.resolve(tenantId, liveDef.appId, env);
+
+    const bundled =
+      resolved.bundleMode && resolved.bundle
+        ? resolved.bundle.processes.find((p) => p.id === processDefId)
+        : undefined;
+
+    let def: {
+      id: string;
+      apiName: string;
+      name: string;
+      version: number;
+      workflowSchema: unknown;
+      triggerType: string | null;
+    };
+
+    if (bundled) {
+      // bundle 模式：workflowSchema 取自不可变快照（版本切换不影响新实例语义）
+      def = {
+        id: liveDef.id,
+        apiName: liveDef.apiName,
+        name: liveDef.name,
+        version: liveDef.version,
+        triggerType: liveDef.triggerType,
+        workflowSchema: bundled.workflowSchema,
+      };
+    } else {
+      // 降级：活表已发布语义（存量应用/未走环境指针）
+      if (liveDef.status !== 'PUBLISHED') {
+        throw new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: '流程未发布，无法启动（需先发布）',
+        });
+      }
+      def = liveDef;
     }
 
     const schema = def.workflowSchema as unknown as WorkflowSchema;
@@ -160,6 +203,8 @@ export class ProcessEngine {
     const instance = await prisma.processInstance.create({
       data: {
         tenantId,
+        environmentId: env,
+        frozenWorkflowSchema: schema as unknown as Prisma.InputJsonValue,
         processDefId: def.id,
         triggerContext: triggerContext as Prisma.InputJsonValue,
         variables: initialVariables as Prisma.InputJsonValue,
@@ -186,6 +231,7 @@ export class ProcessEngine {
   async startProcessByDefId(
     processDefId: string,
     triggerContext: Record<string, unknown>,
+    envKey?: string,
   ): Promise<string> {
     const def = await prisma.processDef.findFirst({
       where: { id: processDefId, status: 'PUBLISHED' },
@@ -200,8 +246,8 @@ export class ProcessEngine {
 
     this.logger.log(`定时触发流程 ${def.apiName}(${processDefId})`);
 
-    return runWithTenant(def.tenantId, () =>
-      this.startProcess(def.tenantId, def.id, triggerContext),
+    return runWithEnv(def.tenantId, envKey ?? 'prod', () =>
+      this.startProcess(def.tenantId, def.id, triggerContext, envKey),
     );
   }
 
@@ -225,7 +271,26 @@ export class ProcessEngine {
    * 实例本身的 tenantId 列确保了数据归属正确。
    */
   async executeNextNode(instanceId: string): Promise<void> {
-    await this.withInstanceLock(instanceId, () => this.executeNextNodeLocked(instanceId));
+    await this.withInstanceLock(instanceId, async () => {
+      // R1.4：节点执行在实例所属环境上下文中进行——节点内的记录写/触发
+      // 自动落入同一环境（ALS environmentId 注入 records/node_executions）
+      const instanceEnv = await this.instanceEnvironment(instanceId);
+      await runWithEnv(instanceEnv.tenantId, instanceEnv.environmentId, () =>
+        this.executeNextNodeLocked(instanceId),
+      );
+    });
+  }
+
+  /** 读取实例的租户与环境（节点执行上下文用；实例不存在时抛错交由上层处理） */
+  private async instanceEnvironment(
+    instanceId: string,
+  ): Promise<{ tenantId: string; environmentId: string }> {
+    const instance = await prisma.processInstance.findFirst({
+      where: { id: instanceId },
+      select: { tenantId: true, environmentId: true },
+    });
+    if (!instance) throw new NotFoundException('流程实例不存在');
+    return { tenantId: instance.tenantId, environmentId: instance.environmentId };
   }
 
   /**
@@ -255,7 +320,9 @@ export class ProcessEngine {
       return;
     }
 
-    const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
+    // R1.4：优先使用实例启动时冻结的流程 schema（版本切换不影响在途实例语义）
+    const schema = (instance.frozenWorkflowSchema ??
+      instance.processDef.workflowSchema) as unknown as WorkflowSchema;
     const variables = (instance.variables as Record<string, unknown>) ?? {};
 
     // 处理活跃令牌，逐个推进

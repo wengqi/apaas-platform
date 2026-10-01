@@ -18,9 +18,11 @@ import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { QueueModule } from '../queue/queue.module.js';
+import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
 
 @Module({
   imports: [
+    EnvironmentCoreModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

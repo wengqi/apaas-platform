@@ -42,8 +42,16 @@ function createEngine(executors: NodeExecutor[] = []) {
     registry as unknown as ConstructorParameters<typeof ProcessEngine>[0],
     { create: vi.fn() } as unknown as ConstructorParameters<typeof ProcessEngine>[1],
     redisLock,
-    processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[3],
-    delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
+    {
+      resolve: vi.fn().mockResolvedValue({
+        environmentId: '',
+        versionId: null,
+        bundleMode: false,
+        bundle: null,
+      }),
+    } as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+    processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
+    delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
   );
   return { engine, processQueue, delayQueue };
 }

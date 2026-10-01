@@ -105,6 +105,7 @@ export class SnapshotService {
         name: proc.name,
         workflowSchema: proc.workflowSchema as Record<string, unknown>,
         triggerType: proc.triggerType,
+        cron: proc.cron,
       })),
       permissions: {
         roles: [...appRoles, ...tenantRoles].map((role) => ({

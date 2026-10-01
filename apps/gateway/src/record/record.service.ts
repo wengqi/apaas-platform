@@ -6,7 +6,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { prisma, Prisma } from '@apaas/db';
+import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
 import { FieldType } from '@apaas/shared';
 import type {
   BatchCreateResult,
@@ -18,6 +18,7 @@ import { FormulaEngine } from '../object/formula-engine.js';
 import { RollupService } from './rollup.service.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { TriggerService } from '../process/trigger.service.js';
+import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
 import { translateCondition } from '../permission/condition-translator.js';
 import { jsonLogicToPrismaWhere } from '../shared/jsonlogic-to-prisma.js';
 import {
@@ -105,7 +106,41 @@ export class RecordService {
     @Inject(forwardRef(() => TriggerService))
     private readonly triggerService: TriggerService,
     private readonly rollupService: RollupService,
+    private readonly environmentResolver: EnvironmentResolverService,
   ) {}
+
+  /**
+   * R1.4：解析对象字段定义（环境感知）——bundle 模式取快照 objects，
+   * 降级活表 ObjectMeta。appId 兜底从活表行取得（bundle 匹配也需要）。
+   */
+  private async resolveObject(
+    tenantId: string,
+    objectId: string,
+  ): Promise<{
+    appId: string;
+    apiName: string;
+    fields: unknown;
+    live: { appId: string; apiName: string; fields: unknown } | null;
+  }> {
+    const live = await prisma.objectMeta.findFirst({
+      where: { id: objectId, tenantId },
+      select: { appId: true, apiName: true, fields: true },
+    });
+    if (!live) {
+      return { appId: '', apiName: '', fields: [], live: null };
+    }
+    const env = getEnvironmentId() ?? 'prod';
+    const resolved = await this.environmentResolver.resolve(tenantId, live.appId, env);
+    if (resolved.bundleMode && resolved.bundle) {
+      const bundled = resolved.bundle.objects.find((o) => o.id === objectId);
+      if (bundled) {
+        return { appId: live.appId, apiName: bundled.apiName, fields: bundled.fields, live };
+      }
+      // bundle 中不存在该对象（发布后新建的活表对象）→ 视为未发布，按空字段处理
+      return { appId: live.appId, apiName: live.apiName, fields: [], live };
+    }
+    return { appId: live.appId, apiName: live.apiName, fields: live.fields, live };
+  }
   // ===========================================================================
   // 查询
   // ===========================================================================
@@ -255,8 +290,8 @@ export class RecordService {
       pageSize,
     } = params;
 
-    const obj = await prisma.objectMeta.findFirst({ where: { id: objectId, tenantId } });
-    const fields = this.parseFields(obj?.fields).map((f) => ({ apiName: f.apiName, type: f.type }));
+    const obj = await this.resolveObject(tenantId, objectId);
+    const fields = this.parseFields(obj.fields).map((f) => ({ apiName: f.apiName, type: f.type }));
 
     const extraction = extractContainmentFilter(filterRule);
     const canPushDown = Boolean(extraction) && extraction!.rest === null && !hasPermissionCondition;
@@ -267,10 +302,13 @@ export class RecordService {
         const containmentJson = JSON.stringify(extraction.containment);
         const offset = (page - 1) * pageSize;
 
+        // R1.4：raw SQL 旁路不经 $extends，需显式过滤环境
+        const envFilter = getEnvironmentId() ?? 'prod';
         const ids = await prisma.$queryRaw<Array<{ id: string }>>`
           SELECT r.id FROM records r
           WHERE r.tenant_id = ${tenantId}
             AND r.object_id = ${objectId}
+            AND r.environment_id = ${envFilter}
             AND r.data @> ${containmentJson}::jsonb
           ORDER BY ${Prisma.raw(orderSql)}
           LIMIT ${pageSize} OFFSET ${offset}
@@ -279,6 +317,7 @@ export class RecordService {
           SELECT count(*)::bigint AS count FROM records r
           WHERE r.tenant_id = ${tenantId}
             AND r.object_id = ${objectId}
+            AND r.environment_id = ${envFilter}
             AND r.data @> ${containmentJson}::jsonb
         `;
 
@@ -358,11 +397,9 @@ export class RecordService {
     data: Record<string, unknown>,
     permissionContext?: PermissionContext,
   ): Promise<RecordResult> {
-    // 校验对象存在且属于该租户，同时获取 appId 与字段定义
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+    // 校验对象存在且属于该租户，同时获取 appId 与字段定义（环境感知）
+    const obj = await this.resolveObject(tenantId, objectId);
+    if (!obj.live) throw new NotFoundException('对象不存在');
 
     const fields = this.parseFields(obj.fields);
 
@@ -384,6 +421,7 @@ export class RecordService {
         format,
         objectId,
         tenantId,
+        getEnvironmentId() ?? 'prod',
       );
     }
 
@@ -429,11 +467,18 @@ export class RecordService {
 
     // 触发记录创建事件（非阻塞）；created_by 供流程通知等节点引用（系统字段，置于展开后保证不被业务数据覆盖）
     const result = this.toResult(record);
-    void this.triggerService.onRecordEvent(tenantId, obj.appId, objectId, 'created', {
-      id: record.id,
-      ...(record.data as Record<string, unknown>),
-      created_by: userId,
-    });
+    void this.triggerService.onRecordEvent(
+      tenantId,
+      obj.appId,
+      objectId,
+      'created',
+      {
+        id: record.id,
+        ...(record.data as Record<string, unknown>),
+        created_by: userId,
+      },
+      getEnvironmentId() ?? 'prod',
+    );
 
     // 本记录可能作为子记录被其他对象的 Rollup 聚合（异步反向重算，非阻塞）
     void this.rollupService
@@ -472,11 +517,24 @@ export class RecordService {
         tenantId,
         ...(conditionWhere ? { AND: [conditionWhere] } : {}),
       },
-      include: { object: { select: { fields: true } } },
+      include: { object: { select: { fields: true, appId: true } } },
     });
     if (!existing) throw new NotFoundException('记录不存在');
 
-    const fields = this.parseFields(existing.object.fields);
+    // R1.4：字段定义环境感知——bundle 优先（快照内对象），降级 include 的活表字段
+    let fields = this.parseFields(existing.object?.fields);
+    if (existing.object) {
+      const env = getEnvironmentId() ?? 'prod';
+      const resolved = await this.environmentResolver.resolve(
+        tenantId,
+        existing.object.appId ?? '',
+        env,
+      );
+      if (resolved.bundleMode && resolved.bundle) {
+        const bundled = resolved.bundle.objects.find((o) => o.id === existing.objectId);
+        fields = bundled ? this.parseFields(bundled.fields) : [];
+      }
+    }
 
     // 1. 剔除入参中的 AutoNumber 字段（自动编号不可更新）
     const incoming: Record<string, unknown> = { ...writableData };
@@ -530,12 +588,19 @@ export class RecordService {
 
     // 触发记录更新事件（非阻塞）；系统字段置于展开后保证不被业务数据覆盖
     const result = this.toResult(record);
-    void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'updated', {
-      id: record.id,
-      ...mergedData,
-      created_by: existing.createdBy,
-      updated_by: userId,
-    });
+    void this.triggerService.onRecordEvent(
+      tenantId,
+      existing.appId,
+      existing.objectId,
+      'updated',
+      {
+        id: record.id,
+        ...mergedData,
+        created_by: existing.createdBy,
+        updated_by: userId,
+      },
+      getEnvironmentId() ?? 'prod',
+    );
 
     // 本记录可能作为子记录被其他对象的 Rollup 聚合（异步反向重算，非阻塞）
     void this.rollupService
@@ -594,11 +659,18 @@ export class RecordService {
     });
 
     // 触发记录删除事件（非阻塞）；created_by 供流程节点引用
-    void this.triggerService.onRecordEvent(tenantId, existing.appId, existing.objectId, 'deleted', {
-      id: recordId,
-      ...(existing.data as Record<string, unknown>),
-      created_by: existing.createdBy,
-    });
+    void this.triggerService.onRecordEvent(
+      tenantId,
+      existing.appId,
+      existing.objectId,
+      'deleted',
+      {
+        id: recordId,
+        ...(existing.data as Record<string, unknown>),
+        created_by: existing.createdBy,
+      },
+      getEnvironmentId() ?? 'prod',
+    );
 
     // 子记录删除 → 反向重算引用它的父记录 Rollup（异步，非阻塞）
     void this.rollupService
@@ -727,10 +799,17 @@ export class RecordService {
 
     for (const { appId, objectId, records: objs } of byObject.values()) {
       for (const record of objs) {
-        void this.triggerService.onRecordEvent(tenantId, appId, objectId, 'deleted', {
-          id: record.id,
-          ...(record.data as Record<string, unknown>),
-        });
+        void this.triggerService.onRecordEvent(
+          tenantId,
+          appId,
+          objectId,
+          'deleted',
+          {
+            id: record.id,
+            ...(record.data as Record<string, unknown>),
+          },
+          getEnvironmentId() ?? 'prod',
+        );
       }
     }
 

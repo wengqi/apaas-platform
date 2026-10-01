@@ -47,6 +47,9 @@ function createService() {
     {
       onProcessPublished: vi.fn().mockResolvedValue(undefined),
     } as unknown as ConstructorParameters<typeof ApplicationService>[3],
+    {
+      deploy: vi.fn().mockResolvedValue({ environment: {}, deployment: {} }),
+    } as unknown as ConstructorParameters<typeof ApplicationService>[4],
   );
   return { service, snapshotService, checkService, changeLogService };
 }

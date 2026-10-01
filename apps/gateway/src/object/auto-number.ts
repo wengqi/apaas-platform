@@ -97,13 +97,19 @@ export class AutoNumberGenerator {
    * @param format   编号格式规则（如 `ORD-{seq:0000}`）
    * @param objectId 所属对象 ID（序号计数范围）
    * @param tenantId 租户 ID（计数器行归属）
+   * @param envKey   环境 key（R1.4：dev/prod 序列独立，缺省 prod）
    * @returns 生成的编号字符串
    */
-  async generate(format: string, objectId: string, tenantId: string): Promise<string> {
+  async generate(
+    format: string,
+    objectId: string,
+    tenantId: string,
+    envKey = 'prod',
+  ): Promise<string> {
     const now = new Date();
 
     // 计算下一个序号：计数器表原子自增
-    const seq = await this.nextSeq(format, objectId, tenantId, now);
+    const seq = await this.nextSeq(format, objectId, tenantId, now, envKey);
 
     return renderFormat(format, seq, now);
   }
@@ -119,6 +125,7 @@ export class AutoNumberGenerator {
     objectId: string,
     tenantId: string,
     now: Date,
+    envKey = 'prod',
   ): Promise<number> {
     // 若格式不含序号占位符，直接返回 0（渲染时不会有 seq）
     if (!format.includes('{seq')) return 0;
@@ -126,9 +133,9 @@ export class AutoNumberGenerator {
     const prefix = resolvePrefixBeforeSeq(format, now);
 
     const counter = await prisma.autoNumberCounter.upsert({
-      where: { objectId_prefix: { objectId, prefix } },
+      where: { objectId_prefix_environmentId: { objectId, prefix, environmentId: envKey } },
       update: { counter: { increment: 1 } },
-      create: { tenantId, objectId, prefix, counter: 1 },
+      create: { tenantId, objectId, prefix, environmentId: envKey, counter: 1 },
     });
 
     return counter.counter;

@@ -42,7 +42,7 @@
 | G1/R1.2 | **草稿→提交→发布三级版本模型 + diff 快审** | **✅ 完成（2026-10-01）**：资源级三态（OBJECT/PAGE/PROCESS 统一）+ 提交快照链（ResourceVersion：PENDING/APPROVED/REJECTED/SUPERSEDED + versionNumber 链内自增 + baselineVersionId 谱系钩子）；**治理策略=仅 AI 提交需人审**（MCP submit_*_draft 改造为 PENDING 不落活表，批准才落地；人工提交即时 APPROVED 基线快照）；**验收项 diff 快审 UX**（审核中心 /app/:id/reviews：待审/已处理/未提交变更三页签 + schema 级结构化 diff 视图（shared 纯函数内核，增/删/改三色）+ 一键批/驳 + 驳回意见回传 agent（list_review_submissions）+ 漂移保护（活表偏离基线拒绝批准可 force）+ 撤销未提交（恢复基线快照））；应用级发布/回滚机制不动（R1.4 在此之上做环境指针）。单测 gateway 610/diff 11，e2e 17 号全链路 5 用例，全量 e2e 72/72 | ✅ 完成 |
 | R1.7 | **页面层 amis 迁移（P2）** | PageSchema v2=amis 方言；渲染器换 amis；组件 86→约 30 核心集；搭建器 amis 化兜底改造；v1 存量一次性迁移 | ⬜ 未开始 |
 
-并行小项：数据集引擎下沉 PostgreSQL SQL（删内存 join ~2.5k 行）——**✅ 2026-10-01 完成**（pipeline 全量下推：每源 LIMIT 子查询 + COALESCE join + JsonLogic 子集 WHERE + GROUP BY regex 守卫聚合；filter 不可下推非聚合分支内存兜底/聚合分支显式报错；e2e 07 零改动全绿；详见 docs/knowledge-base/DATASET-SQL-2026-10-01.md）；纯流程形态 API 产品化（API 触发器 + API Key + 流程版本稳定性承诺）。阶段划分、准入 spike、风险登记详见蓝图 `docs/design/DESIGN-refactor-blueprint-2026-09-30.md`。
+并行小项：数据集引擎下沉 PostgreSQL SQL（删内存 join ~2.5k 行）——**✅ 2026-10-01 完成**（pipeline 全量下推：每源 LIMIT 子查询 + COALESCE join + JsonLogic 子集 WHERE + GROUP BY regex 守卫聚合；filter 不可下推非聚合分支内存兜底/聚合分支显式报错；e2e 07 零改动全绿；详见 docs/knowledge-base/DATASET-SQL-2026-10-01.md）；纯流程形态 API 产品化（API 触发器 + API Key + 流程版本稳定性承诺）——**✅ 2026-10-01 完成**（X-API-Key 服务身份 sha256 存储 + /open/* 触发端点（open 限流桶）+ apiName+major 冻结快照承诺（新 major diff 半自动、旧 major DEPRECATED 仍可调、引擎 schemaOverride 直通契约）；e2e 19 号 7 用例含 v1 钉版本稳定性验证、全量 83/83；详见 docs/knowledge-base/OPEN-API-2026-10-01.md）。阶段划分、准入 spike、风险登记详见蓝图 `docs/design/DESIGN-refactor-blueprint-2026-09-30.md`。
 
 ---
 

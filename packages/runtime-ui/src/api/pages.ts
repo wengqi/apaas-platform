@@ -224,6 +224,14 @@ export const pagesApi = {
     apiClient.get(`/pages/${pageId}`).then((res) => res.data.data as PageMeta),
 
   /** 按 slug 获取已发布页面（运行时渲染用） */
-  getBySlug: (appId: string, slug: string) =>
-    apiClient.get(`/apps/${appId}/pages/slug/${slug}`).then((res) => res.data.data as PageMeta),
+  getBySlug: (appId: string, slug: string, env?: string) =>
+    apiClient
+      .get(`/apps/${appId}/pages/slug/${slug}`, { params: env ? { env } : undefined })
+      .then((res) => res.data.data as PageMeta),
+
+  /** R1.4：按 ID 读运行时页面（审批页渲染，环境 bundle 优先） */
+  getRuntime: (appId: string, pageId: string, env?: string) =>
+    apiClient
+      .get(`/apps/${appId}/pages/runtime/${pageId}`, { params: env ? { env } : undefined })
+      .then((res) => res.data.data as PageMeta),
 };

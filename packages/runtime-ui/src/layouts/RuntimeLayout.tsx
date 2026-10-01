@@ -1,4 +1,4 @@
-import { Avatar, Dropdown, Layout, Space, Typography, Button } from 'antd';
+import { Avatar, Dropdown, Layout, Space, Typography, Button, Select } from 'antd';
 import { LogoutOutlined, UserOutlined, HomeOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@apaas/shared/stores';
@@ -68,6 +68,22 @@ export default function RuntimeLayout() {
           </Space>
         </Space>
         <Space size="middle" align="center">
+          {/* R1.4：环境切换（写入 URL ?env=，缺省 prod） */}
+          <Select
+            size="small"
+            value={new URLSearchParams(window.location.search).get('env') ?? 'prod'}
+            style={{ width: 92 }}
+            onChange={(key: string) => {
+              const params = new URLSearchParams(window.location.search);
+              if (key === 'prod') params.delete('env');
+              else params.set('env', key);
+              navigate({ pathname: location.pathname, search: params.toString() });
+            }}
+            options={[
+              { value: 'prod', label: '生产环境' },
+              { value: 'dev', label: '开发环境' },
+            ]}
+          />
           <NotificationBell />
           <Dropdown
             placement="bottomRight"

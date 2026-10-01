@@ -12,11 +12,13 @@ import {
   Alert,
   message,
   Descriptions,
+  Radio,
 } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { publishAffectedKeys, qk } from '@apaas/shared/stores';
 import { publishApi } from '../api/publish.js';
+import { environmentsApi } from '../api/environments.js';
 import type { ChangeSet } from '@apaas/shared';
 
 const { Title, Text, Paragraph: _Paragraph } = Typography;
@@ -35,6 +37,8 @@ export default function PublishWizard() {
   const queryClient = useQueryClient();
   const [current, setCurrent] = useState(0);
   const [version, setVersion] = useState('0.1.0');
+  // R1.4：目标环境（prod=对外生效；dev=仅内部验证，不触碰生产）
+  const [targetEnv, setTargetEnv] = useState<'prod' | 'dev'>('prod');
   const [description, setDescription] = useState('');
 
   /** 获取变更清单 */
@@ -44,16 +48,23 @@ export default function PublishWizard() {
     enabled: !!appId,
   });
 
-  /** 发布 mutation */
+  /** 发布 mutation（R1.4：prod 由后端发布即部署；dev 追加切 dev 指针） */
   const publishMutation = useMutation({
-    mutationFn: () => publishApi.publish(appId!, { version, description }),
+    mutationFn: async () => {
+      const created = await publishApi.publish(appId!, { version, description });
+      if (targetEnv === 'dev') {
+        await environmentsApi.deploy(appId!, 'dev', { versionId: created.id });
+      }
+      return created;
+    },
     onSuccess: () => {
-      message.success('发布成功');
+      message.success(targetEnv === 'dev' ? '已发布并部署到 dev（生产未受影响）' : '发布成功');
       // 评审 P2-1：发布成功后失效受影响键（此前不做任何失效，
       // 已挂载的应用/对象/页面/版本/变更视图会保持陈旧）
       for (const key of publishAffectedKeys(appId!)) {
         queryClient.invalidateQueries({ queryKey: key });
       }
+      void queryClient.invalidateQueries({ queryKey: qk.environments(appId!) });
       navigate(`/app/${appId}/versions`);
     },
     onError: (err: unknown) => {
@@ -80,6 +91,15 @@ export default function PublishWizard() {
             <Text type="secondary" style={{ fontSize: 12 }}>
               语义化版本号，格式为 x.y.z
             </Text>
+          </Form.Item>
+          <Form.Item label="目标环境（R1.4）">
+            <Radio.Group
+              value={targetEnv}
+              onChange={(e) => setTargetEnv(e.target.value as 'prod' | 'dev')}
+            >
+              <Radio value="prod">生产（prod）</Radio>
+              <Radio value="dev">仅开发（dev，生产不受影响）</Radio>
+            </Radio.Group>
           </Form.Item>
           <Form.Item label="更新说明" required>
             <TextArea

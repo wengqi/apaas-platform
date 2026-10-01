@@ -169,6 +169,8 @@ export default function TaskCenter() {
                 <div style={{ marginBottom: 16 }}>
                   <ApprovalPageRenderer
                     pageId={taskDetail.boundPageId}
+                    appId={taskDetail.appId}
+                    env={taskDetail.runtimeEnv}
                     data={{
                       taskId: taskDetail.id,
                       ...(taskDetail.instance?.variables ?? {}),

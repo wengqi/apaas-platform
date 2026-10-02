@@ -141,9 +141,9 @@ jobs:
 
       - name: Build
         # studio 引入 amis-editor 后构建图 1.4 万模块，rendering chunks 内存峰值 ~6GB+：
-        # 堆 8192（根 build script 内设置）+ 降并发避免系统 OOM Killer
+        # 堆 8192 + 降并发（studio 构建独占内存窗口）避免系统 OOM Killer
         # （曾 4096 下 rendering chunks 被 OOM Kill / GC 抖动 20 分钟撞 job timeout）
-        run: pnpm build -- --concurrency=2
+        run: NODE_OPTIONS=--max-old-space-size=8192 pnpm exec turbo build --concurrency=2
 
   e2e:
     name: E2E Tests (Playwright)

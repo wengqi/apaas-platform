@@ -8,12 +8,19 @@ import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { objectsApi } from '../../../api/objects.js';
 import type { PageType } from '../../../api/pages.js';
-import { PAGE_TYPE_OPTIONS } from '../../../constants/pageComponents.js';
-import { pageTypeRequiresObject } from '../templates.js';
 
 const { Text } = Typography;
 
 /** 创建页面表单值。 */
+/** 页面类型选项（原 pageComponents 注册表随 v1 搭建器退役，仅建页弹窗仍在用） */
+const PAGE_TYPE_OPTIONS: { label: string; value: string }[] = [
+  { label: '列表页', value: 'list_page' },
+  { label: '详情页', value: 'detail_page' },
+  { label: '表单页', value: 'form_page' },
+  { label: '仪表盘', value: 'dashboard' },
+  { label: '自定义', value: 'custom' },
+];
+
 export interface CreatePageFormValues {
   name: string;
   slug: string;
@@ -48,9 +55,9 @@ export function CreatePageModal({
     value: obj.id,
   }));
 
-  /** 监听页面类型变化,决定关联对象是否必填。 */
+  /** 监听页面类型变化,决定关联对象是否必填（原 templates/dispatch 随 v1 搭建器退役） */
   const pageType = Form.useWatch('type', form);
-  const requiresObject = pageTypeRequiresObject(pageType ?? 'custom');
+  const requiresObject = ['list_page', 'detail_page', 'form_page'].includes(pageType ?? 'custom');
 
   return (
     <Modal

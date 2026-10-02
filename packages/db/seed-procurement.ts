@@ -107,7 +107,7 @@ function businessFields(fields: StoredField[]): StoredField[] {
 // ---------------------------------------------------------------------------
 
 /**
- * R1.7：页面 schema 统一产 amis 方言（v2）——运行时经 PageView 的 isAmisPage
+ * R1.7：页面 schema 统一产 amis 方言（唯一方言）——运行时 AmisRenderer 直接渲染
  * 分流由 AmisRenderer 渲染；取数/提交全部走平台相对 api.url（fetcher 带 token）。
  * 字段类型 → amis 控件映射与 v1 表单生成器一致。
  */

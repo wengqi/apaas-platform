@@ -337,11 +337,14 @@ test.describe('页面搭建器', () => {
       type: 'custom',
     });
     await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    // 等页面 schema 异步加载完成（loadPage 覆盖 store 后再交互，避免竞态回写）
+    await expect(page.locator('[data-canvas-card]')).toBeVisible({ timeout: 15_000 });
     await page.getByText('代码', { exact: true }).click();
     await expect(page.getByText('页面 Schema')).toBeVisible();
-    await page.getByPlaceholder(/预览与运行时页面注入/).fill('.demo-title { color: red; }');
-    // 500ms 防抖落盘后再保存；保存是异步 PUT——轮询直到全局样式写回
-    await page.waitForTimeout(800);
+    const cssInput = page.getByPlaceholder(/预览与运行时页面注入/);
+    await cssInput.fill('.demo-title { color: red; }');
+    // 显式 blur 立即落盘（500ms 防抖在套件负载下会延迟到保存之后）
+    await cssInput.blur();
     await page.getByRole('button', { name: '保存' }).click();
     await expect
       .poll(

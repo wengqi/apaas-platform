@@ -10,9 +10,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../../api/pages.js';
-import { objectsApi } from '../../api/objects.js';
-import { createDefaultSchema } from '../../stores/pageBuilder.js';
-import { generatePageTemplate, pageTypeRequiresObject } from './templates.js';
 import { PageListItem } from './page-list/PageListItem.js';
 import { CreatePageModal, type CreatePageFormValues } from './page-list/CreatePageModal.js';
 
@@ -53,21 +50,22 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     );
   }, [pages, keyword]);
 
-  /** 创建页面(根据类型 + 对象自动生成模板)。 */
+  /** 创建页面（R1.7 第二轮：统一产出 amis 空页 scaffold，v1 模板已退役）。 */
   const createMutation = useMutation({
     mutationFn: async (data: CreatePageFormValues) => {
-      // 列表/详情/表单页:拉取对象字段,生成模板;其他:空白 Schema
-      let schema = createDefaultSchema(data.type);
-      if (data.objectId && pageTypeRequiresObject(data.type)) {
-        const objectMeta = await objectsApi.get(data.objectId);
-        schema = generatePageTemplate(data.type, objectMeta);
-      }
+      // 能力口径 = amis 原生：页面内容在 amis-editor 画布中搭建，
+      // 不再预生成 v1 模板（v1 渲染轨已下线，模板产出不可渲染）
+      const schema: Record<string, unknown> = {
+        type: 'page',
+        title: data.name,
+        body: [],
+      };
       return pagesApi.create(appId as string, {
         name: data.name,
         apiName: data.slug,
         type: data.type,
         objectId: data.objectId,
-        schema,
+        schema: schema as never,
       });
     },
     onSuccess: (page) => {

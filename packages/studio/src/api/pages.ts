@@ -227,7 +227,9 @@ export interface PageMeta {
   tenantId?: string;
   appId: string;
   name: string;
-  /** 页面 API 名称（应用内唯一，后端映射为 slug） */
+  /** 页面 slug（应用内唯一；wire 字段名即 slug，运行时预览路由使用） */
+  slug: string;
+  /** @deprecated wire 上不存在该字段（实际为 slug），仅 v1 搭建器遗留引用，随 ③ 删除 */
   apiName: string;
   type: PageType;
   /** 关联对象(列表/详情/表单页) */

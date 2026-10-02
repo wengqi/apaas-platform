@@ -11,6 +11,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // i18n-runtime（amis-editor 传递依赖）发布的 package.json 声明 module=es/index.js
+      // 但包内只有 lib/ —— 别名指到真实存在的 CJS 构建
+      'i18n-runtime': 'i18n-runtime/lib/index.js',
     },
     // 确保 @flowgram.ai/* 只加载一份实例(pnpm 隔离模式下可能出现多副本)
     dedupe: ['react', 'react-dom'],

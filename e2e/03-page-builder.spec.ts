@@ -31,6 +31,21 @@ test.describe('页面搭建器', () => {
     expect(page_meta.id).toBeTruthy();
   });
 
+  test('amis 画布挂载：搭建器顶栏与编辑器可见', async ({ page }) => {
+    // R1.7 第二轮：画布唯一实现 = amis-editor（v1 三栏画布已退役）
+    const page_meta = await api.post<{ id: string; apiName: string }>(`/apps/${appId}/pages`, {
+      apiName: 'test_amis_canvas',
+      name: 'amis画布冒烟',
+      type: 'custom',
+    });
+    await page.goto(`/app/${appId}/pages/${page_meta.id}`);
+    // 自研顶栏（保存按钮）+ amis-editor 画布均挂载
+    await expect(page.getByRole('button', { name: '保存' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.ae-editor, [class*="ae-Editor"]').first()).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
   test('创建仪表盘页面（自动生成模板）', async () => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_dashboard',
@@ -39,12 +54,13 @@ test.describe('页面搭建器', () => {
     });
     expect(page_meta.id).toBeTruthy();
 
-    // 验证仪表盘模板已自动生成（schema 不为空）
-    const detail = await api.get<{ schema: { root: { children?: unknown[] } } }>(
+    // R1.7 第二轮：v1 仪表盘模板已退役，无 schema 创建统一产出 amis 空页 scaffold
+    const detail = await api.get<{ schema: { type?: string; body?: unknown[] } }>(
       `/pages/${page_meta.id}`,
     );
     expect(detail.schema).toBeTruthy();
-    expect(detail.schema.root).toBeTruthy();
+    expect(detail.schema.type).toBe('page');
+    expect(Array.isArray(detail.schema.body)).toBe(true);
   });
 
   test('UI 中打开页面搭建器', async ({ page }) => {
@@ -84,7 +100,8 @@ test.describe('页面搭建器', () => {
     expect(firstChild?.props?.content).toBe('E2E测试文本');
   });
 
-  test('富文本输入工具条：预览态加粗与列表生效', async ({ page }) => {
+  // v1 画布已随 R1.7 第二轮退役（amis-editor 承接），用例随 ③ v1 搭建器物理删除时移除
+  test.fixme('富文本输入工具条：预览态加粗与列表生效', async ({ page }) => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_richtext_page',
       name: '测试富文本页',
@@ -131,7 +148,8 @@ test.describe('页面搭建器', () => {
     await expect(editor.locator('ol li')).toHaveCount(1);
   });
 
-  test('行政区划级联：预览态省→市→区县三级选择', async ({ page }) => {
+  // v1 画布已随 R1.7 第二轮退役（amis-editor 承接），用例随 ③ v1 搭建器物理删除时移除
+  test.fixme('行政区划级联：预览态省→市→区县三级选择', async ({ page }) => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_region_page',
       name: '测试行政区划页',
@@ -176,7 +194,8 @@ test.describe('页面搭建器', () => {
     );
   });
 
-  test('字段并排布局：表单 2 列时两个输入框同行', async ({ page }) => {
+  // v1 画布已随 R1.7 第二轮退役（amis-editor 承接），用例随 ③ v1 搭建器物理删除时移除
+  test.fixme('字段并排布局：表单 2 列时两个输入框同行', async ({ page }) => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_columns_page',
       name: '测试并排布局页',
@@ -219,7 +238,8 @@ test.describe('页面搭建器', () => {
     expect((boxB?.x ?? 0) - (boxA?.x ?? 0)).toBeGreaterThan(100);
   });
 
-  test('跨容器拖拽：表单内字段拖入空分区容器', async ({ page }) => {
+  // v1 画布已随 R1.7 第二轮退役（amis-editor 承接），用例随 ③ v1 搭建器物理删除时移除
+  test.fixme('跨容器拖拽：表单内字段拖入空分区容器', async ({ page }) => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_crossdrag_page',
       name: '测试跨容器拖拽页',
@@ -284,7 +304,8 @@ test.describe('页面搭建器', () => {
     expect((s1?.children ?? []).some((c) => c.id === 't1')).toBe(true);
   });
 
-  test('飞书式保存点历史：保存自动捕获 + 恢复回滚 + 历史抽屉', async ({ page }) => {
+  // v1 画布已随 R1.7 第二轮退役（amis-editor 承接），用例随 ③ v1 搭建器物理删除时移除
+  test.fixme('飞书式保存点历史：保存自动捕获 + 恢复回滚 + 历史抽屉', async ({ page }) => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_savepoint_page',
       name: '测试保存点页',
@@ -362,7 +383,8 @@ test.describe('页面搭建器', () => {
       .toContain('.demo-title');
   });
 
-  test('画布宽度切换：手机 375 预设生效', async ({ page }) => {
+  // v1 画布已随 R1.7 第二轮退役（amis-editor 承接），用例随 ③ v1 搭建器物理删除时移除
+  test.fixme('画布宽度切换：手机 375 预设生效', async ({ page }) => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'test_canvaswidth_page',
       name: '测试画布宽度页',

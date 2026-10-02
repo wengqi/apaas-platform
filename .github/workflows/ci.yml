@@ -121,7 +121,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -140,10 +140,10 @@ jobs:
         run: pnpm db:generate
 
       - name: Build
-        run: pnpm build
-        # runtime-ui 引入 amis 后 vite 构建处理其巨型 antd.css，默认 ~2GB 堆 OOM（exit 134）
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        # studio 引入 amis-editor 后构建图 1.4 万模块，rendering chunks 内存峰值 ~6GB+：
+        # 堆 8192（根 build script 内设置）+ 降并发避免系统 OOM Killer
+        # （曾 4096 下 rendering chunks 被 OOM Kill / GC 抖动 20 分钟撞 job timeout）
+        run: pnpm build -- --concurrency=2
 
   e2e:
     name: E2E Tests (Playwright)

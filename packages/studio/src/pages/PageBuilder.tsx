@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { useParams } from 'react-router-dom';
+import { isAmisPage } from '@apaas/shared';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { usePageBuilderStore } from '../stores/pageBuilder.js';
@@ -96,7 +97,10 @@ export default function PageBuilder() {
       } else if (
         shortcut === 'delete' &&
         st.selectedNodeId &&
-        st.selectedNodeId !== st.schema?.root.id
+        st.selectedNodeId &&
+        st.schema &&
+        !isAmisPage(st.schema) &&
+        st.selectedNodeId !== st.schema.root.id
       ) {
         e.preventDefault();
         st.removeComponent(st.selectedNodeId);

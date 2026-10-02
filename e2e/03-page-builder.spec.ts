@@ -340,8 +340,8 @@ test.describe('页面搭建器', () => {
     await page.getByText('代码', { exact: true }).click();
     await expect(page.getByText('页面 Schema')).toBeVisible();
     await page.getByPlaceholder(/预览与运行时页面注入/).fill('.demo-title { color: red; }');
-    // 500ms 防抖落盘后再保存
-    await page.waitForTimeout(800);
+    // 500ms 防抖落盘后再保存（全量套件负载下留足余量）
+    await page.waitForTimeout(1500);
     await page.getByRole('button', { name: '保存' }).click();
     await page.waitForTimeout(1000);
     const detail = await api.get<{ schema: { globalCss?: string } }>(`/pages/${page_meta.id}`);

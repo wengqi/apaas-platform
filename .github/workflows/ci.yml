@@ -220,7 +220,8 @@ jobs:
       # 用 turbo 按 dependsOn ^build 先构建上游（shared/db 的 dist 类型入口），
       # 直接 pnpm --filter 跑单包 build 会因 @apaas/db 类型解析失败而报 TS2307
       - name: Build studio & gateway
-        run: pnpm exec turbo run build --filter=@apaas/gateway --filter=@apaas/studio
+        # 堆 8192：studio 构建图 1.4 万模块（amis-editor），默认 ~2GB 堆 OOM（exit 134）
+        run: NODE_OPTIONS=--max-old-space-size=8192 pnpm exec turbo run build --filter=@apaas/gateway --filter=@apaas/studio
         # 必须覆盖 job 级 NODE_ENV=test：Vite 6 以 NODE_ENV 决定构建模式，
         # test 模式打进 React development 版本，flowgram 画布在 dev bundle 下
         # 不渲染节点（曾致 12 号 spec 全挂且本地生产构建无法复现）。

@@ -88,6 +88,26 @@ export function normalizeListResponse(data: unknown): unknown {
   return data;
 }
 
+/**
+ * 数据域合并（盲审类缺陷根治）：运行时数据域（流程变量/触发上下文/页面上下文）
+ * 必须同时出现在两条通道——schema 顶层 data（page 域，amis 内部优先级最高）
+ * 与 render 第二参（根域，弹窗场景实测可能丢失）。双通道都注入后，无论 amis
+ * 内部取哪一路，字段都可见；schema 自带 data 作为默认值垫底，运行时数据覆盖。
+ * 纯函数，不修改入参。
+ */
+export function mergeSchemaData(
+  schema: Record<string, unknown>,
+  data?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!data || Object.keys(data).length === 0) return schema;
+  const defaults = schema['data'];
+  const base =
+    defaults !== null && typeof defaults === 'object' && !Array.isArray(defaults)
+      ? (defaults as Record<string, unknown>)
+      : {};
+  return { ...schema, data: { ...base, ...data } };
+}
+
 /** amis fetcher 选项（RenderOptions.fetcher 签名以运行时 JS 为准，类型面桥接）。 */
 function wrapFetcher(fn: FetcherLike): RenderOptions['fetcher'] {
   return (async (config: unknown) =>
@@ -133,6 +153,7 @@ export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRen
     }),
     [fetcher],
   );
+  const mergedSchema = useMemo(() => mergeSchemaData(schema, data), [schema, data]);
 
   return (
     <div
@@ -144,7 +165,7 @@ export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRen
         }
       }}
     >
-      {render(schema as { type: string } & Record<string, unknown>, data ?? {}, options)}
+      {render(mergedSchema as { type: string } & Record<string, unknown>, data ?? {}, options)}
     </div>
   );
 }

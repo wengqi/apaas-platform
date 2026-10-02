@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { adaptApiResponse } from './AmisRenderer.js';
 import { pageContainsForm } from './ApprovalPageRenderer.js';
-import { normalizeListResponse } from './AmisRenderer.js';
+import { mergeSchemaData, normalizeListResponse } from './AmisRenderer.js';
 
 describe('normalizeListResponse（R1.7 fetcher 列表规范化）', () => {
   it('records 响应：total→count + items 摊平 data JSONB', () => {
@@ -57,6 +57,47 @@ describe('adaptApiResponse — 平台响应 → amis fetcherResult', () => {
       data: {},
     });
     expect(adaptApiResponse({ status: 500 }).status).toBe(500);
+  });
+});
+
+describe('mergeSchemaData — 运行时数据域双通道注入（盲审回归网）', () => {
+  it('schema 自带 data 作为默认值垫底，运行时数据覆盖同名键', () => {
+    const merged = mergeSchemaData(
+      { type: 'page', title: 'x', data: { contract_name: '默认合同', sign_date: '2026-01-01' } },
+      { contract_name: '真实合同', amount: 100 },
+    );
+    expect(merged['data']).toEqual({
+      contract_name: '真实合同',
+      sign_date: '2026-01-01',
+      amount: 100,
+    });
+    // 其余 schema 字段原样保留
+    expect(merged['type']).toBe('page');
+    expect(merged['title']).toBe('x');
+  });
+
+  it('schema 无 data → 运行时数据成为 page 域', () => {
+    const merged = mergeSchemaData({ type: 'page', body: [] }, { taskId: 't1' });
+    expect(merged['data']).toEqual({ taskId: 't1' });
+  });
+
+  it('空数据域 → 原样返回（不额外包一层 data）', () => {
+    const schema = { type: 'page', data: { a: 1 } };
+    expect(mergeSchemaData(schema)).toBe(schema);
+    expect(mergeSchemaData(schema, {})).toBe(schema);
+  });
+
+  it('schema.data 非对象（字符串/数组）→ 整体替换为运行时数据', () => {
+    expect(mergeSchemaData({ type: 'page', data: 'legacy' }, { a: 1 })['data']).toEqual({ a: 1 });
+    expect(mergeSchemaData({ type: 'page', data: [1, 2] }, { a: 1 })['data']).toEqual({ a: 1 });
+  });
+
+  it('不修改入参 schema（纯函数）', () => {
+    const schema: Record<string, unknown> = { type: 'page', data: { a: 1 } };
+    const data = { b: 2 };
+    mergeSchemaData(schema, data);
+    expect(schema['data']).toEqual({ a: 1 });
+    expect(data).toEqual({ b: 2 });
   });
 });
 

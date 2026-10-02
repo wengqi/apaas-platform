@@ -184,31 +184,30 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     expect(records.total).toBeGreaterThanOrEqual(5);
   });
 
-  test('运行时页面通过 slug 可访问（publishedSnapshot 渲染）', async () => {
+  test('运行时页面通过 slug 可访问（R1.7：amis 方言）', async () => {
     // 获取已发布页面 schema（通过 slug — runtime-ui 使用此端点）
     const page = await api.get<{
       slug: string;
-      schema: { root: { type: string }; pageType: string };
+      schema: { type: string; body?: Array<{ type: string }> };
     }>(`/apps/${appId}/pages/slug/asset_list`);
     expect(page.slug).toBe('asset_list');
     expect(page.schema).toBeTruthy();
-    expect(page.schema.root).toBeTruthy();
-    expect(page.schema.root.type).toBe('page');
+    // R1.7：amis 方言（v2）——根节点 type=page，列表页 body 首块为 crud
+    expect(page.schema.type).toBe('page');
+    expect(page.schema.body?.[0]?.type).toBe('crud');
   });
 
-  test('仪表盘页面通过 slug 可访问', async () => {
+  test('仪表盘页面通过 slug 可访问（amis 方言）', async () => {
     const page = await api.get<{
       slug: string;
-      schema: { root: { type: string; children?: Array<{ type: string }> } };
+      schema: { type: string; body?: Array<{ type: string; columns?: unknown[] }> };
     }>(`/apps/${appId}/pages/slug/dashboard`);
     expect(page.slug).toBe('dashboard');
     expect(page.schema).toBeTruthy();
-    expect(page.schema.root).toBeTruthy();
-    expect(page.schema.root.type).toBe('page');
-    // 仪表盘根节点应包含 dashboard_grid 子节点
-    expect(page.schema.root.children).toBeDefined();
-    const hasDashboardGrid = page.schema.root.children!.some((c) => c.type === 'dashboard_grid');
-    expect(hasDashboardGrid).toBe(true);
+    expect(page.schema.type).toBe('page');
+    // 仪表盘 body 为 grid 布局，内含 chart 组件（amis 原生渲染）
+    const grid = page.schema.body?.find((b) => b.type === 'grid');
+    expect(grid).toBeTruthy();
   });
 
   test('Studio 中应用可见（UI 验证）', async ({ page }) => {

@@ -1,4 +1,3 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App as AntApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -20,16 +19,17 @@ if (!rootEl) {
   throw new Error('Root element #root not found');
 }
 
+// 注意：不得包 React.StrictMode —— amis SDK 内部使用 mobx-state-tree，
+// StrictMode 双挂载会撕毁其 RootStore（R1.7 页面层切 amis 后整页受影响，
+// 集成红线见 docs/knowledge-base/SPIKE-AMIS-ADOPTION-2026-09-30.md）
 createRoot(rootEl).render(
-  <StrictMode>
-    <ConfigProvider locale={zhCN}>
-      <AntApp>
-        <GlobalErrorBoundary>
-          <QueryClientProvider client={queryClient}>
-            <App />
-          </QueryClientProvider>
-        </GlobalErrorBoundary>
-      </AntApp>
-    </ConfigProvider>
-  </StrictMode>,
+  <ConfigProvider locale={zhCN}>
+    <AntApp>
+      <GlobalErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </GlobalErrorBoundary>
+    </AntApp>
+  </ConfigProvider>,
 );

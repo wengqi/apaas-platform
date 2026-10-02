@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { applyGlobalCss, runGlobalJs } from '@apaas/shared/page';
 import { Space, Typography } from 'antd';
+import { isAmisPage } from '@apaas/shared';
 import { usePageBuilderStore } from '../../stores/pageBuilder.js';
 import { useDebugStore } from '../../stores/page-builder/debug.js';
 import { useRuntimeCtx } from './RuntimeStore.js';
@@ -80,7 +81,15 @@ export default function Canvas() {
             padding: 20,
           }}
         >
-          {schema ? (
+          {schema && isAmisPage(schema) ? (
+            <div style={{ padding: 48, textAlign: 'center' }}>
+              <Typography.Title level={4}>amis 方言页面</Typography.Title>
+              <Typography.Text type="secondary">
+                该页面为 amis 方言（v2），画布暂不支持可视化编辑——请使用左栏「代码」页签编辑，
+                或打开 runtime 预览查看渲染效果。
+              </Typography.Text>
+            </div>
+          ) : schema ? (
             mode === 'preview' ? (
               <RuntimeStoreProvider key="preview" viewModel={viewModel} objectId={objectId}>
                 <RuntimeVmBridge />

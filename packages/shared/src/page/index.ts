@@ -361,3 +361,24 @@ export { buildChartOption, buildChartOptionFromAggregated } from './chart-option
 export { applyGlobalCss, runGlobalJs, translate } from './global-code.js';
 export { regionOptions, REGION_PROVINCES } from './region-data.js';
 export type { RegionOption, RegionLevel } from './region-data.js';
+
+// ---------------------------------------------------------------------------
+// R1.7 方言判别 —— v1（自有 86 组件方言）与 v2（amis 方言）并存分流
+// ---------------------------------------------------------------------------
+
+/** v1 页面 Schema 形态（schema.root 存在即 v1）。 */
+export interface PageSchemaV1 {
+  root?: unknown;
+  viewModel?: unknown;
+}
+
+/** 判别页面 schema 是否为 amis 方言（v2）：type==='page' 且无 v1 铁标记 root。 */
+export function isAmisPage(schema: unknown): boolean {
+  return (
+    schema !== null &&
+    typeof schema === 'object' &&
+    !Array.isArray(schema) &&
+    (schema as { type?: unknown }).type === 'page' &&
+    !('root' in schema)
+  );
+}

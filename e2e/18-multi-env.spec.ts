@@ -40,7 +40,7 @@ test.describe('多环境（R1.4）', () => {
       schema: {
         type: 'page',
         title: '${env.GREETING}',
-        body: [{ type: 'text', text: '第一版' }],
+        body: [{ type: 'tpl', text: '第一版' }],
       },
     });
 
@@ -70,7 +70,7 @@ test.describe('多环境（R1.4）', () => {
       schema: {
         type: 'page',
         title: '${env.GREETING}',
-        body: [{ type: 'text', text: '第二版' }],
+        body: [{ type: 'tpl', text: '第二版' }],
       },
     });
     await api.post(`/apps/${appId}/publish`, { version: '1.0.1', description: 'v2' });

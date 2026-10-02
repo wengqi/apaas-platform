@@ -21,30 +21,6 @@ import { randomUUID } from 'crypto';
 // 类型别名（内联，避免跨包导入 React 依赖）
 // ---------------------------------------------------------------------------
 
-type PropValue =
-  | string
-  | number
-  | boolean
-  | null
-  | PropValue[]
-  | { [key: string]: PropValue }
-  | { __bind: string };
-
-interface ComponentNode {
-  id: string;
-  type: string;
-  name: string;
-  props: Record<string, PropValue>;
-  children?: ComponentNode[];
-}
-
-interface PageSchema {
-  version: '1';
-  pageType: string;
-  viewModel: { variables: Record<string, unknown> };
-  root: ComponentNode;
-}
-
 interface StoredField {
   id: string;
   objectId: string;
@@ -65,25 +41,6 @@ interface StoredField {
 // ---------------------------------------------------------------------------
 // 辅助函数
 // ---------------------------------------------------------------------------
-
-let nodeCounter = 0;
-function nodeId(type: string): string {
-  nodeCounter++;
-  return `${type}_${nodeCounter.toString(36).padStart(4, '0')}`;
-}
-
-function makeNode(
-  type: string,
-  name: string,
-  props: Record<string, PropValue> = {},
-  children?: ComponentNode[],
-): ComponentNode {
-  return { id: nodeId(type), type, name, props, children };
-}
-
-function bind(path: string): PropValue {
-  return { __bind: path };
-}
 
 const now = () => new Date().toISOString();
 
@@ -142,10 +99,6 @@ function makeField(
 // 页面 Schema 构造器（参照 templates.ts 结构）
 // ---------------------------------------------------------------------------
 
-function selectOptions(opts: Array<{ id: string; label: string }>): PropValue[] {
-  return opts.map((o) => ({ label: o.label, value: o.id }));
-}
-
 interface ObjectMeta {
   id: string;
   apiName: string;
@@ -157,234 +110,268 @@ function businessFields(fields: StoredField[]): StoredField[] {
   return fields.filter((f) => !f.isSystem);
 }
 
-function generateListPage(meta: ObjectMeta, label: string, formSlug?: string): PageSchema {
-  const fields = businessFields(meta.fields).slice(0, 6);
-  const columns: PropValue[] = fields.map((f) => ({
-    fieldId: f.id,
-    apiName: f.apiName,
+// ---------------------------------------------------------------------------
+// R1.7：页面 schema 统一产 amis 方言（v2）——PageView.isAmisPage 分流 AmisRenderer；
+// 取数/提交走平台相对 api.url（fetcher 带 token）。字段类型 → amis 控件映射。
+// ---------------------------------------------------------------------------
+function amisOptions(
+  opts: Array<{ id: string; label: string }>,
+): Array<{ label: string; value: string }> {
+  return opts.map((o) => ({ label: o.label, value: o.id }));
+}
+
+function amisFieldControl(f: StoredField): Record<string, unknown> {
+  const config = (f.config ?? {}) as Record<string, unknown>;
+  const base: Record<string, unknown> = {
+    name: f.apiName,
     label: f.label,
-    width: 160,
-    sortable: true,
-  }));
-  const dataTable = makeNode('data_table', `${label}表格`, {
-    data: bind('vm.list.records'),
-    columns,
-    pagination: true,
-    pageSize: 20,
-    selectable: true,
-    showIndex: true,
-  });
-  // 新建按钮：配置 navigate 事件动作跳转到表单页（演示事件动作系统）
-  const createButton = makeNode('button', '新建', { text: '新建', type: 'primary' });
-  if (formSlug) {
-    createButton.props.onClick = {
-      __action: { type: 'navigate', params: { path: formSlug } },
-    } as unknown as PropValue;
+    required: f.required === true,
+  };
+  switch (f.type) {
+    case 'long_text':
+      return { type: 'textarea', ...base };
+    case 'currency':
+      return { type: 'input-number', ...base, kilobitSeparator: true, precision: 2 };
+    case 'number':
+      return { type: 'input-number', ...base };
+    case 'percent':
+      return { type: 'input-number', ...base, suffix: '%' };
+    case 'single_select':
+      return {
+        type: 'select',
+        ...base,
+        options: amisOptions((config.options as Array<{ id: string; label: string }>) ?? []),
+      };
+    case 'multi_select':
+      return {
+        type: 'select',
+        ...base,
+        multiple: true,
+        options: amisOptions((config.options as Array<{ id: string; label: string }>) ?? []),
+      };
+    case 'date':
+      return { type: 'input-date', ...base, format: 'YYYY-MM-DD' };
+    case 'date_time':
+      return { type: 'input-datetime', ...base, format: 'YYYY-MM-DD HH:mm:ss' };
+    case 'auto_number':
+      return { type: 'static', name: f.apiName, label: f.label };
+    case 'checkbox':
+      return { type: 'switch', name: f.apiName, label: f.label };
+    case 'attachment':
+      return { type: 'input-file', ...base };
+    default:
+      return { type: 'input-text', ...base };
   }
-  const section = makeNode('section', label, { title: label }, [createButton, dataTable]);
-  const root = makeNode('page', '页面', { title: `${label}列表` }, [section]);
-  return {
-    version: '1',
-    pageType: 'list_page',
-    viewModel: {
-      variables: {
-        list: { type: 'record_list', datasource: { objectId: meta.id, autoQuery: true } },
-        selectedId: { type: 'scalar', initialValue: null },
-        keyword: { type: 'scalar', initialValue: '' },
-      },
-    },
-    root,
-  };
 }
 
-function generateDetailPage(meta: ObjectMeta, label: string): PageSchema {
-  const fields = businessFields(meta.fields);
-  const fieldConfigs: PropValue[] = fields.map((f) => ({
-    fieldId: f.id,
-    apiName: f.apiName,
-    label: f.label,
-  }));
-  const detailCard = makeNode('detail_card', `${label}详情`, {
-    record: bind('vm.record'),
-    fields: fieldConfigs,
-    columns: 2,
-  });
-  const editButton = makeNode('button', '编辑', { text: '编辑', type: 'primary' });
-  const deleteButton = makeNode('button', '删除', { text: '删除', type: 'default', danger: true });
-  const section = makeNode('section', label, { title: label }, [
-    editButton,
-    deleteButton,
-    detailCard,
-  ]);
-  const root = makeNode('page', '页面', { title: `${label}详情` }, [section]);
+function generateListPage(
+  meta: ObjectMeta,
+  label: string,
+  formSlug?: string,
+): Record<string, unknown> {
+  const fields = businessFields(meta.fields).slice(0, 6);
   return {
-    version: '1',
-    pageType: 'detail_page',
-    viewModel: {
-      variables: {
-        record: { type: 'record', datasource: { objectId: meta.id, autoQuery: false } },
-      },
-    },
-    root,
-  };
-}
-
-function generateFormPage(meta: ObjectMeta, label: string): PageSchema {
-  const fields = businessFields(meta.fields);
-  const fieldNodes: ComponentNode[] = fields.map((f) => {
-    const props: Record<string, PropValue> = {
-      fieldId: f.id,
-      apiName: f.apiName,
-      label: f.label,
-      required: f.required,
-      value: bind(`vm.record.${f.apiName}`),
-    };
-    // 按字段类型补充属性
-    const config = f.config as Record<string, unknown>;
-    switch (f.type) {
-      case 'text':
-        if (config.maxLength) props.maxLength = config.maxLength as number;
-        break;
-      case 'long_text':
-        props.rows = 4;
-        if (config.maxLength) props.maxLength = config.maxLength as number;
-        break;
-      case 'number':
-      case 'currency':
-      case 'percent':
-        if (config.number)
-          props.precision = (config.number as Record<string, unknown>).precision as number;
-        break;
-      case 'single_select':
-        props.options = selectOptions(
-          (config.options as Array<{ id: string; label: string }>) ?? [],
-        );
-        props.allowClear = true;
-        break;
-      case 'multi_select':
-        props.options = selectOptions(
-          (config.options as Array<{ id: string; label: string }>) ?? [],
-        );
-        props.allowClear = true;
-        break;
-      case 'date':
-        props.format = 'YYYY-MM-DD';
-        break;
-      case 'date_time':
-        props.showTime = true;
-        props.format = 'YYYY-MM-DD HH:mm:ss';
-        break;
-      case 'auto_number':
-        props.readonly = true;
-        props.disabled = true;
-        break;
-      default:
-        break;
-    }
-    // 映射字段类型 → 组件类型
-    const typeMap: Record<string, string> = {
-      text: 'text_input',
-      long_text: 'textarea',
-      number: 'number_input',
-      currency: 'number_input',
-      percent: 'number_input',
-      auto_number: 'text_input',
-      single_select: 'select',
-      multi_select: 'multi_select',
-      date: 'date_picker',
-      date_time: 'date_picker',
-      checkbox: 'switch',
-      attachment: 'attachment_upload',
-      user: 'user_picker',
-    };
-    const compType = typeMap[f.type] ?? 'text_input';
-    return makeNode(compType, f.label, props);
-  });
-  const saveButton = makeNode('button', '保存', { text: '保存', type: 'primary' });
-  const cancelButton = makeNode('button', '取消', { text: '取消', type: 'default' });
-  const form = makeNode(
-    'form',
-    `${label}表单`,
-    {
-      record: bind('vm.record'),
-      objectId: meta.id,
-      layout: 'vertical',
-      columns: 1,
-    },
-    [...fieldNodes, saveButton, cancelButton],
-  );
-  const section = makeNode('section', label, { title: label }, [form]);
-  const root = makeNode('page', '页面', { title: `${label}表单` }, [section]);
-  return {
-    version: '1',
-    pageType: 'form_page',
-    viewModel: {
-      variables: {
-        record: {
-          type: 'record',
-          initialValue: {},
-          datasource: { objectId: meta.id, autoQuery: false },
+    type: 'page',
+    title: `${label}列表`,
+    data: { objectId: meta.id },
+    body: [
+      {
+        type: 'crud',
+        name: `${meta.apiName}_crud`,
+        api: {
+          url: `/objects/${meta.id}/records?page=$page&pageSize=$perPage`,
+          method: 'get',
         },
+        perPage: 20,
+        columns: fields.map((f) => ({
+          name: f.apiName,
+          label: f.label,
+          width: 160,
+          sortable: true,
+        })),
+        headerToolbar: [
+          formSlug
+            ? {
+                type: 'button',
+                label: '新建',
+                level: 'primary',
+                actionType: 'url',
+                url: `/app/${'{appId}'}/p/${formSlug}`,
+                blank: false,
+              }
+            : {
+                type: 'button',
+                label: '新建',
+                level: 'primary',
+                actionType: 'dialog',
+                dialog: {
+                  title: '新建',
+                  body: {
+                    type: 'form',
+                    api: { url: `/objects/${meta.id}/records`, method: 'post' },
+                    body: businessFields(meta.fields).map(amisFieldControl),
+                  },
+                },
+              },
+        ],
       },
-    },
-    root,
+    ],
   };
 }
 
-function generateDashboardPage(assetObjectId: string): PageSchema {
-  const statNode = makeNode('statistic', '资产总数', {
-    title: '资产总数',
-    value: 0,
-    datasourceType: 'object',
-    datasourceId: assetObjectId,
-    aggregation: 'count',
-  });
-  const chartBar = makeNode('chart', '资产分类分布', {
-    chartType: 'bar',
-    title: '资产分类分布',
-    datasourceType: 'object',
-    datasourceId: assetObjectId,
-    categoryField: 'category',
-    aggregation: 'count',
-  });
-  const chartLine = makeNode('chart', '采购趋势', {
-    chartType: 'line',
-    title: '采购趋势',
-    datasourceType: 'object',
-    datasourceId: assetObjectId,
-    categoryField: 'purchase_date',
-    timeGranularity: 'month',
-    aggregation: 'count',
-  });
-  const chartPie = makeNode('chart', '资产状态分布', {
-    chartType: 'pie',
-    title: '资产状态分布',
-    datasourceType: 'object',
-    datasourceId: assetObjectId,
-    categoryField: 'status',
-    aggregation: 'count',
-  });
-  const dashboardGrid = makeNode(
-    'dashboard_grid',
-    '仪表盘网格',
-    {
-      cols: 12,
-      rowHeight: 30,
-      layout: [
-        { i: statNode.id, x: 0, y: 0, w: 4, h: 4 },
-        { i: chartBar.id, x: 4, y: 0, w: 8, h: 8 },
-        { i: chartLine.id, x: 0, y: 4, w: 6, h: 8 },
-        { i: chartPie.id, x: 6, y: 4, w: 6, h: 8 },
-      ],
-    },
-    [statNode, chartBar, chartLine, chartPie],
-  );
-  const root = makeNode('page', '仪表盘', {}, [dashboardGrid]);
+function generateDetailPage(
+  meta: ObjectMeta,
+  label: string,
+  appId: string,
+): Record<string, unknown> {
+  const fields = businessFields(meta.fields);
   return {
-    version: '1',
-    pageType: 'dashboard',
-    viewModel: { variables: {} },
-    root,
+    type: 'page',
+    title: `${label}详情`,
+    data: { appId },
+    body: [
+      {
+        type: 'form',
+        title: `${label}详情`,
+        className: 'Formula',
+        body: fields.map((f) => {
+          const control = amisFieldControl(f);
+          return { ...control, static: true };
+        }),
+        actions: [],
+      },
+      {
+        type: 'button-toolbar',
+        buttons: [
+          {
+            type: 'button',
+            label: '编辑',
+            level: 'primary',
+            actionType: 'url',
+            url: `/app/${'{appId}'}/p/${meta.apiName}_form`,
+            blank: false,
+          },
+          {
+            type: 'button',
+            label: '返回列表',
+            actionType: 'url',
+            url: `/app/${'{appId}'}/p/${meta.apiName}_list`,
+            blank: false,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function generateFormPage(meta: ObjectMeta, label: string): Record<string, unknown> {
+  const fields = businessFields(meta.fields);
+  return {
+    type: 'page',
+    title: `${label}表单`,
+    data: { objectId: meta.id },
+    body: [
+      {
+        type: 'form',
+        title: `${label}表单`,
+        api: { url: `/objects/${meta.id}/records`, method: 'post' },
+        body: fields.map(amisFieldControl),
+        actions: [
+          { type: 'submit', label: '保存', level: 'primary' },
+          {
+            type: 'button',
+            label: '取消',
+            actionType: 'url',
+            url: `/app/${'{appId}'}/p/${meta.apiName}_list`,
+            blank: false,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function generateDashboardPage(assetObjectId: string, appId: string): Record<string, unknown> {
+  // 图表数据源：chart-data 聚合 API 返回 [{category, value}]，
+  // responseAdaptor 摊平为 echarts 可绑定的 categories/values 数组
+  const chartApi = (categoryField: string, aggregation: string, timeGranularity?: string) => ({
+    url: `/apps/${appId}/datasets/chart-data`,
+    method: 'post',
+    data: {
+      sourceType: 'object',
+      sourceId: assetObjectId,
+      categoryField,
+      aggregation,
+      ...(timeGranularity ? { timeGranularity } : {}),
+    },
+  });
+  const axisOption = {
+    xAxis: { type: 'category', data: '${categories}' },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: '${values}' }],
+  };
+  return {
+    type: 'page',
+    title: '仪表盘',
+    data: { appId },
+    body: [
+      { type: 'divider' },
+      {
+        type: 'grid',
+        columns: [
+          {
+            md: 4,
+            body: {
+              type: 'chart',
+              name: 'stat-count',
+              api: chartApi('name', 'count'),
+              config: {
+                title: { text: '资产总数（按分类）' },
+                xAxis: { type: 'category', data: '${categories}' },
+                yAxis: { type: 'value' },
+                series: [{ type: 'bar', data: '${values}' }],
+              },
+            },
+          },
+          {
+            md: 8,
+            body: {
+              type: 'chart',
+              api: chartApi('category', 'count'),
+              config: {
+                title: { text: '资产分类分布' },
+                ...axisOption,
+              },
+            },
+          },
+          {
+            md: 6,
+            body: {
+              type: 'chart',
+              api: chartApi('purchase_date', 'count', 'month'),
+              config: {
+                title: { text: '采购趋势' },
+                xAxis: { type: 'category', data: '${categories}' },
+                yAxis: { type: 'value' },
+                series: [{ type: 'line', data: '${values}' }],
+              },
+            },
+          },
+          {
+            md: 6,
+            body: {
+              type: 'chart',
+              api: chartApi('status', 'count'),
+              config: {
+                title: { text: '资产状态分布' },
+                tooltip: { trigger: 'item' },
+                series: [{ type: 'pie', radius: '60%', data: '${categories}' }],
+              },
+            },
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -736,7 +723,7 @@ export async function seedDemoContent(
       name: '资产详情',
       type: 'detail_page',
       objectId: assetDbId,
-      schema: generateDetailPage(assetMeta, '资产'),
+      schema: generateDetailPage(assetMeta, '资产', appId),
     },
     {
       apiName: 'asset_form',
@@ -771,7 +758,7 @@ export async function seedDemoContent(
       name: '资产仪表盘',
       type: 'dashboard',
       objectId: null,
-      schema: generateDashboardPage(assetDbId),
+      schema: generateDashboardPage(assetDbId, appId),
     },
   ];
 
@@ -1229,6 +1216,10 @@ export async function seedDemoContent(
         status: 'PUBLISHED',
         version: 1,
         publishedSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        // R1.4：环境指针优先于 publishedSnapshot（若存在）——种子回无指针基线保证幂等
+        environments: {
+          updateMany: { where: {}, data: { currentVersionId: null } },
+        },
         publishedAt: new Date(),
       },
     }),

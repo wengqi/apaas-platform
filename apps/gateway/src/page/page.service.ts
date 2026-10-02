@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
+import { isAmisPage } from '@apaas/shared';
 import type { PageMeta as PrismaPageMeta } from '@apaas/db';
 import {
   asAppId,
@@ -14,6 +15,7 @@ import {
   type UpdatePageRequest,
 } from '@apaas/shared';
 import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
+import { SchemaContractService } from '../schema-contract/schema-contract.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
 
 /**
@@ -32,6 +34,7 @@ export class PageService {
   constructor(
     private readonly changeLogService: ChangeLogService,
     private readonly environmentResolver: EnvironmentResolverService,
+    private readonly schemaContract: SchemaContractService,
   ) {}
 
   /**
@@ -301,6 +304,21 @@ export class PageService {
       where: { id: pageId, tenantId },
       select: { appId: true, name: true },
     });
+
+    // R1.7：amis 方言（v2）schema 更新过 G3 合同（硬闸）——v1 不变（搭建器既有语义）
+    if (req.schema && isAmisPage(req.schema)) {
+      const check = this.schemaContract.validate('amis_page', req.schema);
+      if (!check.valid) {
+        throw new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: `amis 页面校验失败: ${check.issues
+            .filter((i) => i.severity === 'error')
+            .slice(0, 3)
+            .map((i) => `${i.path} ${i.message}`)
+            .join('; ')}`,
+        });
+      }
+    }
 
     await prisma.pageMeta.updateMany({
       where: { id: pageId, tenantId },

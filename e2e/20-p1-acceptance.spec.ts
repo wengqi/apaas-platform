@@ -99,7 +99,8 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
       const merged = [...adminTasks, ...builderTasks].filter((t) => t.instanceId === instanceId);
       const seen = new Set<string>();
       const unique = merged.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
-      if (unique.length > 0) return unique;
+      // CI 慢机上多任务（会签）非原子生成——等齐期望数量再返回
+      if (unique.length >= expected) return unique;
       await new Promise((r) => setTimeout(r, 500));
     }
     return [];
@@ -461,7 +462,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     const instanceId = (started.json.data as { instanceId: string }).instanceId;
 
     // 会签：两任务并行，单独完成不推进（R1.3 锁内并发封窗语义）
-    const csTasks = await waitForTasks(instanceId);
+    const csTasks = await waitForTasks(instanceId, 2);
     expect(csTasks.length).toBe(2);
     const adminTask = csTasks.find((t) => t.assignee === adminUserId)!;
     const cfoTask = csTasks.find((t) => t.assignee !== adminUserId)!;

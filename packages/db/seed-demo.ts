@@ -305,11 +305,6 @@ function generateDashboardPage(assetObjectId: string, appId: string): Record<str
       ...(timeGranularity ? { timeGranularity } : {}),
     },
   });
-  const axisOption = {
-    xAxis: { type: 'category', data: '${categories}' },
-    yAxis: { type: 'value' },
-    series: [{ type: 'bar', data: '${values}' }],
-  };
   return {
     type: 'page',
     title: '仪表盘',
@@ -324,12 +319,12 @@ function generateDashboardPage(assetObjectId: string, appId: string): Record<str
             body: {
               type: 'chart',
               name: 'stat-count',
-              api: chartApi('name', 'count'),
-              config: {
-                title: { text: '资产总数（按分类）' },
-                xAxis: { type: 'category', data: '${categories}' },
-                yAxis: { type: 'value' },
-                series: [{ type: 'bar', data: '${values}' }],
+              api: {
+                ...chartApi('asset_name', 'count'),
+                // amis 的 per-api 适配字段是 adaptor（参数 payload=响应 data）；返回完整
+                // echarts option（带 series 走 renderChart 直通分支，绕开数据域求值差异）
+                adaptor:
+                  'return {title: {text: "资产总数（按分类）"}, tooltip: {}, xAxis: {type: "category", data: (payload.categories || [])}, yAxis: {type: "value"}, series: [{type: "bar", data: (payload.values || [])}]}',
               },
             },
           },
@@ -337,10 +332,10 @@ function generateDashboardPage(assetObjectId: string, appId: string): Record<str
             md: 8,
             body: {
               type: 'chart',
-              api: chartApi('category', 'count'),
-              config: {
-                title: { text: '资产分类分布' },
-                ...axisOption,
+              api: {
+                ...chartApi('category', 'count'),
+                adaptor:
+                  'return {title: {text: "资产分类分布"}, tooltip: {}, xAxis: {type: "category", data: (payload.categories || [])}, yAxis: {type: "value"}, series: [{type: "bar", data: (payload.values || [])}]}',
               },
             },
           },
@@ -348,12 +343,10 @@ function generateDashboardPage(assetObjectId: string, appId: string): Record<str
             md: 6,
             body: {
               type: 'chart',
-              api: chartApi('purchase_date', 'count', 'month'),
-              config: {
-                title: { text: '采购趋势' },
-                xAxis: { type: 'category', data: '${categories}' },
-                yAxis: { type: 'value' },
-                series: [{ type: 'line', data: '${values}' }],
+              api: {
+                ...chartApi('purchase_date', 'count', 'month'),
+                adaptor:
+                  'return {title: {text: "采购趋势"}, tooltip: {}, xAxis: {type: "category", data: (payload.categories || [])}, yAxis: {type: "value"}, series: [{type: "line", data: (payload.values || [])}]}',
               },
             },
           },
@@ -361,11 +354,11 @@ function generateDashboardPage(assetObjectId: string, appId: string): Record<str
             md: 6,
             body: {
               type: 'chart',
-              api: chartApi('status', 'count'),
-              config: {
-                title: { text: '资产状态分布' },
-                tooltip: { trigger: 'item' },
-                series: [{ type: 'pie', radius: '60%', data: '${categories}' }],
+              api: {
+                ...chartApi('status', 'count'),
+                // pie 需要 [{name, value}]，聚合行是 {category, value}
+                adaptor:
+                  'return {title: {text: "资产状态分布"}, tooltip: {trigger: "item"}, series: [{type: "pie", radius: "60%", data: ((payload.data) || []).map(x => ({name: x.category, value: x.value}))}]}',
               },
             },
           },

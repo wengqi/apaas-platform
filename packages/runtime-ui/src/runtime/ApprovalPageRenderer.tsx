@@ -54,6 +54,7 @@ function usePlatformFetcher(): FetcherLike {
           response?: { status?: number; data?: { error?: { message?: string } } };
         };
         return {
+          ok: false,
           status: e.response?.status ?? 1,
           msg: e.response?.data?.error?.message ?? (err as Error).message,
         };
@@ -65,7 +66,7 @@ function usePlatformFetcher(): FetcherLike {
 
 export default function ApprovalPageRenderer({
   pageId,
-  data,
+  data: ctxData,
   appId,
   env,
 }: ApprovalPageRendererProps) {
@@ -84,8 +85,6 @@ export default function ApprovalPageRenderer({
   });
 
   const fetcher = usePlatformFetcher();
-
-  const pageData = useMemo(() => ({ ...data }), [data]);
 
   if (isLoading) {
     return (
@@ -118,5 +117,9 @@ export default function ApprovalPageRenderer({
     );
   }
 
-  return <AmisRenderer schema={schema} data={pageData} fetcher={fetcher} />;
+  // 上下文直接合并进 schema.data（page 渲染器的第一优先级数据源）——
+  // render(schema, data) 的第二参在弹窗场景实测会丢失（page 域为空），不依赖它。
+  const schemaWithData = { ...(schema ?? {}), data: { ...(ctxData ?? {}) } };
+
+  return <AmisRenderer schema={schemaWithData} data={{ ...ctxData }} fetcher={fetcher} />;
 }

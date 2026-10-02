@@ -31,6 +31,8 @@ export interface AuditLogQueryParams {
   action?: string;
   resource?: string;
   userId?: string;
+  /** 按审计分类筛选（值域 @apaas/shared AUDIT_CATEGORIES，端点展开为 action IN） */
+  category?: string;
   /** 按应用筛选（ROADMAP 9.9 应用级审计 UI） */
   appId?: string;
 }

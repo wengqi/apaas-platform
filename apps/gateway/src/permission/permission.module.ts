@@ -9,6 +9,7 @@ import { UserService } from './user.service.js';
 import { PermissionService } from './permission.service.js';
 import { PermissionGuard } from './permission.guard.js';
 import { AuditLogService } from './audit-log.service.js';
+import { PermissionDebugController } from './permission-debug.controller.js';
 
 /**
  * 权限模块 — 角色管理、组织架构、用户管理、权限引擎、审计日志。
@@ -16,7 +17,13 @@ import { AuditLogService } from './audit-log.service.js';
  * 导出 PermissionService 和 PermissionGuard 供其他模块使用。
  */
 @Module({
-  controllers: [RoleController, OrgController, UserController, AuditLogController],
+  controllers: [
+    RoleController,
+    OrgController,
+    UserController,
+    AuditLogController,
+    PermissionDebugController,
+  ],
   providers: [
     RoleService,
     OrgService,

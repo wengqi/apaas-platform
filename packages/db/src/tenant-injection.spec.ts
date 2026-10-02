@@ -86,9 +86,9 @@ describe('decideInjection', () => {
     });
   });
 
-  it('所有 31 个白名单模型在有租户上下文时都注入', () => {
+  it('所有 32 个白名单模型在有租户上下文时都注入', () => {
     const models = Array.from(TENANT_SCOPED_MODELS);
-    expect(models).toHaveLength(31);
+    expect(models).toHaveLength(32);
 
     runWithTenant('tenant-all', () => {
       for (const model of models) {
@@ -214,8 +214,8 @@ describe('injectToUpsert', () => {
 });
 
 describe('TENANT_SCOPED_MODELS', () => {
-  it('包含 31 个模型', () => {
-    expect(TENANT_SCOPED_MODELS.size).toBe(31);
+  it('包含 32 个模型', () => {
+    expect(TENANT_SCOPED_MODELS.size).toBe(32);
   });
 
   it('包含所有预期模型', () => {
@@ -278,10 +278,11 @@ describe('decideEnvInjection（R1.4）', () => {
     expect(d).toEqual({ inject: false, environmentId: null });
   });
 
-  it('ENV_SCOPED_MODELS 只含四个运行数据模型', () => {
+  it('ENV_SCOPED_MODELS 只含五个运行数据模型', () => {
     expect([...ENV_SCOPED_MODELS].sort()).toEqual([
       'AutoNumberCounter',
       'NodeExecution',
+      'ObservabilityEvent',
       'ProcessInstance',
       'Record',
     ]);

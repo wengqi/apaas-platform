@@ -66,6 +66,10 @@ export const envValidation = Joi.object({
   // 进程内并发 Isolate 上限（评审 M-8：无预算时 50 并发 × 128MB = OOM）
   CLOUD_FUNCTION_MAX_CONCURRENT: Joi.number().default(4),
 
+  // ---- 观测（P1 运维治理）----
+  // 慢查询阈值（毫秒）：超过即落 SLOW_QUERY 观测事件；0/负数/非法回退默认 1000
+  SLOW_QUERY_THRESHOLD_MS: Joi.number().default(1000),
+
   // ---- 出站请求（SSRF 防护）----
   OUTBOUND_HTTP_TIMEOUT_MS: Joi.number().default(10_000),
   // 允许出站访问私网地址（仅限开发/联调，生产必须为 false）

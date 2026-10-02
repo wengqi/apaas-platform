@@ -48,6 +48,50 @@ export interface RecordQueryParams {
   pageSize?: number;
   sort?: string;
   filter?: string;
+  /**
+   * 关键词搜索（P1 运维治理：对象级搜索配置消费）。
+   * 只匹配对象字段中 searchable=true 的文本类字段（contains，大小写敏感）；
+   * 字段全部不可搜索时忽略该参数（不出空结果）。
+   */
+  keyword?: string;
+}
+
+/** 关键词搜索覆盖的字段类型（字符串值域；数值/日期等类型不参与 contains）。 */
+const KEYWORD_SEARCHABLE_FIELD_TYPES = new Set<string>([
+  'text',
+  'long_text',
+  'rich_text',
+  'auto_number',
+]);
+
+/**
+ * 构建关键词搜索 where（纯函数，OR over searchable 文本字段）。
+ * 对象无此类 searchable 字段或关键词为空白时返回 null（不过滤，不出空结果）。
+ * 可搜索文本类字段 = FieldType.Text/LongText/RichText/AutoNumber（字符串值域）。
+ */
+export function buildKeywordWhereFromFields(
+  fields: unknown,
+  keyword: string | undefined,
+): Prisma.RecordWhereInput | null {
+  const trimmed = keyword?.trim();
+  if (!trimmed) return null;
+  const fieldList = Array.isArray(fields) ? fields : [];
+  const searchableNames = fieldList
+    .map((f) => f as { apiName?: unknown; type?: unknown; searchable?: unknown })
+    .filter(
+      (f) =>
+        typeof f.apiName === 'string' &&
+        typeof f.type === 'string' &&
+        f.searchable === true &&
+        KEYWORD_SEARCHABLE_FIELD_TYPES.has(f.type),
+    )
+    .map((f) => f.apiName as string);
+  if (searchableNames.length === 0) return null;
+  return {
+    OR: searchableNames.map((name) => ({
+      data: { path: [name], string_contains: trimmed },
+    })),
+  };
 }
 
 /** 查询结果项。 */
@@ -202,6 +246,17 @@ export class RecordService {
       where.AND = [filterWhere];
     }
 
+    // 关键词搜索（对象级搜索配置消费）：OR 串 searchable 文本字段的 contains。
+    // 未命中 GIN（LIKE 语义）——大表场景下可观测（慢查询事件）后评估性能优化
+    const keywordWhere = await this.buildKeywordWhere(tenantId, objectId, params.keyword);
+    if (keywordWhere) {
+      if (where.AND) {
+        (where.AND as Prisma.RecordWhereInput[]).push(keywordWhere);
+      } else {
+        where.AND = [keywordWhere];
+      }
+    }
+
     // 注入行级权限条件
     const conditionWhere = this.buildConditionWhere(permissionContext);
     if (conditionWhere) {
@@ -236,6 +291,17 @@ export class RecordService {
       page,
       pageSize,
     };
+  }
+
+  /** 关键词搜索 where（环境感知取字段定义后委托纯函数）。 */
+  private async buildKeywordWhere(
+    tenantId: string,
+    objectId: string,
+    keyword: string | undefined,
+  ): Promise<Prisma.RecordWhereInput | null> {
+    if (!keyword?.trim()) return null;
+    const object = await this.resolveObject(tenantId, objectId);
+    return buildKeywordWhereFromFields(object.fields, keyword);
   }
 
   /** 系统列排序路径（Prisma 原生分页，性能与语义均正确）。 */

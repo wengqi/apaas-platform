@@ -44,12 +44,13 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { ProcessService } from './process.service.js';
+import { ProcessAnalyticsService } from './process-analytics.service.js';
 import { CreateProcessDefDto, UpdateProcessDefDto, StartInstanceDto } from './dto/process.dto.js';
 import { CompleteTaskDto, DelegateTaskDto, AddSignDto } from './dto/task.dto.js';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto.js';
@@ -59,11 +60,44 @@ import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto.js';
 @Controller()
 @UseGuards(PermissionGuard)
 export class ProcessController {
-  constructor(private readonly processService: ProcessService) {}
+  constructor(
+    private readonly processService: ProcessService,
+    private readonly analyticsService: ProcessAnalyticsService,
+  ) {}
 
   // ===========================================================================
   // 流程定义 CRUD
   // ===========================================================================
+
+  // 注意：analytics 字面量路由必须声明在 processes/:processId 之前，否则被参数路由吞掉
+  @Get('processes/analytics')
+  @RequirePermission('PROCESS', 'VIEW')
+  @ApiOperation({ summary: '流程效率分析（平均耗时/完成率/超时数，P1 运维治理）' })
+  @ApiQuery({ name: 'appId', required: false, type: String })
+  @ApiQuery({ name: 'processDefId', required: false, type: String })
+  @ApiQuery({
+    name: 'since',
+    required: false,
+    type: String,
+    description: 'ISO 时间下界（按 startedAt）',
+  })
+  @ApiQuery({ name: 'until', required: false, type: String, description: 'ISO 时间上界' })
+  async getAnalytics(
+    @Req() req: AuthenticatedRequest,
+    @Query('appId') appId?: string,
+    @Query('processDefId') processDefId?: string,
+    @Query('since') since?: string,
+    @Query('until') until?: string,
+  ) {
+    const data = await this.analyticsService.getAnalytics({
+      tenantId: requireTenantId(req),
+      appId: appId || undefined,
+      processDefId: processDefId || undefined,
+      since: parseDateParam(since),
+      until: parseDateParam(until),
+    });
+    return { ok: true as const, data };
+  }
 
   @Get('apps/:appId/processes')
   @RequirePermission('PROCESS', 'VIEW')
@@ -329,4 +363,11 @@ export class ProcessController {
     const data = await this.processService.deleteTemplate(requireTenantId(req), templateId);
     return { ok: true as const, data };
   }
+}
+
+/** ISO 日期查询参数解析：非法值忽略（analytics 时间窗）。 */
+function parseDateParam(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
 }

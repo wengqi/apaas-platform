@@ -23,6 +23,7 @@ import { runWithTenant } from '@apaas/db';
 import type { ServiceIdentityUser } from '../service-identity/api-key.service.js';
 import { ApiKeyGuard } from '../service-identity/api-key.guard.js';
 import { writeAudit } from '../common/audit.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { ProcessEngine } from '../process/process-engine.js';
 import { ProcessApiReleaseService } from './process-api-release.service.js';
 import { StartOpenProcessDto } from './open-api.dto.js';
@@ -38,6 +39,7 @@ const OPEN_LIMIT = Number(process.env.THROTTLE_OPEN_LIMIT) || 120;
 export class OpenApiController {
   constructor(
     private readonly releaseService: ProcessApiReleaseService,
+    private readonly observabilityService: ObservabilityService,
     private readonly engine: ProcessEngine,
   ) {}
 
@@ -115,20 +117,61 @@ export class OpenApiController {
       const release = await this.releaseService.resolve(tenantId, appId, apiName, majorVersion);
       const frozen = release.workflowSchema as { workflowSchema: Record<string, unknown> };
 
-      const instanceId = await this.engine.startProcess(
-        tenantId,
-        release.processDefId,
-        {
-          triggerType: 'API',
-          triggeredBy: 'API',
-          triggeredByUser: dto.triggeredByUser ?? null,
-          serviceIdentityId: identity.serviceIdentityId,
-          apiName,
-          inputs: dto.inputs ?? {},
-        },
-        undefined, // env：ALS（拦截器已按 ?env= 解析）
-        frozen.workflowSchema, // schemaOverride：钉版本契约直通
-      );
+      // 观测事件（P1 运维治理）：OPEN_API_CALL——外部触发的耗时与成败分类落库
+      const startAt = Date.now();
+      let instanceId: string;
+      try {
+        instanceId = await this.engine.startProcess(
+          tenantId,
+          release.processDefId,
+          {
+            triggerType: 'API',
+            triggeredBy: 'API',
+            triggeredByUser: dto.triggeredByUser ?? null,
+            serviceIdentityId: identity.serviceIdentityId,
+            apiName,
+            inputs: dto.inputs ?? {},
+          },
+          undefined, // env：ALS（拦截器已按 ?env= 解析）
+          frozen.workflowSchema, // schemaOverride：钉版本契约直通
+        );
+      } catch (err) {
+        void this.observabilityService
+          .record({
+            tenantId,
+            appId,
+            category: 'OPEN_API_CALL',
+            level: 'ERROR',
+            source: 'open-api:start',
+            resourceId: release.processDefId,
+            message: `开放 API ${apiName}（major ${release.majorVersion}）触发失败：${err instanceof Error ? err.message : String(err)}`,
+            durationMs: Date.now() - startAt,
+            detail: {
+              apiName,
+              majorVersion: release.majorVersion,
+              inputKeys: Object.keys(dto.inputs ?? {}),
+            },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
+      void this.observabilityService
+        .record({
+          tenantId,
+          appId,
+          category: 'OPEN_API_CALL',
+          source: 'open-api:start',
+          resourceId: release.processDefId,
+          message: `开放 API ${apiName}（major ${release.majorVersion}）触发成功，实例 ${instanceId}`,
+          durationMs: Date.now() - startAt,
+          detail: {
+            apiName,
+            majorVersion: release.majorVersion,
+            instanceId,
+            inputKeys: Object.keys(dto.inputs ?? {}),
+          },
+        })
+        .catch(() => undefined);
 
       // 审计：inputs 只记键名不记值（脱敏）
       writeAudit({

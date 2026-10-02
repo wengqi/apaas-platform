@@ -42,6 +42,7 @@ model Tenant {
   permissionRules       PermissionRule[]
   orgRoleGrants         OrgRoleGrant[]
   auditLogs             AuditLog[]
+  observabilityEvents   ObservabilityEvent[]
   appVersions           AppVersion[]
   resourceVersions      ResourceVersion[]
   appEnvironments       AppEnvironment[]
@@ -171,6 +172,7 @@ model Application {
   datasets              Dataset[]
   dataFlows             DataFlow[]
   cloudFunctions        CloudFunction[]
+  observabilityEvents   ObservabilityEvent[]
   notificationTemplates NotificationTemplate[]
 
   @@unique([tenantId, apiName])
@@ -363,6 +365,8 @@ model AuditLog {
   resourceId String?  @map("resource_id") // 资源 ID
   detail     Json? // 操作详情 JSON
   ip         String?
+  // 事件链路 ID（P1 运维治理）：HTTP 请求级 trace，与观测事件/错误响应串联
+  traceId    String?  @map("trace_id")
   createdAt  DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -372,6 +376,42 @@ model AuditLog {
   @@index([tenantId, action])
   @@index([tenantId, appId])
   @@map("audit_logs")
+}
+
+// ----------------------------------------------------------------------------
+// 一·六·二、观测事件 (ObservabilityEvent) — P1 运维治理：分类事件流
+// ----------------------------------------------------------------------------
+
+/// 观测事件 — 云函数执行 / 慢查询 / 页面报错 / 开放 API 调用的分类事件流。
+/// 与审计日志共享 traceId（事件链路 ID），串联同一 HTTP 请求的完整轨迹。
+model ObservabilityEvent {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  // 事件产生时的环境（页面报错/开放 API 调用随请求 ALS 注入；平台级缺省 prod）
+  environmentId String   @default("prod") @map("environment_id")
+  // 应用维度（应用内观测过滤）；平台级事件为空
+  appId         String?  @map("app_id")
+  // 事件分类（shared EVENT_CATEGORIES）：FUNCTION_EXEC | SLOW_QUERY | PAGE_ERROR | OPEN_API_CALL
+  category      String
+  // INFO | WARN | ERROR
+  level         String   @default("INFO")
+  // 来源签名：cloud-function:invoke | prisma:slow-query | runtime-ui:error-boundary | open-api:start
+  source        String
+  resourceId    String?  @map("resource_id")
+  durationMs    Int?     @map("duration_ms")
+  message       String
+  detail        Json     @default("{}")
+  // 事件链路 ID：与审计日志/错误响应 traceId 同源（HTTP 请求级）
+  traceId       String?  @map("trace_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  app    Application? @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, category, createdAt])
+  @@index([tenantId, appId])
+  @@index([tenantId, traceId])
+  @@map("observability_events")
 }
 
 // ============================================================================
@@ -551,6 +591,8 @@ model ProcessInstance {
   startedAt      DateTime              @default(now()) @map("started_at")
   finishedAt     DateTime?             @map("finished_at")
   error          String?
+  // 流程效率分析（P1 运维治理）：等待条件节点超时导致的失败（区别于普通 FAILED）
+  timedOut       Boolean               @default(false) @map("timed_out")
 
   processDef     ProcessDef      @relation(fields: [processDefId], references: [id], onDelete: Cascade)
   nodeExecutions NodeExecution[]

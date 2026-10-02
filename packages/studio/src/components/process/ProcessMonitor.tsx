@@ -18,12 +18,13 @@ import { buildInstanceColumns, buildTaskColumns } from './process-monitor/column
 import InstanceDetail from './process-monitor/InstanceDetail.js';
 import InstanceListTab from './process-monitor/InstanceListTab.js';
 import TaskProcessPanel from './process-monitor/TaskProcessPanel.js';
+import ProcessAnalytics from './ProcessAnalytics.js';
 
 export default function ProcessMonitor() {
   const { appId } = useParams<{ appId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const processId = searchParams.get('processId') ?? undefined;
-  const [activeTab, setActiveTab] = useState<'instances' | 'tasks'>('instances');
+  const [activeTab, setActiveTab] = useState<'instances' | 'tasks' | 'analytics'>('instances');
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [stateFilter, setStateFilter] = useState<string | undefined>(undefined);
   const [taskTab, setTaskTab] = useState<'pending' | 'completed'>('pending');
@@ -137,7 +138,7 @@ export default function ProcessMonitor() {
     >
       <Tabs
         activeKey={activeTab}
-        onChange={(k) => setActiveTab(k as 'instances' | 'tasks')}
+        onChange={(k) => setActiveTab(k as 'instances' | 'tasks' | 'analytics')}
         style={{ padding: '0 24px', background: '#fff' }}
         items={[
           {
@@ -193,6 +194,11 @@ export default function ProcessMonitor() {
                 ]}
               />
             ),
+          },
+          {
+            key: 'analytics',
+            label: '效率分析',
+            children: appId ? <ProcessAnalytics appId={appId} /> : null,
           },
         ]}
       />

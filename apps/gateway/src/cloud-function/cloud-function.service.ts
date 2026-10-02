@@ -8,6 +8,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma } from '@apaas/db';
 import { ChangeLogService } from '../application/changelog.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { CloudFunctionRunner, DEFAULT_FUNCTION_CODE } from './cloud-function.runner.service.js';
 import type {
   CloudFunctionStatus,
@@ -29,6 +30,7 @@ export class CloudFunctionService {
   constructor(
     private readonly changeLogService: ChangeLogService,
     private readonly runner: CloudFunctionRunner,
+    private readonly observabilityService: ObservabilityService,
   ) {}
 
   /** 列出应用下所有云函数（不含代码内容）。 */
@@ -256,7 +258,43 @@ export class CloudFunctionService {
 
     await this.acquireIsolateSlot();
     try {
-      return await this.runner.execute(code.source, input, tenantId, fn.appId);
+      // 观测事件（P1 运维治理）：云函数执行此前零落库——耗时/成败/错误全在响应里，
+      // 失败后无迹可查。此处落 FUNCTION_EXEC 事件（非阻塞）。
+      const startedAt = Date.now();
+      try {
+        const result = await this.runner.execute(code.source, input, tenantId, fn.appId);
+        void this.observabilityService
+          .record({
+            tenantId,
+            appId: fn.appId,
+            category: 'FUNCTION_EXEC',
+            level: result.success ? 'INFO' : 'ERROR',
+            source: 'cloud-function:invoke',
+            resourceId: fn.id,
+            message: result.success
+              ? `云函数 ${fn.apiName} 执行成功（${result.durationMs}ms）`
+              : `云函数 ${fn.apiName} 执行失败：${result.error ?? '未知错误'}`,
+            durationMs: result.durationMs,
+            detail: { apiName: fn.apiName, success: result.success, logLines: result.logs.length },
+          })
+          .catch(() => undefined);
+        return result;
+      } catch (err) {
+        void this.observabilityService
+          .record({
+            tenantId,
+            appId: fn.appId,
+            category: 'FUNCTION_EXEC',
+            level: 'ERROR',
+            source: 'cloud-function:invoke',
+            resourceId: fn.id,
+            message: `云函数 ${fn.apiName} 执行异常：${err instanceof Error ? err.message : String(err)}`,
+            durationMs: Date.now() - startedAt,
+            detail: { apiName: fn.apiName, success: false },
+          })
+          .catch(() => undefined);
+        throw err;
+      }
     } catch (err) {
       if (err instanceof Error && err.message === 'isolate queue timeout') {
         throw new BadRequestException('云函数执行排队超时，请稍后重试');

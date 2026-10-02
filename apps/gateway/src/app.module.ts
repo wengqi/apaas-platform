@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { randomUUID } from 'node:crypto';
 import { AuthModule } from './auth/auth.module.js';
 import { ApplicationModule } from './application/application.module.js';
 import { ObjectModule } from './object/object.module.js';
@@ -23,8 +25,11 @@ import { OpenApiModule } from './open-api/open-api.module.js';
 import { EnvironmentCoreModule } from './environment/environment-core.module.js';
 import { EnvironmentModule } from './environment/environment.module.js';
 import { McpModule } from './mcp/mcp.module.js';
+import { ObservabilityModule } from './observability/observability.module.js';
 import { HealthController } from './health.controller.js';
 import { TenantContextInterceptor } from './common/tenant-context.interceptor.js';
+import { TraceMiddleware } from './common/trace/trace.middleware.js';
+import { getTraceId } from './common/trace/trace-context.js';
 import { envValidation } from './config/env.validation.js';
 
 @Module({
@@ -37,6 +42,20 @@ import { envValidation } from './config/env.validation.js';
       pinoHttp: {
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
         level: process.env.LOG_LEVEL ?? 'info',
+        // 事件链路 ID（P1 运维治理）：采纳外部 X-Trace-Id（跨服务串联）或生成 UUID，
+        // 同一 ID 贯穿 pino 日志行（reqId）+ 审计/观测事件（ALS）+ 错误响应体
+        genReqId: (req, res) => {
+          const header = req.headers['x-trace-id'];
+          const incoming = typeof header === 'string' ? header : header?.[0];
+          const id = incoming && incoming.length > 0 ? incoming.slice(0, 128) : randomUUID();
+          res.setHeader('X-Trace-Id', id);
+          return id;
+        },
+        // 每条业务日志附带 traceId（请求 ALS 上下文内；后台任务/启动期为空不落字段）
+        mixin: () => {
+          const traceId = getTraceId();
+          return traceId ? { traceId } : {};
+        },
         // 评审 M-5：webhook 路径含长期 token，访问日志不记录该路径
         autoLogging: {
           ignore: (req) => Boolean(req.url?.includes('/webhooks/')),
@@ -83,6 +102,7 @@ import { envValidation } from './config/env.validation.js';
     ServiceIdentityModule,
     OpenApiModule,
     McpModule,
+    ObservabilityModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -90,4 +110,9 @@ import { envValidation } from './config/env.validation.js';
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // TraceMiddleware 全局最前置（pino-http 之后、路由之前），建立 traceId ALS 上下文
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TraceMiddleware).forRoutes('*');
+  }
+}

@@ -5,12 +5,13 @@ import { ProcessApiReleaseService } from './process-api-release.service.js';
 import { ServiceIdentityModule } from '../service-identity/service-identity.module.js';
 import { ProcessModule } from '../process/process.module.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { ObservabilityModule } from '../observability/observability.module.js';
 
 /**
  * 开放 API 模块（G6）——纯流程触发的公开端点 + 版本发布管理。
  */
 @Module({
-  imports: [ServiceIdentityModule, ProcessModule, PermissionModule],
+  imports: [ServiceIdentityModule, ProcessModule, PermissionModule, ObservabilityModule],
   controllers: [OpenApiController, ProcessApiReleaseController],
   providers: [ProcessApiReleaseService],
   exports: [ProcessApiReleaseService],

@@ -389,4 +389,78 @@ describe('PermissionService', () => {
       expect(findManyCall.where.roleId).toEqual({ in: ['role-001', 'role-003'] });
     });
   });
+  // =========================================================================
+  // explain — 权限调试（P1 运维治理）：与 check 同语义但不抛异常，返回决策路径
+  // =========================================================================
+
+  describe('explain — 权限调试', () => {
+    it('无角色：allowed=false + reason=NO_ROLES', async () => {
+      prisma.userRole.findMany.mockResolvedValue([]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+
+      const result = await service.explain(makeUser(), 'RECORD', 'READ', 'obj-001');
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('NO_ROLES');
+      expect(result.roleIds).toEqual([]);
+    });
+
+    it('DENY 规则：reason=DENY_RULE + 命中规则完整列出（含条件/字段域）', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.permissionRule.findMany.mockResolvedValue([
+        makePermissionRule({ targetId: 'obj-001' }),
+        makePermissionRule({ effect: 'DENY', targetId: 'obj-001', id: 'rule-deny' }),
+      ]);
+
+      const result = await service.explain(makeUser(), 'RECORD', 'READ', 'obj-001');
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('DENY_RULE');
+      expect(result.matchedRules).toHaveLength(2);
+      expect(result.matchedRules.map((r) => r.ruleId)).toEqual(['rule-001', 'rule-deny']);
+    });
+
+    it('单条带条件 ALLOW：mergedCondition 透传 + fieldScope 透传', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      const condition = { '==': [{ var: '__currentUser' }, 'user-001'] };
+      prisma.permissionRule.findMany.mockResolvedValue([
+        makePermissionRule({ targetId: 'obj-001', condition, fieldScope: ['amount'] }),
+      ]);
+
+      const result = await service.explain(makeUser(), 'RECORD', 'READ', 'obj-001');
+
+      expect(result.allowed).toBe(true);
+      expect(result.reason).toBe('ALLOW_RULE');
+      expect(result.mergedCondition).toEqual(condition);
+      expect(result.fieldScope).toEqual(['amount']);
+    });
+
+    it('多条 ALLOW：mergedCondition 取 OR 并集（确定性合并）', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      const c1 = { '==': [{ var: 'owner' }, 'user-001'] };
+      const c2 = { '>': [{ var: 'amount' }, 1000000] };
+      prisma.permissionRule.findMany.mockResolvedValue([
+        makePermissionRule({ targetId: 'obj-001', condition: c1, id: 'rule-a' }),
+        makePermissionRule({ targetId: 'obj-001', condition: c2, id: 'rule-b' }),
+      ]);
+
+      const result = await service.explain(makeUser(), 'RECORD', 'READ', 'obj-001');
+
+      expect(result.mergedCondition).toEqual({ or: [c1, c2] });
+    });
+
+    it('无规则：reason=NO_RULES（默认拒绝）', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.permissionRule.findMany.mockResolvedValue([]);
+
+      const result = await service.explain(makeUser(), 'RECORD', 'READ', 'obj-404');
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('NO_RULES');
+    });
+  });
 });

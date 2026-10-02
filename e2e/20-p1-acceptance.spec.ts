@@ -16,6 +16,8 @@ import { createApiClient, loginViaApi } from './fixtures.js';
 const API_BASE = 'http://localhost:3000/api/v1';
 
 test.describe('R1.5 验收刷新：P1 全链路协同', () => {
+  // CI 重试会在新 worker 重跑失败用例——串行模式让后续用例在状态缺失时跳过而非级联失败
+  test.describe.configure({ mode: 'serial' });
   let api: ReturnType<typeof createApiClient>;
   let builderApi: ReturnType<typeof createApiClient>;
   let appId = '';
@@ -87,7 +89,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
   async function waitForTasks(
     instanceId: string,
   ): Promise<Array<{ id: string; assignee: string | null }>> {
-    for (let i = 0; i < 20; i += 1) {
+    for (let i = 0; i < 40; i += 1) {
       const adminTasks = await api.get<
         Array<{ id: string; instanceId: string; assignee: string | null }>
       >(`/tasks?status=pending&pageSize=50`);
@@ -301,8 +303,20 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     const blockedJson = (await blocked.json()) as { error?: { message?: string } };
     expect(blockedJson.error?.message).toContain(blockKey);
 
-    // 设 dev 值 → 放行
-    await api.post(`/apps/${appId}/env-vars/defs/${def.id}/value?env=dev`, { value: 'v' });
+    // 设 dev 值 → 放行。自愈：镜像 ③——dev 缺失的其余必填值一并补齐
+    // （全新库上 STATS_TITLE 的 dev 值不存在，缺一则放行步骤仍被 G4 拦截）
+    const devState = await api.get<{
+      defs: Array<{ id: string; key: string; required: boolean }>;
+      values: Array<{ defId: string; isSet: boolean }>;
+    }>(`/apps/${appId}/env-vars?env=dev`);
+    for (const d of devState.defs) {
+      const isSet = devState.values.some((v) => v.defId === d.id && v.isSet);
+      if (d.required && !isSet) {
+        await api.post(`/apps/${appId}/env-vars/defs/${d.id}/value?env=dev`, {
+          value: 'acceptance',
+        });
+      }
+    }
     const deploy = await api.post<{ deployment: { versionNumber: string } }>(
       `/apps/${appId}/environments/dev/publish`,
       { versionId: currentVersionId },

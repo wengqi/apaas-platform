@@ -173,7 +173,7 @@ function generateListPage(
   return {
     type: 'page',
     title: `${label}列表`,
-    data: { appId: '{appId}', objectId: meta.id },
+    data: { objectId: meta.id },
     body: [
       {
         type: 'crud',

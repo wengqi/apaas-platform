@@ -1,8 +1,8 @@
 /**
- * AmisRenderer — amis schema 渲染器（页面层 v2 方言，ADR-0003）。
+ * AmisRenderer — amis schema 渲染器（页面唯一方言，ADR-0003）。
  *
  * 定位：渲染 amis 方言的页面 schema（审批页面/普通页面统一，一切界面皆页面）。
- * 与自有 v1 渲染器（ComponentRenderer）并存，P2 完成方言切换后 v1 下线。
+ * v1 自有渲染器已物理下线，本组件是运行时页面唯一渲染路径。
  *
  * 集成红线（spike 实证，见 docs/knowledge-base/SPIKE-AMIS-ADOPTION-2026-09-30.md）：
  * - mobx 必须锁 4.x（本包 package.json 已锁 4.15.7 + mobx-react-lite 2.2.2），

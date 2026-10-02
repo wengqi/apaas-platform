@@ -357,7 +357,7 @@ test.describe('仪表盘与图表', () => {
 
     await api.put(`/pages/${dashPage.id}`, { schema });
 
-    // 4. 发布应用（运行时 slug 端点读取应用级 publishedSnapshot，
+    // 4. 发布应用（运行时 slug 端点读取环境部署的 AppVersion bundle，
     //    页面级 isPublished 标志不会填充快照）
     await api.post(`/apps/${appId}/publish`, {
       version: `1.0.${Date.now() % 1000}`,

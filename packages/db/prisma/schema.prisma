@@ -147,7 +147,6 @@ model Application {
   status            AppStatus @default(DRAFT)
   version           Int       @default(0) // 发布版本号，每次发布递增
   // 已发布的应用快照 JSON（含对象/页面/流程定义的完整副本）
-  publishedSnapshot Json?     @map("published_snapshot")
   publishedAt       DateTime? @map("published_at")
   createdBy         String    @map("created_by")
   createdAt         DateTime  @default(now()) @map("created_at")

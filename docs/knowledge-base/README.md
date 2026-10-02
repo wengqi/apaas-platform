@@ -44,6 +44,8 @@
 | [DATASET-SQL-2026-10-01](./DATASET-SQL-2026-10-01.md) | 2026-10-01 | G5 数据下沉实现记录（pipeline SQL 化/语义对齐表/filter 兜底策略/安全隔离/踩坑）|
 | [OPEN-API-2026-10-01](./OPEN-API-2026-10-01.md) | 2026-10-01 | G6 纯流程 API 实现记录（服务身份/API 触发器/major 冻结契约承诺/P1 轨道收官）|
 | [STATUS-MATRIX-2026-10-02](./STATUS-MATRIX-2026-10-02.md) | 2026-10-02 | R1.5 刷新验收（P1 全链路协同矩阵/发现缺陷修复/e2e 88/88；下一批 R1.7）|
+| [AMIS-MIGRATION-R17-2026-10-02](./AMIS-MIGRATION-R17-2026-10-02.md) | 2026-10-02 | R1.7 第一轮实现记录（方言判别/渲染分流/fetcher 摊平/CodeTab 兜底/StrictMode 红线/踩坑）|
+| [DROP-LEGACY-RUNTIME-2026-10-02](./DROP-LEGACY-RUNTIME-2026-10-02.md) | 2026-10-02 | 删旧优先：v1 运行时轨下线 + R1.4 兜底腿退役 + publishedSnapshot 列删除 + seed 环境指针化（未上线零兼容原则落地/新不变量/测试处置理由）|
 
 ## 文档维护规则
 

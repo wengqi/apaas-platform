@@ -48,21 +48,29 @@ function createService() {
     computeRollupFields: vi.fn().mockResolvedValue({}),
     recomputeParentsForChildRecord: vi.fn().mockResolvedValue(undefined),
   };
+  // R1.4：默认未部署（bundle=null → 搭建期活表字段语义）；已部署用例显式配置 bundle
+  const envResolver = {
+    resolve: vi.fn().mockResolvedValue({
+      environmentId: '',
+      versionId: null,
+      bundle: null,
+    }),
+  };
   const service = new RecordService(
     formulaEngine as unknown as ConstructorParameters<typeof RecordService>[0],
     autoNumberGenerator as unknown as ConstructorParameters<typeof RecordService>[1],
     triggerService as unknown as ConstructorParameters<typeof RecordService>[2],
     rollupService as unknown as ConstructorParameters<typeof RecordService>[3],
-    {
-      resolve: vi.fn().mockResolvedValue({
-        environmentId: '',
-        versionId: null,
-        bundleMode: false,
-        bundle: null,
-      }),
-    } as unknown as ConstructorParameters<typeof RecordService>[4],
+    envResolver as unknown as ConstructorParameters<typeof RecordService>[4],
   );
-  return { service, formulaEngine, autoNumberGenerator, triggerService, rollupService };
+  return {
+    service,
+    formulaEngine,
+    autoNumberGenerator,
+    triggerService,
+    rollupService,
+    envResolver,
+  };
 }
 
 describe('RecordService', () => {
@@ -284,7 +292,30 @@ describe('RecordService', () => {
       );
       prisma.record.create.mockResolvedValue(makeRecord({ data: { order_no: 'ORD-0001' } }));
 
-      const { service, autoNumberGenerator } = createService();
+      const { service, autoNumberGenerator, envResolver } = createService();
+      envResolver.resolve.mockResolvedValue({
+        environmentId: 'envrow-1',
+        versionId: 'v-1',
+        bundle: {
+          meta: { appId: 'app-1' },
+          pages: [],
+          processes: [],
+          objects: [
+            {
+              id: 'obj-001',
+              apiName: 'object',
+              fields: [
+                {
+                  id: 'f1',
+                  apiName: 'order_no',
+                  type: FieldType.AutoNumber,
+                  config: { autoNumber: { format: 'ORD-{seq:0000}' } },
+                },
+              ],
+            },
+          ],
+        },
+      });
       await service.create('tenant-001', 'obj-001', 'user-001', { name: 'Test' });
 
       expect(autoNumberGenerator.generate).toHaveBeenCalledWith(
@@ -405,7 +436,23 @@ describe('RecordService', () => {
         makeRecord({ data: { name: 'New', order_no: 'ORD-0001' } }),
       );
 
-      const { service } = createService();
+      const { service, envResolver } = createService();
+      envResolver.resolve.mockResolvedValue({
+        environmentId: 'envrow-1',
+        versionId: 'v-1',
+        bundle: {
+          meta: { appId: 'app-1' },
+          pages: [],
+          processes: [],
+          objects: [
+            {
+              id: 'obj-001',
+              apiName: 'object',
+              fields: [{ id: 'f1', apiName: 'order_no', type: FieldType.AutoNumber, config: {} }],
+            },
+          ],
+        },
+      });
       // 尝试更新 order_no（应被忽略）
       const result = await service.update('tenant-001', 'rec-001', 'user-001', {
         name: 'New',

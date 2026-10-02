@@ -1,9 +1,9 @@
 /**
- * EnvironmentResolverService 单测（R1.4）——解析降级链与缓存语义。
+ * EnvironmentResolverService 单测（R1.4）——解析链与缓存语义。
  *
  * 核心断言：
- * 1. 指针→AppVersion.snapshot（bundle 模式）+ ${env.*} 实时替换
- * 2. 无指针/无环境行 → 旧 publishedSnapshot 降级（存量兼容）
+ * 1. 指针→AppVersion.snapshot + ${env.*} 实时替换
+ * 2. 无环境行/未部署/指针悬空 → bundle=null（无兜底；publishedSnapshot 旧快照腿已删）
  * 3. 环境变量改值后重新 resolve 即生效（缓存仅存原始快照）
  * 4. ensureEnvironments 幂等建行；invalidateApp 精确失效
  */
@@ -15,23 +15,16 @@ import { getMockPrisma } from '../test/test-helpers.js';
 const APP = 'app-1';
 const TENANT = 't1';
 
-const SNAPSHOT_V1 = {
-  meta: { appId: APP },
-  pages: [{ apiName: 'p1', schema: {} }],
-  processes: [],
-  objects: [],
-};
-
 function makeService() {
   const prisma = getMockPrisma();
   const svc = new EnvironmentResolverService();
   return { svc, prisma };
 }
 
-describe('resolve（降级链）', () => {
+describe('resolve（解析链）', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('指针→版本快照：bundleMode=true + ${env.*} 实时替换', async () => {
+  it('指针→版本快照：bundle 命中 + ${env.*} 实时替换', async () => {
     const { svc, prisma } = makeService();
     prisma.appEnvironment.findFirst.mockResolvedValue({
       id: 'envrow-p',
@@ -48,22 +41,20 @@ describe('resolve（降级链）', () => {
     ]);
 
     const r = await svc.resolve(TENANT, APP, 'prod');
-    expect(r.bundleMode).toBe(true);
     expect(r.versionId).toBe('v-1');
     expect(((r.bundle ?? {}) as { title: string }).title).toBe('hello');
   });
 
-  it('无环境行 → 旧 publishedSnapshot 降级（bundleMode=false）', async () => {
+  it('无环境行 → bundle=null（该环境未部署，无兜底）', async () => {
     const { svc, prisma } = makeService();
     prisma.appEnvironment.findFirst.mockResolvedValue(null);
-    prisma.application.findFirst.mockResolvedValue({ publishedSnapshot: SNAPSHOT_V1 });
 
     const r = await svc.resolve(TENANT, APP, 'prod');
-    expect(r.bundleMode).toBe(false);
-    expect(r.bundle).toEqual(SNAPSHOT_V1);
+    expect(r.bundle).toBeNull();
+    expect(r.versionId).toBeNull();
   });
 
-  it('未部署（指针空）→ 降级旧快照', async () => {
+  it('未部署（指针空）→ bundle=null', async () => {
     const { svc, prisma } = makeService();
     prisma.appEnvironment.findFirst.mockResolvedValue({
       id: 'envrow-p',
@@ -71,13 +62,13 @@ describe('resolve（降级链）', () => {
       key: 'prod',
       currentVersionId: null,
     });
-    prisma.application.findFirst.mockResolvedValue({ publishedSnapshot: SNAPSHOT_V1 });
 
     const r = await svc.resolve(TENANT, APP, 'prod');
-    expect(r.bundleMode).toBe(false);
+    expect(r.bundle).toBeNull();
+    expect(r.environmentId).toBe('envrow-p');
   });
 
-  it('指针悬空（版本缺失）→ 降级 + warn 不抛', async () => {
+  it('指针悬空（版本缺失）→ bundle=null + warn 不抛', async () => {
     const { svc, prisma } = makeService();
     prisma.appEnvironment.findFirst.mockResolvedValue({
       id: 'envrow-p',
@@ -86,17 +77,6 @@ describe('resolve（降级链）', () => {
       currentVersionId: 'v-ghost',
     });
     prisma.appVersion.findFirst.mockResolvedValue(null);
-    prisma.application.findFirst.mockResolvedValue({ publishedSnapshot: SNAPSHOT_V1 });
-
-    const r = await svc.resolve(TENANT, APP, 'prod');
-    expect(r.bundleMode).toBe(false);
-    expect(r.bundle).toEqual(SNAPSHOT_V1);
-  });
-
-  it('降级快照为 null（从未发布）→ bundle null（调用方走活表）', async () => {
-    const { svc, prisma } = makeService();
-    prisma.appEnvironment.findFirst.mockResolvedValue(null);
-    prisma.application.findFirst.mockResolvedValue({ publishedSnapshot: null });
 
     const r = await svc.resolve(TENANT, APP, 'prod');
     expect(r.bundle).toBeNull();

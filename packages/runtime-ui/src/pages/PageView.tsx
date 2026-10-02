@@ -1,19 +1,18 @@
 /**
- * 运行时页面渲染器 — 加载已发布页面 Schema，递归渲染组件树。
+ * 运行时页面渲染器 — 加载已发布页面 Schema，amis 整页渲染。
  *
  * 路由：/app/:appId/p/:slug
- * 流程：getBySlug → RuntimeStoreProvider → ComponentRenderer 递归渲染
+ * 流程：getBySlug → AmisRenderer（fetcher 带 token，data 注入 {appId, objectId}）
+ *
+ * 注：v1 自有渲染器（ComponentRenderer/RuntimeStore/ModalHost）已随 R1.7
+ * 第二轮物理下线——页面唯一方言为 amis（ADR-0003 一切界面皆页面）。
  */
 
 import { Spin, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { isAmisPage } from '@apaas/shared';
 import { pagesApi } from '../api/pages';
 import AmisRenderer from '../runtime/AmisRenderer';
-import { RuntimeStoreProvider } from '../runtime/RuntimeStore';
-import ComponentRenderer from '../runtime/ComponentRenderer';
-import ModalHost from '../runtime/ModalHost';
 import AppNavMenu from '../runtime/AppNavMenu';
 
 const { Text } = Typography;
@@ -51,22 +50,7 @@ export default function PageView() {
   }
 
   const schema = page.schema;
-
-  // R1.7：amis 方言（v2）整页渲染——data 域注入应用/对象上下文，
-  // 取数/提交由 schema 里的平台相对 api.url 经 fetcher（带 token）直连
-  if (isAmisPage(schema)) {
-    return (
-      <>
-        <AppNavMenu />
-        <AmisRenderer
-          schema={schema as unknown as Record<string, unknown>}
-          data={{ appId, objectId: page.objectId ?? null }}
-        />
-      </>
-    );
-  }
-
-  if (!schema?.root) {
+  if (!schema || Object.keys(schema).length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
         <Text type="secondary">页面 Schema 为空</Text>
@@ -75,14 +59,15 @@ export default function PageView() {
   }
 
   return (
-    // key=page.id：页面间导航时强制重挂载，清空上一页的 vm/变量状态，
-    // 并让 autoQuery 与 PageLoadEffect(onLoad) 在新页面重新触发
-    <RuntimeStoreProvider key={page.id} viewModel={schema.viewModel} objectId={page.objectId}>
+    <>
       {/* 应用内常驻页签导航（多页应用切换无需返回应用视图） */}
       <AppNavMenu />
-      <ComponentRenderer node={schema.root} root={schema.root} isRoot />
-      {/* 弹窗宿主 — 消费 open_modal/close_modal 动作写入的 vm.modalVisible */}
-      <ModalHost appId={appId!} />
-    </RuntimeStoreProvider>
+      {/* amis 方言整页渲染——data 域注入应用/对象上下文，
+          取数/提交由 schema 里的平台相对 api.url 经 fetcher（带 token）直连 */}
+      <AmisRenderer
+        schema={schema as unknown as Record<string, unknown>}
+        data={{ appId, objectId: page.objectId ?? null }}
+      />
+    </>
   );
 }

@@ -6,7 +6,7 @@
  * - 7 个页面（list/detail/form × 对象 + dashboard）
  * - 1 个审批流程（资产领用审批）
  * - 示例记录（4 分类 + 15 资产 + 5 领用申请）
- * - 应用发布（构造 publishedSnapshot）
+ * - 应用发布（AppVersion 快照 + dev/prod 环境部署）
  *
  * 所有 schema 构造函数内联实现，参照：
  * - packages/studio/src/components/page-builder/templates.ts（页面模板格式）
@@ -1120,7 +1120,7 @@ export async function seedDemoContent(
   console.log(`  ✅ 领用申请记录: ${borrowRequests.length} 条`);
 
   // ========================================================================
-  // 5. 应用发布（构造 publishedSnapshot）
+  // 5. 应用发布（AppVersion 不可变快照 + dev/prod 环境部署）
   // ========================================================================
 
   console.log('  📤 正在发布应用...');
@@ -1215,11 +1215,6 @@ export async function seedDemoContent(
       data: {
         status: 'PUBLISHED',
         version: 1,
-        publishedSnapshot: snapshot as unknown as Prisma.InputJsonValue,
-        // R1.4：环境指针优先于 publishedSnapshot（若存在）——种子回无指针基线保证幂等
-        environments: {
-          updateMany: { where: {}, data: { currentVersionId: null } },
-        },
         publishedAt: new Date(),
       },
     }),
@@ -1233,6 +1228,59 @@ export async function seedDemoContent(
     }),
   ]);
 
-  console.log('  ✅ 应用已发布 (v1.0.0) — publishedSnapshot 已写入');
+  // R1.4：创建版本记录 + 部署到 dev/prod 环境（环境指针 = 运行时唯一读路径，幂等）
+  const versionNumber = '1.0.0';
+  const existingVersion = await prisma.appVersion.findUnique({
+    where: { appId_versionNumber: { appId, versionNumber } },
+  });
+  const version =
+    existingVersion ??
+    (await prisma.appVersion.create({
+      data: {
+        tenantId,
+        appId,
+        versionNumber,
+        description: '种子数据初始发布',
+        snapshot: snapshot as unknown as Prisma.InputJsonValue,
+        status: 'PUBLISHED',
+        publishedBy: adminUserId,
+      },
+    }));
+  if (existingVersion) {
+    // 重跑 seed：刷新快照内容（指针/版本号不变）
+    await prisma.appVersion.update({
+      where: { id: existingVersion.id },
+      data: { snapshot: snapshot as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  for (const envKey of ['dev', 'prod'] as const) {
+    const envRow = await prisma.appEnvironment.upsert({
+      where: { appId_key: { appId, key: envKey } },
+      update: {},
+      create: { tenantId, appId, key: envKey },
+    });
+    if (envRow.currentVersionId !== version.id) {
+      await prisma.$transaction([
+        prisma.appEnvironment.update({
+          where: { id: envRow.id },
+          data: { currentVersionId: version.id },
+        }),
+        prisma.deployment.create({
+          data: {
+            tenantId,
+            appId,
+            environmentId: envRow.id,
+            versionId: version.id,
+            kind: 'deploy',
+            operator: adminUserId,
+            note: `种子发布（${envKey}）`,
+          },
+        }),
+      ]);
+    }
+  }
+
+  console.log('  ✅ 应用已发布 (v1.0.0) — AppVersion 快照已写入，dev/prod 环境已部署');
   console.log('📦 Demo 应用内容填充完成!');
 }

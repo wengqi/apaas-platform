@@ -185,14 +185,13 @@ export class PageService {
   /**
    * 按 slug 获取已发布页面（运行态渲染器用）。
    *
-   * 环境隔离核心方法：从 Application.publishedSnapshot 中读取页面 schema，
-   * 而非开发态 PageMeta.schema。确保运行态用户只看到已发布版本。
+   * 环境隔离核心方法：从环境指针指向的 AppVersion.snapshot（不可变 bundle）中
+   * 读取页面 schema，而非开发态 PageMeta.schema。确保运行态用户只看到已发布版本。
    *
    * Studio 预览模式不受影响 — Studio 通过 GET /pages/:pageId 读取开发态数据。
    */
   async getPublishedBySlug(tenantId: string, appId: string, slug: string): Promise<PageMeta> {
-    // R1.4：环境解析（ALS env，缺省 prod）——指针→AppVersion.bundle，
-    // 降级 publishedSnapshot（存量应用行为不变）
+    // R1.4：环境解析（ALS env，缺省 prod）——指针→AppVersion.bundle，未部署即 404
     const env = getEnvironmentId() ?? 'prod';
     const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
     if (!resolved.bundle) throw new NotFoundException('应用尚未发布');
@@ -219,33 +218,30 @@ export class PageService {
   }
 
   /**
-   * 运行时按 ID 读页面（R1.4 审批页渲染入口）——bundle 优先（环境指针指向的
-   * 已发布 schema），降级活表（存量应用/未绑定环境的调用）。
+   * 运行时按 ID 读页面（R1.4 审批页渲染入口）——环境指针指向的已发布 bundle，
+   * 未部署 / bundle 不含该页面即 404（无活表兜底）。
    * Studio 编辑器仍走 GET /pages/:pageId 读活表开发态，两者语义分离。
    */
   async getRuntimeById(tenantId: string, appId: string, pageId: string): Promise<PageMeta> {
     const env = getEnvironmentId() ?? 'prod';
     const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
-    if (resolved.bundle) {
-      const pageData = resolved.bundle.pages.find((p: { id: string }) => p.id === pageId);
-      if (pageData) {
-        return {
-          id: asPageId(pageData.id),
-          tenantId: asTenantId(tenantId),
-          appId: asAppId(appId),
-          name: pageData.name,
-          slug: pageData.apiName,
-          type: pageData.type as PageType,
-          objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
-          schema: pageData.schema as unknown as PageSchema,
-          published: true,
-          createdAt: resolved.bundle.meta.publishedAt,
-          updatedAt: resolved.bundle.meta.publishedAt,
-        };
-      }
+    const pageData = resolved.bundle?.pages.find((p: { id: string }) => p.id === pageId);
+    if (!resolved.bundle || !pageData) {
+      throw new NotFoundException('页面不存在或未发布');
     }
-    // 降级：活表（bundle 未包含该页面，如发布后新建）
-    return this.get(tenantId, pageId);
+    return {
+      id: asPageId(pageData.id),
+      tenantId: asTenantId(tenantId),
+      appId: asAppId(appId),
+      name: pageData.name,
+      slug: pageData.apiName,
+      type: pageData.type as PageType,
+      objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
+      schema: pageData.schema as unknown as PageSchema,
+      published: true,
+      createdAt: resolved.bundle.meta.publishedAt,
+      updatedAt: resolved.bundle.meta.publishedAt,
+    };
   }
 
   /**

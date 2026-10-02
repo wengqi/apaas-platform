@@ -65,7 +65,6 @@ function makeApp(overrides: Record<string, unknown> = {}): Record<string, unknow
     color: '#1677ff',
     status: 'DRAFT',
     version: 0,
-    publishedSnapshot: null,
     publishedAt: null,
     createdById: 'user-001',
     createdAt: new Date('2026-08-01'),

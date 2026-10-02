@@ -2,12 +2,12 @@
  * E2E 测试 — Phase 10.4 Demo 应用验收（资产管理系统）。
  *
  * 验证种子数据创建的完整 Demo 应用：
- * 1. 应用已发布（PUBLISHED + publishedSnapshot）
+ * 1. 应用已发布（PUBLISHED + 环境部署可读）
  * 2. 3 个业务对象存在（asset / borrow_request / asset_category）
  * 3. 7 个已发布页面存在
  * 4. 审批流程已发布
  * 5. 示例记录存在（15 资产 + 4 分类 + 5 领用申请）
- * 6. 运行时页面通过 slug 可访问（publishedSnapshot 渲染）
+ * 6. 运行时页面通过 slug 可访问（环境 bundle 渲染）
  * 7. Studio 中应用可编辑
  *
  * 验收标准（ROADMAP）：从零搭建含对象/页面/审批流程/权限/仪表盘的完整应用。
@@ -74,7 +74,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     appId = app.id;
   });
 
-  test('应用已发布（PUBLISHED + publishedSnapshot）', async () => {
+  test('应用已发布（PUBLISHED + 环境部署可读）', async () => {
     const apps =
       await api.get<Array<{ id: string; apiName: string; status: string; version: number }>>(
         '/apps',
@@ -83,12 +83,10 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     expect(app).toBeDefined();
     expect(app!.status).toBe('PUBLISHED');
     expect(app!.version).toBeGreaterThanOrEqual(1);
-    // publishedSnapshot 仅在详情端点返回（列表端点为轻量摘要）
-    const detail = await api.get<{ id: string; publishedSnapshot: { meta: unknown } | null }>(
-      `/apps/${app!.id}`,
-    );
-    expect(detail.publishedSnapshot).toBeTruthy();
-    expect(detail.publishedSnapshot!.meta).toBeTruthy();
+    // R1.7 后运行时唯一读路径 = AppVersion bundle + 环境指针：
+    // 详情端点返回 publishedAt（发布语义），运行时 slug 端点可读（部署语义）
+    const detail = await api.get<{ id: string; publishedAt: string | null }>(`/apps/${app!.id}`);
+    expect(detail.publishedAt).toBeTruthy();
   });
 
   test('3 个业务对象存在', async () => {

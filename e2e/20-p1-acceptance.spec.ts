@@ -85,9 +85,10 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     return json.ok ? (json.data ?? null) : null;
   }
 
-  /** 等待指定实例的全部待审任务（合并 admin+builder 视角）。 */
+  /** 等待指定实例的待审任务到达期望数量（合并 admin+builder 视角）。 */
   async function waitForTasks(
     instanceId: string,
+    expected = 1,
   ): Promise<Array<{ id: string; assignee: string | null }>> {
     for (let i = 0; i < 40; i += 1) {
       const adminTasks = await api.get<

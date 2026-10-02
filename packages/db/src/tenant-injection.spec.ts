@@ -86,9 +86,9 @@ describe('decideInjection', () => {
     });
   });
 
-  it('所有 29 个白名单模型在有租户上下文时都注入', () => {
+  it('所有 31 个白名单模型在有租户上下文时都注入', () => {
     const models = Array.from(TENANT_SCOPED_MODELS);
-    expect(models).toHaveLength(29);
+    expect(models).toHaveLength(31);
 
     runWithTenant('tenant-all', () => {
       for (const model of models) {
@@ -214,8 +214,8 @@ describe('injectToUpsert', () => {
 });
 
 describe('TENANT_SCOPED_MODELS', () => {
-  it('包含 29 个模型', () => {
-    expect(TENANT_SCOPED_MODELS.size).toBe(29);
+  it('包含 31 个模型', () => {
+    expect(TENANT_SCOPED_MODELS.size).toBe(31);
   });
 
   it('包含所有预期模型', () => {

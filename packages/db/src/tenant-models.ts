@@ -35,6 +35,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'Deployment',
   'EnvVarDef',
   'EnvVarValue',
+  'ServiceIdentity',
+  'ProcessApiRelease',
   'Connector',
   'ConnectorCredential',
   'DataFlow',

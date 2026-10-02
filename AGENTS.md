@@ -102,6 +102,9 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - scope：`gateway/shared/db/studio/runtime-ui/meta-svc/process-svc/runtime-svc/auth/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function/e2e`
 - pre-commit 钩子：lint-staged（eslint --fix + prettier --write 暂存文件）
 - commit-msg 钩子：commitlint 格式校验（`commitlint.config.mjs`）
+- **推送前 OCR 评审（工作约定，2026-10-01）**：功能分支推送前执行 `/ocr-review`（OCR 委托模式：
+  preview → 逐文件审查 → High/Medium 修复复验 → 结构化报告）。评审与修复在同一推送内完成；
+  体系性发现须同步知识库踩坑节。无 LLM 依赖（agent 自身执行），与「盯 CI」约定同级
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
 
 ### 测试规范
@@ -220,6 +223,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 ## 当前阶段（2026-09-30 方向修订快照，基线为 2026-09-27 定位修订）
 
 - 🔄 **产品方向修订（ADR-0003，2026-09-30）**：产品论 = 受约束的 AI 应用生成底座；AI 生成/MCP 排除条款撤销（R1.S / R1.6 AI 生成接口 / R1.7 页面层 amis 迁移）；治理闸门 = 全环境人审；界面层 = amis 单方言（**一切界面皆页面**，不设页面/表单之分）；底座自建瘦身 ~50k 行。蓝图 docs/design/DESIGN-refactor-blueprint-2026-09-30.md
+- ✅ **G6 纯流程 API 落地（2026-10-01，本阶段，P1 收官）**：X-API-Key 服务身份（sha256 存储明文一次性/吊销即时失效/open 限流桶）+ /open/* 触发端点（inputs 展开/发现端点/PROCESS_API_START 脱敏审计）+ 流程版本稳定性承诺（apiName+major 冻结快照、新 major diff 半自动、旧 major DEPRECATED 仍可调、引擎 schemaOverride 直通）；e2e 19 号 7 用例（v1 钉版本稳定性验证）、全量 83/83、gateway 单测 656。实现记录 docs/knowledge-base/OPEN-API-2026-10-01.md。**ADR-0003 蓝图 P1 全部完成**
 - ✅ **G5 数据下沉落地（2026-10-01，本阶段）**：数据流 pipeline 全量下推 PostgreSQL（每源 LIMIT 子查询 + COALESCE join + JsonLogic 可翻译子集 WHERE + GROUP BY regex 守卫聚合 + ROUND(2)）；不可下推 filter 非聚合分支内存兜底/聚合分支显式报错；物化事务与 refresh 租约语义保留；e2e 07 零改动全绿（真实 PG 验证）。实现记录 docs/knowledge-base/DATASET-SQL-2026-10-01.md
 - ✅ **R1.4 多环境落地（2026-10-01，本阶段）**：完整 M3——AppEnvironment 指针/Deployment 历史/应用环境变量（G3 敏感值加密+G4 发布硬闸）；records/instances/executions/序列按 environmentId 隔离（ALS 双维注入，缺省 prod 兼容旧路径）；运行时读路径（页面/审批页/对象/流程）bundle 优先+降级链（存量零感知）；触发器随环境启停（jobId=scheduled:<env>:<defId>，顺带修复 pattern 清理互踩 bug）；实例冻结 schema；studio 环境管理页 + runtime-ui 环境切换。gateway 单测 627、e2e 77/77。实现记录 docs/knowledge-base/MULTI-ENV-2026-10-01.md
 - ✅ **G1/R1.2 版本模型 + diff 快审落地（2026-10-01，本阶段）**：资源级三态（对象/页面/流程统一）+ 提交快照链（ResourceVersion：PENDING/APPROVED/REJECTED/SUPERSEDED + 版本谱系钩子）；**治理策略=仅 AI 提交需人审**（MCP submit_* 改造为 PENDING 不落活表，批准才落地；人工提交即时 APPROVED 基线）；验收项 diff 快审 UX=审核中心（结构化 schema diff + 一键批/驳 + 驳回意见回传 agent + 漂移保护 + 撤销未提交）；MCP 新增 list_review_submissions。单测 gateway 610 / e2e 72/72（新增 17 号治理闭环）。状态矩阵 docs/knowledge-base/STATUS-MATRIX-2026-10-01.md，实现记录 docs/knowledge-base/REVIEW-VERSION-MODEL-2026-10-01.md

@@ -135,6 +135,8 @@ export class ProcessEngine {
     processDefId: string,
     triggerContext: Record<string, unknown>,
     envKey?: string,
+    /** G6：显式 schema 覆盖（流程 API 钉 major 的冻结契约直通，跳过 bundle/活表解析） */
+    schemaOverride?: Record<string, unknown>,
   ): Promise<string> {
     // R1.4：解析环境（显式参数 > ALS > prod）——bundle 内的流程视为已发布语义
     const env = envKey ?? getEnvironmentId() ?? 'prod';
@@ -166,7 +168,17 @@ export class ProcessEngine {
       triggerType: string | null;
     };
 
-    if (bundled) {
+    if (schemaOverride) {
+      // G6：钉 major 的冻结契约直通（def 行仅作元信息/FK，schema 以发布快照为准）
+      def = {
+        id: liveDef.id,
+        apiName: liveDef.apiName,
+        name: liveDef.name,
+        version: liveDef.version,
+        triggerType: liveDef.triggerType,
+        workflowSchema: schemaOverride,
+      };
+    } else if (bundled) {
       // bundle 模式：workflowSchema 取自不可变快照（版本切换不影响新实例语义）
       def = {
         id: liveDef.id,

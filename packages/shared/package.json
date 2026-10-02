@@ -57,6 +57,11 @@
       "import": "./dist/environment/index.js",
       "require": "./dist/environment/index.js"
     },
+    "./open-api": {
+      "types": "./dist/open-api/index.d.ts",
+      "import": "./dist/open-api/index.js",
+      "require": "./dist/open-api/index.js"
+    },
     "./stores": {
       "types": "./dist/stores/index.d.ts",
       "import": "./dist/stores/index.js"

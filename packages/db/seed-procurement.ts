@@ -642,10 +642,20 @@ export async function seedProcurementContent(
       })
     )?.id ?? adminUserId;
 
+  // 审批页绑定用页面 ID（G3 跨引用与 runtime getRuntime 均按 id 查找；
+  // pages 为内存定义数组无 id，需从库取）
+  const approvalPageId = (
+    await prisma.pageMeta.findFirst({
+      where: { appId, apiName: approvalPageApiName },
+      select: { id: true },
+    })
+  )?.id;
+  if (!approvalPageId) throw new Error('合同审批页未创建，无法绑定流程 pageId');
+
   let workflowSchema = generateContractApprovalWorkflow(adminUserId);
   const workflowStr = JSON.stringify(workflowSchema)
     .replaceAll('__CONTRACT_OBJECT_ID__', contractObj.id)
-    .replaceAll('__APPROVAL_PAGE_ID__', pages[2]!.apiName)
+    .replaceAll('__APPROVAL_PAGE_ID__', approvalPageId)
     .replaceAll('__CFO_USER_ID__', secondApprover);
   workflowSchema = JSON.parse(workflowStr);
 

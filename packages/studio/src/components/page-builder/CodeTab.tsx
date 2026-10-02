@@ -50,6 +50,13 @@ export default function CodeTab() {
     }, CODE_EDIT_DEBOUNCE_MS);
   };
 
+  /** blur 立即落盘（取消防抖定时器）——防止高负载下防抖延迟到保存之后。 */
+  const flushGlobal = (field: 'globalCss' | 'globalJs', value: string) => {
+    const key = field === 'globalCss' ? 'css' : 'js';
+    if (timers.current[key]) clearTimeout(timers.current[key]);
+    patchSchema({ [field]: value });
+  };
+
   const schemaJson = schema ? JSON.stringify(schema, null, 2) : '';
 
   const copyJson = async () => {
@@ -133,6 +140,7 @@ export default function CodeTab() {
                 setJsDraft(e.target.value);
                 patchGlobal('globalJs', e.target.value);
               }}
+              onBlur={() => flushGlobal('globalJs', jsDraft)}
               placeholder="// 如：vm.title = 'hello'"
               autoSize={{ minRows: 4, maxRows: 12 }}
               style={{ fontFamily: 'monospace', fontSize: 12 }}

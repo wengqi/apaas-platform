@@ -340,12 +340,20 @@ test.describe('页面搭建器', () => {
     await page.getByText('代码', { exact: true }).click();
     await expect(page.getByText('页面 Schema')).toBeVisible();
     await page.getByPlaceholder(/预览与运行时页面注入/).fill('.demo-title { color: red; }');
-    // 500ms 防抖落盘后再保存（全量套件负载下留足余量）
-    await page.waitForTimeout(1500);
+    // 500ms 防抖落盘后再保存；保存是异步 PUT——轮询直到全局样式写回
+    await page.waitForTimeout(800);
     await page.getByRole('button', { name: '保存' }).click();
-    await page.waitForTimeout(1000);
-    const detail = await api.get<{ schema: { globalCss?: string } }>(`/pages/${page_meta.id}`);
-    expect(detail.schema.globalCss).toContain('.demo-title');
+    await expect
+      .poll(
+        async () => {
+          const detail = await api.get<{ schema: { globalCss?: string } }>(
+            `/pages/${page_meta.id}`,
+          );
+          return detail.schema.globalCss ?? '';
+        },
+        { timeout: 10_000, intervals: [500] },
+      )
+      .toContain('.demo-title');
   });
 
   test('画布宽度切换：手机 375 预设生效', async ({ page }) => {

@@ -439,3 +439,11 @@ export const usePageBuilderStore = create<PageBuilderState>((set, get) => ({
     });
   },
 }));
+
+// e2e 调试钩子：测试通过 window 句柄读取 store 真实状态（只读），
+// 规避 UI 时序竞态（R1.7 代码页签写回测试用）
+(window as unknown as Record<string, unknown>).__pageBuilderDebug = {
+  get schema() {
+    return usePageBuilderStore.getState().schema as unknown as { globalCss?: string };
+  },
+};

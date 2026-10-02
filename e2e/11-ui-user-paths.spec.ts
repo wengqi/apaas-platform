@@ -101,17 +101,28 @@ test.describe('真实 UI 用户路径', () => {
     });
     await page.goto(`/app/${appId}/pages/${pageMeta.id}`);
     await expect(page.getByRole('button', { name: /保存/ })).toBeVisible({ timeout: 15_000 });
+
+    // R1.7 第二轮：画布 = amis-editor，无变更时保存禁用（脏态门控）——
+    // 点击添加一个组件制造脏态，再保存（保留原回归意图：保存 payload 必须真正落库）
+    // 等编辑器初始化规范化窗口（1s）过去，避免添加动作的 onChange 被吸收
+    await page.waitForTimeout(1_500);
+    await page.getByText('Markdown', { exact: true }).first().click({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /保存/ })).toBeEnabled({ timeout: 15_000 });
     await page.getByRole('button', { name: /保存/ }).click();
 
-    // 保存必须真正落库：轮询页面 schema（此前 400 会静默失败）
+    // 保存必须真正落库：轮询页面 schema 含新组件（此前 400 会静默失败）
     await expect
       .poll(
         async () => {
           const res = await fetch(`http://localhost:3000/api/v1/pages/${pageMeta.id}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          const json = (await res.json()) as { data?: { schema?: unknown } };
-          return Boolean(json.data?.schema);
+          const json = (await res.json()) as { data?: { schema?: { body?: unknown[] } } };
+          const body = json.data?.schema?.body ?? [];
+          return body.some(
+            (b) =>
+              typeof b === 'object' && b !== null && (b as { type?: string }).type === 'markdown',
+          );
         },
         { timeout: 15_000 },
       )

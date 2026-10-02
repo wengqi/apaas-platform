@@ -1,4 +1,3 @@
-import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConfigProvider, App as AntApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -13,16 +12,17 @@ import 'reactflow/dist/style.css';
 
 const queryClient = createQueryClient();
 
+// 红线：不得包 React.StrictMode —— 搭建器画布 amis-editor 基于 mobx-state-tree，
+// 双挂载撕毁 RootStore（dev 模式必现崩溃），与 runtime-ui AmisRenderer 同源
+// （docs/knowledge-base/SPIKE-AMIS-ADOPTION-2026-09-30.md）。
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ConfigProvider locale={zhCN}>
-      <AntApp>
-        <GlobalErrorBoundary>
-          <QueryClientProvider client={queryClient}>
-            <App />
-          </QueryClientProvider>
-        </GlobalErrorBoundary>
-      </AntApp>
-    </ConfigProvider>
-  </React.StrictMode>,
+  <ConfigProvider locale={zhCN}>
+    <AntApp>
+      <GlobalErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </GlobalErrorBoundary>
+    </AntApp>
+  </ConfigProvider>,
 );

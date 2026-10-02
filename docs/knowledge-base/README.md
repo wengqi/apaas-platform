@@ -46,6 +46,7 @@
 | [STATUS-MATRIX-2026-10-02](./STATUS-MATRIX-2026-10-02.md) | 2026-10-02 | R1.5 刷新验收（P1 全链路协同矩阵/发现缺陷修复/e2e 88/88；下一批 R1.7）|
 | [AMIS-MIGRATION-R17-2026-10-02](./AMIS-MIGRATION-R17-2026-10-02.md) | 2026-10-02 | R1.7 第一轮实现记录（方言判别/渲染分流/fetcher 摊平/CodeTab 兜底/StrictMode 红线/踩坑）|
 | [DROP-LEGACY-RUNTIME-2026-10-02](./DROP-LEGACY-RUNTIME-2026-10-02.md) | 2026-10-02 | 删旧优先：v1 运行时轨下线 + R1.4 兜底腿退役 + publishedSnapshot 列删除 + seed 环境指针化（未上线零兼容原则落地/新不变量/测试处置理由）|
+| [AMIS-EDITOR-CANVAS-R17B-2026-10-02](./AMIS-EDITOR-CANVAS-R17B-2026-10-02.md) | 2026-10-02 | R1.7 第二轮②画布 amis-editor 重写（导出形态/pnpm 布局/i18n-runtime 损坏/OOM/脏态窗口/DTO 白名单六坑 + create 补 G3 + StrictMode 扩展 studio）|
 
 ## 文档维护规则
 

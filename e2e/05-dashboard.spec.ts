@@ -31,7 +31,7 @@ test.describe('仪表盘与图表', () => {
   // 模板验证（原有测试）
   // -------------------------------------------------------------------------
 
-  test('创建仪表盘页面自动生成 DashboardGrid 模板（含指标卡 + 趋势图）', async () => {
+  test('创建仪表盘页面产出 amis 空页 scaffold（v1 模板已退役）', async () => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_dashboard',
       name: 'E2E仪表盘',
@@ -39,42 +39,17 @@ test.describe('仪表盘与图表', () => {
     });
     expect(page_meta.id).toBeTruthy();
 
-    const detail = await api.get<{
-      schema: {
-        root: {
-          children?: Array<{
-            type: string;
-            props?: { layout?: unknown[] };
-            children?: Array<{ type: string; props?: Record<string, unknown> }>;
-          }>;
-        };
-      };
-    }>(`/pages/${page_meta.id}`);
-
-    const rootChildren = detail.schema.root.children ?? [];
-    const dashboardGrid = rootChildren.find((c) => c.type === 'dashboard_grid');
-    expect(dashboardGrid).toBeTruthy();
-    expect(dashboardGrid?.props?.layout).toBeTruthy();
-    // 模板应包含指标卡(statistic) + 趋势图(chart) + 其他图表
-    const widgetTypes = (dashboardGrid?.children ?? []).map((c) => c.type);
-    expect(widgetTypes).toContain('statistic');
-    expect(widgetTypes).toContain('chart');
-    expect(dashboardGrid?.children?.length).toBeGreaterThanOrEqual(4);
-
-    // 趋势图应含 timeGranularity 配置
-    const trendChart = (dashboardGrid?.children ?? []).find(
-      (c) => c.type === 'chart' && c.props?.chartType === 'line',
+    // R1.7 第二轮：v1 DashboardGrid 模板已随 v1 渲染轨退役，无 schema 创建
+    // 统一产出 amis 空页 scaffold（图表能力由 amis-editor 搭建）
+    const detail = await api.get<{ schema: { type?: string; body?: unknown[] } }>(
+      `/pages/${page_meta.id}`,
     );
-    expect(trendChart?.props?.timeGranularity).toBe('day');
-
-    // 指标卡应含 aggregation 配置
-    const metricCard = (dashboardGrid?.children ?? []).find(
-      (c) => c.type === 'statistic' && c.props?.aggregation,
-    );
-    expect(metricCard?.props?.aggregation).toBeTruthy();
+    expect(detail.schema.type).toBe('page');
+    expect(Array.isArray(detail.schema.body)).toBe(true);
   });
 
-  test('更新仪表盘网格布局', async () => {
+  // v1 仪表盘网格/图表运行时链路已随 R1.7 第二轮退役，仪表盘图表能力由 amis 重建后重写
+  test.fixme('更新仪表盘网格布局', async () => {
     const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
       apiName: 'e2e_dashboard_layout',
       name: 'E2E布局测试',
@@ -289,7 +264,8 @@ test.describe('仪表盘与图表', () => {
   // 图表配置 + 运行时预览（Phase 7.8 验收）
   // -------------------------------------------------------------------------
 
-  test('图表配置 + 运行时预览（创建仪表盘 → 配置图表 → 发布 → 访问运行时）', async () => {
+  // v1 仪表盘网格/图表运行时链路已随 R1.7 第二轮退役，仪表盘图表能力由 amis 重建后重写
+  test.fixme('图表配置 + 运行时预览（创建仪表盘 → 配置图表 → 发布 → 访问运行时）', async () => {
     // 1. 创建测试对象 + 数据
     const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
       apiName: 'e2e_preview_obj',

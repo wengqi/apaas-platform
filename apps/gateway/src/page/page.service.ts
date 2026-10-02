@@ -253,9 +253,28 @@ export class PageService {
     req: CreatePageRequest,
     changedBy?: string,
   ): Promise<PageMeta> {
-    // 仪表盘页面自动生成默认模板（预置栅格 + 图表布局）
-    const defaultSchema =
-      req.type === 'dashboard' && !req.schema ? generateDashboardSchema() : (req.schema ?? {});
+    // R1.7 第二轮：页面统一 amis 方言——无 schema 时产出 amis 空页 scaffold
+    // （v1 generateDashboardSchema 已随 v1 渲染轨退役；能力口径 = amis 原生）
+    const defaultSchema = req.schema ?? {
+      type: 'page',
+      title: req.name,
+      body: [],
+    };
+
+    // R1.7：amis 方言 schema 创建同样过 G3 合同（硬闸，与 update 路径对齐）——v1 不校验
+    if (isAmisPage(defaultSchema)) {
+      const check = this.schemaContract.validate('amis_page', defaultSchema);
+      if (!check.valid) {
+        throw new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: `amis 页面校验失败: ${check.issues
+            .filter((i) => i.severity === 'error')
+            .slice(0, 3)
+            .map((i) => `${i.path} ${i.message}`)
+            .join('; ')}`,
+        });
+      }
+    }
 
     const page = await prisma.pageMeta.create({
       data: {
@@ -412,123 +431,4 @@ export class PageService {
       updatedAt: row.updatedAt.toISOString(),
     };
   }
-}
-
-/**
- * 生成仪表盘默认 Schema — 预置栅格布局 + 图表组件。
- *
- * 与前端 templates.ts 的 generateDashboardTemplate 保持一致，
- * 确保从 API 创建的仪表盘页也有起始布局。
- */
-function generateDashboardSchema(): object {
-  const nodeId = (type: string) => `${type}_${Math.random().toString(36).slice(2, 8)}`;
-  const metric1Id = nodeId('statistic');
-  const metric2Id = nodeId('statistic');
-  const trendId = nodeId('chart');
-  const barId = nodeId('chart');
-  const pieId = nodeId('chart');
-  return {
-    version: '1',
-    pageType: 'dashboard',
-    viewModel: { variables: {} },
-    root: {
-      id: nodeId('page'),
-      name: '仪表盘',
-      type: 'page',
-      props: {},
-      children: [
-        {
-          id: nodeId('dashboard_grid'),
-          name: '仪表盘网格',
-          type: 'dashboard_grid',
-          props: {
-            cols: 12,
-            rowHeight: 30,
-            layout: [
-              { i: metric1Id, x: 0, y: 0, w: 3, h: 4 },
-              { i: metric2Id, x: 3, y: 0, w: 3, h: 4 },
-              { i: trendId, x: 6, y: 0, w: 6, h: 8 },
-              { i: barId, x: 0, y: 4, w: 6, h: 8 },
-              { i: pieId, x: 6, y: 8, w: 6, h: 8 },
-            ],
-          },
-          children: [
-            {
-              id: metric1Id,
-              name: '记录总数',
-              type: 'statistic',
-              props: {
-                title: '记录总数',
-                value: 0,
-                datasourceType: 'object',
-                datasourceId: '',
-                valueField: '',
-                aggregation: 'count',
-                prefix: '',
-                suffix: '条',
-              },
-            },
-            {
-              id: metric2Id,
-              name: '数值汇总',
-              type: 'statistic',
-              props: {
-                title: '数值汇总',
-                value: 0,
-                datasourceType: 'object',
-                datasourceId: '',
-                valueField: '',
-                aggregation: 'sum',
-                prefix: '',
-                suffix: '',
-              },
-            },
-            {
-              id: trendId,
-              name: '趋势图',
-              type: 'chart',
-              props: {
-                chartType: 'line',
-                title: '趋势图',
-                datasourceType: 'object',
-                datasourceId: '',
-                categoryField: '',
-                valueField: '',
-                aggregation: 'sum',
-                timeGranularity: 'day',
-              },
-            },
-            {
-              id: barId,
-              name: '数据分布',
-              type: 'chart',
-              props: {
-                chartType: 'bar',
-                title: '数据分布',
-                datasourceType: 'object',
-                datasourceId: '',
-                categoryField: '',
-                valueField: '',
-                aggregation: 'count',
-              },
-            },
-            {
-              id: pieId,
-              name: '占比分布',
-              type: 'chart',
-              props: {
-                chartType: 'pie',
-                title: '占比分布',
-                datasourceType: 'object',
-                datasourceId: '',
-                categoryField: '',
-                valueField: '',
-                aggregation: 'count',
-              },
-            },
-          ],
-        },
-      ],
-    },
-  };
 }

@@ -48,6 +48,7 @@
 | [DROP-LEGACY-RUNTIME-2026-10-02](./DROP-LEGACY-RUNTIME-2026-10-02.md) | 2026-10-02 | 删旧优先：v1 运行时轨下线 + R1.4 兜底腿退役 + publishedSnapshot 列删除 + seed 环境指针化（未上线零兼容原则落地/新不变量/测试处置理由）|
 | [AMIS-EDITOR-CANVAS-R17B-2026-10-02](./AMIS-EDITOR-CANVAS-R17B-2026-10-02.md) | 2026-10-02 | R1.7 第二轮②画布 amis-editor 重写（导出形态/pnpm 布局/i18n-runtime 损坏/OOM/脏态窗口/DTO 白名单六坑 + create 补 G3 + StrictMode 扩展 studio）|
 | [DROP-V1-BUILDER-R17C-2026-10-02](./DROP-V1-BUILDER-R17C-2026-10-02.md) | 2026-10-02 | R1.7 第二轮③收官：v1 搭建器 + shared 渲染残骸 + 方言合同物理删除（-18.7k 行/G3 单路径/PageSchema 宽松化；注释 `*/` 坑）|
+| [POLISH-ACCEPTANCE-APP-2026-10-02](./POLISH-ACCEPTANCE-APP-2026-10-02.md) | 2026-10-02 | 验收应用真实使用打磨（browser-use 实操走查修复 5 缺陷：select 阻断/盲审 data 遮蔽/图表空白/编号缺失；amis fetcher ok 契约与 chart adaptor 正确形态）|
 
 ## 文档维护规则
 

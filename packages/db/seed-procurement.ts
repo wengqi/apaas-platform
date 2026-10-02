@@ -111,24 +111,54 @@ function businessFields(fields: StoredField[]): StoredField[] {
  * 分流由 AmisRenderer 渲染；取数/提交全部走平台相对 api.url（fetcher 带 token）。
  * 字段类型 → amis 控件映射与 v1 表单生成器一致。
  */
-function amisFieldControl(f: {
-  apiName: string;
-  label: string;
-  type: string;
-  required?: boolean;
-}): Record<string, unknown> {
-  const base = { name: f.apiName, label: f.label, required: f.required === true };
-  const map: Record<string, Record<string, unknown>> = {
-    text: { type: 'input-text', ...base },
-    long_text: { type: 'textarea', ...base },
-    currency: { type: 'input-number', ...base, kilobitSeparator: true, precision: 2 },
-    number: { type: 'input-number', ...base },
-    percent: { type: 'input-number', ...base, suffix: '%' },
-    single_select: { type: 'select', ...base },
-    date: { type: 'input-date', ...base },
-    date_time: { type: 'input-datetime', ...base },
+function amisOptions(
+  opts: Array<{ id: string; label: string }>,
+): Array<{ label: string; value: string }> {
+  return opts.map((o) => ({ label: o.label, value: o.id }));
+}
+
+function amisFieldControl(f: StoredField): Record<string, unknown> {
+  const config = (f.config ?? {}) as Record<string, unknown>;
+  const base: Record<string, unknown> = {
+    name: f.apiName,
+    label: f.label,
+    required: f.required === true,
   };
-  return map[f.type] ?? { type: 'input-text', ...base };
+  switch (f.type) {
+    case 'long_text':
+      return { type: 'textarea', ...base };
+    case 'currency':
+      return { type: 'input-number', ...base, kilobitSeparator: true, precision: 2 };
+    case 'number':
+      return { type: 'input-number', ...base };
+    case 'percent':
+      return { type: 'input-number', ...base, suffix: '%' };
+    case 'single_select':
+      return {
+        type: 'select',
+        ...base,
+        options: amisOptions((config.options as Array<{ id: string; label: string }>) ?? []),
+      };
+    case 'multi_select':
+      return {
+        type: 'select',
+        ...base,
+        multiple: true,
+        options: amisOptions((config.options as Array<{ id: string; label: string }>) ?? []),
+      };
+    case 'date':
+      return { type: 'input-date', ...base, format: 'YYYY-MM-DD' };
+    case 'date_time':
+      return { type: 'input-datetime', ...base, format: 'YYYY-MM-DD HH:mm:ss' };
+    case 'auto_number':
+      return { type: 'static', name: f.apiName, label: f.label };
+    case 'checkbox':
+      return { type: 'switch', name: f.apiName, label: f.label };
+    case 'attachment':
+      return { type: 'input-file', ...base };
+    default:
+      return { type: 'input-text', ...base };
+  }
 }
 
 function generateContractListPage(
@@ -219,17 +249,16 @@ function generateApprovalTaskPage(): Record<string, unknown> {
     type: 'page',
     title: '合同审批',
     body: [
+      // 合同信息查看区：static-text 直挂 body（从页面数据域取流程变量，
+      // 不经 form scope——static form 实测取不到弹窗注入数据；
+      // 不用 grid——弹窗窄容器下未定义 sm/xs 断点的列会塌缩隐藏）
       {
-        type: 'form',
-        title: '合同信息（查看）',
-        mode: 'horizontal',
-        static: true,
-        actions: [],
+        type: 'container',
+        style: { marginBottom: 12 },
         body: [
-          { type: 'input-text', name: 'contract_name', label: '合同名称' },
-          { type: 'input-number', name: 'amount', label: '合同金额（元）', kilobitSeparator: true },
-          { type: 'input-text', name: 'supplier_name', label: '供应商' },
-          { type: 'input-date', name: 'sign_date', label: '签订日期', static: true },
+          { type: 'tpl', tpl: '<b>合同信息（查看）</b>' },
+          { type: 'tpl', tpl: '合同名称：${contract_name}　供应商：${supplier_name}' },
+          { type: 'tpl', tpl: '合同金额（元）：${amount}　签订日期：${sign_date}' },
         ],
       },
       {
@@ -436,7 +465,7 @@ export async function seedProcurementContent(
   const supplierFields: StoredField[] = [
     ...createSystemFields(supplierObjId),
     makeField(supplierObjId, 'supplier_code', '供应商编码', 'auto_number', {
-      format: 'SUP-{seq:0000}',
+      autoNumber: { format: 'SUP-{seq:0000}' },
     }),
     makeField(supplierObjId, 'name', '供应商名称', 'text', { maxLength: 100 }, { required: true }),
     makeField(
@@ -479,7 +508,7 @@ export async function seedProcurementContent(
   const contractFields: StoredField[] = [
     ...createSystemFields(contractObjId),
     makeField(contractObjId, 'contract_code', '合同编号', 'auto_number', {
-      format: 'PO-{seq:0000}',
+      autoNumber: { format: 'PO-{seq:0000}' },
     }),
     makeField(
       contractObjId,
@@ -661,14 +690,29 @@ export async function seedProcurementContent(
 
   const suppliers = [
     {
+      supplier_code: 'SUP-0001',
       name: '联想（上海）',
       level: 'S',
       contact: '王经理',
       phone: '13800000001',
       remark: 'IT 设备战略供应商',
     },
-    { name: '震旦办公', level: 'A', contact: '李经理', phone: '13800000002', remark: '办公家具' },
-    { name: '施耐德电气', level: 'A', contact: '赵工', phone: '13800000003', remark: 'UPS 维保' },
+    {
+      supplier_code: 'SUP-0002',
+      name: '震旦办公',
+      level: 'A',
+      contact: '李经理',
+      phone: '13800000002',
+      remark: '办公家具',
+    },
+    {
+      supplier_code: 'SUP-0003',
+      name: '施耐德电气',
+      level: 'A',
+      contact: '赵工',
+      phone: '13800000003',
+      remark: 'UPS 维保',
+    },
   ];
   for (const s of suppliers) {
     const existing = await prisma.record.findFirst({
@@ -690,6 +734,7 @@ export async function seedProcurementContent(
 
   const contracts = [
     {
+      contract_code: 'PO-9001',
       contract_name: '华东区服务器采购合同',
       supplier_name: '联想（上海）',
       amount: 1280000,
@@ -698,6 +743,7 @@ export async function seedProcurementContent(
       remark: '100 万以上 → 走会签+终审',
     },
     {
+      contract_code: 'PO-9002',
       contract_name: '办公家具框架协议',
       supplier_name: '震旦办公',
       amount: 356000,
@@ -706,6 +752,7 @@ export async function seedProcurementContent(
       remark: '100 万以下 → 单人审批',
     },
     {
+      contract_code: 'PO-9003',
       contract_name: '数据中心 UPS 维保合同',
       supplier_name: '施耐德电气',
       amount: 89000,
@@ -714,6 +761,7 @@ export async function seedProcurementContent(
       remark: '小额',
     },
     {
+      contract_code: 'PO-9004',
       contract_name: '园区安防改造合同',
       supplier_name: '海康威视',
       amount: 620000,

@@ -32,7 +32,7 @@ describe('normalizeListResponse（R1.7 fetcher 列表规范化）', () => {
 describe('adaptApiResponse — 平台响应 → amis fetcherResult', () => {
   it('平台成功响应 { ok: true, data } → status 0 + data 透传', () => {
     const r = adaptApiResponse({ data: { ok: true, data: { id: '1', name: 'x' } } });
-    expect(r).toEqual({ status: 0, data: { id: '1', name: 'x' } });
+    expect(r).toEqual({ ok: true, status: 0, data: { id: '1', name: 'x' } });
   });
 
   it('平台错误响应 { ok: false, error } → status=错误码 + msg', () => {
@@ -50,7 +50,12 @@ describe('adaptApiResponse — 平台响应 → amis fetcherResult', () => {
   });
 
   it('非平台包裹响应（如第三方 API）→ 按 HTTP status 适配', () => {
-    expect(adaptApiResponse({ status: 200, data: {} })).toEqual({ status: 0, data: {} });
+    expect(adaptApiResponse({ status: 200, data: {} })).toEqual({
+      ok: true,
+      status: 0,
+      msg: undefined,
+      data: {},
+    });
     expect(adaptApiResponse({ status: 500 }).status).toBe(500);
   });
 });

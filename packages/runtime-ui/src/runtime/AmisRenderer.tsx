@@ -31,25 +31,30 @@ export interface AmisRendererProps {
 }
 
 export type FetcherLike = (api: Record<string, unknown>) => Promise<{
+  /** amis fetcher 官方约定：ok 必须显式给出——Chart 等直连 env.fetcher 的组件
+   * 不经 amis-core 的 status 推导（缺 ok 一律视为失败，实测图表全空白）。 */
+  ok: boolean;
   status: number;
   msg?: string;
   data?: unknown;
 }>;
 
-/** 平台 API 响应 { ok, data } / { ok:false, error } → amis { status, msg, data } 适配。 */
+/** 平台 API 响应 { ok, data } / { ok:false, error } → amis { ok, status, msg, data } 适配。 */
 export function adaptApiResponse(res: {
   data?: { ok?: boolean; data?: unknown; error?: { code: number; message?: string } };
   status?: number;
-}): { status: number; msg?: string; data?: unknown } {
+}): { ok: boolean; status: number; msg?: string; data?: unknown } {
   const body = res.data;
   if (body && typeof body === 'object' && 'ok' in body) {
-    if (body.ok) return { status: 0, data: normalizeListResponse(body.data) };
+    if (body.ok) return { ok: true, status: 0, data: normalizeListResponse(body.data) };
     return {
+      ok: false,
       status: body.error?.code ?? 1,
       msg: body.error?.message ?? '请求失败',
     };
   }
-  return { status: res.status === 200 ? 0 : (res.status ?? 1), data: body };
+  const status = res.status === 200 ? 0 : (res.status ?? 1);
+  return { ok: status === 0, status, msg: status === 0 ? undefined : '请求失败', data: body };
 }
 
 /**
@@ -105,6 +110,7 @@ function createDefaultFetcher(): FetcherLike {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
       return {
+        ok: false,
         status: e.response?.status ?? 1,
         msg: e.response?.data?.error?.message ?? (err as Error).message,
       };

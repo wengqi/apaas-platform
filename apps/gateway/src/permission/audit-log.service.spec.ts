@@ -77,3 +77,32 @@ describe('AuditLogService — 应用维度（ROADMAP 9.9）', () => {
     expect(result.items[0]).toMatchObject({ appId: 'app-9', action: 'RECORD_CREATE' });
   });
 });
+
+describe('AuditLogService — 审计分类过滤（P1 运维治理）', () => {
+  const prisma = getMockPrisma();
+  const service = new AuditLogService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('query：category 展开为 action IN（SSOT：shared AUDIT_ACTION_CATEGORIES）', async () => {
+    prisma.auditLog.findMany.mockResolvedValue([]);
+    prisma.auditLog.count.mockResolvedValue(0);
+
+    await service.query({ tenantId: 't-1', page: 1, pageSize: 20, category: 'RECORD' });
+
+    const arg = prisma.auditLog.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(arg.where).toMatchObject({ tenantId: 't-1' });
+    expect((arg.where.action as { in: string[] }).in).toEqual(
+      expect.arrayContaining(['RECORD_CREATE', 'RECORD_UPDATE', 'RECORD_DELETE']),
+    );
+  });
+
+  it('log：请求 ALS 内自动采纳 traceId（测试上下文为 null → 落 null）', async () => {
+    prisma.auditLog.create.mockResolvedValue({});
+    await service.log({ tenantId: 't-1', userId: 'u-1', action: 'APP_PUBLISH' });
+    const arg = prisma.auditLog.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(arg.data).toMatchObject({ action: 'APP_PUBLISH', traceId: null });
+  });
+});

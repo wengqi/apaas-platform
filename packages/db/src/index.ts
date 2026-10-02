@@ -39,6 +39,7 @@ import {
   injectToWhere,
 } from './tenant-injection.js';
 import { ENV_SCOPED_MODELS, TENANT_SCOPED_MODELS } from './tenant-models.js';
+import { notifySlowQuery, resolveSlowQueryThresholdMs } from './slow-query.js';
 
 // 开发热重载防泄漏：globalThis 缓存
 const globalForPrisma = globalThis as unknown as {
@@ -81,137 +82,201 @@ function warnNoTenantContext(model: string, operation: string): void {
   }
 }
 
-export const prisma = basePrisma.$extends({
-  query: {
-    $allModels: {
-      /** 读操作：findMany / findFirst / findUnique / count — 注入 where.tenantId */
-      async findMany({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'findMany');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+export const prisma = basePrisma
+  .$extends({
+    query: {
+      $allModels: {
+        /** 读操作：findMany / findFirst / findUnique / count — 注入 where.tenantId */
+        async findMany({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'findMany');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      async findFirst({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'findFirst');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        async findFirst({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'findFirst');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      async findUnique({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'findUnique');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        async findUnique({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'findUnique');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      async count({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'count');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        async count({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'count');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      /** 写操作：create / createMany — 注入 data.tenantId */
-      async create({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToData(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'create');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'create');
-        return query(args);
-      },
+        /** 写操作：create / createMany — 注入 data.tenantId */
+        async create({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToData(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'create');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'create');
+          return query(args);
+        },
 
-      async createMany({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToData(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'createMany');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'create');
-        return query(args);
-      },
+        async createMany({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToData(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'createMany');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'create');
+          return query(args);
+        },
 
-      /** 写操作：update / updateMany — 注入 where.tenantId（Prisma 5.x Extended WhereUnique） */
-      async update({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'update');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        /** 写操作：update / updateMany — 注入 where.tenantId（Prisma 5.x Extended WhereUnique） */
+        async update({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'update');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      async updateMany({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'updateMany');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        async updateMany({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'updateMany');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      /** 删除操作：delete / deleteMany — 注入 where.tenantId */
-      async delete({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'delete');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        /** 删除操作：delete / deleteMany — 注入 where.tenantId */
+        async delete({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'delete');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      async deleteMany({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToWhere(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'deleteMany');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'read');
-        return query(args);
-      },
+        async deleteMany({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToWhere(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'deleteMany');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'read');
+          return query(args);
+        },
 
-      /** upsert — 注入 where.tenantId + create.tenantId */
-      async upsert({ model, args, query }) {
-        const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
-        if (decision.inject && decision.tenantId) {
-          injectToUpsert(args as Record<string, unknown>, decision.tenantId);
-        } else if (!decision.inject && !decision.systemContext && TENANT_SCOPED_MODELS.has(model)) {
-          warnNoTenantContext(model, 'upsert');
-        }
-        applyEnvInjection(model, args as Record<string, unknown>, 'upsert');
-        return query(args);
+        /** upsert — 注入 where.tenantId + create.tenantId */
+        async upsert({ model, args, query }) {
+          const decision = decideInjection(model, getTenantContext(), TENANT_SCOPED_MODELS);
+          if (decision.inject && decision.tenantId) {
+            injectToUpsert(args as Record<string, unknown>, decision.tenantId);
+          } else if (
+            !decision.inject &&
+            !decision.systemContext &&
+            TENANT_SCOPED_MODELS.has(model)
+          ) {
+            warnNoTenantContext(model, 'upsert');
+          }
+          applyEnvInjection(model, args as Record<string, unknown>, 'upsert');
+          return query(args);
+        },
       },
     },
-  },
-});
+  })
+  // 第二层扩展：慢查询测量（P1 运维治理）。叠在租户扩展之上，测得的是
+  // 注入后的实际执行耗时；阈值超限时通知 onSlowQuery 注册的 handler
+  // （脱敏：仅模型名/操作名/耗时，不含查询参数）。$queryRaw 不经模型
+  // 操作通道，不在测量范围（当前仅 analytics 汇总使用，非热路径）。
+  .$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }) {
+          const start = performance.now();
+          const result = await query(args);
+          const durationMs = performance.now() - start;
+          if (durationMs >= resolveSlowQueryThresholdMs()) {
+            notifySlowQuery({ model: model ?? 'unknown', operation, durationMs });
+          }
+          return result;
+        },
+      },
+    },
+  });
 
 export { PrismaClient } from '@prisma/client';
 export * from '@prisma/client';
@@ -235,3 +300,8 @@ export {
   injectEnvToUpsert,
 } from './tenant-injection.js';
 export { ENV_SCOPED_MODELS, TENANT_SCOPED_MODELS } from './tenant-models.js';
+export {
+  onSlowQuery,
+  SLOW_QUERY_DEFAULT_THRESHOLD_MS,
+  resolveSlowQueryThresholdMs,
+} from './slow-query.js';

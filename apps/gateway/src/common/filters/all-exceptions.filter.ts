@@ -17,6 +17,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { getTraceId } from '../trace/trace-context.js';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -49,11 +50,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    // 事件链路 ID（P1 运维治理）：shared ApiError.traceId 合同在此兑现——
+    // 客户端拿 traceId 即可关联审计日志与观测事件
+    const traceId = getTraceId();
     response.status(status).json({
-      ok: false,
+      ok: false as const,
       error: {
         code: status,
         message,
+        ...(traceId ? { traceId } : {}),
       },
     });
   }

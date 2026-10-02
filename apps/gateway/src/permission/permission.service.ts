@@ -109,17 +109,57 @@ export class PermissionService {
     targetId: string,
     targetNodeId?: string,
   ): Promise<{ allowed: boolean; condition?: unknown; fieldScope?: string[] | null }> {
+    const explanation = await this.explain(user, type, action, targetId, targetNodeId);
+    if (explanation.allowed) {
+      return {
+        allowed: true,
+        ...(explanation.reason === 'ALLOW_RULE'
+          ? { condition: explanation.mergedCondition, fieldScope: explanation.fieldScope }
+          : {}),
+      };
+    }
+    throw new ForbiddenException(
+      explanation.reason === 'DENY_RULE' ? '权限规则拒绝此操作' : '无操作权限',
+    );
+  }
+
+  /**
+   * 权限决策过程解释（P1 运维治理：权限查询调试工具）。
+   *
+   * 与 check 相同的决策语义，但不抛异常，完整返回决策路径：
+   * 有效角色集合 → 命中规则（含条件/字段域）→ deny-overrides → 确定性合并结果。
+   * 调试端点据此向管理员展示"为什么允许/拒绝"。
+   */
+  async explain(
+    user: AuthenticatedUser,
+    type: string,
+    action: string,
+    targetId: string,
+    targetNodeId?: string,
+  ): Promise<PermissionExplanation> {
     // 超级管理员短路
     if (user.isSuperAdmin) {
-      return { allowed: true };
+      return {
+        allowed: true,
+        reason: 'SUPERADMIN',
+        roleIds: [],
+        matchedRules: [],
+        mergedCondition: null,
+        fieldScope: null,
+      };
     }
 
-    // 平台超管无租户上下文，不应走到这里（isSuperAdmin 已短路）
     const tenantId = user.tenantId ?? '';
-
     const roleIds = await this.getUserRoleIds(user.id, tenantId);
     if (roleIds.length === 0) {
-      throw new ForbiddenException('无操作权限');
+      return {
+        allowed: false,
+        reason: 'NO_ROLES',
+        roleIds: [],
+        matchedRules: [],
+        mergedCondition: null,
+        fieldScope: null,
+      };
     }
 
     // 查询匹配的权限规则（包括通配符 '*' 规则和具体 targetId 规则）
@@ -134,10 +174,26 @@ export class PermissionService {
       },
     });
 
+    const matchedRules = rules.map((r) => ({
+      ruleId: r.id,
+      roleId: r.roleId,
+      effect: r.effect,
+      targetId: r.targetId,
+      condition: r.condition,
+      fieldScope: r.fieldScope,
+    }));
+
     // Deny-overrides：有 DENY 规则 → 拒绝
     const denyRule = rules.find((r) => r.effect === 'DENY');
     if (denyRule) {
-      throw new ForbiddenException('权限规则拒绝此操作');
+      return {
+        allowed: false,
+        reason: 'DENY_RULE',
+        roleIds,
+        matchedRules,
+        mergedCondition: null,
+        fieldScope: null,
+      };
     }
 
     // 有 ALLOW 规则 → 通过（评审 P1-4：多角色命中多条 ALLOW 时不再依赖
@@ -168,10 +224,45 @@ export class PermissionService {
         ? null
         : (Array.from(new Set(scopes.flat())) as string[]);
 
-      return { allowed: true, condition, fieldScope };
+      return {
+        allowed: true,
+        reason: 'ALLOW_RULE',
+        roleIds,
+        matchedRules,
+        mergedCondition: condition,
+        fieldScope,
+      };
     }
 
     // 无匹配规则 → 默认拒绝
-    throw new ForbiddenException('无操作权限');
+    return {
+      allowed: false,
+      reason: 'NO_RULES',
+      roleIds,
+      matchedRules,
+      mergedCondition: null,
+      fieldScope: null,
+    };
   }
+}
+
+/** 权限决策解释（explain 返回值；reason 枚举见各返回点）。 */
+export interface PermissionExplanation {
+  allowed: boolean;
+  /** SUPERADMIN | ALLOW_RULE | NO_ROLES | DENY_RULE | NO_RULES */
+  reason: string;
+  /** 有效角色 ID 集合（直接角色 + 组织授权扩散；超管为空集） */
+  roleIds: string[];
+  matchedRules: Array<{
+    ruleId: string;
+    roleId: string;
+    effect: string;
+    targetId: string;
+    condition: unknown;
+    fieldScope: unknown;
+  }>;
+  /** 合并后的行级条件（OR 并集；无限制为 null） */
+  mergedCondition: unknown;
+  /** 合并后的字段域（任一规则全字段则 null） */
+  fieldScope: string[] | null;
 }

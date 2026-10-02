@@ -119,6 +119,44 @@ export interface DelegateTaskRequest {
 }
 
 // ---------------------------------------------------------------------------
+// 效率分析（P1 运维治理，与 gateway ProcessAnalyticsService 返回结构对齐）
+// ---------------------------------------------------------------------------
+
+/** 流程实例汇总指标。 */
+export interface ProcessTotals {
+  total: number;
+  running: number;
+  waitingUserTask: number;
+  completed: number;
+  failed: number;
+  terminated: number;
+  timedOut: number;
+  /** COMPLETED / 终态数；无终态实例时 null */
+  completionRate: number | null;
+  avgDurationMs: number | null;
+  maxDurationMs: number | null;
+}
+
+/** 按流程定义拆分的效率指标。 */
+export interface ProcessDefAnalytics {
+  processDefId: string;
+  name: string;
+  apiName: string;
+  total: number;
+  completed: number;
+  failed: number;
+  running: number;
+  timedOut: number;
+  completionRate: number | null;
+  avgDurationMs: number | null;
+}
+
+export interface ProcessAnalyticsResult {
+  totals: ProcessTotals;
+  byProcess: ProcessDefAnalytics[];
+}
+
+// ---------------------------------------------------------------------------
 // 人工任务 / 通知模版(前端宽松类型,后端运行时持久化)
 // ---------------------------------------------------------------------------
 
@@ -265,6 +303,14 @@ export const processesApi = {
       .then((res) => res.data.data as ProcessDef),
 
   // —— 流程实例 / 监控 ——
+  /** 效率分析（平均耗时/完成率/超时数，按流程拆分） */
+  analytics: (appId: string) =>
+    client
+      .get<ApiResponse<ProcessAnalyticsResult>>(`/api/processes/analytics`, {
+        params: { appId },
+      })
+      .then((res) => res.data.data as ProcessAnalyticsResult),
+
   /** 启动流程实例 */
   start: (processId: string, triggerContext: StartProcessRequest) =>
     client

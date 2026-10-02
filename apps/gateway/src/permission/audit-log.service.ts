@@ -7,6 +7,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { prisma } from '@apaas/db';
+import { actionsByCategory, type AuditCategory } from '@apaas/shared';
+import { getTraceId } from '../common/trace/trace-context.js';
 
 export interface AuditLogParams {
   tenantId: string;
@@ -34,6 +36,8 @@ export interface AuditLogQueryParams {
   userId?: string;
   /** 应用维度过滤（ROADMAP 9.9 应用级审计 UI） */
   appId?: string;
+  /** 审计分类过滤（P1 运维治理：按 shared AUDIT_ACTION_CATEGORIES 展开为 action IN） */
+  category?: AuditCategory;
 }
 
 export interface AuditLogDto {
@@ -45,6 +49,8 @@ export interface AuditLogDto {
   appId: string | null;
   detail: unknown;
   ip: string | null;
+  /** 事件链路 ID（P1 运维治理，与观测事件/错误响应串联） */
+  traceId: string | null;
   createdAt: string;
 }
 
@@ -70,6 +76,8 @@ export class AuditLogService {
           appId: params.appId ?? null,
           detail: (params.detail ?? null) as never,
           ip: params.ip ?? null,
+          // 事件链路 ID：请求 ALS 上下文内自动采纳，调用方无需显式传递
+          traceId: getTraceId(),
         },
       });
     } catch (err) {
@@ -89,6 +97,8 @@ export class AuditLogService {
     const pageSize = Math.min(params.pageSize, MAX_PAGE_SIZE);
     const where: Record<string, unknown> = { tenantId: params.tenantId };
     if (params.action) where.action = params.action;
+    // 分类过滤展开为 action IN（SSOT：shared AUDIT_ACTION_CATEGORIES）
+    if (params.category) where.action = { in: actionsByCategory(params.category) };
     if (params.resource) where.resource = params.resource;
     if (params.userId) where.userId = params.userId;
     // ROADMAP 9.9：应用级审计页按 appId 维度过滤
@@ -121,6 +131,7 @@ export class AuditLogService {
     appId: string | null;
     detail: unknown;
     ip: string | null;
+    traceId: string | null;
     createdAt: Date;
   }): AuditLogDto {
     return {
@@ -132,6 +143,7 @@ export class AuditLogService {
       appId: item.appId,
       detail: item.detail,
       ip: item.ip,
+      traceId: item.traceId,
       createdAt: item.createdAt.toISOString(),
     };
   }

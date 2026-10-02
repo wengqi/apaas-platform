@@ -23,6 +23,7 @@ import { ConnectorModule } from '../connector/connector.module.js';
 import { CloudFunctionModule } from '../cloud-function/cloud-function.module.js';
 import { ProcessController } from './process.controller.js';
 import { ProcessService } from './process.service.js';
+import { ProcessAnalyticsService } from './process-analytics.service.js';
 import { ProcessEngine } from './process-engine.js';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
 import { StartExecutor } from './node-executors/start.executor.js';
@@ -74,6 +75,7 @@ import { RecordModule } from '../record/record.module.js';
   controllers: [ProcessController],
   providers: [
     ProcessService,
+    ProcessAnalyticsService,
     ProcessEngine,
     NodeExecutorRegistry,
     RedisLockService,

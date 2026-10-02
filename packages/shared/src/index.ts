@@ -30,6 +30,9 @@ export * from './environment/index.js';
 // 开放 API 域（G6：服务身份 / 流程 API 版本发布 / 开放触发契约）
 export * from './open-api/index.js';
 
+// 观测域（P1 运维治理：事件分类 SSOT + 审计动作分类映射）
+export * from './observability/index.js';
+
 // 权限（Phase 4 补充）
 export * from './permission/index.js';
 

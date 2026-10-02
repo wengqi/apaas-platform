@@ -10,6 +10,8 @@ import { Card, Table, Tag, Input, Select, Space, Typography, Button, Description
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { auditLogsApi, type AuditLogItem } from '../api/audit-logs.js';
+import { AUDIT_CATEGORY_OPTIONS } from '../constants/audit-category.js';
+import AuditCategoryTag from '../components/shared/AuditCategoryTag.js';
 
 const { Title } = Typography;
 
@@ -30,9 +32,18 @@ export default function AuditLogs() {
   const [actionFilter, setActionFilter] = useState<string | undefined>();
   const [resourceFilter, setResourceFilter] = useState<string | undefined>();
   const [userIdFilter, setUserIdFilter] = useState<string | undefined>();
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['audit-logs', page, pageSize, actionFilter, resourceFilter, userIdFilter],
+    queryKey: [
+      'audit-logs',
+      page,
+      pageSize,
+      actionFilter,
+      resourceFilter,
+      userIdFilter,
+      categoryFilter,
+    ],
     queryFn: () =>
       auditLogsApi.query({
         page,
@@ -40,6 +51,7 @@ export default function AuditLogs() {
         action: actionFilter,
         resource: resourceFilter,
         userId: userIdFilter,
+        category: categoryFilter,
       }),
   });
 
@@ -50,6 +62,13 @@ export default function AuditLogs() {
       key: 'createdAt',
       width: 180,
       render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+    },
+    {
+      title: '分类',
+      dataIndex: 'action',
+      key: 'category',
+      width: 110,
+      render: (v: string) => <AuditCategoryTag action={v} />,
     },
     {
       title: '操作',
@@ -124,6 +143,17 @@ export default function AuditLogs() {
       <div style={{ padding: 24 }}>
         <Card style={{ marginBottom: 16 }}>
           <Space wrap size={12}>
+            <Select
+              allowClear
+              placeholder="全部分类"
+              style={{ width: 160 }}
+              value={categoryFilter}
+              onChange={(v) => {
+                setCategoryFilter(v);
+                setPage(1);
+              }}
+              options={AUDIT_CATEGORY_OPTIONS}
+            />
             <Select
               allowClear
               placeholder="操作类型"

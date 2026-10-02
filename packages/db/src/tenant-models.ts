@@ -43,6 +43,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'Dataset',
   'DatasetRow',
   'CloudFunction',
+  'ObservabilityEvent',
 ]);
 
 /**
@@ -55,4 +56,5 @@ export const ENV_SCOPED_MODELS = new Set<string>([
   'ProcessInstance',
   'NodeExecution',
   'AutoNumberCounter',
+  'ObservabilityEvent',
 ]);

@@ -21,6 +21,8 @@ import PlatformUsers from './pages/PlatformUsers.js';
 import PlatformOrgs from './pages/PlatformOrgs.js';
 import AuditLogs from './pages/AuditLogs.js';
 import AppAuditLogs from './pages/AppAuditLogs.js';
+import ObservabilityCenter from './pages/ObservabilityCenter.js';
+import PermissionDebug from './pages/PermissionDebug.js';
 import ReviewCenter from './pages/ReviewCenter.js';
 import Environments from './pages/Environments.js';
 import ApiKeys from './pages/ApiKeys.js';
@@ -150,6 +152,22 @@ export function AppRoutes() {
         element={
           <TenantAdminRoute>
             <AuditLogs />
+          </TenantAdminRoute>
+        }
+      />
+      <Route
+        path="/platform/observability"
+        element={
+          <TenantAdminRoute>
+            <ObservabilityCenter />
+          </TenantAdminRoute>
+        }
+      />
+      <Route
+        path="/platform/permission-debug"
+        element={
+          <TenantAdminRoute>
+            <PermissionDebug />
           </TenantAdminRoute>
         }
       />

@@ -96,13 +96,29 @@ vi.mock('@apaas/db', () => ({
   // 租户上下文函数 — 使用真实实现（纯 ALS，不依赖 Prisma）
   runWithTenant: <T>(tenantId: string, fn: () => T): T => fn(),
   runAsSystem: <T>(fn: () => T): T => fn(),
-  getTenantId: (): string | null => null,
+  // 默认 null；需要租户上下文的测试设置 __mockCurrentTenantId（用后清理）
+  getTenantId: (): string | null =>
+    ((globalThis as Record<string, unknown>).__mockCurrentTenantId as string | null) ?? null,
   getTenantContext: () => undefined,
   isSystemContext: () => false,
   // R1.4 多环境：测试默认无环境上下文（注入跳过，降级活表语义）
   runWithEnv: <T>(_tenantId: string, _env: string, fn: () => T): T => fn(),
   getEnvironmentId: (): string | null => null,
+  // 慢查询观测（P1 运维治理）：注册表语义与真实实现一致（handler 可触发）
+  onSlowQuery: (handler: (info: unknown) => void): (() => void) => {
+    slowQueryHandlers.add(handler);
+    return () => {
+      slowQueryHandlers.delete(handler);
+    };
+  },
 }));
+
+/** 慢查询 handler 注册表（供测试触发 notifySlowQuery 语义验证）。 */
+const slowQueryHandlers = new Set<(info: unknown) => void>();
+(globalThis as Record<string, unknown>).__mockSlowQueryHandlers = slowQueryHandlers;
+(globalThis as Record<string, unknown>).__mockSlowQueryNotify = (info: unknown): void => {
+  for (const handler of slowQueryHandlers) handler(info);
+};
 
 // 暴露到 globalThis 供测试文件访问
 (globalThis as Record<string, unknown>).__mockPrisma = mockPrisma;

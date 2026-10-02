@@ -22,8 +22,13 @@
 | R1.4 | **运行环境多环境化** | dev/生产 双环境（同库按 environmentId 隔离；发布=切版本指针；触发器随版本启停）；设计：docs/design/DESIGN-identity-env-versioning-2026-09-27.md —— **✅ 2026-10-01 完整 M3 落地**（环境指针/发布历史/环境变量 G1-G4 护栏/运行数据隔离/运行时读路径 bundle 化/触发器随环境启停；兼容降级保证存量零感知；e2e 18 号 6 用例、全量 77/77） | ✅ 完成 |
 | R1.5 | **端到端验收：真实业务应用交付** | 用平台搭建并运行一个完整业务应用（如报销：表单提交→审批→台账→报表），作为 P0 完成标志 | ⬜ 未开始 |
 
-### 新 P1（运维与治理补强）
-观测事件分类（函数执行/慢查询/页面报错/OpenAPI 调用 + 事件链路 ID）；流程效率分析（平均耗时/完成率/超时数）；权限查询调试工具；对象级搜索配置与全局选项复用；审计日志对齐观测分类。
+### 新 P1（运维与治理补强）——✅ 2026-10-02 完成（全局选项复用除外，见下）
+- **✅ 观测事件分类 + 事件链路 ID**：ObservabilityEvent 模型（FUNCTION_EXEC/SLOW_QUERY/PAGE_ERROR/OPEN_API_CALL 四分类 + INFO/WARN/ERROR 级别，shared SSOT）；traceId 全链路（pino genReqId/mixin + ALS + 错误响应 ApiError.traceId + 审计落库 + 观测事件，外部 X-Trace-Id 可跨服务串联）；云函数执行/慢查询（db 包 onSlowQuery hook，阈值 SLOW_QUERY_THRESHOLD_MS 默认 1000ms）/页面报错（runtime-ui ErrorBoundary → POST /observability/page-errors）/开放 API 调用四类写入点；观测中心页（studio 平台级 /platform/observability，分类汇总卡 + 事件流查询）
+- **✅ 流程效率分析**：ProcessInstance.timedOut 列（等待条件节点超时置位）+ GET /processes/analytics（状态透视/完成率=COMPLETED/终态/平均&最大耗时（SQL 聚合 finished-started）/按流程拆分；$queryRawUnsafe 参数化）+ 流程监控页「效率分析」Tab
+- **✅ 权限查询调试工具**：PermissionService.explain（与 check 同语义不抛异常，返回有效角色/命中规则/deny-overrides/合并条件决策路径）+ POST /permissions/debug（租户管理员；行级条件翻译为 Prisma where + 可选 recordId 以真实 count 验证记录可见性）+ studio 权限调试页（/platform/permission-debug）
+- **✅ 审计日志对齐观测分类**：AUDIT_ACTION_CATEGORIES SSOT（5 分类映射全部 23 个审计动作）+ 审计查询 category 过滤（展开 action IN）+ 平台/应用审计页分类筛选与分类 Tag
+- **✅ 对象级搜索配置**：字段 searchable 标志正式消费——GET records?keyword= 对 searchable 文本类字段（text/long_text/rich_text/auto_number）构建 OR contains
+- **⬜ 全局选项复用**（数据字典/选项集）：未实施——需独立模型+字段引用+UI，作为独立增量后排
 
 ### 暂缓/不做（对照 ADR-0002）
 ~~AI 生成页面/流程、AI 组件、MCP Server~~（**2026-09-30 经 ADR-0003 撤销**，升为 R1.6/R1.7，见下方方向修订节）、模板市场与方案中心、移动端适配、多语言 i18n、全局代码、飞书生态集成。

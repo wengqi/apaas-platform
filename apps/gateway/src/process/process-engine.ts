@@ -997,9 +997,10 @@ export class ProcessEngine {
         where: { instanceId, nodeId, status: 'WAITING' },
         data: { status: 'FAILED', error: errorMsg, finishedAt: new Date() },
       }),
+      // 流程效率分析（P1 运维治理）：钉死"超时失败"语义，analytics 据此统计超时数
       prisma.processInstance.update({
         where: { id: instanceId },
-        data: { status: 'FAILED', error: errorMsg },
+        data: { status: 'FAILED', error: errorMsg, timedOut: true },
       }),
     ]);
     this.logger.error(`实例 ${instanceId} ${errorMsg}`);

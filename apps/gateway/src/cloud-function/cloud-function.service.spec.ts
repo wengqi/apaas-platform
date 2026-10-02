@@ -25,9 +25,14 @@ function createMockRunner() {
 function createService() {
   const changeLogService = createMockChangeLogService();
   const runner = createMockRunner();
+  // 观测服务传入哑实现：invoke 路径的 FUNCTION_EXEC 事件不打扰单测
+  const observabilityService = {
+    record: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new CloudFunctionService(
     changeLogService as unknown as ConstructorParameters<typeof CloudFunctionService>[0],
     runner as unknown as ConstructorParameters<typeof CloudFunctionService>[1],
+    observabilityService as unknown as ConstructorParameters<typeof CloudFunctionService>[2],
   );
   return { service, changeLogService, runner };
 }

@@ -58,12 +58,14 @@ export class RecordController {
     @Query('pageSize') pageSize?: string,
     @Query('sort') sort?: string,
     @Query('filter') filter?: string,
+    @Query('keyword') keyword?: string,
   ) {
     const params: RecordQueryParams = {
       page: page ? parseInt(page, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
       sort,
       filter,
+      keyword,
     };
     const result = await this.recordService.query(
       requireTenantId(req),

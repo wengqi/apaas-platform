@@ -8,6 +8,8 @@ import { Avatar, Button, Dropdown, Space, Typography } from 'antd';
 import {
   ApartmentOutlined,
   AuditOutlined,
+  ExperimentOutlined,
+  FundOutlined,
   GlobalOutlined,
   LogoutOutlined,
   ThunderboltFilled,
@@ -67,6 +69,18 @@ export default function AppHeader({
             label: '审计日志',
             onClick: () => onNavigate('/platform/audit-logs'),
           },
+          {
+            key: 'observability',
+            icon: <FundOutlined />,
+            label: '观测中心',
+            onClick: () => onNavigate('/platform/observability'),
+          },
+          {
+            key: 'permission-debug',
+            icon: <ExperimentOutlined />,
+            label: '权限调试',
+            onClick: () => onNavigate('/platform/permission-debug'),
+          },
         ]
       : []),
   ];
@@ -102,6 +116,18 @@ export default function AppHeader({
             icon: <AuditOutlined />,
             label: '审计日志',
             onClick: () => onNavigate('/platform/audit-logs'),
+          },
+          {
+            key: 'observability',
+            icon: <FundOutlined />,
+            label: '观测中心',
+            onClick: () => onNavigate('/platform/observability'),
+          },
+          {
+            key: 'permission-debug',
+            icon: <ExperimentOutlined />,
+            label: '权限调试',
+            onClick: () => onNavigate('/platform/permission-debug'),
           },
         ]
       : []),

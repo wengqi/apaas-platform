@@ -13,6 +13,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { auditLogsApi, type AuditLogItem } from '../api/audit-logs.js';
+import { AUDIT_CATEGORY_OPTIONS } from '../constants/audit-category.js';
+import AuditCategoryTag from '../components/shared/AuditCategoryTag.js';
 
 const { Title, Text } = Typography;
 const DEFAULT_PAGE_SIZE = 20;
@@ -52,9 +54,19 @@ export default function AppAuditLogs() {
   const [actionFilter, setActionFilter] = useState<string | undefined>();
   const [resourceFilter, setResourceFilter] = useState<string | undefined>();
   const [userIdFilter, setUserIdFilter] = useState<string | undefined>();
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['app-audit-logs', appId, page, pageSize, actionFilter, resourceFilter, userIdFilter],
+    queryKey: [
+      'app-audit-logs',
+      appId,
+      page,
+      pageSize,
+      actionFilter,
+      resourceFilter,
+      userIdFilter,
+      categoryFilter,
+    ],
     queryFn: () =>
       auditLogsApi.query({
         appId: appId!,
@@ -63,6 +75,7 @@ export default function AppAuditLogs() {
         action: actionFilter,
         resource: resourceFilter,
         userId: userIdFilter,
+        category: categoryFilter,
       }),
     enabled: !!appId,
   });
@@ -74,6 +87,13 @@ export default function AppAuditLogs() {
       key: 'createdAt',
       width: 180,
       render: (v: string) => new Date(v).toLocaleString('zh-CN'),
+    },
+    {
+      title: '分类',
+      dataIndex: 'action',
+      key: 'category',
+      width: 110,
+      render: (v: string) => <AuditCategoryTag action={v} />,
     },
     {
       title: '操作',
@@ -134,6 +154,17 @@ export default function AppAuditLogs() {
         </Space>
 
         <Space wrap size={8}>
+          <Select
+            placeholder="全部分类"
+            allowClear
+            style={{ width: 150 }}
+            options={AUDIT_CATEGORY_OPTIONS}
+            value={categoryFilter}
+            onChange={(v) => {
+              setCategoryFilter(v);
+              setPage(1);
+            }}
+          />
           <Select
             placeholder="操作类型"
             allowClear

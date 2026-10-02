@@ -11,6 +11,7 @@ import { CloudFunctionRunner } from './cloud-function.runner.service.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
+import { ObservabilityModule } from '../observability/observability.module.js';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ChangeLogModule } from '../application/changelog.module.js';
     }),
     PermissionModule,
     ChangeLogModule,
+    ObservabilityModule,
   ],
   controllers: [CloudFunctionController],
   providers: [CloudFunctionService, CloudFunctionRunner, JwtStrategy],

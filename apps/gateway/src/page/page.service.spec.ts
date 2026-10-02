@@ -49,6 +49,9 @@ function createService() {
         bundle: null,
       }),
     } as unknown as ConstructorParameters<typeof PageService>[1],
+    {
+      validate: vi.fn().mockReturnValue({ valid: true, issues: [] }),
+    } as unknown as ConstructorParameters<typeof PageService>[2],
   );
   return { service, changeLogService };
 }

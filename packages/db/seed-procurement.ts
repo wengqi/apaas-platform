@@ -22,30 +22,6 @@ import { randomUUID } from 'crypto';
 // 类型与工具（与 seed-demo.ts 同构，独立内联避免跨文件耦合）
 // ---------------------------------------------------------------------------
 
-type PropValue =
-  | string
-  | number
-  | boolean
-  | null
-  | PropValue[]
-  | { [key: string]: PropValue }
-  | { __bind: string };
-
-interface ComponentNode {
-  id: string;
-  type: string;
-  name: string;
-  props: Record<string, PropValue>;
-  children?: ComponentNode[];
-}
-
-interface PageSchema {
-  version: '1';
-  pageType: string;
-  viewModel: { variables: Record<string, unknown> };
-  root: ComponentNode;
-}
-
 interface StoredField {
   id: string;
   objectId: string;
@@ -68,25 +44,6 @@ interface ObjectMeta {
   apiName: string;
   name: string;
   fields: StoredField[];
-}
-
-let nodeCounter = 0;
-function nodeId(type: string): string {
-  nodeCounter++;
-  return `${type}_${nodeCounter.toString(36).padStart(4, '0')}`;
-}
-
-function makeNode(
-  type: string,
-  name: string,
-  props: Record<string, PropValue> = {},
-  children?: ComponentNode[],
-): ComponentNode {
-  return { id: nodeId(type), type, name, props, children };
-}
-
-function bind(path: string): PropValue {
-  return { __bind: path };
 }
 
 const now = () => new Date().toISOString();
@@ -149,82 +106,102 @@ function businessFields(fields: StoredField[]): StoredField[] {
 // v1 方言页面（台账 / 提交页，立即被现有运行时渲染）
 // ---------------------------------------------------------------------------
 
-function generateContractListPage(meta: ObjectMeta, label: string, formSlug?: string): PageSchema {
+/**
+ * R1.7：页面 schema 统一产 amis 方言（v2）——运行时经 PageView 的 isAmisPage
+ * 分流由 AmisRenderer 渲染；取数/提交全部走平台相对 api.url（fetcher 带 token）。
+ * 字段类型 → amis 控件映射与 v1 表单生成器一致。
+ */
+function amisFieldControl(f: {
+  apiName: string;
+  label: string;
+  type: string;
+  required?: boolean;
+}): Record<string, unknown> {
+  const base = { name: f.apiName, label: f.label, required: f.required === true };
+  const map: Record<string, Record<string, unknown>> = {
+    text: { type: 'input-text', ...base },
+    long_text: { type: 'textarea', ...base },
+    currency: { type: 'input-number', ...base, kilobitSeparator: true, precision: 2 },
+    number: { type: 'input-number', ...base },
+    percent: { type: 'input-number', ...base, suffix: '%' },
+    single_select: { type: 'select', ...base },
+    date: { type: 'input-date', ...base },
+    date_time: { type: 'input-datetime', ...base },
+  };
+  return map[f.type] ?? { type: 'input-text', ...base };
+}
+
+function generateContractListPage(
+  meta: ObjectMeta,
+  label: string,
+  formSlug?: string,
+): Record<string, unknown> {
   const fields = businessFields(meta.fields).slice(0, 6);
-  const columns: PropValue[] = fields.map((f) => ({
-    fieldId: f.id,
-    apiName: f.apiName,
+  const columns = fields.map((f) => ({
+    name: f.apiName,
     label: f.label,
     width: 160,
     sortable: true,
   }));
-  const dataTable = makeNode('data_table', `${label}表格`, {
-    data: bind('vm.list.records'),
-    columns,
-    pagination: true,
-    pageSize: 20,
-    selectable: true,
-    showIndex: true,
-  });
-  const createButton = makeNode('button', '新建合同', { text: '新建合同', type: 'primary' });
-  if (formSlug) {
-    createButton.props.onClick = {
-      __action: { type: 'navigate', params: { path: formSlug } },
-    } as unknown as PropValue;
-  }
-  const section = makeNode('section', label, { title: label }, [createButton, dataTable]);
-  const root = makeNode('page', '页面', { title: `${label}列表` }, [section]);
+
   return {
-    version: '1',
-    pageType: 'list_page',
-    viewModel: {
-      variables: {
-        list: { type: 'record_list', datasource: { objectId: meta.id, autoQuery: true } },
-        selectedId: { type: 'scalar', initialValue: null },
-        keyword: { type: 'scalar', initialValue: '' },
+    type: 'page',
+    title: `${label}列表`,
+    data: { objectId: meta.id },
+    body: [
+      {
+        type: 'crud',
+        name: 'contract_crud',
+        api: {
+          url: `/objects/${meta.id}/records?page=$page&pageSize=$perPage`,
+          method: 'get',
+        },
+        perPage: 20,
+        columns,
+        features: ['create', 'filter'],
+        headerToolbar: [
+          {
+            type: 'button',
+            label: '新建合同',
+            level: 'primary',
+            ...(formSlug
+              ? {
+                  actionType: 'url',
+                  url: `/app/${'{appId}'}/p/${formSlug}`,
+                  blank: false,
+                }
+              : {}),
+          },
+        ],
       },
-    },
-    root,
+    ],
   };
 }
 
-function generateContractFormPage(meta: ObjectMeta, label: string): PageSchema {
+function generateContractFormPage(meta: ObjectMeta, label: string): Record<string, unknown> {
   const fields = businessFields(meta.fields);
-  const fieldNodes: ComponentNode[] = fields.map((f) => {
-    const props: Record<string, PropValue> = {
-      fieldId: f.id,
-      apiName: f.apiName,
-      label: f.label,
-      required: f.required,
-      value: bind(`vm.record.${f.apiName}`),
-    };
-    const map: Record<string, string> = {
-      text: 'text_input',
-      long_text: 'textarea',
-      currency: 'number_input',
-      number: 'number_input',
-      single_select: 'select',
-      date: 'date_picker',
-      attachment: 'attachment_upload',
-    };
-    return makeNode(map[f.type] ?? 'text_input', f.label, props);
-  });
-  const submitButton = makeNode('button', '提交审批', {
-    text: '提交审批',
-    type: 'primary',
-    htmlType: 'submit',
-  });
-  const formNode = makeNode('form', `${label}表单`, {}, [...fieldNodes, submitButton]);
-  const root = makeNode('page', '页面', { title: `${label}提交` }, [formNode]);
   return {
-    version: '1',
-    pageType: 'form_page',
-    viewModel: {
-      variables: {
-        record: { type: 'record', datasource: { objectId: meta.id, autoQuery: false } },
+    type: 'page',
+    title: `${label}提交`,
+    data: { objectId: meta.id },
+    body: [
+      {
+        type: 'form',
+        title: `${label}表单`,
+        api: {
+          url: `/objects/${meta.id}/records`,
+          method: 'post',
+        },
+        body: fields.map(amisFieldControl),
+        actions: [
+          {
+            type: 'submit',
+            label: '提交审批',
+            level: 'primary',
+          },
+        ],
       },
-    },
-    root,
+    ],
   };
 }
 
@@ -846,6 +823,10 @@ export async function seedProcurementContent(
         status: 'PUBLISHED',
         version: (appRow.version ?? 0) + 1,
         publishedSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        // R1.4：环境指针优先于 publishedSnapshot（若存在）——种子回无指针基线保证幂等
+        environments: {
+          updateMany: { where: {}, data: { currentVersionId: null } },
+        },
         publishedAt: new Date(),
       },
     }),

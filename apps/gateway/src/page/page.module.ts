@@ -7,6 +7,7 @@ import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
+import { SchemaContractModule } from '../schema-contract/schema-contract.module.js';
 
 /**
  * 页面模块 — 页面 Schema 存取 CRUD。
@@ -16,6 +17,7 @@ import { EnvironmentCoreModule } from '../environment/environment-core.module.js
  */
 @Module({
   imports: [
+    SchemaContractModule,
     EnvironmentCoreModule,
     ConfigModule,
     JwtModule.registerAsync({

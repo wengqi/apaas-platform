@@ -111,7 +111,7 @@ function businessFields(fields: StoredField[]): StoredField[] {
 }
 
 // ---------------------------------------------------------------------------
-// R1.7：页面 schema 统一产 amis 方言（v2）——PageView.isAmisPage 分流 AmisRenderer；
+// R1.7：页面 schema 统一产 amis 方言（唯一方言）——AmisRenderer 直接渲染；
 // 取数/提交走平台相对 api.url（fetcher 带 token）。字段类型 → amis 控件映射。
 // ---------------------------------------------------------------------------
 function amisOptions(

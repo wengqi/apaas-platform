@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
-import { isAmisPage } from '@apaas/shared';
 import type { PageMeta as PrismaPageMeta } from '@apaas/db';
 import {
   asAppId,
@@ -261,19 +260,17 @@ export class PageService {
       body: [],
     };
 
-    // R1.7：amis 方言 schema 创建同样过 G3 合同（硬闸，与 update 路径对齐）——v1 不校验
-    if (isAmisPage(defaultSchema)) {
-      const check = this.schemaContract.validate('amis_page', defaultSchema);
-      if (!check.valid) {
-        throw new BadRequestException({
-          code: 'VALIDATION_ERROR',
-          message: `amis 页面校验失败: ${check.issues
-            .filter((i) => i.severity === 'error')
-            .slice(0, 3)
-            .map((i) => `${i.path} ${i.message}`)
-            .join('; ')}`,
-        });
-      }
+    // R1.7 第二轮③：页面唯一方言 = amis，create 一律过 G3 合同（硬闸）
+    const check = this.schemaContract.validate('amis_page', defaultSchema);
+    if (!check.valid) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: `amis 页面校验失败: ${check.issues
+          .filter((i) => i.severity === 'error')
+          .slice(0, 3)
+          .map((i) => `${i.path} ${i.message}`)
+          .join('; ')}`,
+      });
     }
 
     const page = await prisma.pageMeta.create({
@@ -320,8 +317,8 @@ export class PageService {
       select: { appId: true, name: true },
     });
 
-    // R1.7：amis 方言（v2）schema 更新过 G3 合同（硬闸）——v1 不变（搭建器既有语义）
-    if (req.schema && isAmisPage(req.schema)) {
+    // R1.7 第二轮③：页面唯一方言 = amis，schema 更新一律过 G3 合同（硬闸，无 v1 旁路）
+    if (req.schema) {
       const check = this.schemaContract.validate('amis_page', req.schema);
       if (!check.valid) {
         throw new BadRequestException({

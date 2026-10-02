@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Input, Space, Tooltip, Typography, message } from 'antd';
 import { CodeOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
-import { isAmisPage } from '@apaas/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../api/pages.js';
@@ -10,13 +9,23 @@ import AmisEditorCanvas from '../components/page-builder/AmisEditorCanvas.js';
 
 const { Text } = Typography;
 
+/** amis 页面轻判别（本地预检；权威判定在服务端 G3 amis_page 合同）。 */
+function looksLikeAmisPage(schema: unknown): boolean {
+  return (
+    typeof schema === 'object' &&
+    schema !== null &&
+    (schema as Record<string, unknown>)['type'] === 'page'
+  );
+}
+
 /** 代码抽屉 JSON 轻预检（完整 G3 合同在服务端 update 硬闸）。 */
 function validateAmisJson(
   text: string,
 ): { ok: true; parsed: Record<string, unknown> } | { ok: false; error: string } {
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
-    if (!isAmisPage(parsed)) return { ok: false, error: '根节点必须是 {"type":"page", ...}' };
+    if (!looksLikeAmisPage(parsed))
+      return { ok: false, error: '根节点必须是 {"type":"page", ...}' };
     if (!Array.isArray(parsed['body'])) return { ok: false, error: '缺少 body 数组' };
     const external = JSON.stringify(parsed).match(/https?:\/\/[^"']+/);
     if (external) {
@@ -122,7 +131,7 @@ export default function PageBuilder() {
   }
 
   // v1 方言拦截：v1 渲染轨已下线，允许编辑只会产出不可渲染的页面
-  if (page && schema && !isAmisPage(schema)) {
+  if (page && schema && !looksLikeAmisPage(schema)) {
     return (
       <div style={{ padding: 48, maxWidth: 560, margin: '0 auto' }}>
         <Alert

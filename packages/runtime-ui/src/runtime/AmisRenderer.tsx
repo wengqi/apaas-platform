@@ -43,13 +43,44 @@ export function adaptApiResponse(res: {
 }): { status: number; msg?: string; data?: unknown } {
   const body = res.data;
   if (body && typeof body === 'object' && 'ok' in body) {
-    if (body.ok) return { status: 0, data: body.data };
+    if (body.ok) return { status: 0, data: normalizeListResponse(body.data) };
     return {
       status: body.error?.code ?? 1,
       msg: body.error?.message ?? '请求失败',
     };
   }
   return { status: res.status === 200 ? 0 : (res.status ?? 1), data: body };
+}
+
+/**
+ * 列表响应规范化（R1.7）：平台 records API 返回 { items, total } 且字段值嵌在
+ * data JSONB 中；amis crud 期望 { items: 扁平行, count }。检测到该形状时统一
+ * 摊平并映射 total→count，schema 无需再写 responseAdaptor。
+ */
+export function normalizeListResponse(data: unknown): unknown {
+  if (
+    data !== null &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    Array.isArray((data as { items?: unknown }).items) &&
+    typeof (data as { total?: unknown }).total !== 'undefined'
+  ) {
+    const { items, total, ...rest } = data as {
+      items: Array<Record<string, unknown>>;
+      total: number;
+    };
+    return {
+      ...rest,
+      count: total,
+      items: items.map((r) => {
+        const flat = r.data;
+        return flat !== null && typeof flat === 'object' && !Array.isArray(flat)
+          ? { id: r.id, ...(flat as Record<string, unknown>) }
+          : r;
+      }),
+    };
+  }
+  return data;
 }
 
 /** amis fetcher 选项（RenderOptions.fetcher 签名以运行时 JS 为准，类型面桥接）。 */

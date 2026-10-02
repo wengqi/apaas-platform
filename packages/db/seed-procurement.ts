@@ -155,8 +155,6 @@ function generateContractListPage(
         api: {
           url: `/objects/${meta.id}/records?page=$page&pageSize=$perPage`,
           method: 'get',
-          responseAdaptor:
-            'return { ...payload, data: { ...payload.data, count: payload.data.total } }',
         },
         perPage: 20,
         columns,

@@ -181,8 +181,6 @@ function generateListPage(
         api: {
           url: `/objects/${meta.id}/records?page=$page&pageSize=$perPage`,
           method: 'get',
-          responseAdaptor:
-            'return { ...payload, data: { ...payload.data, count: payload.data.total } }',
         },
         perPage: 20,
         columns: fields.map((f) => ({
@@ -306,8 +304,6 @@ function generateDashboardPage(assetObjectId: string, appId: string): Record<str
       aggregation,
       ...(timeGranularity ? { timeGranularity } : {}),
     },
-    responseAdaptor:
-      'return { ...payload, data: { categories: payload.data.map(r => r.category), values: payload.data.map(r => r.value) } }',
   });
   const axisOption = {
     xAxis: { type: 'category', data: '${categories}' },

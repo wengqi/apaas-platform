@@ -7,6 +7,27 @@
 import { describe, expect, it } from 'vitest';
 import { adaptApiResponse } from './AmisRenderer.js';
 import { pageContainsForm } from './ApprovalPageRenderer.js';
+import { normalizeListResponse } from './AmisRenderer.js';
+
+describe('normalizeListResponse（R1.7 fetcher 列表规范化）', () => {
+  it('records 响应：total→count + items 摊平 data JSONB', () => {
+    const r = normalizeListResponse({
+      items: [{ id: 'r1', data: { name: '合同A', amount: 100 } }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const rows = (r as { items: Array<Record<string, unknown>> }).items;
+    expect(rows[0]).toEqual({ id: 'r1', name: '合同A', amount: 100 });
+    expect((r as { count: number }).count).toBe(1);
+  });
+
+  it('非列表形状（对象/数组）原样返回', () => {
+    expect(normalizeListResponse({ foo: 1 })).toEqual({ foo: 1 });
+    const arr = [{ a: 1 }];
+    expect(normalizeListResponse(arr)).toBe(arr);
+  });
+});
 
 describe('adaptApiResponse — 平台响应 → amis fetcherResult', () => {
   it('平台成功响应 { ok: true, data } → status 0 + data 透传', () => {

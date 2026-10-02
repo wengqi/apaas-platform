@@ -467,6 +467,37 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     expect(csTasks.length).toBe(2);
     const adminTask = csTasks.find((t) => t.assignee === adminUserId)!;
     const cfoTask = csTasks.find((t) => t.assignee !== adminUserId)!;
+
+    // 数据可见性（盲审回归网，2026-10-02 打磨轮教训）：审批页渲染的数据源 =
+    // 任务详情的 instance.variables + triggerContext——曾因 seed 写 apiName、
+    // 前端 data prop 遮蔽两度导致审批人只见 "-"。此处钉死两端数据合同：
+    // ① 任务详情携带真实合同值且绑定的是真实页面 id（而非 apiName 字符串）；
+    // ② 运行时页面 schema 模板确实引用这些字段（${contract_name} 等 tpl）。
+    const taskDetail = await api.get<{
+      boundPageId: string | null;
+      instance: { variables: Record<string, unknown> };
+    }>(`/tasks/${adminTask.id}`);
+    expect(taskDetail.boundPageId).toBe(approvalPageId);
+    expect(taskDetail.instance.variables['contract_name']).toBe('R1.5 开放触发合同');
+    expect(taskDetail.instance.variables['amount']).toBe(1280000);
+    expect(taskDetail.instance.variables['recordId']).toBe(record.id);
+
+    const runtimePageRes = await fetch(
+      `${API_BASE}/apps/${appId}/pages/runtime/${approvalPageId}`,
+      { headers: { Authorization: `Bearer ${api.token}` } },
+    );
+    expect(runtimePageRes.status).toBe(200);
+    const runtimePage = (await runtimePageRes.json()) as {
+      ok: boolean;
+      data?: { schema?: { title?: string; body?: unknown[] } };
+    };
+    expect(runtimePage.ok).toBe(true);
+    expect(runtimePage.data?.schema?.title).toBe('合同审批');
+    const pageTpl = JSON.stringify(runtimePage.data?.schema?.body ?? []);
+    expect(pageTpl).toContain('${contract_name}');
+    expect(pageTpl).toContain('${supplier_name}');
+    expect(pageTpl).toContain('${amount}');
+
     await api.post(`/tasks/${adminTask.id}/complete`, { decision: 'approve', comment: '会签通过' });
     const still = await waitForTasks(instanceId);
     expect(still.map((t) => t.id)).toContain(cfoTask.id); // 未全部通过不推进

@@ -117,9 +117,7 @@ export default function ApprovalPageRenderer({
     );
   }
 
-  // 上下文直接合并进 schema.data（page 渲染器的第一优先级数据源）——
-  // render(schema, data) 的第二参在弹窗场景实测会丢失（page 域为空），不依赖它。
-  const schemaWithData = { ...(schema ?? {}), data: { ...(ctxData ?? {}) } };
-
-  return <AmisRenderer schema={schemaWithData} data={{ ...ctxData }} fetcher={fetcher} />;
+  // 审批上下文交由 AmisRenderer 统一双通道注入（schema.data page 域 + render 根域，
+  // schema 自带 data 作为默认值垫底）——弹窗场景 render 第二参实测会丢失，不单依赖任一路。
+  return <AmisRenderer schema={schema} data={{ ...(ctxData ?? {}) }} fetcher={fetcher} />;
 }

@@ -28,4 +28,25 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    // e2e DOM 级验收消费预构建产物（与 studio preview 同口径）；禁缓存防旧 bundle
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+    proxy: {
+      '/api/v1': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api/docs': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/api': {
+        target: process.env.VITE_API_TARGET ?? 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/(?!v1|docs)/, '/api/v1/'),
+      },
+    },
+  },
 });

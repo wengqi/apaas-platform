@@ -131,9 +131,10 @@ export class TriggerService implements OnModuleInit {
         }
       }
 
-      // 2) 取该环境应注册的 SCHEDULED 流程（bundle 优先，降级活表）
+      // 2) 取该环境应注册的 SCHEDULED 流程——已部署环境以 bundle 为唯一语义源；
+      //    未部署环境为搭建期，注册活表 PUBLISHED 流程（发布即生效，非兼容兜底）
       let processes: TriggerableProcess[] = [];
-      if (resolved.bundleMode && resolved.bundle) {
+      if (resolved.bundle) {
         processes = resolved.bundle.processes as TriggerableProcess[];
       } else {
         processes = await prisma.processDef.findMany({
@@ -275,10 +276,11 @@ export class TriggerService implements OnModuleInit {
     if (!triggerType) return;
 
     try {
-      // 解析环境（bundle 模式按 bundle 匹配；降级按活表 PUBLISHED 匹配）
+      // 已部署环境按 bundle 匹配（触发器随环境启停）；
+      // 未部署环境为搭建期，按活表 PUBLISHED 匹配（发布即生效，非兼容兜底）
       const resolved = await this.environmentResolver.resolve(tenantId, appId, envKey);
       let defs: Array<{ id: string; apiName: string; name: string }>;
-      if (resolved.bundleMode && resolved.bundle) {
+      if (resolved.bundle) {
         defs = resolved.bundle.processes
           .filter((p) => p.triggerType === triggerType)
           .map((p) => ({ id: p.id, apiName: p.apiName, name: p.name }));

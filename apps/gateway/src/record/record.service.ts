@@ -131,7 +131,7 @@ export class RecordService {
     }
     const env = getEnvironmentId() ?? 'prod';
     const resolved = await this.environmentResolver.resolve(tenantId, live.appId, env);
-    if (resolved.bundleMode && resolved.bundle) {
+    if (resolved.bundle) {
       const bundled = resolved.bundle.objects.find((o) => o.id === objectId);
       if (bundled) {
         return { appId: live.appId, apiName: bundled.apiName, fields: bundled.fields, live };
@@ -139,6 +139,8 @@ export class RecordService {
       // bundle 中不存在该对象（发布后新建的活表对象）→ 视为未发布，按空字段处理
       return { appId: live.appId, apiName: live.apiName, fields: [], live };
     }
+    // 搭建期语义（非兼容兜底）：应用未部署到当前环境时，运行时"不可变快照"尚不存在，
+    // 字段定义取活表——支撑建对象后、发布前的记录试录（AutoNumber/Formula/校验）。
     return { appId: live.appId, apiName: live.apiName, fields: live.fields, live };
   }
   // ===========================================================================
@@ -521,8 +523,9 @@ export class RecordService {
     });
     if (!existing) throw new NotFoundException('记录不存在');
 
-    // R1.4：字段定义环境感知——bundle 优先（快照内对象），降级 include 的活表字段
-    let fields = this.parseFields(existing.object?.fields);
+    // R1.4：字段定义环境感知——环境 bundle 内对象；应用未部署到当前环境时
+    // 取活表字段（搭建期语义，支撑发布前试录/改数），bundle 内不存在则空字段
+    let fields: ObjectField[] = [];
     if (existing.object) {
       const env = getEnvironmentId() ?? 'prod';
       const resolved = await this.environmentResolver.resolve(
@@ -530,9 +533,11 @@ export class RecordService {
         existing.object.appId ?? '',
         env,
       );
-      if (resolved.bundleMode && resolved.bundle) {
+      if (resolved.bundle) {
         const bundled = resolved.bundle.objects.find((o) => o.id === existing.objectId);
         fields = bundled ? this.parseFields(bundled.fields) : [];
+      } else {
+        fields = this.parseFields(existing.object?.fields);
       }
     }
 

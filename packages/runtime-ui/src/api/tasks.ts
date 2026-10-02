@@ -29,12 +29,12 @@ export interface ProcessTask {
     triggerContext: Record<string, unknown> | null;
     environmentId?: string;
     frozenWorkflowSchema?: unknown;
-    processDef: { name: string; apiName: string; appId?: string };
+    processDef: { name: string; apiName: string; appId: string };
   };
   /** 审批节点绑定的页面 ID（R1.3，无绑定为 null → 回退默认审批 UI）。 */
   boundPageId?: string | null;
-  /** R1.4：审批页按环境 bundle 渲染所需上下文（getTask 详情返回）。 */
-  appId?: string;
+  /** R1.4：审批页按环境 bundle 渲染所需上下文（getTask 详情返回，随 processDef 恒存在）。 */
+  appId: string;
   runtimeEnv?: string;
 }
 

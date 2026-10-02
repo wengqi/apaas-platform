@@ -8,7 +8,7 @@
  *   —— 用满 R1.3 新语义：approvalMode countersign/sequential、pageId 审批页面绑定、
  *   rejectToNodeId 驳回跳转、start 入参 / end 出参
  * - 示例记录（3 供应商 + 4 合同，覆盖大额/小额分支）
- * - 应用发布（publishedSnapshot，对齐 seed-demo 模式）
+ * - 应用发布（AppVersion 快照 + 环境部署，对齐 seed-demo 模式）
  *
  * 页面双方言并存说明（ADR-0003 过渡期）：
  * - 台账/提交页走 v1 自有方言（generateListPage/generateFormPage 同款结构，运行时立即可用）
@@ -745,7 +745,7 @@ export async function seedProcurementContent(
   console.log(`  ✅ 合同记录: ${contracts.length} 条（覆盖大额/小额分支）`);
 
   // ========================================================================
-  // 5. 应用发布（构造 publishedSnapshot，对齐 seed-demo 模式）
+  // 5. 应用发布（AppVersion 快照 + 环境部署，对齐 seed-demo 模式）
   // ========================================================================
 
   console.log('  📤 正在发布采购合同应用...');
@@ -832,11 +832,6 @@ export async function seedProcurementContent(
       data: {
         status: 'PUBLISHED',
         version: (appRow.version ?? 0) + 1,
-        publishedSnapshot: snapshot as unknown as Prisma.InputJsonValue,
-        // R1.4：环境指针优先于 publishedSnapshot（若存在）——种子回无指针基线保证幂等
-        environments: {
-          updateMany: { where: {}, data: { currentVersionId: null } },
-        },
         publishedAt: new Date(),
       },
     }),
@@ -844,6 +839,59 @@ export async function seedProcurementContent(
     prisma.processDef.updateMany({ where: { appId }, data: { status: 'PUBLISHED' } }),
   ]);
 
-  console.log('  ✅ 应用已发布 — publishedSnapshot 已写入');
+  // R1.4：创建版本记录 + 部署到 dev/prod 环境（环境指针 = 运行时唯一读路径，幂等）
+  const versionNumber = '1.0.0';
+  const existingVersion = await prisma.appVersion.findUnique({
+    where: { appId_versionNumber: { appId, versionNumber } },
+  });
+  const version =
+    existingVersion ??
+    (await prisma.appVersion.create({
+      data: {
+        tenantId,
+        appId,
+        versionNumber,
+        description: '采购合同应用种子发布',
+        snapshot: snapshot as unknown as Prisma.InputJsonValue,
+        status: 'PUBLISHED',
+        publishedBy: adminUserId,
+      },
+    }));
+  if (existingVersion) {
+    // 重跑 seed：刷新快照内容（指针/版本号不变）
+    await prisma.appVersion.update({
+      where: { id: existingVersion.id },
+      data: { snapshot: snapshot as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  for (const envKey of ['dev', 'prod'] as const) {
+    const envRow = await prisma.appEnvironment.upsert({
+      where: { appId_key: { appId, key: envKey } },
+      update: {},
+      create: { tenantId, appId, key: envKey },
+    });
+    if (envRow.currentVersionId !== version.id) {
+      await prisma.$transaction([
+        prisma.appEnvironment.update({
+          where: { id: envRow.id },
+          data: { currentVersionId: version.id },
+        }),
+        prisma.deployment.create({
+          data: {
+            tenantId,
+            appId,
+            environmentId: envRow.id,
+            versionId: version.id,
+            kind: 'deploy',
+            operator: adminUserId,
+            note: `种子发布（${envKey}）`,
+          },
+        }),
+      ]);
+    }
+  }
+
+  console.log('  ✅ 应用已发布 — AppVersion 快照已写入，dev/prod 环境已部署');
   console.log('📦 采购合同应用内容填充完成!');
 }

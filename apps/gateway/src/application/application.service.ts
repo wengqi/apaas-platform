@@ -96,7 +96,6 @@ export class ApplicationService {
       color: app.color ?? undefined,
       status: app.status as AppStatus,
       version: app.version,
-      publishedSnapshot: app.publishedSnapshot as Record<string, unknown> | undefined,
       publishedAt: app.publishedAt?.toISOString(),
       createdBy: asUserId(app.createdBy),
       createdAt: app.createdAt.toISOString(),
@@ -376,7 +375,6 @@ export class ApplicationService {
         data: {
           status: 'PUBLISHED',
           version: { increment: 1 },
-          publishedSnapshot: snapshot as unknown as Prisma.InputJsonValue,
           publishedAt: new Date(),
         },
       });
@@ -408,7 +406,7 @@ export class ApplicationService {
     }
 
     // R1.4：应用发布 = 部署到 prod 环境（确保环境行存在 + 切指针 + Deployment 历史）
-    // 指针切换失败不回滚发布本身（publishedSnapshot 已写入，旧路径仍然可用）
+    // 指针切换失败不回滚发布本身（版本记录已落库，可重新部署）
     try {
       await this.environmentService.deploy(tenantId, appId, 'prod', publishedBy, {
         versionId: version.id,
@@ -436,7 +434,7 @@ export class ApplicationService {
 
   /**
    * 回滚到指定版本。
-   * 将目标版本的快照写回 Application.publishedSnapshot，创建新的 PUBLISHED 版本记录。
+   * 以目标版本快照创建新的 PUBLISHED 版本记录。
    * 将被取代的当前版本标记为 ROLLED_BACK。
    */
   async rollback(
@@ -473,13 +471,10 @@ export class ApplicationService {
         });
       }
 
-      // 将目标版本快照写回 Application
+      // 刷新应用发布时间
       await tx.application.update({
         where: { id: appId },
-        data: {
-          publishedSnapshot: targetVersion.snapshot as unknown as Prisma.InputJsonValue,
-          publishedAt: new Date(),
-        },
+        data: { publishedAt: new Date() },
       });
 
       // 创建新的回滚版本记录
@@ -499,7 +494,7 @@ export class ApplicationService {
       return newVersion;
     });
 
-    // R1.4：回滚产生新版本 → prod 指针切到回滚版本（与 publishedSnapshot 一致）
+    // R1.4：回滚产生新版本 → prod 指针切到回滚版本
     try {
       await this.environmentService.deploy(tenantId, appId, 'prod', rolledBackBy, {
         versionId: version.id,

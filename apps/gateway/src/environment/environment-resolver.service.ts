@@ -1,15 +1,15 @@
 /**
  * 环境解析服务（R1.4）——运行时元数据读路径的环境感知内核。
  *
- * 解析链：AppEnvironment.currentVersionId → AppVersion.snapshot（不可变 bundle）
- *        → 降级 Application.publishedSnapshot（存量应用兼容）
- *        → null（调用方走活表旧路径）。
+ * 解析链（唯一路径，无兜底）：AppEnvironment.currentVersionId → AppVersion.snapshot
+ * （不可变 bundle）。无环境行 / 未部署 / 指针悬空 → bundle=null，
+ * 调用方按"该环境未部署"处理（404 / 空注册 / 拒绝写）。
  *
  * 缓存：内存 Map<appId:envKey, bundle>，发布/回滚/回切时显式失效
  * （invalidateApp）。快照不可变 + 指针切换频率低，缓存安全。
  *
- * 兼容不变量：无指针的应用（seed 直写 publishedSnapshot）永远走旧路径，
- * 行为零变化；新发布的应用获得完整环境语义。
+ * 注：R1.4 曾带 Application.publishedSnapshot 旧快照降级腿（存量应用兼容），
+ * 平台未上线无存量部署，该腿已随 v1 运行时轨物理删除。
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,13 +17,11 @@ import { prisma } from '@apaas/db';
 import type { AppSnapshot, EnvironmentKey } from '@apaas/shared';
 import { substituteEnvRefs } from '@apaas/shared';
 
-/** 解析出的环境运行时上下文 */
+/** 解析出的环境运行时上下文（bundle=null 表示该环境未部署） */
 export interface ResolvedEnvironment {
   environmentId: string;
   versionId: string | null;
-  /** 是否命中环境指针（true=bundle 模式；false=旧快照/活表降级模式） */
-  bundleMode: boolean;
-  /** bundle 模式下的快照（已做 ${env.*} 替换）；非 bundle 模式为 null */
+  /** 环境指针指向的不可变快照（已做 ${env.*} 替换）；未部署为 null */
   bundle: AppSnapshot | null;
 }
 
@@ -31,7 +29,6 @@ export interface ResolvedEnvironment {
 interface CachedResolution {
   environmentId: string;
   versionId: string | null;
-  bundleMode: boolean;
   rawBundle: AppSnapshot | null;
 }
 
@@ -62,7 +59,7 @@ export class EnvironmentResolverService {
   }
 
   /**
-   * 解析应用在指定环境的运行时上下文（bundle 或降级标记）。
+   * 解析应用在指定环境的运行时上下文。
    * 结果按 appId+env 缓存，发布/回滚后失效。
    */
   async resolve(tenantId: string, appId: string, envKey: string): Promise<ResolvedEnvironment> {
@@ -74,12 +71,11 @@ export class EnvironmentResolverService {
       cached = await this.resolveRaw(tenantId, appId, envKey, cacheKey);
     }
 
-    if (!cached.bundleMode || !cached.rawBundle) {
+    if (!cached.rawBundle) {
       return {
         environmentId: cached.environmentId,
         versionId: cached.versionId,
-        bundleMode: false,
-        bundle: cached.rawBundle,
+        bundle: null,
       };
     }
 
@@ -94,12 +90,11 @@ export class EnvironmentResolverService {
     return {
       environmentId: cached.environmentId,
       versionId: cached.versionId,
-      bundleMode: true,
       bundle: substituted.value as AppSnapshot,
     };
   }
 
-  /** 指针 → 原始快照（未替换），含降级链；结果入缓存 */
+  /** 指针 → 原始快照（未替换）；结果入缓存 */
   private async resolveRaw(
     tenantId: string,
     appId: string,
@@ -110,8 +105,8 @@ export class EnvironmentResolverService {
       where: { appId, tenantId, key: envKey },
     });
     if (!env || !env.currentVersionId) {
-      // 无环境行（极老数据）或未部署：旧快照降级
-      return this.legacyFallbackRaw(appId, cacheKey);
+      // 无环境行或未部署：该环境无运行时语义
+      return { environmentId: env?.id ?? '', versionId: null, rawBundle: null };
     }
 
     const version = await prisma.appVersion.findFirst({
@@ -119,13 +114,12 @@ export class EnvironmentResolverService {
     });
     if (!version) {
       this.logger.warn(`环境指针指向的版本缺失: app=${appId} env=${envKey}`);
-      return this.legacyFallbackRaw(appId, cacheKey);
+      return { environmentId: env.id, versionId: null, rawBundle: null };
     }
 
     const cached: CachedResolution = {
       environmentId: env.id,
       versionId: version.id,
-      bundleMode: true,
       rawBundle: version.snapshot as unknown as AppSnapshot,
     };
     this.cache.set(cacheKey, cached);
@@ -152,22 +146,6 @@ export class EnvironmentResolverService {
       }
     }
     return values;
-  }
-
-  /** 旧快照降级（无指针）：publishedSnapshot 存在 → bundleMode=false + 旧快照；否则 null */
-  private async legacyFallbackRaw(appId: string, cacheKey: string): Promise<CachedResolution> {
-    const app = await prisma.application.findFirst({
-      where: { id: appId },
-      select: { publishedSnapshot: true },
-    });
-    const resolved: CachedResolution = {
-      environmentId: '',
-      versionId: null,
-      bundleMode: false,
-      rawBundle: (app?.publishedSnapshot ?? null) as unknown as AppSnapshot | null,
-    };
-    this.cache.set(cacheKey, resolved);
-    return resolved;
   }
 
   /** 发布/回滚/指针变化后失效该应用的缓存 */

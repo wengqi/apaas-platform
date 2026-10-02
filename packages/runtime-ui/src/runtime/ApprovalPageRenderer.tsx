@@ -20,8 +20,8 @@ interface ApprovalPageRendererProps {
   pageId: string;
   /** 页面初始数据域：流程变量/触发记录/任务上下文（含 taskId） */
   data: Record<string, unknown>;
-  /** R1.4：页面归属应用（运行时端点需要，缺省走活表读取） */
-  appId?: string;
+  /** 页面归属应用（任务 DTO 随 processDef 恒存在；运行时端点按环境 bundle 读取） */
+  appId: string;
   /** R1.4：实例所在环境（缺省 prod） */
   env?: string;
 }
@@ -77,9 +77,8 @@ export default function ApprovalPageRenderer({
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['approval-page', pageId, appId ?? '', effectiveEnv ?? 'prod'],
-    queryFn: () =>
-      appId ? pagesApi.getRuntime(appId, pageId, effectiveEnv) : pagesApi.get(pageId),
+    queryKey: ['approval-page', pageId, appId, effectiveEnv ?? 'prod'],
+    queryFn: () => pagesApi.getRuntime(appId, pageId, effectiveEnv),
     enabled: !!pageId,
     staleTime: 60_000,
   });

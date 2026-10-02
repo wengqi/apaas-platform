@@ -219,10 +219,6 @@ export const pagesApi = {
   list: (appId: string) =>
     apiClient.get(`/apps/${appId}/pages`).then((res) => res.data.data as PageMeta[]),
 
-  /** 按 ID 获取页面详情 */
-  get: (pageId: string) =>
-    apiClient.get(`/pages/${pageId}`).then((res) => res.data.data as PageMeta),
-
   /** 按 slug 获取已发布页面（运行时渲染用） */
   getBySlug: (appId: string, slug: string, env?: string) =>
     apiClient

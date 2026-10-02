@@ -154,10 +154,9 @@ export class ProcessEngine {
 
     const resolved = await this.environmentResolver.resolve(tenantId, liveDef.appId, env);
 
-    const bundled =
-      resolved.bundleMode && resolved.bundle
-        ? resolved.bundle.processes.find((p) => p.id === processDefId)
-        : undefined;
+    const bundled = resolved.bundle
+      ? resolved.bundle.processes.find((p) => p.id === processDefId)
+      : undefined;
 
     let def: {
       id: string;
@@ -189,7 +188,8 @@ export class ProcessEngine {
         workflowSchema: bundled.workflowSchema,
       };
     } else {
-      // 降级：活表已发布语义（存量应用/未走环境指针）
+      // 流程级发布语义：流程可独立于应用部署单独发布（流程发布不切环境指针），
+      // 手动触发启动按流程自身的 PUBLISHED 定义执行；自动触发走环境 bundle（trigger.service）。
       if (liveDef.status !== 'PUBLISHED') {
         throw new BadRequestException({
           code: 'VALIDATION_ERROR',

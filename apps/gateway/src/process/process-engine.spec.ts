@@ -68,7 +68,6 @@ function createEngine(executors: NodeExecutor[] = []) {
       resolve: vi.fn().mockResolvedValue({
         environmentId: '',
         versionId: null,
-        bundleMode: false,
         bundle: null,
       }),
     } as unknown as ConstructorParameters<typeof ProcessEngine>[3],

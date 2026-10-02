@@ -42,8 +42,6 @@ export interface Application {
   status: AppStatus;
   /** 当前发布版本号（每次发布递增） */
   version: number;
-  /** 已发布的应用快照 JSON（含对象/页面/流程定义的完整副本） */
-  publishedSnapshot?: Record<string, unknown>;
   /** 最后发布时间 */
   publishedAt?: ISODateString;
   /** 创建者 */

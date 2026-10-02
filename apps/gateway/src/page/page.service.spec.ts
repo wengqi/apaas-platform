@@ -45,7 +45,6 @@ function createService() {
       resolve: vi.fn().mockResolvedValue({
         environmentId: '',
         versionId: null,
-        bundleMode: false,
         bundle: null,
       }),
     } as unknown as ConstructorParameters<typeof PageService>[1],

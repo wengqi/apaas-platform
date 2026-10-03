@@ -45,6 +45,7 @@ export default {
         'runtime-svc',
         // 业务模块
         'auth',
+        'mcp',
         'object',
         'record',
         'page',

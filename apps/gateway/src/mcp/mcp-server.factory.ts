@@ -4,9 +4,14 @@
  * 工具分四类：
  * - 读：get_platform_overview / list_* / get_*（平台既有查询，租户隔离）
  * - 校验：validate_schema（G3 dry-run，agent 提交前自检）
- * - 写：submit_page_draft / submit_workflow_draft / submit_object_draft
- *   —— 一律待审提交（R1.2 治理轨道：不落活表，人工批准才生效），先过 G3 校验合同
+ * - 写：create_application（容器操作，即时生效）+ submit_page_draft /
+ *   submit_workflow_draft / submit_object_draft
+ *   —— 资源变更一律待审提交（R1.2 治理轨道：不落活表，人工批准才生效），
+ *   先过 G3 校验合同
  * - 治理：list_review_submissions（审批结果与驳回意见回传，agent 自修正闭环）
+ *
+ * 必填参数在 dispatch 前统一守卫（TOOLS.inputSchema.required 是唯一事实源）：
+ * 缺失/空白返回结构化错误，绝不允许以空串下潜到查询层静默返回空结果。
  *
  * 方言指南以工具形式提供（get_dialect_guide）：amis 惯例/示例/陷阱清单
  * （spike 语料：nested-select 命名、static 表单 actions:[]、取数表达式等）。
@@ -186,6 +191,26 @@ const TOOLS: Array<{
     },
   },
   {
+    name: 'create_application',
+    description:
+      '创建新应用并返回 appId（容器操作，即时生效不入人审——与人工在搭建器创建应用语义一致；应用内资源变更仍走 submit_*_draft 人审）。从零构建新应用时的第一步。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        apiName: {
+          type: 'string',
+          description: '应用标识（snake_case，租户内唯一；不传则自动生成）',
+        },
+        name: { type: 'string', description: '应用显示名' },
+        description: { type: 'string' },
+        icon: { type: 'string', description: 'emoji 图标' },
+        color: { type: 'string', description: '主题色（如 #1677ff）' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_review_submissions',
     description:
       '查询提交单审批状态（R1.2 治理轨道）。submit_*_draft 后用本工具跟踪审批进度；REJECTED 单的 reviewComment 是人类驳回意见，按意见修正后重新提交。',
@@ -247,14 +272,19 @@ export function createMcpServer(mcpService: McpService, tenantId: string, userId
     const name = request.params.name;
     const args = (request.params.arguments ?? {}) as ToolArgs;
     let payload: McpToolResultLike;
-    try {
-      payload = await dispatch(mcpService, tenantId, userId, name, args);
-    } catch (err) {
-      payload = {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-        hint: '调用失败——检查参数（如 appId/pageId 是否存在）后重试',
-      };
+    const guard = requireParams(name, args);
+    if (guard) {
+      payload = guard;
+    } else {
+      try {
+        payload = await dispatch(mcpService, tenantId, userId, name, args);
+      } catch (err) {
+        payload = {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          hint: '调用失败——检查参数（如 appId/pageId 是否存在）后重试',
+        };
+      }
     }
     return {
       content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
@@ -267,7 +297,41 @@ export function createMcpServer(mcpService: McpService, tenantId: string, userId
 
 type McpToolResultLike = Record<string, unknown>;
 
-/** 工具分发（参数已在服务方法内做必要性校验）。 */
+/**
+ * 必填参数守卫：以 TOOLS.inputSchema.required 为唯一事实源，
+ * 缺失/空白立即返回结构化错误（agent 可自修正），
+ * 绝不让空串下潜到查询层静默返回空结果（如 submissions: [] 误导 agent）。
+ * 导出供单测直接覆盖（工具合同是本模块的公共契约）。
+ */
+export function requireParams(name: string, args: ToolArgs): McpToolResultLike | undefined {
+  const tool = TOOLS.find((t) => t.name === name);
+  if (!tool) {
+    return {
+      ok: false,
+      error: `未知工具 "${name}"`,
+      hint: `可用工具：${TOOLS.map((t) => t.name).join(' / ')}`,
+    };
+  }
+  const schema = tool.inputSchema as {
+    required?: string[];
+    properties?: Record<string, { type?: string }>;
+  };
+  const missing = (schema.required ?? []).filter((key) => {
+    const value = args[key];
+    if (value === undefined || value === null) return true;
+    return typeof value === 'string' && value.trim().length === 0;
+  });
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: `缺少必填参数：${missing.join(', ')}`,
+      hint: `工具 ${name} 必须提供 ${missing.join(' / ')}，修正后重试`,
+    };
+  }
+  return undefined;
+}
+
+/** 工具分发（必填参数已由 requireParams 统一守卫）。 */
 async function dispatch(
   svc: McpService,
   tenantId: string,
@@ -327,6 +391,14 @@ async function dispatch(
         description: optionalStr(args['description']),
         icon: optionalStr(args['icon']),
         objectId: optionalStr(args['objectId']),
+      });
+    case 'create_application':
+      return svc.createApplication(tenantId, userId, {
+        apiName: optionalStr(args['apiName']),
+        name: str(args['name']),
+        description: optionalStr(args['description']),
+        icon: optionalStr(args['icon']),
+        color: optionalStr(args['color']),
       });
     case 'list_review_submissions':
       return svc.listReviewSubmissions(tenantId, str(args['appId']));

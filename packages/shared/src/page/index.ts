@@ -50,11 +50,13 @@ export interface PageMeta {
   name: string;
   /** 页面路径（用于运行时路由） */
   slug: string;
+  /** API 名称（与 slug 同值；wire 统一字段名，slug 为兼容别名） */
+  apiName: string;
   type: PageType;
   /** 关联对象（列表/详情/表单页） */
   objectId?: ObjectId;
-  /** 完整页面 Schema */
-  schema: PageSchema;
+  /** 完整页面 Schema（仅 get 详情返回；列表为体积摘要，不含 schema） */
+  schema?: PageSchema;
   /** 是否发布 */
   published: boolean;
   createdAt: ISODateString;

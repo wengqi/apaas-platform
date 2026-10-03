@@ -31,13 +31,13 @@ export interface PageMeta {
   name: string;
   /** 页面 slug（应用内唯一；wire 字段名即 slug，运行时预览路由使用） */
   slug: string;
-  /** @deprecated wire 上不存在该字段（实际为 slug），仅 v1 搭建器遗留引用，随 ③ 删除 */
+  /** API 名称（wire 上已与 slug 同值输出；新代码统一用 apiName） */
   apiName: string;
   type: PageType;
   /** 关联对象(列表/详情/表单页) */
   objectId?: string;
-  /** 完整页面 Schema */
-  schema: PageSchema;
+  /** 完整页面 Schema(仅详情接口返回;列表为体积摘要) */
+  schema?: PageSchema;
   /** 是否发布 */
   published: boolean;
   createdAt: string;

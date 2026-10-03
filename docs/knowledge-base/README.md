@@ -49,6 +49,8 @@
 | [AMIS-EDITOR-CANVAS-R17B-2026-10-02](./AMIS-EDITOR-CANVAS-R17B-2026-10-02.md) | 2026-10-02 | R1.7 第二轮②画布 amis-editor 重写（导出形态/pnpm 布局/i18n-runtime 损坏/OOM/脏态窗口/DTO 白名单六坑 + create 补 G3 + StrictMode 扩展 studio）|
 | [DROP-V1-BUILDER-R17C-2026-10-02](./DROP-V1-BUILDER-R17C-2026-10-02.md) | 2026-10-02 | R1.7 第二轮③收官：v1 搭建器 + shared 渲染残骸 + 方言合同物理删除（-18.7k 行/G3 单路径/PageSchema 宽松化；注释 `*/` 坑）|
 | [POLISH-ACCEPTANCE-APP-2026-10-02](./POLISH-ACCEPTANCE-APP-2026-10-02.md) | 2026-10-02 | 验收应用真实使用打磨（browser-use 实操走查修复 5 缺陷：select 阻断/盲审 data 遮蔽/图表空白/编号缺失；amis fetcher ok 契约与 chart adaptor 正确形态）|
+| [AI-FIRST-POLISH-2026-10-03](./AI-FIRST-POLISH-2026-10-03.md) | 2026-10-03 | AI 第一公民主线打磨第一轮（方法论=主线纵深打磨；八步全链路验证 + 摩擦点 13 项清单（修 6 列 7）+ MCP 参数守卫/create_application/JWT refresh 修复明细 + ZCode 接入指引）|
+| [STATUS-MATRIX-2026-10-03](./STATUS-MATRIX-2026-10-03.md) | 2026-10-03 | 状态矩阵（主线打磨第一轮：八步全通 + 修 6 列 7 + gateway 单测 698；下一轮最高价值=资源依赖链批量提交）|
 
 ## 文档维护规则
 

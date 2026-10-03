@@ -146,12 +146,25 @@ export class PageService {
     await prisma.pageSavePoint.deleteMany({ where: { id: { in: staleIds }, tenantId } });
   }
   /**
-   * 列出应用下所有页面。
+   * 列出应用下所有页面（摘要投影，不含 schema——列表体积控制，
+   * MCP list_pages 与 studio 页面列表共用；详情经 get 取回 schema）。
    */
   async list(tenantId: string, appId: string): Promise<PageMeta[]> {
     const pages = await prisma.pageMeta.findMany({
       where: { tenantId, appId },
       orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        tenantId: true,
+        appId: true,
+        name: true,
+        apiName: true,
+        type: true,
+        objectId: true,
+        isPublished: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
     return pages.map((p) => this.toPageMeta(p));
   }
@@ -207,6 +220,7 @@ export class PageService {
       appId: asAppId(appId),
       name: pageData.name,
       slug: pageData.apiName,
+      apiName: pageData.apiName,
       type: pageData.type as PageType,
       objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
       schema: pageData.schema as unknown as PageSchema,
@@ -234,6 +248,7 @@ export class PageService {
       appId: asAppId(appId),
       name: pageData.name,
       slug: pageData.apiName,
+      apiName: pageData.apiName,
       type: pageData.type as PageType,
       objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
       schema: pageData.schema as unknown as PageSchema,
@@ -413,16 +428,19 @@ export class PageService {
   /**
    * 将 Prisma PageMeta 行映射为共享类型 PageMeta。
    */
-  private toPageMeta(row: PrismaPageMeta): PageMeta {
+  private toPageMeta(
+    row: Omit<PrismaPageMeta, 'schema'> & { schema?: PrismaPageMeta['schema'] },
+  ): PageMeta {
     return {
       id: asPageId(row.id),
       tenantId: asTenantId(row.tenantId),
       appId: asAppId(row.appId),
       name: row.name,
       slug: row.apiName,
+      apiName: row.apiName,
       type: row.type as PageType,
       objectId: row.objectId ? asObjectId(row.objectId) : undefined,
-      schema: row.schema as unknown as PageSchema,
+      schema: (row.schema as unknown as PageSchema) ?? undefined,
       published: row.isPublished,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

@@ -32,7 +32,13 @@ const FIELDS = [
     apiName: 'status',
     label: '状态',
     type: 'single_select',
-    config: { options: [{ id: 'AVAILABLE', label: '可用' }] } as never,
+    config: {
+      // value 显式给 → 保留；缺省 → 回退 label（A 旅程 H2：绝不回退选项 id/UUID）
+      options: [
+        { id: 'opt-1', label: '可用', value: 'AVAILABLE' },
+        { id: 'opt-2', label: '停用' },
+      ],
+    } as never,
   }),
   makeField({ apiName: 'created_by', label: '创建人', type: 'user', isSystem: true }),
 ];
@@ -71,7 +77,10 @@ describe('buildPageTemplate — form_page', () => {
     expect(controls[2]).toMatchObject({
       type: 'select',
       name: 'status',
-      options: [{ label: '可用', value: 'AVAILABLE' }],
+      options: [
+        { label: '可用', value: 'AVAILABLE' },
+        { label: '停用', value: '停用' },
+      ],
     });
 
     // 提交按钮（G3 白名单回归：submit 必须合法）

@@ -270,7 +270,7 @@ export default function StudioLayout() {
               检查
             </Button>
             <Button icon={<HistoryOutlined />} onClick={() => navigate(`/app/${appId}/versions`)}>
-              发布历史
+              版本历史
             </Button>
             <Button
               type="primary"

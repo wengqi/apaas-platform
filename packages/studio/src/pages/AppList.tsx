@@ -40,11 +40,13 @@ export default function AppList() {
   /** 创建应用。 */
   const createMutation = useMutation({
     mutationFn: (data: CreateAppRequest) => appsApi.create(data),
-    onSuccess: () => {
+    onSuccess: (app) => {
+      // A 旅程（2026-10-03）：创建后停留列表页,新手不知道下一步——直接进入新应用工作台
       message.success('应用创建成功');
       queryClient.invalidateQueries({ queryKey: qk.apps() });
       setCreateOpen(false);
       form.resetFields();
+      if (app?.id) navigate(`/app/${app.id}/dashboard`);
     },
     onError: (err) => {
       const axErr = err as {

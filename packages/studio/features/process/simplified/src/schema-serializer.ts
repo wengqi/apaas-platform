@@ -186,20 +186,73 @@ function getLastNodeInBlock(block: FlowNodeJSON): FlowNodeJSON | undefined {
   return block;
 }
 
+/**
+ * 将编辑器字段映射（FieldMapper 产出 Record<string,string>）转换为引擎
+ * inputsValues 四态契约（执行器只消费 inputsValues，见 gateway
+ * object-operation.executor：ctx.inputs 由 node.data.inputsValues 解析而来；
+ * 此前 fieldMapping 直传不转换，UI 配置的更新节点运行时报"缺少 recordId"）。
+ *
+ * 转换规则：
+ * - 值恰为单个 `${path}` → ref（content 为点分路径数组，与种子数据契约一致）
+ * - 值含 `${` 插值 → template（引擎 renderTemplateDotted 插值）
+ * - 其余 → constant
+ */
+function fieldMappingToInputsValues(
+  fieldMapping: Record<string, string>,
+): Record<string, { type: string; content: unknown }> {
+  const inputsValues: Record<string, { type: string; content: unknown }> = {};
+  for (const [key, value] of Object.entries(fieldMapping)) {
+    if (!key.trim()) continue;
+    const singleRef = /^\$\{([a-zA-Z_][\w.]*)\}$/.exec(value.trim());
+    if (singleRef) {
+      inputsValues[key] = { type: 'ref', content: singleRef[1]!.split('.') };
+    } else if (value.includes('${')) {
+      inputsValues[key] = { type: 'template', content: value };
+    } else {
+      inputsValues[key] = { type: 'constant', content: value };
+    }
+  }
+  return inputsValues;
+}
+
 function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
   // 递归过滤子节点中的系统节点,只保留业务节点和 block(分支容器)
   // 注意:flowgram 的 toNodeJSON 已经跳过了以 $ 开头的系统节点,
   // 但 block 节点(分支容器)不应以 $ 开头,否则也会被跳过。
   const filteredBlocks = (node.blocks ?? []).filter((b) => b && !isSystemNode(b));
 
+  const engineType = toEngineNodeType(node.type ?? '');
+  const data: Record<string, unknown> = {
+    title: node.data?.title ?? node.type,
+    ...(node.data ?? {}),
+  };
+
+  // 对象/批量操作：fieldMapping → inputsValues（引擎唯一消费的输入契约）。
+  // fieldMapping 保留原样供编辑器回显往返，inputsValues 每次导出重建；
+  // fieldMapping 未覆盖的既有键（API/种子创作的 ref 等）合并保留。
+  if (
+    (engineType === 'object_operation' || engineType === 'batch_operation') &&
+    data['fieldMapping'] &&
+    typeof data['fieldMapping'] === 'object' &&
+    Object.keys(data['fieldMapping'] as Record<string, string>).length > 0
+  ) {
+    const existing =
+      data['inputsValues'] &&
+      typeof data['inputsValues'] === 'object' &&
+      !Array.isArray(data['inputsValues'])
+        ? (data['inputsValues'] as Record<string, unknown>)
+        : {};
+    data['inputsValues'] = {
+      ...existing,
+      ...fieldMappingToInputsValues(data['fieldMapping'] as Record<string, string>),
+    };
+  }
+
   return {
     id: node.id,
-    type: toEngineNodeType(node.type) as WorkflowNode['type'],
+    type: engineType as WorkflowNode['type'],
     meta: node.meta ?? {},
-    data: {
-      title: node.data?.title ?? node.type,
-      ...(node.data ?? {}),
-    },
+    data,
     blocks: filteredBlocks.map(flowNodeToWorkflowNode),
     edges: node.edges?.map((e) => ({
       sourceNodeID: e.sourceNodeID,

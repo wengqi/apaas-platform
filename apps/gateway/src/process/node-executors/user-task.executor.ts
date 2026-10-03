@@ -84,21 +84,38 @@ export class UserTaskExecutor implements NodeExecutor {
       );
     }
 
-    await prisma.processTask.createMany({
-      data: targetUsers.map((uid) => ({
-        tenantId: ctx.tenantId,
-        instanceId: ctx.instance.id,
-        nodeExecutionId: ctx.nodeExecutionId,
-        nodeId: ctx.node.id,
-        taskName,
-        assignee: uid,
-        candidateGroups,
-        status: 'PENDING' as const,
-      })),
-    });
+    // 仅角色（指定角色模式）：创建一条无主任务行（assignee=null），
+    // 由任务中心按 candidateGroups（角色 ID）匹配角色成员展示/办理
+    // （A 旅程实测缺陷 #12：此前仅角色时 createMany 空数组——流程挂起但永无任务）。
+    const taskRows =
+      targetUsers.length > 0
+        ? targetUsers.map((uid) => ({
+            tenantId: ctx.tenantId,
+            instanceId: ctx.instance.id,
+            nodeExecutionId: ctx.nodeExecutionId,
+            nodeId: ctx.node.id,
+            taskName,
+            assignee: uid,
+            candidateGroups,
+            status: 'PENDING' as const,
+          }))
+        : [
+            {
+              tenantId: ctx.tenantId,
+              instanceId: ctx.instance.id,
+              nodeExecutionId: ctx.nodeExecutionId,
+              nodeId: ctx.node.id,
+              taskName,
+              assignee: null,
+              candidateGroups,
+              status: 'PENDING' as const,
+            },
+          ];
+
+    await prisma.processTask.createMany({ data: taskRows });
 
     this.logger.log(
-      `创建人工任务 ×${targetUsers.length}（节点 ${ctx.node.id}，模式=${approvalMode}），流程实例 ${ctx.instance.id}`,
+      `创建人工任务 ×${taskRows.length}（节点 ${ctx.node.id}，模式=${approvalMode}，角色数=${candidateGroups.length}），流程实例 ${ctx.instance.id}`,
     );
 
     // R1.3：pageId 等节点配置在 getTask 时从 WorkflowSchema 读取（无需落到任务行）

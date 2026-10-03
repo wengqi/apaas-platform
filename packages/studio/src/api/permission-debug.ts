@@ -57,5 +57,5 @@ const unwrap = <T>(p: Promise<{ data: ApiResponse<T> }>) => p.then((res) => res.
 export const permissionDebugApi = {
   /** 权限决策解释（只读调试，不落审计）。 */
   debug: (body: PermissionDebugRequest) =>
-    unwrap<PermissionDebugResult>(client.post('/api/permissions/debug', body)),
+    unwrap<PermissionDebugResult>(client.post('/api/v1/permissions/debug', body)),
 };

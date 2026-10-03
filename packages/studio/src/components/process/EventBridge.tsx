@@ -15,8 +15,41 @@ import {
   flowToWorkflowSchema,
   type FlowDocumentJSON,
 } from '../../../features/process/simplified/src/index.js';
+import type { FlowNodeJSON } from '../../../features/process/simplified/src/typings.js';
 import { useProcessEditorStore } from '../../stores/processEditor.js';
 import { reconcileConditionBranches, mergeConditionsIntoSchema } from './conditionBranchUtils.js';
+
+/** flowgram 结构性节点类型——extInfo 合并时跳过（其 data 由创建 JSON 携带）。 */
+const STRUCTURAL_NODE_TYPES = new Set([
+  'block',
+  'blockIcon',
+  'blockOrderIcon',
+  'inlineBlocks',
+  'root',
+]);
+
+/**
+ * 将业务节点的 extInfo 并入导出 doc 的 node.data。
+ *
+ * 配置侧栏经 flowNode.updateExtInfo(data) 写入（ConfigSidebar.handleNodeDataChange），
+ * 而 document.toJSON() 不含 extInfo——不并入则 fieldMapping/operation 等配置
+ * 全部丢失于导出路径（此前仅靠 store 直写补丁兜底，schema-serializer 的
+ * fieldMapping→inputsValues 转换也因此看不到 fieldMapping）。
+ */
+function mergeExtInfoIntoDocData(
+  nodes: FlowNodeJSON[],
+  getNode: (id: string) => FlowNodeEntity | undefined,
+): void {
+  for (const n of nodes) {
+    if (n && n.type && !STRUCTURAL_NODE_TYPES.has(n.type)) {
+      const extInfo = (getNode(n.id)?.getExtInfo?.() ?? {}) as Record<string, unknown>;
+      if (Object.keys(extInfo).length > 0) {
+        n.data = { ...(n.data ?? {}), ...extInfo };
+      }
+    }
+    if (n?.blocks) mergeExtInfoIntoDocData(n.blocks, getNode);
+  }
+}
 
 export function EventBridge({
   onSchemaChange,
@@ -31,6 +64,7 @@ export function EventBridge({
 
   const exportSchema = useCallback(() => {
     const doc = ctx.document.toJSON() as FlowDocumentJSON;
+    mergeExtInfoIntoDocData(doc.nodes ?? [], (id) => ctx.document.getNode(id));
     const schema = flowToWorkflowSchema(doc);
     for (const node of ctx.document.getAllNodes()) {
       if (node.flowNodeType === 'condition' || node.flowNodeType === 'inclusive') {

@@ -6,6 +6,7 @@
  * 产出 Record<string, string>(key=字段, value=模板字符串)。
  */
 
+import { useRef, useState } from 'react';
 import { Button, Input, Space } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 
@@ -40,10 +41,19 @@ export function FieldMapper({
   valuePlaceholder = '${record.field}',
   disabled = false,
 }: FieldMapperProps) {
-  const rows: MappingRow[] = Object.entries(value).map(([key, val]) => ({
-    key,
-    value: val,
-  }));
+  // 行状态本地持有：emit 只上送非空 key 的行，若直接从 value 反推行，
+  // 新增的空行（key 尚未填写）会在 emit 过滤后被丢弃——"添加映射"永远不生效。
+  // 外部变更时才重置本地行；比较必须按值而非引用——父层每次渲染经 schema
+  // 往返都会传入新对象，按引用比较会把刚添加的空行立即重置掉。
+  const [rows, setRows] = useState<MappingRow[]>(() =>
+    Object.entries(value).map(([key, val]) => ({ key, value: val })),
+  );
+  const lastEmittedSigRef = useRef(JSON.stringify(value));
+  const incomingSig = JSON.stringify(value);
+  if (lastEmittedSigRef.current !== incomingSig) {
+    lastEmittedSigRef.current = incomingSig;
+    setRows(Object.entries(value).map(([key, val]) => ({ key, value: val })));
+  }
 
   const emit = (next: MappingRow[]) => {
     const obj: Record<string, string> = {};
@@ -52,20 +62,32 @@ export function FieldMapper({
         obj[row.key.trim()] = row.value;
       }
     }
+    lastEmittedSigRef.current = JSON.stringify(obj);
     onChange?.(obj);
   };
 
   const updateRow = (index: number, patch: Partial<MappingRow>) => {
-    const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row));
-    emit(next);
+    setRows((prev) => {
+      const next = prev.map((row, i) => (i === index ? { ...row, ...patch } : row));
+      emit(next);
+      return next;
+    });
   };
 
   const addRow = () => {
-    emit([...rows, { key: '', value: '' }]);
+    setRows((prev) => {
+      const next = [...prev, { key: '', value: '' }];
+      emit(next);
+      return next;
+    });
   };
 
   const removeRow = (index: number) => {
-    emit(rows.filter((_, i) => i !== index));
+    setRows((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      emit(next);
+      return next;
+    });
   };
 
   return (

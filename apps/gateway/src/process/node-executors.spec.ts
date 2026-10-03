@@ -233,6 +233,32 @@ describe('UserTaskExecutor', () => {
       },
     ]);
   });
+
+  it('仅角色（无 assignee）：创建一条无主任务行供任务中心按角色匹配（#12）', async () => {
+    const ctx = makeCtx({
+      node: {
+        id: 'ut-role',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '角色审批', candidateGroups: ['role-9'] },
+      } as ExecutionContext['node'],
+    });
+    const result = await executor.execute(ctx);
+
+    expect(result.wait).toBe(true);
+    expect(result.output).toMatchObject({ assignees: [], approvalMode: 'single' });
+    const arg = prisma.processTask.createMany.mock.calls[0]?.[0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(arg.data).toHaveLength(1);
+    expect(arg.data[0]).toMatchObject({
+      taskName: '角色审批',
+      assignee: null,
+      candidateGroups: ['role-9'],
+      status: 'PENDING',
+      nodeId: 'ut-role',
+    });
+  });
 });
 
 describe('DelayExecutor', () => {

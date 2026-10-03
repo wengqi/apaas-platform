@@ -124,10 +124,25 @@ function createDefaultFetcher(): FetcherLike {
     const url = String(api['url'] ?? '');
     const payload = api['data'] as Record<string, unknown> | undefined;
     try {
-      if (method === 'get' || method === 'delete') {
+      if (method === 'get') {
         return adaptApiResponse(await apiClient.request({ method, url, params: payload }));
       }
-      return adaptApiResponse(await apiClient.request({ method, url, data: payload }));
+      const result = adaptApiResponse(
+        await apiClient.request({
+          method,
+          url,
+          data: payload,
+          params: method === 'delete' ? payload : undefined,
+        }),
+      );
+      // 写操作成功提示（H1b 兜底）：amis 裸 render() 的 notify 链路未接 UI
+      // （实测 form 提交成功无任何 toast）——在 fetcher 层对 POST/PUT/DELETE
+      // 成功直接弹 AntD message,不依赖 env.notify;查询 GET 保持静默。
+      if (result.ok) {
+        const apiMsgs = api['messages'] as { success?: string } | undefined;
+        message.success(apiMsgs?.success ?? '操作成功');
+      }
+      return result;
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
       return {
@@ -151,13 +166,6 @@ export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRen
       theme: 'antd',
       locale: 'zh-CN',
       fetcher: wrapFetcher(fetcher ?? createDefaultFetcher()),
-      // amis 裸 render() 的 env.notify 未接 UI（A 旅程实测提交成功静默无 toast）
-      // ——桥接到 AntD message,成功/失败反馈不再依赖页面自带 toast 组件
-      notify: (type: string, msg: string) => {
-        if (type === 'error') message.error(msg || '操作失败');
-        else if (type === 'warning') message.warning(msg || '注意');
-        else message.success(msg || '操作成功');
-      },
     }),
     [fetcher],
   );

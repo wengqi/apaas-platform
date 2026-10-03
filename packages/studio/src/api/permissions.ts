@@ -140,59 +140,60 @@ const unwrap = <T>(p: Promise<{ data: ApiResponse<T> }>) => p.then((res) => res.
 /** 角色 API。 */
 export const rolesApi = {
   list: (appId?: string) =>
-    unwrap<Role[]>(client.get('/api/permissions/roles', { params: { appId } })),
-  get: (id: string) => unwrap<Role>(client.get(`/api/permissions/roles/${id}`)),
-  create: (data: CreateRoleRequest) => unwrap<Role>(client.post('/api/permissions/roles', data)),
+    unwrap<Role[]>(client.get('/api/v1/permissions/roles', { params: { appId } })),
+  get: (id: string) => unwrap<Role>(client.get(`/api/v1/permissions/roles/${id}`)),
+  create: (data: CreateRoleRequest) => unwrap<Role>(client.post('/api/v1/permissions/roles', data)),
   update: (id: string, data: UpdateRoleRequest) =>
-    unwrap<Role>(client.put(`/api/permissions/roles/${id}`, data)),
-  delete: (id: string) => unwrap<void>(client.delete(`/api/permissions/roles/${id}`)),
-  getUsers: (id: string) => unwrap<UserInfo[]>(client.get(`/api/permissions/roles/${id}/users`)),
+    unwrap<Role>(client.put(`/api/v1/permissions/roles/${id}`, data)),
+  delete: (id: string) => unwrap<void>(client.delete(`/api/v1/permissions/roles/${id}`)),
+  getUsers: (id: string) => unwrap<UserInfo[]>(client.get(`/api/v1/permissions/roles/${id}/users`)),
   assignUsers: (id: string, userIds: string[]) =>
-    unwrap<void>(client.post(`/api/permissions/roles/${id}/users`, { userIds })),
+    unwrap<void>(client.post(`/api/v1/permissions/roles/${id}/users`, { userIds })),
   removeUser: (id: string, userId: string) =>
-    unwrap<void>(client.delete(`/api/permissions/roles/${id}/users/${userId}`)),
+    unwrap<void>(client.delete(`/api/v1/permissions/roles/${id}/users/${userId}`)),
   getRules: (id: string) =>
-    unwrap<PermissionRule[]>(client.get(`/api/permissions/roles/${id}/rules`)),
+    unwrap<PermissionRule[]>(client.get(`/api/v1/permissions/roles/${id}/rules`)),
   setRules: (id: string, rules: CreatePermissionRuleRequest[]) =>
-    unwrap<void>(client.put(`/api/permissions/roles/${id}/rules`, { rules })),
+    unwrap<void>(client.put(`/api/v1/permissions/roles/${id}/rules`, { rules })),
 };
 
 /** 组织架构 API。 */
 export const orgsApi = {
-  getTree: () => unwrap<OrgNode[]>(client.get('/api/permissions/orgs')),
-  getNode: (id: string) => unwrap<OrgNode>(client.get(`/api/permissions/orgs/${id}`)),
+  getTree: () => unwrap<OrgNode[]>(client.get('/api/v1/permissions/orgs')),
+  getNode: (id: string) => unwrap<OrgNode>(client.get(`/api/v1/permissions/orgs/${id}`)),
   create: (data: CreateOrgNodeRequest) =>
-    unwrap<OrgNode>(client.post('/api/permissions/orgs', data)),
+    unwrap<OrgNode>(client.post('/api/v1/permissions/orgs', data)),
   update: (id: string, data: UpdateOrgNodeRequest) =>
-    unwrap<OrgNode>(client.put(`/api/permissions/orgs/${id}`, data)),
-  delete: (id: string) => unwrap<void>(client.delete(`/api/permissions/orgs/${id}`)),
+    unwrap<OrgNode>(client.put(`/api/v1/permissions/orgs/${id}`, data)),
+  delete: (id: string) => unwrap<void>(client.delete(`/api/v1/permissions/orgs/${id}`)),
   move: (id: string, parentId: string) =>
-    unwrap<void>(client.post(`/api/permissions/orgs/${id}/move`, { parentId })),
-  getMembers: (id: string) => unwrap<UserInfo[]>(client.get(`/api/permissions/orgs/${id}/members`)),
+    unwrap<void>(client.post(`/api/v1/permissions/orgs/${id}/move`, { parentId })),
+  getMembers: (id: string) =>
+    unwrap<UserInfo[]>(client.get(`/api/v1/permissions/orgs/${id}/members`)),
   addMember: (id: string, userId: string) =>
-    unwrap<void>(client.post(`/api/permissions/orgs/${id}/members`, { userId })),
+    unwrap<void>(client.post(`/api/v1/permissions/orgs/${id}/members`, { userId })),
   removeMember: (id: string, userId: string) =>
-    unwrap<void>(client.delete(`/api/permissions/orgs/${id}/members/${userId}`)),
+    unwrap<void>(client.delete(`/api/v1/permissions/orgs/${id}/members/${userId}`)),
   grantRole: (id: string, roleId: string, appId?: string) =>
-    unwrap<void>(client.post(`/api/permissions/orgs/${id}/roles`, { roleId, appId })),
+    unwrap<void>(client.post(`/api/v1/permissions/orgs/${id}/roles`, { roleId, appId })),
   revokeRole: (id: string, roleId: string) =>
-    unwrap<void>(client.delete(`/api/permissions/orgs/${id}/roles/${roleId}`)),
+    unwrap<void>(client.delete(`/api/v1/permissions/orgs/${id}/roles/${roleId}`)),
   getRoleGrants: (id: string) =>
-    unwrap<OrgRoleGrant[]>(client.get(`/api/permissions/orgs/${id}/roles`)),
+    unwrap<OrgRoleGrant[]>(client.get(`/api/v1/permissions/orgs/${id}/roles`)),
 };
 
 /** 用户管理 API。 */
 export const usersApi = {
   list: (params?: { keyword?: string; orgId?: string; roleId?: string }) =>
-    unwrap<UserInfo[]>(client.get('/api/permissions/users', { params })),
-  get: (id: string) => unwrap<UserInfo>(client.get(`/api/permissions/users/${id}`)),
+    unwrap<UserInfo[]>(client.get('/api/v1/permissions/users', { params })),
+  get: (id: string) => unwrap<UserInfo>(client.get(`/api/v1/permissions/users/${id}`)),
   create: (data: CreateUserRequest) =>
-    unwrap<UserInfo>(client.post('/api/permissions/users', data)),
+    unwrap<UserInfo>(client.post('/api/v1/permissions/users', data)),
   update: (id: string, data: UpdateUserRequest) =>
-    unwrap<UserInfo>(client.put(`/api/permissions/users/${id}`, data)),
-  delete: (id: string) => unwrap<void>(client.delete(`/api/permissions/users/${id}`)),
+    unwrap<UserInfo>(client.put(`/api/v1/permissions/users/${id}`, data)),
+  delete: (id: string) => unwrap<void>(client.delete(`/api/v1/permissions/users/${id}`)),
   setRoles: (id: string, roleIds: string[]) =>
-    unwrap<void>(client.put(`/api/permissions/users/${id}/roles`, { roleIds })),
+    unwrap<void>(client.put(`/api/v1/permissions/users/${id}/roles`, { roleIds })),
   setOrgs: (id: string, orgIds: string[]) =>
-    unwrap<void>(client.put(`/api/permissions/users/${id}/orgs`, { orgIds })),
+    unwrap<void>(client.put(`/api/v1/permissions/users/${id}/orgs`, { orgIds })),
 };

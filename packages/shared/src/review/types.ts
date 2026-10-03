@@ -82,6 +82,8 @@ export interface ResourceVersionDto {
   reviewedBy: string | null;
   reviewedAt: string | null;
   reviewComment: string | null;
+  /** 批量提交组（submit_app_drafts 单波生成完整应用）；单资源提交为 null */
+  batchId: string | null;
   createdAt: string;
 }
 

@@ -130,6 +130,44 @@ export class ReviewController {
     return { ok: true as const, data: result };
   }
 
+  @Post(':appId/reviews/batch/:batchId/approve')
+  @RequirePermission('PAGE', 'MANAGE', 'appId')
+  @ApiOperation({ summary: '批量批准：对象→页面→流程拓扑序落地并解析 @ref: 引用令牌' })
+  async approveBatch(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('batchId') batchId: string,
+    @Body() dto: ApproveSubmissionDto,
+  ): Promise<{ ok: true; data: ResourceVersionDto[] }> {
+    const versions = await this.reviewService.approveBatch(
+      requireTenantId(req),
+      appId,
+      batchId,
+      req.user.id,
+      dto,
+    );
+    return { ok: true as const, data: versions };
+  }
+
+  @Post(':appId/reviews/batch/:batchId/reject')
+  @RequirePermission('PAGE', 'MANAGE', 'appId')
+  @ApiOperation({ summary: '批量驳回：批次内全部待审单级联驳回' })
+  async rejectBatch(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('batchId') batchId: string,
+    @Body() dto: RejectSubmissionDto,
+  ): Promise<{ ok: true; data: { rejected: number } }> {
+    const result = await this.reviewService.rejectBatch(
+      requireTenantId(req),
+      appId,
+      batchId,
+      req.user.id,
+      dto.comment,
+    );
+    return { ok: true as const, data: result };
+  }
+
   @Post(':appId/reviews/:submissionId/approve')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   @ApiOperation({ summary: '批准：快照落活表（活表偏离基线时需 force）' })

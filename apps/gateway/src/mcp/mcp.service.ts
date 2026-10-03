@@ -18,7 +18,7 @@ import { SchemaContractService } from '../schema-contract/schema-contract.servic
 import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
-import { ReviewService } from '../review/review.service.js';
+import { ReviewService, collectRefTokens, type AiDraftInput } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
 import { writeAudit } from '../common/audit.js';
 
@@ -329,6 +329,174 @@ export class McpService {
   }
 
   // ===========================================================================
+  // 批量提交（资源依赖链单波进审：submit_app_drafts）
+  // ===========================================================================
+
+  /**
+   * 批量提交完整应用草稿：全部资源校验通过后以共享 batchId 进审。
+   * 跨资源引用以令牌占位：页面 objectId = "@ref:object:<apiName>"（由
+   * objectApiName 解析），流程 user_task.pageId = "@ref:page:<apiName>"。
+   * 引用目标必须在本批或活表中存在，否则整批拒绝（不留半批草稿）。
+   */
+  async submitAppDrafts(
+    tenantId: string,
+    userId: string,
+    args: {
+      appId: string;
+      objects: Array<Record<string, unknown>>;
+      pages: Array<Record<string, unknown>>;
+      processes: Array<Record<string, unknown>>;
+    },
+  ): Promise<McpToolResult> {
+    const { appId, objects, pages, processes } = args;
+    if (objects.length + pages.length + processes.length === 0) {
+      return { ok: false, hint: '批量提交至少包含一项资源（objects/pages/processes 任一非空）' };
+    }
+
+    const batchObjectApiNames = new Set(objects.map((o) => String(o['apiName'] ?? '')));
+    const batchPageApiNames = new Set(pages.map((p) => String(p['apiName'] ?? '')));
+
+    // 1) 对象逐项 G3 校验
+    for (const obj of objects) {
+      const meta = {
+        apiName: String(obj['apiName'] ?? ''),
+        name: String(obj['name'] ?? ''),
+        fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
+      };
+      const check = this.schemaContract.validate('object_meta', meta);
+      if (!check.valid) return this.rejected(check);
+    }
+
+    // 2) 页面逐项 G3 校验 + objectApiName 引用解析（活表对象 → 真实 ID；本批对象 → 令牌）
+    const liveObjects = await this.objectService.list(tenantId, appId);
+    const liveObjectIdsByApiName = new Map(liveObjects.map((o) => [o.apiName, o.id]));
+    for (const page of pages) {
+      const check = this.schemaContract.validate('amis_page', page['schema']);
+      if (!check.valid) return this.rejected(check);
+    }
+
+    // 3) 流程逐项 G3 校验 + @ref:page 令牌目标校验（pageIds 白名单 = 活表页面 ID ∪ 合法令牌）
+    const livePages = await this.pageService.list(tenantId, appId);
+    const livePageIdsByApiName = new Map(livePages.map((p) => [p.apiName, p.id]));
+    const tokenWhitelist = new Set<string>(livePages.map((p) => p.id));
+    for (const proc of processes) {
+      const tokens = collectRefTokens(proc['workflowSchema']);
+      for (const token of tokens) {
+        const apiName = token.replace(/^@ref:page:/, '');
+        if (!batchPageApiNames.has(apiName) && !livePageIdsByApiName.has(apiName)) {
+          return {
+            ok: false,
+            hint: `流程「${String(proc['name'] ?? '')}」引用的页面令牌 ${token} 无效：既不在本批 pages 中，也不是应用的已有页面`,
+          };
+        }
+        tokenWhitelist.add(token);
+      }
+      const check = this.schemaContract.validate('workflow', proc['workflowSchema'], {
+        pageIds: tokenWhitelist,
+      });
+      if (!check.valid) return this.rejected(check);
+    }
+
+    // 4) 组装 AiDraftInput 批量载荷（引用令牌原样入快照，批准时拓扑解析）
+    const items: AiDraftInput[] = [];
+    for (const obj of objects) {
+      items.push({
+        module: 'OBJECT',
+        appId,
+        apiName: String(obj['apiName']),
+        name: String(obj['name']),
+        entityId: obj['objectId'] ? String(obj['objectId']) : undefined,
+        snapshot: {
+          apiName: String(obj['apiName']),
+          name: String(obj['name']),
+          description: obj['description'] ? String(obj['description']) : undefined,
+          icon: obj['icon'] ? String(obj['icon']) : undefined,
+          fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
+        },
+      });
+    }
+    for (const page of pages) {
+      const objectApiName = page['objectApiName'] ? String(page['objectApiName']) : null;
+      let objectId: string | null = page['objectId'] ? String(page['objectId']) : null;
+      if (objectApiName) {
+        const live = liveObjectIdsByApiName.get(objectApiName);
+        if (live) objectId = live;
+        else if (batchObjectApiNames.has(objectApiName)) objectId = `@ref:object:${objectApiName}`;
+        else {
+          return {
+            ok: false,
+            hint: `页面「${String(page['name'] ?? '')}」的 objectApiName "${objectApiName}" 无效：既不在本批 objects 中，也不是应用的已有对象`,
+          };
+        }
+      }
+      items.push({
+        module: 'PAGE',
+        appId,
+        apiName: String(page['apiName']),
+        name: String(page['name']),
+        entityId: page['pageId'] ? String(page['pageId']) : undefined,
+        snapshot: {
+          apiName: String(page['apiName']),
+          name: String(page['name']),
+          type: page['type'] ? String(page['type']) : 'custom',
+          objectId,
+          schema: (page['schema'] as Record<string, unknown>) ?? {},
+        },
+      });
+    }
+    for (const proc of processes) {
+      items.push({
+        module: 'PROCESS',
+        appId,
+        apiName: String(proc['apiName']),
+        name: String(proc['name']),
+        entityId: proc['processId'] ? String(proc['processId']) : undefined,
+        snapshot: {
+          apiName: String(proc['apiName']),
+          name: String(proc['name']),
+          workflowSchema: (proc['workflowSchema'] as Record<string, unknown>) ?? {},
+          triggerType: proc['triggerType'] ? String(proc['triggerType']) : 'MANUAL',
+          cron: null,
+        },
+      });
+    }
+
+    // 5) 单波进审（共享 batchId）
+    const { batchId, rows } = await this.reviewService.submitAiBatch(
+      tenantId,
+      { appId, items },
+      userId,
+    );
+    for (const row of rows) {
+      this.auditDraft(
+        tenantId,
+        userId,
+        appId,
+        row.module,
+        row.id,
+        row.entityId ? 'update' : 'create',
+      );
+    }
+    this.logger.log(`MCP 批量草稿待审: batch=${batchId} ×${rows.length} by ${userId}`);
+    return {
+      ok: true,
+      batchId,
+      submissions: rows.map((r) => ({
+        id: r.id,
+        module: r.module,
+        apiName: r.apiName,
+        name: r.name,
+        versionNumber: r.versionNumber,
+        status: r.status,
+      })),
+      hint:
+        `整批 ${rows.length} 项已进入待审队列（共享 batchId=${batchId}）。` +
+        `人工在审核中心对该批次一键批准（按 对象→页面→流程 顺序落地并自动解析 @ref: 引用）；` +
+        `轮询 list_review_submissions(appId="${appId}") 跟踪进度，REJECTED 单的 reviewComment 是驳回意见`,
+    };
+  }
+
+  // ===========================================================================
   // 治理轨道查询（agent 闭环：读取审批结果与驳回意见）
   // ===========================================================================
 
@@ -344,11 +512,12 @@ export class McpService {
         versionNumber: s.versionNumber,
         status: s.status,
         source: s.source,
+        batchId: s.batchId,
         diffSummary: s.diff.summary,
         reviewComment: s.reviewComment,
         submittedAt: s.createdAt,
       })),
-      hint: 'PENDING=待人审；REJECTED 含 reviewComment（人类驳回意见，按意见修正后重新 submit）',
+      hint: 'PENDING=待人审（batchId 非空=批量组，审核中心一键整批处置）；REJECTED 含 reviewComment（人类驳回意见，按意见修正后重新 submit）',
     };
   }
 

@@ -8,11 +8,23 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Button, Card, Table, Tabs } from 'antd';
+import {
+  Button,
+  Card,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Table,
+  Tabs,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
 import { qk, reviewAffectedKeys } from '@apaas/shared/stores';
 import { reviewsApi } from '../api/reviews.js';
@@ -21,7 +33,121 @@ import DirtyResourcesTable from './review-center/DirtyResourcesTable.js';
 import VersionHistoryModal from './review-center/VersionHistoryModal.js';
 import { ModuleTag, SourceTag, StatusTag } from './review-center/labels.js';
 
+const { Text } = Typography;
+
 type TabKey = 'pending' | 'handled' | 'dirty';
+
+/**
+ * 批量提交组操作条（submit_app_drafts 单波进审的资源链）。
+ * 一键批准 = 对象→页面→流程拓扑序落地 + @ref: 引用令牌解析；
+ * 批量驳回级联整批（防半批落地的悬挂引用）。
+ */
+function BatchBar({ appId, pending }: { appId: string; pending: ResourceVersionListItemDto[] }) {
+  const queryClient = useQueryClient();
+
+  const batches = useMemo(() => {
+    const byBatch = new Map<string, ResourceVersionListItemDto[]>();
+    for (const item of pending) {
+      if (!item.batchId) continue;
+      const list = byBatch.get(item.batchId) ?? [];
+      list.push(item);
+      byBatch.set(item.batchId, list);
+    }
+    return [...byBatch.entries()];
+  }, [pending]);
+
+  const refresh = () => {
+    for (const key of reviewAffectedKeys(appId)) {
+      void queryClient.invalidateQueries({ queryKey: key });
+    }
+  };
+
+  const approveMutation = useMutation({
+    mutationFn: (batchId: string) => reviewsApi.approveBatch(appId, batchId),
+    onSuccess: (rows) => {
+      message.success(`批量批准成功（${rows.length} 项资源已按依赖顺序落地）`);
+      refresh();
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ batchId, comment }: { batchId: string; comment: string }) =>
+      reviewsApi.rejectBatch(appId, batchId, comment),
+    onSuccess: (res) => {
+      message.success(`批量驳回（${res.rejected} 项）`);
+      refresh();
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
+  const rejectWithComment = (batchId: string) => {
+    let comment = '';
+    Modal.confirm({
+      title: '批量驳回该批次？',
+      content: (
+        <Input.TextArea
+          placeholder="驳回意见（必填，将回传提交者）"
+          rows={3}
+          onChange={(e) => {
+            comment = e.target.value;
+          }}
+        />
+      ),
+      okText: '确认驳回',
+      okType: 'danger',
+      onOk: async () => {
+        if (!comment.trim()) {
+          message.warning('请填写驳回意见');
+          throw new Error('comment required'); // 抛错保持弹窗开启
+        }
+        await rejectMutation.mutateAsync({ batchId, comment: comment.trim() });
+      },
+    });
+  };
+
+  if (batches.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {batches.map(([batchId, items]) => (
+        <div
+          key={batchId}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '8px 12px',
+            background: '#f6f8fa',
+            borderRadius: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Tag icon={<ThunderboltOutlined />} color="geekblue">
+            批量提交
+          </Tag>
+          <Text style={{ flex: 1 }} ellipsis={{ tooltip: items.map((i) => i.name).join('、') }}>
+            {items.length} 项资源：{items.map((i) => i.name).join('、')}
+          </Text>
+          <Space>
+            <Popconfirm
+              title="一键批准整个批次？"
+              description="将按 对象→页面→流程 顺序落地并自动解析跨资源引用"
+              onConfirm={() => approveMutation.mutate(batchId)}
+            >
+              <Button type="primary" size="small" loading={approveMutation.isPending}>
+                一键批准
+              </Button>
+            </Popconfirm>
+            <Button danger size="small" onClick={() => rejectWithComment(batchId)}>
+              批量驳回
+            </Button>
+          </Space>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function SubmissionTable({
   appId,
@@ -44,7 +170,20 @@ function SubmissionTable({
       width: 90,
       render: (module: ResourceVersionListItemDto['module']) => <ModuleTag module={module} />,
     },
-    { title: '资源名', dataIndex: 'name' },
+    {
+      title: '资源名',
+      dataIndex: 'name',
+      render: (_, record) => (
+        <span>
+          {record.batchId && (
+            <Tag color="geekblue" style={{ marginRight: 6 }}>
+              批次
+            </Tag>
+          )}
+          {record.name}
+        </span>
+      ),
+    },
     {
       title: '来源',
       dataIndex: 'source',
@@ -172,13 +311,16 @@ export default function ReviewCenter() {
     >
       <Tabs activeKey={tab} items={items} onChange={(k) => setTab(k as TabKey)} />
       {tab === 'pending' && (
-        <SubmissionTable
-          appId={appId}
-          items={pending}
-          isLoading={pendingLoading}
-          onOpen={setSelected}
-          showReviewResult={false}
-        />
+        <>
+          <BatchBar appId={appId} pending={pending} />
+          <SubmissionTable
+            appId={appId}
+            items={pending}
+            isLoading={pendingLoading}
+            onOpen={setSelected}
+            showReviewResult={false}
+          />
+        </>
       )}
       {tab === 'handled' && (
         <SubmissionTable

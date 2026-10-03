@@ -19,14 +19,10 @@ import type { FlowNodeJSON } from '../../../features/process/simplified/src/typi
 import { useProcessEditorStore } from '../../stores/processEditor.js';
 import { reconcileConditionBranches, mergeConditionsIntoSchema } from './conditionBranchUtils.js';
 
-/** flowgram 结构性节点类型——extInfo 合并时跳过（其 data 由创建 JSON 携带）。 */
-const STRUCTURAL_NODE_TYPES = new Set([
-  'block',
-  'blockIcon',
-  'blockOrderIcon',
-  'inlineBlocks',
-  'root',
-]);
+/** flowgram 结构性节点类型——extInfo 合并时跳过（blockIcon 等纯布局件）。
+ *  注意 block（分支容器）参与合并：其 extInfo.title 是分支名（重命名后经
+ *  reconcile 同步），serializer 的条件分支 edge.label 依赖它（#17）。 */
+const STRUCTURAL_NODE_TYPES = new Set(['blockIcon', 'blockOrderIcon', 'inlineBlocks', 'root']);
 
 /**
  * 将业务节点的 extInfo 并入导出 doc 的 node.data。

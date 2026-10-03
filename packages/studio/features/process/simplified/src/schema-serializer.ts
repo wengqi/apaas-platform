@@ -132,11 +132,17 @@ function generateEdgesFromTree(
       for (const block of nodeBlocks) {
         if (!block) continue;
 
-        // 父节点 → 分支容器（条件分支：设置 label 用于执行路由匹配）
+        // 父节点 → 分支容器（条件分支：edge.label = 分支名）
+        // #17：ConditionExecutor 按 conditions[].label 匹配出边——block 只有
+        // data.title（与分支名同源），此前取不存在的 data.label 落到 block.id，
+        // 运行时永远匹配不上而降级第一条出边（驳回被误写"已完成"的根因）。
         edges.push({
           sourceNodeID: node.id,
           targetNodeID: block.id,
-          label: (block.data?.['label'] as string | undefined) ?? block.id,
+          label:
+            (block.data?.['label'] as string | undefined) ??
+            (block.data?.['title'] as string | undefined) ??
+            block.id,
         });
 
         // block 的子节点:递归处理

@@ -144,7 +144,17 @@ export default function UserTaskConfigForm({
       <Form.Item label="审批人类型" required>
         <Select
           value={data.assigneeType}
-          onChange={(v) => update({ assigneeType: v })}
+          onChange={(v) => {
+            const patch: Partial<UserTaskConfigData> = { assigneeType: v };
+            // 类型切离"指定用户"时，多人审批模式（approveUsers 路径）无意义 → 回落单人
+            if (
+              v !== 'USER' &&
+              ['COUNTERSIGN', 'OR_SIGN', 'SEQUENTIAL'].includes(data.approvalMode ?? '')
+            ) {
+              patch.approvalMode = 'SINGLE';
+            }
+            update(patch);
+          }}
           options={ASSIGNEE_TYPE_OPTIONS}
         />
       </Form.Item>
@@ -227,7 +237,13 @@ export default function UserTaskConfigForm({
             }
             update(patch);
           }}
-          options={APPROVAL_MODE_OPTIONS}
+          // 多人审批模式只对"指定用户"有意义（approveUsers 数组路径）——
+          // 角色/组织/表单字段类型选会签会在运行时报"approveUsers 为空"
+          options={
+            assigneeType === 'USER'
+              ? APPROVAL_MODE_OPTIONS
+              : APPROVAL_MODE_OPTIONS.filter((o) => o.value === 'SINGLE')
+          }
         />
       </Form.Item>
       <Form.Item label="任务表单(可选)">
@@ -261,7 +277,9 @@ export default function UserTaskConfigForm({
       </Divider>
       <Form.Item label="允许驳回">
         <Select
-          value={data.allowReject ? 'true' : 'false'}
+          // #16：默认允许（undefined→'true'）——审批语义默认应可驳回；
+          // 显式 false 才是不允许（引擎 completeTask 同口径：仅 === false 拦截）
+          value={data.allowReject === false ? 'false' : 'true'}
           onChange={(v) =>
             update({
               allowReject: v === 'true',
@@ -269,12 +287,12 @@ export default function UserTaskConfigForm({
             })
           }
           options={[
-            { label: '不允许', value: 'false' },
             { label: '允许驳回', value: 'true' },
+            { label: '不允许', value: 'false' },
           ]}
         />
       </Form.Item>
-      {data.allowReject && (
+      {data.allowReject === true && (
         <Form.Item label="驳回目标节点" required>
           <Select
             value={data.rejectToNodeId}

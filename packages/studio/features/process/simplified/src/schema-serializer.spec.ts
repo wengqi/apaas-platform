@@ -105,3 +105,41 @@ describe('flowToWorkflowSchema fieldMapping → inputsValues', () => {
     expect(op2?.data?.['fieldMapping']).toEqual(op1?.data?.['fieldMapping']);
   });
 });
+
+describe('条件分支 edge label（#17 契约修复）', () => {
+  it('条件→分支容器的边 label 取分支名（block.data.title），供执行器路由匹配', () => {
+    const doc = {
+      nodes: [
+        { id: 'start_0', type: 'start', data: { title: '开始' } },
+        {
+          id: 'condition_1',
+          type: 'condition',
+          data: { title: '条件分支' },
+          blocks: [
+            {
+              id: 'ifBlock_condition_1',
+              type: 'block',
+              data: { title: '条件成立', isElse: false },
+            },
+            {
+              id: 'elseBlock_condition_1',
+              type: 'block',
+              data: { title: '默认分支', isElse: true },
+            },
+          ],
+        },
+        { id: 'end_0', type: 'end', data: { title: '结束' } },
+      ],
+    } as unknown as FlowDocumentJSON;
+    const schema = flowToWorkflowSchema(doc);
+    const labels = schema.edges
+      .filter((e) => e.sourceNodeID === 'condition_1')
+      .map((e) => ({ label: e.label, target: e.targetNodeID }));
+    // 此前 label 落到 block.id（如 ifBlock_condition_1），执行器按
+    // conditions[].label（分支名）匹配永远失败 → 降级第一条出边
+    expect(labels).toEqual([
+      { label: '条件成立', target: 'ifBlock_condition_1' },
+      { label: '默认分支', target: 'elseBlock_condition_1' },
+    ]);
+  });
+});

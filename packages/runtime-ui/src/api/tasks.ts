@@ -33,6 +33,11 @@ export interface ProcessTask {
   };
   /** 审批节点绑定的页面 ID（R1.3，无绑定为 null → 回退默认审批 UI）。 */
   boundPageId?: string | null;
+  /** #16：节点是否允许驳回（undefined=允许）——任务中心据此禁用拒绝按钮。 */
+  allowReject?: boolean;
+  /** #15：申请内容字段标签（apiName→label，触发对象字段定义）——
+   *  未绑定审批页时把 inputs 从裸 key 渲染成友好键值表。 */
+  inputFieldLabels?: Record<string, string>;
   /** R1.4：审批页按环境 bundle 渲染所需上下文（getTask 详情返回，随 processDef 恒存在）。 */
   appId: string;
   runtimeEnv?: string;

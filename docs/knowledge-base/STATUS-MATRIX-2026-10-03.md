@@ -81,3 +81,19 @@
 3. #16 驳回禁用时按钮应禁用+提示；驳回链路端到端复验
 4. #14 成功 toast 双弹（amis/AntD 页均现，疑事件双触发）
 5. roles v1 路径修复的权限页回归（管理员路径行为不变，建议 e2e 补一条 builder 读角色列表）
+
+---
+
+# 追加批次二 — 遗留四项处置 + #17 路由断裂（同日深夜）
+
+> 处置旅程遗留 #8/#14/#15/#16；验证驳回链路挖出 #17 条件分支路由断裂（前两轮"通过"验证实为降级碰巧正确）。应用 0.1.4 复验：**驳回端到端首次真实走通**（扫描仪→已驳回）。
+
+| 修复 | 层 | 验证 |
+|---|---|---|
+| #17 条件分支 edge label 契约（label=title 同源）+ block extInfo 并入导出 | studio serializer/EventBridge | spec + 落库断言 + 驳回端到端（轨迹走 elseBlock） |
+| #16 allowReject 全链路（引擎强制/默认允许/getTask 下发/前端禁用） | gateway engine+service / runtime-ui | 单测 ×2 + 拒绝实测 + 默认值确认 |
+| #15 审批申请内容友好渲染（inputFieldLabels + inputs 摊平） | gateway getTask / runtime-ui TaskCenter | 实测中文标签键值表 |
+| #8 加号常显 + 审批模式按类型联动 | studio ApaasAdder / UserTaskConfigForm | 视觉 + 下拉联动实测 |
+
+质量：gateway **701**（+2）/ studio **119**（+1）。#14 toast 双弹定性关闭（自动化双击）。
+遗留：审批页"生成模板并绑定"、user 字段值显示用户名、完整驳回禁用 e2e（引擎有单测）。

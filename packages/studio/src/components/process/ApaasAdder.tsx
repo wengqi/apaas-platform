@@ -117,22 +117,25 @@ export function ApaasAdder(props: {
       placement="right"
       overlayStyle={{ padding: 0 }}
     >
+      {/* #8：加号常显（此前 8px 灰点 + 悬停才变大，零知识用户完全发现不了
+          添加入口）。非悬停态以 0.45 透明度弱化，悬停/打开时全亮。 */}
       <div
         style={{
-          width: props.hoverActivated ? 20 : 8,
-          height: props.hoverActivated ? 20 : 8,
+          width: 20,
+          height: 20,
           borderRadius: '50%',
-          background: props.hoverActivated ? '#fff' : '#d9d9d9',
-          border: props.hoverActivated ? '2px solid #1677ff' : 'none',
+          background: '#fff',
+          border: '2px solid #1677ff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
           margin: '4px auto',
-          transition: 'all 0.15s ease',
+          transition: 'opacity 0.15s ease',
+          opacity: props.hoverActivated || popoverOpen ? 1 : 0.45,
         }}
       >
-        {props.hoverActivated && <PlusOutlined style={{ fontSize: 10, color: '#1677ff' }} />}
+        <PlusOutlined style={{ fontSize: 10, color: '#1677ff' }} />
       </div>
     </Popover>
   );

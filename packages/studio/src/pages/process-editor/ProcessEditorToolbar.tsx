@@ -7,6 +7,7 @@
 import { Button, Popconfirm, Space, Tag, Tooltip, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
+  EditOutlined,
   EyeOutlined,
   SaveOutlined,
   SendOutlined,
@@ -128,6 +129,19 @@ export default function ProcessEditorToolbar({
           <Button icon={<SaveOutlined />} size="small" loading={saving} onClick={onSave}>
             保存
           </Button>
+        )}
+        {/* 已发布流程不可直接改，但保留迭代入口（#13：后端更新即回退草稿，
+            运行环境仍用已发布版本直至下次应用发布） */}
+        {readonly && (
+          <Popconfirm
+            title="转为草稿编辑"
+            description="流程将回到草稿态继续迭代；运行环境仍使用已发布版本，直至下次发布"
+            onConfirm={onSave}
+          >
+            <Button type="primary" ghost icon={<EditOutlined />} size="small" loading={saving}>
+              转为草稿编辑
+            </Button>
+          </Popconfirm>
         )}
         {!readonly && (
           <Popconfirm

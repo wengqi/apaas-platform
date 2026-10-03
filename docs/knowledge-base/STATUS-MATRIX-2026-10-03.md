@@ -39,3 +39,45 @@
 3. 批准事件回调（替代 agent 轮询）
 4. 低优先：publish 字段可发现性 / records data.data 双层 / tasks 列表字段名 / 审核角色分离策略
 5. 测试数据待清理：demo 租户 mcp_polish_leave 应用 + 资产管理 mcp_test_feedback PENDING 草稿
+
+---
+
+# 追加批次 — 零知识 UI 旅程两轮（同日）
+
+> 本批次：A/B 角色扮演两轮——①纯 UI 零知识从零建「设备报修」应用（对象/页面/发布/运行）；②流程画布补走（审批流+状态回写运行时闭环）。修 7 / 列 9。
+> 实现记录：`ROLEPLAY-NEWBIE-JOURNEY-2026-10-03.md`。
+
+## 主线验证矩阵（第二轮：流程全链路，真实浏览器执行）
+
+| 步骤 | 结果 | 步骤 | 结果 |
+|---|---|---|---|
+| 画布加节点（连线加号+RAQB 条件） | ✅（#8 可发现性待规划） | builder 提交报修 → 自动触发 | ✅ WAITING_USER_TASK |
+| 条件分支 decision==APPROVED（RAQB→JsonLogic） | ✅ 落库 | 角色任务（candidateGroups=租户管理员） | ✅ assignee=null 任务行（#12b 修复） |
+| 对象操作映射 recordId/status | ✅ inputsValues 落库（#10 修复） | admin 任务中心批准 | ✅ 待办→已办 |
+| 流程发布 v3 + 应用 0.1.3 | ✅ | **状态回写 待处理→已完成，实例 COMPLETED** | ✅ 端到端 |
+
+## 修复矩阵（追加）
+
+| 修复 | 层 | 验证 |
+|---|---|---|
+| H1b 提交成功 toast（fetcher 层兜底，替代 notify 桥） | runtime-ui | 实测“操作成功” |
+| #10 fieldMapping→inputsValues 转换 + extInfo 并入导出（配置丢失根因） | studio serializer/EventBridge | spec 4 + 落库 schema 断言 + 运行时回写成功 |
+| #11 FieldMapper 空行保留 | studio | A 实操加行成功 |
+| #12 角色审批契约四连（UI 下拉写角色ID/引擎无主任务行/roles URL v1/列表权限） | studio+gateway | spec 1(gateway) + 端到端角色任务批准 |
+| #13 已发布流程“转为草稿编辑”入口 | studio toolbar | A 实操 0.1.3 迭代 |
+| H1/H2/H3/M1/M2/M4（第一轮，见旅程文档） | 多层 | 详见旅程文档 |
+
+## 质量指标（追加后）
+
+| 指标 | 数值 |
+|---|---|
+| 单元测试 | gateway **699**（+1）/ studio **118**（+4）/ db 55 / shared 17 全绿 |
+| typecheck / lint | 全绿 |
+
+## 遗留（第二轮新增，优先级序）
+
+1. #8 加节点入口可发现性（交互设计：常显加号/右键/工具栏）
+2. #15 审批页模板+绑定引导（申请内容现在渲染原始 JSON）
+3. #16 驳回禁用时按钮应禁用+提示；驳回链路端到端复验
+4. #14 成功 toast 双弹（amis/AntD 页均现，疑事件双触发）
+5. roles v1 路径修复的权限页回归（管理员路径行为不变，建议 e2e 补一条 builder 读角色列表）

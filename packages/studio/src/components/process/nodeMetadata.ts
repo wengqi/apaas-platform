@@ -24,12 +24,14 @@ export function checkNodeIncomplete(type: string, data: Record<string, unknown>)
     case 'user_task':
       // 评审整改：配置表单(UserTaskConfigForm)写入 assignee/assigneeType/approvalMode，
       // 历史数据可能存 assigneeId —— 两者任一有值即视为已配置审批人；
-      // 会签/或签路径写 approveUsers 数组（成员多选器）。
+      // 会签/或签路径写 approveUsers 数组（成员多选器）；
+      // 指定角色写 candidateGroups 数组（角色 ID，#12 修复）。
       // 保留判定强度：审批人 + 审批模式 都有值才算完成。
       return (
         !(
           data.assignee ||
           data.assigneeId ||
+          (Array.isArray(data.candidateGroups) && data.candidateGroups.length > 0) ||
           (Array.isArray(data.approveUsers) && data.approveUsers.length > 0)
         ) || !data.approvalMode
       );
@@ -73,19 +75,22 @@ export function getNodeSummary(type: string, data: Record<string, unknown>): str
     }
     case 'userTask': {
       // QA 交互评审（2026-10-03）：摘要优先显示成员选择器缓存的姓名
-      // （assigneeName/assigneeNames），历史数据回退原始 assignee（ID）。
+      // （assigneeName/assigneeNames/roleName），历史数据回退原始 assignee（ID）。
       const names = data.assigneeNames as string[] | undefined;
       const assigneeName = data.assigneeName as string;
       const rawAssignee = data.assignee as string;
+      const roleName = data.roleName as string;
       const assigneeTypeLabel = toOptionLabel(ASSIGNEE_TYPE_OPTIONS, data.assigneeType as string);
       const approvalModeLabel = toOptionLabel(APPROVAL_MODE_OPTIONS, data.approvalMode as string);
       const parts: string[] = [];
       const approverLabel =
         names && names.length > 0
           ? names.join('、')
-          : assigneeName || rawAssignee
-            ? `审批人: ${assigneeName || rawAssignee}`
-            : '';
+          : roleName
+            ? `角色: ${roleName}`
+            : assigneeName || rawAssignee
+              ? `审批人: ${assigneeName || rawAssignee}`
+              : '';
       if (approverLabel) parts.push(approverLabel);
       if (assigneeTypeLabel) parts.push(assigneeTypeLabel);
       if (approvalModeLabel) parts.push(approvalModeLabel);

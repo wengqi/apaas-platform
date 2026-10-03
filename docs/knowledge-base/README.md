@@ -51,7 +51,7 @@
 | [POLISH-ACCEPTANCE-APP-2026-10-02](./POLISH-ACCEPTANCE-APP-2026-10-02.md) | 2026-10-02 | 验收应用真实使用打磨（browser-use 实操走查修复 5 缺陷：select 阻断/盲审 data 遮蔽/图表空白/编号缺失；amis fetcher ok 契约与 chart adaptor 正确形态）|
 | [AI-FIRST-POLISH-2026-10-03](./AI-FIRST-POLISH-2026-10-03.md) | 2026-10-03 | AI 第一公民主线打磨第一轮（方法论=主线纵深打磨；八步全链路验证 + 摩擦点 13 项清单（修 6 列 7）+ MCP 参数守卫/create_application/JWT refresh 修复明细 + ZCode 接入指引）|
 | [STATUS-MATRIX-2026-10-03](./STATUS-MATRIX-2026-10-03.md) | 2026-10-03 | 状态矩阵（主线打磨第一轮：八步全通 + 修 6 列 7 + gateway 单测 698；下一轮最高价值=资源依赖链批量提交）|
-| [ROLEPLAY-NEWBIE-JOURNEY-2026-10-03](./ROLEPLAY-NEWBIE-JOURNEY-2026-10-03.md) | 2026-10-03 | 零知识用户 A/B 旅程(纯 UI 新手可用性):闭环达成;修 5 项(表单反馈/选项 UUID/发布人 ID/API 名转写/按钮文案)+H1b toast 未竟;vite preview 非 dev 等工程坑 |
+| [ROLEPLAY-NEWBIE-JOURNEY-2026-10-03](./ROLEPLAY-NEWBIE-JOURNEY-2026-10-03.md) | 2026-10-03 | 零知识用户 A/B 旅程两轮:①纯 UI 建应用闭环(修 5);②流程画布全链路——审批流+条件分支+状态回写运行时闭环(修 7:H1b toast/fieldMapping→inputsValues 契约/extInfo 并入导出/FieldMapper 死循环/角色审批四连根因/转草稿入口);遗留 #8 可发现性/#15 审批页模板/#16 驳回按钮;extInfo 不进 toJSON 等工程坑 |
 
 ## 文档维护规则
 

@@ -5,17 +5,25 @@
  * （对齐飞书 aPaaS/钉钉审批的成员选择交互）——搭建者不应被要求知道内部用户 ID。
  * 会签/或签/依次模式暴露 approveUsers 多选（引擎 UserTaskExecutor 消费的数组字段，
  * 此前面板未提供，只能靠 API 写入）。
+ *
+ * A 旅程实测缺陷（2026-10-03 #12）：指定角色此前是「手输角色编码」自由文本，
+ * 且写入引擎按用户 ID 解释的 assignee 字段——运行时报"人工任务无受理人"。
+ * 改为角色下拉（值=角色 ID，引擎/任务中心的 candidateGroups 契约按角色 ID 匹配）。
  */
 
 import { Divider, Form, Input, InputNumber, Select, Switch } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
-import { usersApi } from '../../../api/permissions.js';
+import { rolesApi, usersApi } from '../../../api/permissions.js';
 
 export interface UserTaskConfigData {
   taskName?: string;
   assigneeType?: string;
   assignee?: string;
+  /** 指定角色模式的候选角色（引擎 candidateGroups，存角色 ID） */
+  candidateGroups?: string[];
+  /** 展示用缓存：所选角色名（节点摘要显示名称而非 ID） */
+  roleName?: string;
   /** 会签/或签/依次模式的审批人集合（引擎 approveUsers 数组） */
   approveUsers?: string[];
   /** 展示用缓存：所选审批人姓名（节点摘要显示姓名而非 ID） */
@@ -96,6 +104,13 @@ export default function UserTaskConfigForm({
   }));
   const userNameById = new Map((users ?? []).map((u) => [u.id, u.name]));
 
+  // 角色选择器数据源（与权限管理页共享缓存键）
+  const { data: roles } = useQuery({
+    queryKey: ['permission-roles'],
+    queryFn: () => rolesApi.list(),
+  });
+  const roleOptions = (roles ?? []).map((r) => ({ label: `${r.name} (${r.code})`, value: r.id }));
+
   const assigneeType = data.assigneeType || 'ROLE';
   const showAssignee = assigneeType !== 'SUPERVISOR';
   // 会签/或签/依次 = 多人审批 → 引擎 approveUsers 数组路径；单人 → assignee 单值
@@ -109,7 +124,7 @@ export default function UserTaskConfigForm({
         ? '审批人（可多选）'
         : '审批人'
       : assigneeType === 'ROLE'
-        ? '审批角色编码'
+        ? '审批角色'
         : assigneeType === 'ORG'
           ? '组织编码'
           : '表单字段名';
@@ -165,11 +180,24 @@ export default function UserTaskConfigForm({
               placeholder="搜索姓名或邮箱选择审批人"
               allowClear
             />
+          ) : assigneeType === 'ROLE' ? (
+            <Select
+              showSearch
+              optionFilterProp="label"
+              value={data.candidateGroups?.[0]}
+              onChange={(id: string) => {
+                const role = roleOptions.find((r) => r.value === id);
+                update({ candidateGroups: id ? [id] : [], roleName: role?.label });
+              }}
+              options={roleOptions}
+              placeholder="选择审批角色"
+              allowClear
+            />
           ) : (
             <Input
               value={data.assignee}
               onChange={(e) => update({ assignee: e.target.value })}
-              placeholder={assigneeType === 'ROLE' ? 'ADMIN' : '输入编码'}
+              placeholder="输入编码"
             />
           )}
         </Form.Item>

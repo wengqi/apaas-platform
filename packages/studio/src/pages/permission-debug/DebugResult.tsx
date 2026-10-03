@@ -91,15 +91,38 @@ const matchedRuleColumns: ColumnsType<MatchedRule> = [
   },
 ];
 
-/** 记录可见性验证结果（recordCheck 为 null 时不渲染）。 */
-function RecordCheckAlert({ found, visible }: { found: boolean; visible: boolean }) {
+/** 记录可见性验证结果（recordCheck 为 null 时不渲染）。
+ *
+ * QA 交互评审（2026-10-03）：拒绝场景下「记录可见」会与拒绝结论矛盾困惑用户——
+ * 可见性 count 查询不带权限 where（无规则=无行级条件），其语义是
+ * 「记录是否存在且落在行级条件内」，不代表有权限读取。
+ */
+function RecordCheckAlert({
+  found,
+  visible,
+  permissionDenied,
+}: {
+  found: boolean;
+  visible: boolean;
+  permissionDenied: boolean;
+}) {
   if (!found) {
     return <Alert type="warning" showIcon message="记录不存在" />;
+  }
+  if (permissionDenied) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="记录存在，但当前权限决策为拒绝"
+        description="记录可见性按行级条件独立验证；权限拒绝时该记录仍不可读取。行级条件仅在权限允许时生效。"
+      />
+    );
   }
   return visible ? (
     <Alert type="success" showIcon message="记录可见" />
   ) : (
-    <Alert type="error" showIcon message="记录不可见" />
+    <Alert type="error" showIcon message="记录不可见（不满足行级条件）" />
   );
 }
 
@@ -131,7 +154,11 @@ export default function DebugResult({ result }: { result: PermissionDebugResult 
       ) : null}
 
       {result.recordCheck ? (
-        <RecordCheckAlert found={result.recordCheck.found} visible={result.recordCheck.visible} />
+        <RecordCheckAlert
+          found={result.recordCheck.found}
+          visible={result.recordCheck.visible}
+          permissionDenied={!result.allowed}
+        />
       ) : null}
 
       <Card size="small" title="命中规则">

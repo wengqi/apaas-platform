@@ -10,7 +10,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAppDto {
   @ApiPropertyOptional({
-    example: 'package_abc123',
+    example: 'app_abc123',
     description: 'API 名称（可选，不传则后端自动生成）',
   })
   @IsOptional()

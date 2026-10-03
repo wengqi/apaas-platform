@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { publishAffectedKeys, qk } from '@apaas/shared/stores';
 import { publishApi } from '../api/publish.js';
+import { usersApi } from '../api/permissions.js';
 import type { AppVersionSummary } from '@apaas/shared';
 
 const { Title } = Typography;
@@ -22,6 +23,13 @@ export default function VersionHistory() {
     queryFn: () => publishApi.listVersions(appId!),
     enabled: !!appId,
   });
+
+  // 发布人显示名映射（QA 交互评审 2026-10-03：此前直接显示用户 ID）
+  const { data: users } = useQuery({
+    queryKey: qk.users(),
+    queryFn: () => usersApi.list(),
+  });
+  const userNameById = new Map((users ?? []).map((u) => [u.id, u.name]));
 
   /** 回滚 mutation */
   const rollbackMutation = useMutation({
@@ -62,6 +70,7 @@ export default function VersionHistory() {
       title: '发布人',
       dataIndex: 'publishedBy',
       key: 'publishedBy',
+      render: (v: string) => userNameById.get(v) ?? v,
     },
     {
       title: '发布时间',

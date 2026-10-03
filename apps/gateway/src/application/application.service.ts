@@ -554,11 +554,13 @@ export class ApplicationService {
   // ===========================================================================
 
   /**
-   * 生成命名空间 — package_ + 6位随机十六进制。
+   * 生成命名空间 — app_ + 6位随机十六进制。
+   * QA 交互评审（2026-10-03）：前缀从 package_ 改为 app_——自动生成的标识
+   * 应与资源类型语义一致（用户可见，如「会议室管理 → app_a5c3ba」）。
    */
   private generateApiName(): string {
     const hex = Math.random().toString(16).substring(2, 8);
-    return `package_${hex}`;
+    return `app_${hex}`;
   }
 
   /**

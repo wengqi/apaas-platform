@@ -94,6 +94,8 @@ export default function FieldConfigDrawer({
     onSuccess: () => {
       message.success('字段已添加');
       queryClient.invalidateQueries({ queryKey: qk.object(objectId) });
+      // QA 交互评审（2026-10-03）：同步失效对象列表，左栏「N字段」统计即时刷新
+      if (appId) queryClient.invalidateQueries({ queryKey: qk.appObjects(appId) });
       onClose();
     },
     onError: (err) => showError(err),
@@ -108,6 +110,7 @@ export default function FieldConfigDrawer({
     onSuccess: () => {
       message.success('字段已更新');
       queryClient.invalidateQueries({ queryKey: qk.object(objectId) });
+      if (appId) queryClient.invalidateQueries({ queryKey: qk.appObjects(appId) });
       onClose();
     },
     onError: (err) => showError(err),

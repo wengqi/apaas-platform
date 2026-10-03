@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { objectsApi } from '../../../api/objects.js';
 import type { PageType } from '../../../api/pages.js';
+import { suggestApiName } from '../../../utils/api-name-suggestion.js';
 
 const { Text } = Typography;
 
@@ -81,7 +82,14 @@ export function CreatePageModal({
           name="name"
           rules={[{ required: true, message: '请输入页面名称' }]}
         >
-          <Input placeholder="客户列表页" />
+          <Input
+            placeholder="客户列表页"
+            onChange={() => {
+              // QA 交互评审（2026-10-03）：API 名称未手填时自动生成建议值，可改
+              const slug = form?.getFieldValue('slug');
+              if (!slug) form?.setFieldValue('slug', suggestApiName('page'));
+            }}
+          />
         </Form.Item>
         <Form.Item
           label="API 名称"

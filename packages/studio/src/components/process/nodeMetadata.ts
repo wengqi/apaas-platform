@@ -23,9 +23,16 @@ export function checkNodeIncomplete(type: string, data: Record<string, unknown>)
     case 'userTask':
     case 'user_task':
       // 评审整改：配置表单(UserTaskConfigForm)写入 assignee/assigneeType/approvalMode，
-      // 历史数据可能存 assigneeId —— 两者任一有值即视为已配置审批人，
+      // 历史数据可能存 assigneeId —— 两者任一有值即视为已配置审批人；
+      // 会签/或签路径写 approveUsers 数组（成员多选器）。
       // 保留判定强度：审批人 + 审批模式 都有值才算完成。
-      return !(data.assignee || data.assigneeId) || !data.approvalMode;
+      return (
+        !(
+          data.assignee ||
+          data.assigneeId ||
+          (Array.isArray(data.approveUsers) && data.approveUsers.length > 0)
+        ) || !data.approvalMode
+      );
     case 'notification':
       return !data.channel || !data.recipient;
     case 'objectOperation':
@@ -65,13 +72,21 @@ export function getNodeSummary(type: string, data: Record<string, unknown>): str
       return t ? `触发: ${t}` : '';
     }
     case 'userTask': {
-      // 评审整改：摘要读取配置表单实际写入的 assignee(原 assigneeId 不存在导致摘要缺失)；
-      // assigneeType/approvalMode 直接渲染原始枚举(如 "SINGLE")，统一映射为中文标签。
-      const assignee = data.assignee as string;
+      // QA 交互评审（2026-10-03）：摘要优先显示成员选择器缓存的姓名
+      // （assigneeName/assigneeNames），历史数据回退原始 assignee（ID）。
+      const names = data.assigneeNames as string[] | undefined;
+      const assigneeName = data.assigneeName as string;
+      const rawAssignee = data.assignee as string;
       const assigneeTypeLabel = toOptionLabel(ASSIGNEE_TYPE_OPTIONS, data.assigneeType as string);
       const approvalModeLabel = toOptionLabel(APPROVAL_MODE_OPTIONS, data.approvalMode as string);
       const parts: string[] = [];
-      if (assignee) parts.push(`审批人: ${assignee}`);
+      const approverLabel =
+        names && names.length > 0
+          ? names.join('、')
+          : assigneeName || rawAssignee
+            ? `审批人: ${assigneeName || rawAssignee}`
+            : '';
+      if (approverLabel) parts.push(approverLabel);
       if (assigneeTypeLabel) parts.push(assigneeTypeLabel);
       if (approvalModeLabel) parts.push(approvalModeLabel);
       return parts.join(' · ');

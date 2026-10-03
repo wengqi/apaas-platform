@@ -242,7 +242,9 @@ function validateUserTask(
   issues: SchemaIssue[],
 ): void {
   const cfg = data as unknown as UserTaskConfig;
-  const mode = cfg.approvalMode ?? 'single';
+  // QA 实测（2026-10-03）：搭建器面板写大写枚举（SINGLE/COUNTERSIGN...），
+  // 引擎与 seed 用小写——归一化后校验，两侧历史数据零迁移兼容
+  const mode = (cfg.approvalMode ?? 'single').toLowerCase();
 
   if (typeof cfg.taskName !== 'string' || cfg.taskName.length === 0) {
     issues.push({
@@ -256,7 +258,7 @@ function validateUserTask(
     issues.push({
       path: `${path}/approvalMode`,
       code: SCHEMA_ISSUE_CODES.INVALID_VALUE,
-      message: `approvalMode "${mode}" 非法，允许值：single/countersign/or_sign/sequential`,
+      message: `approvalMode "${cfg.approvalMode}" 非法，允许值：single/countersign/or_sign/sequential`,
       severity: 'error',
     });
     return;

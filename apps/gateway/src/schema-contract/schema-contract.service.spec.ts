@@ -38,9 +38,77 @@ const validPage = {
   ],
 };
 
+describe('workflow 校验——审批模式大小写归一化（QA 实测 2026-10-03）', () => {
+  it('面板大写枚举 COUNTERSIGN 通过（引擎/seed 用小写，归一化兼容两侧）', () => {
+    const r = service.validate('workflow', {
+      nodes: [
+        { id: 's', type: 'start', data: {} },
+        {
+          id: 'ut',
+          type: 'user_task',
+          data: {
+            taskName: '会签',
+            approvalMode: 'COUNTERSIGN',
+            approveUsers: ['u1', 'u2'],
+          },
+        },
+        { id: 'e', type: 'end', data: {} },
+      ],
+      edges: [
+        { sourceNodeID: 's', targetNodeID: 'ut' },
+        { sourceNodeID: 'ut', targetNodeID: 'e' },
+      ],
+    });
+    expect(r.valid).toBe(true);
+    expect(r.issues).toHaveLength(0);
+  });
+
+  it('小写枚举继续通过（seed 既有契约）', () => {
+    const r = service.validate('workflow', {
+      nodes: [
+        { id: 's', type: 'start', data: {} },
+        {
+          id: 'ut',
+          type: 'user_task',
+          data: { taskName: '或签', approvalMode: 'or_sign', approveUsers: ['u1', 'u2'] },
+        },
+        { id: 'e', type: 'end', data: {} },
+      ],
+      edges: [
+        { sourceNodeID: 's', targetNodeID: 'ut' },
+        { sourceNodeID: 'ut', targetNodeID: 'e' },
+      ],
+    });
+    expect(r.valid).toBe(true);
+  });
+});
+
 describe('amis_page 校验', () => {
   it('合法页面通过（spike case1 同构）', () => {
     const r = service.validate('amis_page', validPage);
+    expect(r.valid).toBe(true);
+    expect(r.issues).toHaveLength(0);
+  });
+
+  it('form 默认 actions（submit 按钮）通过——搭建器序列化画布必带（QA 回归 2026-10-03）', () => {
+    // 回归背景：amis-editor 画布给 form 自动渲染 {type:'submit'} 提交按钮，
+    // 白名单缺失导致一切含提交按钮的表单页无法保存（阻断级缺陷）
+    const r = service.validate('amis_page', {
+      type: 'page',
+      title: '表单页',
+      body: [
+        {
+          type: 'form',
+          title: '登记',
+          api: { method: 'post', url: '/api/v1/objects/obj1/records' },
+          body: [{ type: 'input-text', name: 'name', label: '名称' }],
+          actions: [
+            { type: 'submit', label: '提交' },
+            { type: 'reset', label: '重置' },
+          ],
+        },
+      ],
+    });
     expect(r.valid).toBe(true);
     expect(r.issues).toHaveLength(0);
   });

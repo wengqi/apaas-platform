@@ -42,7 +42,8 @@ export class UserTaskExecutor implements NodeExecutor {
       (data['candidateGroups'] as string[] | undefined) ??
       (data['candidate_groups'] as string[] | undefined) ??
       [];
-    const approvalMode = (data['approvalMode'] as string | undefined) ?? 'single';
+    // QA 实测（2026-10-03）：面板写大写枚举、seed/引擎写小写——归一化统一
+    const approvalMode = ((data['approvalMode'] as string | undefined) ?? 'single').toLowerCase();
     const approveUsers = (data['approveUsers'] as string[] | undefined) ?? [];
     const pageId = typeof data['pageId'] === 'string' ? (data['pageId'] as string) : undefined;
 

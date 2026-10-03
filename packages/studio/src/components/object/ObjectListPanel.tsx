@@ -16,6 +16,7 @@ import {
 import { PlusOutlined, DatabaseOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { suggestApiName } from '../../utils/api-name-suggestion.js';
 import { qk } from '@apaas/shared/stores';
 import { objectsApi, type CreateObjectRequest, type ObjectInfo } from '../../api/objects.js';
 
@@ -229,7 +230,15 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
             name="label"
             rules={[{ required: true, message: '请输入显示名称' }]}
           >
-            <Input placeholder="客户" />
+            <Input
+              placeholder="客户"
+              onChange={() => {
+                // QA 交互评审（2026-10-03）：API 名称未手填时自动生成建议值，可改
+                if (!form.getFieldValue('apiName')) {
+                  form.setFieldValue('apiName', suggestApiName('obj'));
+                }
+              }}
+            />
           </Form.Item>
           <Form.Item
             label="API 名称"

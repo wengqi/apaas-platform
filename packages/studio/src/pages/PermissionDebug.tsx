@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import type { PermissionAction, PermissionType } from '../api/permissions.js';
 import { usersApi } from '../api/permissions.js';
+import { qk } from '@apaas/shared/stores';
 import { permissionDebugApi, type PermissionDebugResult } from '../api/permission-debug.js';
 import { TARGET_ACTION_OPTIONS, TARGET_TYPE_OPTIONS } from './permission-debug/constants.js';
 import DebugResult from './permission-debug/DebugResult.js';
@@ -46,7 +47,7 @@ export default function PermissionDebug() {
 
   /** 用户列表（label=姓名 (email)，value=id）。 */
   const { data: users } = useQuery({
-    queryKey: ['permission-debug-users'],
+    queryKey: qk.users(),
     queryFn: () => usersApi.list(),
   });
 

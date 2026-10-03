@@ -15,6 +15,10 @@
  */
 
 export const qk = {
+  // —— 平台级 ——
+  /** 租户用户列表（成员选择器/显示名映射共用） */
+  users: () => ['users'] as const,
+
   // —— 应用级 ——
   /** 应用列表（我的应用） */
   apps: () => ['apps'] as const,

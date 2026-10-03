@@ -16,8 +16,10 @@ import {
 import { PlusOutlined, DatabaseOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { suggestApiName } from '../../utils/api-name-suggestion.js';
 import { qk } from '@apaas/shared/stores';
 import { objectsApi, type CreateObjectRequest, type ObjectInfo } from '../../api/objects.js';
+import EmojiIconPicker from '../shared/EmojiIconPicker.js';
 
 const { Text } = Typography;
 
@@ -229,7 +231,15 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
             name="label"
             rules={[{ required: true, message: '请输入显示名称' }]}
           >
-            <Input placeholder="客户" />
+            <Input
+              placeholder="客户"
+              onChange={() => {
+                // QA 交互评审（2026-10-03）：API 名称未手填时自动生成建议值，可改
+                if (!form.getFieldValue('apiName')) {
+                  form.setFieldValue('apiName', suggestApiName('obj'));
+                }
+              }}
+            />
           </Form.Item>
           <Form.Item
             label="API 名称"
@@ -248,8 +258,8 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
           <Form.Item label="描述" name="description">
             <Input.TextArea rows={2} placeholder="对象简介(可选)" />
           </Form.Item>
-          <Form.Item label="图标" name="icon" tooltip="输入一个 emoji 或文本">
-            <Input placeholder="📦" maxLength={4} />
+          <Form.Item label="图标" name="icon" tooltip="从图标库选择，或直接输入 emoji">
+            <EmojiIconPicker />
           </Form.Item>
         </Form>
       </Modal>

@@ -21,7 +21,8 @@ export default function AmisEditorInner({ value, onChange }: AmisEditorInnerProp
     onChange: ((schema: unknown) =>
       onChange(schema as Record<string, unknown>)) as EditorProps['onChange'],
     theme: 'antd' as const,
-    locale: 'zh-CN',
+    // 编辑器文案本地化不在本 prop（i18n-runtime 读 localStorage，
+    // 见 AmisEditorCanvas 顶部的 suda-i18n-locale 钉死逻辑）
   };
   return <Editor {...editorProps} />;
 }

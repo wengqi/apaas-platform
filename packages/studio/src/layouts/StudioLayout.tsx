@@ -89,11 +89,18 @@ export default function StudioLayout() {
       {
         key: 'reviews',
         icon: <FileDoneOutlined />,
-        label: (
-          <Badge count={pendingCount} size="small" offset={[12, 0]}>
-            审核中心
-          </Badge>
-        ),
+        // 用户实测（2026-10-03）：label 不能包在 Badge 里——span.ant-badge 不继承
+        // 暗色菜单字体色（该项显纯白，其他项 rgba(255,255,255,0.65)）。改为
+        // 纯文本 + 有待审时旁挂独立计数徽标（无子元素 Badge 不影响文字色）。
+        label:
+          pendingCount > 0 ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              审核中心
+              <Badge count={pendingCount} size="small" />
+            </span>
+          ) : (
+            '审核中心'
+          ),
       },
       { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
       { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },

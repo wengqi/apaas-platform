@@ -42,6 +42,10 @@ export const AMIS_FORM_TYPES: readonly string[] = [
   'group',
   'input-group',
   'hidden',
+  // form.actions 按钮类型（amis 原生）：form 默认渲染 {type:'submit'} 提交按钮，
+  // 搭建器序列化画布时必然携带——缺失会让一切含提交按钮的表单页无法通过保存校验
+  'submit',
+  'reset',
   'input-text',
   'input-password',
   'textarea',

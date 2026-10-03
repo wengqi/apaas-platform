@@ -127,7 +127,7 @@ export default function Login() {
           >
             <Input
               prefix={<GlobalOutlined style={{ color: '#bfbfbf' }} />}
-              placeholder="留空则使用平台管理员登录"
+              placeholder="租户用户必填（如 demo）；平台管理员可留空"
               size="large"
               style={{ borderRadius: 8 }}
             />

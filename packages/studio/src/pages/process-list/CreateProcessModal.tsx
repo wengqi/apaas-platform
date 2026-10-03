@@ -4,6 +4,7 @@
 
 import { Form, Input, Modal, Select, Typography } from 'antd';
 import { TRIGGER_OPTIONS } from '../../constants/process.js';
+import { suggestApiName } from '../../utils/api-name-suggestion.js';
 
 const { Text } = Typography;
 
@@ -50,7 +51,15 @@ export function CreateProcessModal({
             { max: 40, message: '最多 40 字' },
           ]}
         >
-          <Input placeholder="客户审批流" />
+          <Input
+            placeholder="客户审批流"
+            onChange={() => {
+              // QA 交互评审（2026-10-03）：API 名称未手填时自动生成建议值，可改
+              if (!form.getFieldValue('processKey')) {
+                form.setFieldValue('processKey', suggestApiName('flow'));
+              }
+            }}
+          />
         </Form.Item>
         <Form.Item
           label="API 名称"
@@ -72,7 +81,7 @@ export function CreateProcessModal({
       </Form>
       {name && (
         <Text type="secondary" style={{ fontSize: 12 }}>
-          提示:API 名称需手填,创建后锁定。
+          已按名称自动生成 API 名称（可修改），创建后锁定。
         </Text>
       )}
     </Modal>

@@ -1,9 +1,17 @@
 /**
- * 应用视图 — 列出应用下已发布页面，点击进入页面渲染。
+ * 应用视图 — 已发布页面门户（QA 交互评审 2026-10-03：
+ * 从 slug 技术列表改为页面卡片，业务用户按名称与类型识别入口）。
  */
 
-import { Card, Typography, Spin, Tag, List, Empty } from 'antd';
-import { FileTextOutlined } from '@ant-design/icons';
+import { Card, Typography, Spin, Tag, Empty } from 'antd';
+import {
+  FileTextOutlined,
+  FormOutlined,
+  TableOutlined,
+  ProfileOutlined,
+  BarChartOutlined,
+  AppstoreOutlined,
+} from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -11,6 +19,15 @@ import { appsApi } from '../api/apps';
 import { pagesApi } from '../api/pages';
 
 const { Title, Paragraph, Text } = Typography;
+
+/** 页面类型 → 中文名与图标（门户卡片识别要素）。 */
+const PAGE_TYPE_META: Record<string, { label: string; color: string }> = {
+  form_page: { label: '表单页', color: 'blue' },
+  list_page: { label: '列表页', color: 'cyan' },
+  detail_page: { label: '详情页', color: 'geekblue' },
+  dashboard: { label: '仪表盘', color: 'purple' },
+  custom: { label: '自定义', color: 'default' },
+};
 
 export default function AppView() {
   const { appId } = useParams<{ appId: string }>();
@@ -77,24 +94,42 @@ export default function AppView() {
         ) : publishedPages.length === 0 ? (
           <Empty description="暂无已发布页面" />
         ) : (
-          <List
-            dataSource={publishedPages}
-            renderItem={(page) => (
-              <List.Item
-                style={{ cursor: 'pointer' }}
-                onClick={() => navigate(`/app/${appId}/p/${page.slug}`)}
-              >
-                <List.Item.Meta
-                  title={page.name}
-                  description={
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      /{page.slug} · {page.type}
-                    </Text>
-                  }
-                />
-              </List.Item>
-            )}
-          />
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {publishedPages.map((page) => {
+              const meta = PAGE_TYPE_META[page.type] ?? { label: page.type, color: 'default' };
+              return (
+                <Card
+                  key={page.id}
+                  hoverable
+                  size="small"
+                  style={{ borderRadius: 10 }}
+                  onClick={() => navigate(`/app/${appId}/p/${page.slug}`)}
+                >
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>
+                    {meta.label === '表单页' ? (
+                      <FormOutlined />
+                    ) : meta.label === '列表页' ? (
+                      <TableOutlined />
+                    ) : meta.label === '详情页' ? (
+                      <ProfileOutlined />
+                    ) : meta.label === '仪表盘' ? (
+                      <BarChartOutlined />
+                    ) : (
+                      <AppstoreOutlined />
+                    )}
+                  </div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>{page.name}</div>
+                  <Tag color={meta.color}>{meta.label}</Tag>
+                </Card>
+              );
+            })}
+          </div>
         )}
       </Card>
     </div>

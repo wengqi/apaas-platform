@@ -592,7 +592,10 @@ export class ProcessEngine {
         nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
       } | null
     )?.nodes?.find((n) => n.id === task.nodeId);
-    const approvalMode = (nodeDef?.data?.['approvalMode'] as string | undefined) ?? 'single';
+    // QA 实测（2026-10-03）：与 user-task.executor 同口径，大小写归一化
+    const approvalMode = (
+      (nodeDef?.data?.['approvalMode'] as string | undefined) ?? 'single'
+    ).toLowerCase();
     const approveUsers = (nodeDef?.data?.['approveUsers'] as string[] | undefined) ?? [];
 
     if (approvalMode !== 'single') {

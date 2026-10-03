@@ -18,6 +18,12 @@ import 'amis-ui/lib/themes/antd';
 import 'amis-ui/lib/locale/zh-CN';
 import 'amis-editor-core/lib/style.css';
 
+// QA 交互评审（2026-10-03）：amis-editor 的物料面板/属性面板文案走 i18n-runtime，
+// 其语言取 localStorage['suda-i18n-locale']（缺省随 navigator.language，英文系统
+// 下整个编辑器变英文）。Editor 的 locale prop 不传导到 i18n-runtime——产品为
+// 纯中文界面，挂载前显式钉死 zh-CN。
+localStorage.setItem('suda-i18n-locale', 'zh-CN');
+
 const AmisEditorInner = lazy(() => import('./AmisEditorInner.js'));
 
 interface AmisEditorCanvasProps {

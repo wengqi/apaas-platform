@@ -167,12 +167,25 @@ function generateContractListPage(
   formSlug?: string,
 ): Record<string, unknown> {
   const fields = businessFields(meta.fields).slice(0, 6);
-  const columns = fields.map((f) => ({
-    name: f.apiName,
-    label: f.label,
-    width: 160,
-    sortable: true,
-  }));
+  const columns = fields.map((f) => {
+    // QA 交互评审（2026-10-03）：单选列显示选项 label 而非存储值（状态列不再是
+    // 裸英文枚举 APPROVED/PENDING）
+    const config = (f.config ?? {}) as { options?: Array<{ id: string; label: string }> };
+    const mapping =
+      f.type === 'single_select' && Array.isArray(config.options)
+        ? Object.fromEntries(config.options.map((o) => [o.id, o.label]))
+        : undefined;
+    return {
+      name: f.apiName,
+      label: f.label,
+      // QA 交互评审（2026-10-03）：仅前两列固定宽度，其余列自适应分配剩余宽度，
+      // 避免窄容器下末列（时间/操作）被挤压截断
+      ...(fields.indexOf(f) < 2 ? { width: 160 } : {}),
+      sortable: true,
+      // 单选列用 amis mapping 渲染器显示选项 label（独立渲染器属性名为 map）
+      ...(mapping ? { type: 'mapping', map: mapping } : {}),
+    };
+  });
 
   return {
     type: 'page',
@@ -210,6 +223,10 @@ function generateContractListPage(
 
 function generateContractFormPage(meta: ObjectMeta, label: string): Record<string, unknown> {
   const fields = businessFields(meta.fields);
+  // QA 交互评审（2026-10-03）：审批状态是流程回写字段，不应让提交人手选
+  // （对齐飞书/钉钉：状态类字段在提交表单中隐藏，由流程节点写入）——
+  // 以 hidden 控件携带默认值 PENDING 满足对象 required 校验。
+  const inputFields = fields.filter((f) => f.apiName !== 'status').map(amisFieldControl);
   return {
     type: 'page',
     title: `${label}提交`,
@@ -222,12 +239,21 @@ function generateContractFormPage(meta: ObjectMeta, label: string): Record<strin
           url: `/objects/${meta.id}/records`,
           method: 'post',
         },
-        body: fields.map(amisFieldControl),
+        body: [...inputFields, { type: 'hidden', name: 'status', value: 'PENDING' }],
         actions: [
           {
             type: 'submit',
             label: '提交审批',
             level: 'primary',
+            // 提交成功反馈（QA：此前提交后无任何反馈，用户不确定是否成功）
+            feedback: {
+              title: '提交成功',
+              body: '合同已提交，进入审批流程。可在「合同台账」查看状态。',
+            },
+            messages: {
+              success: '合同已提交，进入审批流程',
+              failed: '提交失败，请检查必填项后重试',
+            },
           },
         ],
       },
@@ -265,6 +291,9 @@ function generateApprovalTaskPage(): Record<string, unknown> {
         type: 'form',
         title: '审批意见',
         mode: 'horizontal',
+        // QA 交互评审（2026-10-03）：actions 置空去掉表单自带提交按钮——
+        // 任务弹窗 footer 的「批准/拒绝」是唯一动作入口，避免双提交入口混淆
+        actions: [],
         body: [
           {
             type: 'textarea',

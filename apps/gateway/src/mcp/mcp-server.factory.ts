@@ -211,6 +211,85 @@ const TOOLS: Array<{
     },
   },
   {
+    name: 'submit_app_drafts',
+    description:
+      '批量提交完整应用草稿（对象+页面+流程单波进审，共享 batchId 一次人审）。适用于从零生成完整应用：跨资源引用用令牌占位——页面 objectApiName 引用本批对象；流程 user_task 的 pageId 写 "@ref:page:<页面apiName>" 引用本批页面。人工在审核中心一键批准后按 对象→页面→流程 顺序落地并自动解析令牌。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string' },
+        objects: {
+          type: 'array',
+          description: '对象草稿数组（每项同 submit_object_draft 除 appId 外的入参）',
+          items: {
+            type: 'object',
+            properties: {
+              apiName: { type: 'string' },
+              name: { type: 'string' },
+              description: { type: 'string' },
+              icon: { type: 'string' },
+              objectId: { type: 'string', description: '更新已有对象时传其 ID' },
+              fields: { type: 'array', items: { type: 'object' } },
+            },
+            required: ['apiName', 'name', 'fields'],
+          },
+        },
+        pages: {
+          type: 'array',
+          description:
+            '页面草稿数组（每项同 submit_page_draft 除 appId 外的入参；关联对象用 objectApiName 而非 objectId）',
+          items: {
+            type: 'object',
+            properties: {
+              apiName: { type: 'string' },
+              name: { type: 'string' },
+              type: {
+                type: 'string',
+                enum: ['list_page', 'detail_page', 'form_page', 'dashboard', 'custom'],
+              },
+              objectApiName: {
+                type: 'string',
+                description: '关联对象的 apiName（本批对象或已有对象均可）',
+              },
+              pageId: { type: 'string', description: '更新已有页面时传其 ID' },
+              schema: { type: 'object' },
+            },
+            required: ['apiName', 'name', 'schema'],
+          },
+        },
+        processes: {
+          type: 'array',
+          description:
+            '流程草稿数组（每项同 submit_workflow_draft 除 appId 外的入参；user_task.pageId 可写 "@ref:page:<apiName>" 引用本批页面）',
+          items: {
+            type: 'object',
+            properties: {
+              apiName: { type: 'string' },
+              name: { type: 'string' },
+              triggerType: {
+                type: 'string',
+                enum: [
+                  'MANUAL',
+                  'RECORD_CREATED',
+                  'RECORD_UPDATED',
+                  'RECORD_DELETED',
+                  'SCHEDULED',
+                  'WEBHOOK',
+                  'API',
+                ],
+              },
+              processId: { type: 'string', description: '更新已有流程时传其 ID' },
+              workflowSchema: { type: 'object' },
+            },
+            required: ['apiName', 'name', 'workflowSchema'],
+          },
+        },
+      },
+      required: ['appId'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_review_submissions',
     description:
       '查询提交单审批状态（R1.2 治理轨道）。submit_*_draft 后用本工具跟踪审批进度；REJECTED 单的 reviewComment 是人类驳回意见，按意见修正后重新提交。',
@@ -391,6 +470,19 @@ async function dispatch(
         description: optionalStr(args['description']),
         icon: optionalStr(args['icon']),
         objectId: optionalStr(args['objectId']),
+      });
+    case 'submit_app_drafts':
+      return svc.submitAppDrafts(tenantId, userId, {
+        appId: str(args['appId']),
+        objects: Array.isArray(args['objects'])
+          ? (args['objects'] as Array<Record<string, unknown>>)
+          : [],
+        pages: Array.isArray(args['pages'])
+          ? (args['pages'] as Array<Record<string, unknown>>)
+          : [],
+        processes: Array.isArray(args['processes'])
+          ? (args['processes'] as Array<Record<string, unknown>>)
+          : [],
       });
     case 'create_application':
       return svc.createApplication(tenantId, userId, {

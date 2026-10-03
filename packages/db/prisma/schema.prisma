@@ -783,6 +783,9 @@ model ResourceVersion {
   reviewedBy       String?  @map("reviewed_by")
   reviewedAt       DateTime? @map("reviewed_at")
   reviewComment    String?  @map("review_comment")
+  // 批量提交组（submit_app_drafts 单波生成完整应用）：同组资源共享一次人审，
+  // 批准按 对象→页面→流程 拓扑序落地并解析 @ref: 引用令牌
+  batchId          String?  @map("batch_id")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -793,6 +796,7 @@ model ResourceVersion {
   @@index([tenantId])
   @@index([appId, module, entityId])
   @@index([appId, status])
+  @@index([appId, batchId])
   @@map("resource_versions")
 }
 

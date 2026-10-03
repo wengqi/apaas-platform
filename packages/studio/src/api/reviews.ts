@@ -86,6 +86,24 @@ export const reviewsApi = {
         comment,
       })
       .then((res) => res.data.data as ResourceVersionDto),
+
+  /** 批量批准：对象→页面→流程拓扑序落地并解析 @ref: 引用令牌 */
+  approveBatch: (appId: string, batchId: string, params?: { comment?: string; force?: boolean }) =>
+    client
+      .post<ApiResponse<ResourceVersionDto[]>>(
+        `/api/apps/${appId}/reviews/batch/${batchId}/approve`,
+        params ?? {},
+      )
+      .then((res) => res.data.data as ResourceVersionDto[]),
+
+  /** 批量驳回：批次内全部待审单级联驳回 */
+  rejectBatch: (appId: string, batchId: string, comment: string) =>
+    client
+      .post<ApiResponse<{ rejected: number }>>(
+        `/api/apps/${appId}/reviews/batch/${batchId}/reject`,
+        { comment },
+      )
+      .then((res) => res.data.data as { rejected: number }),
 };
 
 /** 快照规范形态（供 DiffDrawer 展示原始 JSON） */

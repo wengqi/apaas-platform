@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ReviewService } from './review.service.js';
+import { ReviewService, collectRefTokens, replaceRefTokens } from './review.service.js';
 import type { ReviewSnapshotService } from './review-snapshot.service.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
@@ -347,5 +347,199 @@ describe('未提交变更清单（listDirtyResources）', () => {
     const dirty = await svc.listDirtyResources(TENANT, APP);
     expect(dirty).toHaveLength(1);
     expect(dirty[0]!.baselineVersionNumber).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 批量提交 / 批量批准 / 批量驳回（submit_app_drafts 资源依赖链）
+// ---------------------------------------------------------------------------
+
+describe('引用令牌纯函数（collectRefTokens / replaceRefTokens）', () => {
+  it('深度收集 @ref 令牌（对象/页面），replace 按 map 替换且未覆盖令牌保留', () => {
+    const schema = {
+      nodes: [
+        { id: 'n1', type: 'user_task', data: { pageId: '@ref:page:approval_form' } },
+        { id: 'n2', type: 'assign', data: { value: '@ref:object:meeting_room' } },
+      ],
+      edges: [{ sourceNodeID: 'n1', targetNodeID: '@ref:page:approval_form' }],
+      plain: 'not-a-token',
+    };
+    const tokens = collectRefTokens(schema);
+    expect([...tokens].sort()).toEqual(['@ref:object:meeting_room', '@ref:page:approval_form']);
+
+    const replaced = replaceRefTokens(schema, new Map([['@ref:page:approval_form', 'page-9']]));
+    expect(replaced.nodes[0]!.data['pageId']).toBe('page-9');
+    // 未覆盖的对象令牌原样保留
+    expect(replaced.nodes[1]!.data['value']).toBe('@ref:object:meeting_room');
+    expect(replaced.edges[0]!.targetNodeID).toBe('page-9');
+    expect(replaced.plain).toBe('not-a-token');
+  });
+});
+
+describe('批量提交（submitAiBatch）', () => {
+  const { svc, prisma } = makeService();
+
+  it('全部资源共享同一 batchId 进审；空批次拒绝', async () => {
+    prisma.resourceVersion.aggregate.mockResolvedValue({ _max: { versionNumber: 1 } });
+    prisma.resourceVersion.create.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        id: `sub-${data['apiName']}`,
+        createdAt: new Date('2026-10-03T00:00:00Z'),
+        ...data,
+      }),
+    );
+
+    const { batchId, rows } = await svc.submitAiBatch(
+      TENANT,
+      {
+        appId: APP,
+        items: [
+          {
+            module: 'OBJECT',
+            appId: APP,
+            apiName: 'meeting_room',
+            name: '会议室',
+            snapshot: liveSnapshot,
+          },
+          {
+            module: 'PAGE',
+            appId: APP,
+            apiName: 'booking_form',
+            name: '预定表单',
+            snapshot: liveSnapshot,
+          },
+        ],
+      },
+      'ai-agent',
+    );
+
+    expect(batchId).toBeTruthy();
+    expect(rows).toHaveLength(2);
+    // createVersion 传给 prisma 的每行都带同一 batchId
+    const batchIds = prisma.resourceVersion.create.mock.calls.map(
+      (c: Array<{ data: Record<string, unknown> }>) => c[0]!.data['batchId'],
+    );
+    expect(new Set(batchIds)).toEqual(new Set([batchId]));
+
+    await expect(svc.submitAiBatch(TENANT, { appId: APP, items: [] }, 'ai-agent')).rejects.toThrow(
+      '至少包含一项',
+    );
+  });
+});
+
+describe('批量批准（approveBatch）', () => {
+  it('拓扑序落地（对象→页面→流程）+ 令牌解析（页面 objectId / 流程 pageId）', async () => {
+    const { svc, prisma, snapshotService } = makeService();
+    // 批次行故意乱序（PROCESS 在前）
+    prisma.resourceVersion.findMany.mockResolvedValue([
+      {
+        ...makeRow({ id: 'sub-p1', module: 'PROCESS', apiName: 'booking_flow', name: '预定审批' }),
+        snapshot: {
+          apiName: 'booking_flow',
+          name: '预定审批',
+          triggerType: 'RECORD_CREATED',
+          cron: null,
+          workflowSchema: {
+            nodes: [
+              { id: 's', type: 'start' },
+              { id: 't', type: 'user_task', data: { pageId: '@ref:page:booking_form' } },
+              { id: 'e', type: 'end' },
+            ],
+            edges: [],
+          },
+        },
+      },
+      {
+        ...makeRow({ id: 'sub-o1', module: 'OBJECT', apiName: 'meeting_room', name: '会议室' }),
+        snapshot: { apiName: 'meeting_room', name: '会议室', fields: [] },
+      },
+      {
+        ...makeRow({ id: 'sub-g1', module: 'PAGE', apiName: 'booking_form', name: '预定表单' }),
+        snapshot: {
+          apiName: 'booking_form',
+          name: '预定表单',
+          type: 'form_page',
+          objectId: '@ref:object:meeting_room',
+          schema: { type: 'page' },
+        },
+      },
+    ]);
+    prisma.resourceVersion.update.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        ...makeRow(),
+        ...data,
+      }),
+    );
+    // 令牌解析：对象/页面按 apiName 命中活表
+    prisma.objectMeta.findFirst.mockResolvedValue({ id: 'obj-meeting' });
+    prisma.pageMeta.findFirst.mockResolvedValue({ id: 'page-booking' });
+
+    const applied = await svc.approveBatch(TENANT, APP, 'batch-1', 'reviewer-1', {});
+
+    expect(applied).toHaveLength(3);
+    // 拓扑序：OBJECT 先于 PAGE 先于 PROCESS（按 applySnapshot 调用顺序断言）
+    const appliedModules = (
+      snapshotService.applySnapshot as ReturnType<typeof vi.fn>
+    ).mock.calls.map((c: Array<unknown>) => c[2]);
+    expect(appliedModules).toEqual(['OBJECT', 'PAGE', 'PROCESS']);
+    // 页面快照 objectId 令牌已解析为真实对象 ID
+    const pageSnapshot = (snapshotService.applySnapshot as ReturnType<typeof vi.fn>).mock
+      .calls[1]![3];
+    expect((pageSnapshot as Record<string, unknown>)['objectId']).toBe('obj-meeting');
+    // 流程 schema 中 pageId 令牌已重写
+    const procSnapshot = (snapshotService.applySnapshot as ReturnType<typeof vi.fn>).mock
+      .calls[2]![3];
+    const wf = (procSnapshot as Record<string, unknown>)['workflowSchema'] as {
+      nodes: Array<{ data?: Record<string, unknown> }>;
+    };
+    expect(wf.nodes[1]!.data!['pageId']).toBe('page-booking');
+  });
+
+  it('批次不存在或已处理 → 拒绝', async () => {
+    const { svc, prisma } = makeService();
+    prisma.resourceVersion.findMany.mockResolvedValue([]);
+    await expect(svc.approveBatch(TENANT, APP, 'batch-x', 'r1', {})).rejects.toThrow('批次不存在');
+  });
+
+  it('令牌目标未落地 → 报错并标明失败项', async () => {
+    const { svc, prisma } = makeService();
+    prisma.resourceVersion.findMany.mockResolvedValue([
+      {
+        ...makeRow({ id: 'sub-g1', module: 'PAGE', apiName: 'orphan_form', name: '孤儿页面' }),
+        snapshot: {
+          apiName: 'orphan_form',
+          name: '孤儿页面',
+          type: 'form_page',
+          objectId: '@ref:object:ghost',
+          schema: { type: 'page' },
+        },
+      },
+    ]);
+    prisma.objectMeta.findFirst.mockResolvedValue(null);
+    await expect(svc.approveBatch(TENANT, APP, 'batch-2', 'r1', {})).rejects.toThrow('orphan_form');
+  });
+});
+
+describe('批量驳回（rejectBatch）', () => {
+  it('批次内全部 PENDING 级联驳回并回传意见', async () => {
+    const { svc, prisma, inApp } = makeService();
+    prisma.resourceVersion.findMany.mockResolvedValue([
+      makeRow({ id: 'sub-1', submittedBy: 'ai-agent', name: '会议室' }),
+      makeRow({ id: 'sub-2', submittedBy: 'ai-agent', name: '预定表单' }),
+    ]);
+    prisma.resourceVersion.updateMany.mockResolvedValue({ count: 2 });
+
+    const res = await svc.rejectBatch(TENANT, APP, 'batch-3', 'reviewer-1', '字段命名不合规范');
+
+    expect(res).toEqual({ rejected: 2 });
+    expect(prisma.resourceVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REJECTED', reviewComment: '字段命名不合规范' }),
+      }),
+    );
+    expect(inApp.create).toHaveBeenCalled();
+
+    prisma.resourceVersion.findMany.mockResolvedValue([]);
+    await expect(svc.rejectBatch(TENANT, APP, 'batch-x', 'r1', 'x')).rejects.toThrow('批次不存在');
   });
 });

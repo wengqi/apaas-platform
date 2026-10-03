@@ -157,13 +157,16 @@ export class AuthService {
       throw new UnauthorizedException('refreshToken 无效或已过期，请重新登录');
     }
 
-    // refresh 签发后用户可能被禁用/租户被挂起——刷新时复核状态
+    // 刷新时复核状态：禁用/锁定/租户挂起一律拒绝（与 login 语义对齐）
     const user = await prisma.user.findFirst({
       where: { id: payload.sub },
       include: { tenant: true, userRoles: { include: { role: true } } },
     });
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('用户不存在或已禁用');
+    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new UnauthorizedException('账号已被临时锁定（连续登录失败），请稍后再试');
     }
     if (user.tenantId && user.tenant?.status !== 'ACTIVE') {
       throw new UnauthorizedException('租户已被挂起或归档');

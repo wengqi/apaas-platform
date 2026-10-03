@@ -14,7 +14,6 @@
 #   APAAS_EMAIL      登录邮箱（默认 builder@apaas.dev，--login 用）
 #   APAAS_PASSWORD   密码（--login 必须；不落盘）
 #   APAAS_TENANT     租户 slug（默认 demo）
-#   APAAS_GATEWAY    网关地址（默认 http://localhost:3000）
 #   APAAS_MCP_CONFIG MCP 配置文件路径（默认 ~/.zcode/cli/config.json）
 
 set -euo pipefail
@@ -37,9 +36,21 @@ if [[ "${1:-}" == "--login" ]]; then
     echo "✗ --login 需要 APAAS_PASSWORD 环境变量（不落盘）" >&2
     exit 1
   fi
+  # JSON 体由 python json.dumps 构造（凭证可含引号/反斜杠等特殊字符，shell 内插会破）
+  BODY_FILE=$(mktemp); trap 'rm -f "$BODY_FILE"' EXIT
+  EMAIL="$EMAIL" TENANT="$TENANT" APAAS_PASSWORD="$APAAS_PASSWORD" python3 -c '
+import json, os
+print(json.dumps({
+    "email": os.environ["EMAIL"],
+    "password": os.environ["APAAS_PASSWORD"],
+    "tenantSlug": os.environ["TENANT"],
+}))' > "$BODY_FILE"
   RESP=$(curl -sf -m 15 -X POST "$GATEWAY/api/v1/auth/login" \
     -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$EMAIL\",\"password\":\"$APAAS_PASSWORD\",\"tenantSlug\":\"$TENANT\"}")
+    --data-binary @"$BODY_FILE") || {
+    echo "✗ 登录失败（检查凭证/网关地址 ${GATEWAY}）" >&2
+    exit 1
+  }
 elif [[ -f "$TOKEN_FILE" ]]; then
   REFRESH=$(get_field refreshToken < "$TOKEN_FILE" 2>/dev/null || true)
   if [[ -n "${REFRESH:-}" ]]; then

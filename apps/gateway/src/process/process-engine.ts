@@ -557,6 +557,19 @@ export class ProcessEngine {
 
     const taskStatus = isApproved ? 'APPROVED' : 'REJECTED';
 
+    // #16：节点配置 allowReject=false 时禁止驳回决策（配置侧栏可设，此前从未强制）。
+    // 未配置（undefined）视为允许（与表单默认一致）。优先实例冻结 schema。
+    if (isRejected) {
+      const cfgSchema = (task.instance.frozenWorkflowSchema ??
+        task.instance.processDef.workflowSchema) as {
+        nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
+      } | null;
+      const cfgNode = cfgSchema?.nodes?.find((n) => n.id === task.nodeId);
+      if (cfgNode?.data?.['allowReject'] === false) {
+        throw new BadRequestException('该审批节点已配置为不允许驳回');
+      }
+    }
+
     // B2 防护：原子认领任务 — 仅当任务仍为 PENDING 时更新成功。
     // 并发/双击审批只有一个请求 count=1，其余拒绝，保证下游节点不重复执行。
     const claimed = await prisma.processTask.updateMany({

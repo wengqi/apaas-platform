@@ -83,9 +83,22 @@ export default function TaskCenter() {
   const formData = variables
     ? Object.entries(variables).filter(([key]) => key !== 'global' && !key.startsWith('_'))
     : [];
-  const triggerData = triggerContext
-    ? Object.entries(triggerContext).filter(([key]) => key !== 'global' && !key.startsWith('_'))
-    : [];
+  // #15：申请内容优先渲染触发上下文的 inputs（记录字段摊平），
+  // 用对象字段标签（apiName→label）替代裸 key；无 inputs 时回退上下文摘要。
+  const fieldLabels = taskDetail?.inputFieldLabels ?? {};
+  const rawInputs = triggerContext?.['inputs'] as Record<string, unknown> | undefined;
+  const triggerData: Array<[string, unknown]> = rawInputs
+    ? Object.entries(rawInputs)
+        .filter(([key]) => !key.startsWith('_'))
+        .map(([key, value]) => [fieldLabels[key] ?? key, value])
+    : triggerContext
+      ? Object.entries(triggerContext)
+          .filter(
+            ([key]) =>
+              key !== 'global' && !key.startsWith('_') && key !== 'inputs' && key !== 'record',
+          )
+          .map(([key, value]) => [fieldLabels[key] ?? key, value])
+      : [];
 
   const columns = buildColumns(activeTab, openTaskModal);
 
@@ -152,6 +165,7 @@ export default function TaskCenter() {
             isPending={completeMutation.isPending}
             onClose={() => setModalOpen(false)}
             onComplete={handleComplete}
+            allowReject={taskDetail?.allowReject !== false}
           />
         }
       >

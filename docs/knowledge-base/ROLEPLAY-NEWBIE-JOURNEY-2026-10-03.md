@@ -89,3 +89,30 @@ demo 租户「设备报修」应用(app_116372):repair_order 对象 + 2 页面(b
 ## 四、本轮测试数据(累计)
 
 demo 租户「设备报修」(cmusclezr0003quh2n2pq3a4y):流程 bao_xiu_shen_pi v3 已发布;应用版本 0.1.0~0.1.3;记录 8 条(打印机=已完成[链路验证]、碎纸机=待处理+一条 admin 待办任务[驳回按钮无效现场]、投影仪=待处理[首轮 FAILED 实例现场]、其余 0.1.1 前测试数据);1 条 FAILED 实例(#10 修复前现场)。可整应用删除清理。
+
+---
+
+# 第三轮：遗留四项 + 意外收获（2026-10-03 深夜）
+
+> 处置第二轮遗留 #8/#14/#15/#16；验证驳回链路时挖出 **#17 条件分支路由断裂**（两轮"通过"验证其实都没走对分支，纯属降级第一条出边碰巧正确）——本轮最重发现。应用发布 0.1.4 复验。
+
+## 一、修复与验证矩阵
+
+| # | 项 | 处置 | 验证 |
+|---|---|---|---|
+| #17 | **条件分支路由断裂（高危）**：serializer 生成的 edge label 取不存在的 `block.data.label` 落到 block.id，ConditionExecutor 按 `conditions[].label`（分支名）匹配永远失败 → 降级第一条出边——**驳回被误写"已完成"**（网关日志双证据：`label="条件成立"`/`label="默认分支"` 均"未匹配到出边"）；通过链路碰巧正确纯属运气 | ①serializer：edge label = `data.label ?? data.title ?? id`（block 的 title 与分支名同源）；②EventBridge extInfo 合并扩到 block（分支重命名后 title 能进导出） | spec（edge label=条件成立/默认分支）+ 落库断言 + **端到端**：提交"扫描仪"报修 → admin 拒绝（看清了二次确认框）→ 记录=已驳回、轨迹走 elseBlock→p0v6、实例 COMPLETED |
+| #16 | 驳回配置链路：①定性修正——拒绝按钮**本就有二次确认框**，此前"无效"是自动化没看弹窗；②`allowReject` 是死配置（引擎从不强制）；③表单默认显示"不允许" | 引擎 completeTask：显式 `allowReject===false` 拦截（undefined=允许）；表单默认改"允许"；getTask 返回 allowReject；TaskModalFooter 禁用+tooltip | 单测 ×2（false 拦截/undefined 放行）；默认值 UI 确认"允许驳回"；按钮可用路径实测（拒绝成功） |
+| #15 | 审批申请内容裸 JSON | getTask 返回 `inputFieldLabels`（触发对象 apiName→label）；任务中心优先渲染 `inputs` 摊平+中文标签（无绑定页兜底；"生成审批页"列 backlog） | 实测："设备名称 扫描仪/位置 财务室/故障描述 …"友好键值表（创建人仍显用户 ID——user 字段值映射列 backlog） |
+| #8 | 加节点入口不可发现（8px 灰点+悬停放大） | ApaasAdder 加号常显（20px 白底蓝边带＋，非悬停 opacity .45） | 视觉确认画布两处加号全亮可见 |
+| — | ROLE/ORG 等类型可选会签/或签（运行时必报 approveUsers 为空） | 审批模式选项按类型联动（非 USER 仅"单人审批"），切离 USER 自动回落 SINGLE | 实测下拉仅剩"单人审批" |
+| #14 | toast 双弹 | **定性关闭**：代码各仅一处调用、无 StrictMode；本轮同类操作只弹一次——系自动化双击所致，非产品缺陷 | — |
+
+## 二、0.1.4 发布
+
+v4 流程（edge label 修复落库）→ 应用 0.1.4"条件分支路由修复+审批体验"。三轮累计应用版本 0.1.0~0.1.4、流程 v5；测试：gateway 701（+2）/ studio 119（+1）。
+
+## 三、本轮沉淀
+
+- **"碰巧正确"是最危险的验证假象**：两轮通过链路全绿，实际路由从未正确——降级逻辑（避免卡死）掩盖了契约断裂。凡带降级路径的契约，必须构造"降级结果≠正确结果"的反向用例（本轮驳回即天然反例）
+- Modal.confirm 类二次确认在自动化验证中必须显式检查确认框（第一轮误判按钮无效）
+- Popconfirm/Popover 关闭后的容器残留会拦截点击（elementFromPoint 排查，reload 可清）

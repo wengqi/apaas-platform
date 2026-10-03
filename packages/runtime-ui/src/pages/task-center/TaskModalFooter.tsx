@@ -3,7 +3,7 @@
  * AGENTS.md 单文件 400 行规范）。
  */
 
-import { Button, Modal, Space } from 'antd';
+import { Button, Modal, Space, Tooltip } from 'antd';
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
 
 interface TaskModalFooterProps {
@@ -11,6 +11,8 @@ interface TaskModalFooterProps {
   isPending: boolean;
   onClose: () => void;
   onComplete: (decision: string) => void;
+  /** #16：节点配置不允许驳回时禁用拒绝按钮（引擎侧同口径强制） */
+  allowReject?: boolean;
 }
 
 /** 审批操作（批准 / 拒绝）/ 关闭按钮。 */
@@ -19,30 +21,34 @@ export function TaskModalFooter({
   isPending,
   onClose,
   onComplete,
+  allowReject = true,
 }: TaskModalFooterProps) {
   if (activeTab !== 'pending') {
     return <Button onClick={onClose}>关闭</Button>;
   }
   return (
     <Space>
-      <Button
-        danger
-        icon={<CloseOutlined />}
-        loading={isPending}
-        onClick={() => {
-          // 拒绝不可逆 — 二次确认防误触
-          Modal.confirm({
-            title: '确认拒绝该申请？',
-            content: '拒绝后流程将按驳回路径继续，此操作不可撤销。',
-            okText: '确认拒绝',
-            okType: 'danger',
-            cancelText: '取消',
-            onOk: () => onComplete('REJECTED'),
-          });
-        }}
-      >
-        拒绝
-      </Button>
+      <Tooltip title={allowReject ? undefined : '该审批节点已配置为不允许驳回'}>
+        <Button
+          danger
+          icon={<CloseOutlined />}
+          loading={isPending}
+          disabled={!allowReject}
+          onClick={() => {
+            // 拒绝不可逆 — 二次确认防误触
+            Modal.confirm({
+              title: '确认拒绝该申请？',
+              content: '拒绝后流程将按驳回路径继续，此操作不可撤销。',
+              okText: '确认拒绝',
+              okType: 'danger',
+              cancelText: '取消',
+              onOk: () => onComplete('REJECTED'),
+            });
+          }}
+        >
+          拒绝
+        </Button>
+      </Tooltip>
       <Button
         type="primary"
         icon={<CheckOutlined />}

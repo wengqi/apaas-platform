@@ -603,10 +603,36 @@ export class ProcessService {
     const boundPageId =
       typeof nodeDef?.data?.['pageId'] === 'string' ? (nodeDef.data['pageId'] as string) : null;
 
+    // #16：节点是否允许驳回（undefined=允许），任务中心据此禁用拒绝按钮
+    const allowReject = nodeDef?.data?.['allowReject'] !== false;
+
+    // #15：申请内容字段标签（apiName→label）——未绑定审批页时任务中心
+    // 用它把 triggerContext.inputs 从裸 key 渲染成友好键值表
+    const triggerObjectId = (task.instance.triggerContext as Record<string, unknown>)?.[
+      'objectId'
+    ] as string | undefined;
+    let inputFieldLabels: Record<string, string> | undefined;
+    if (triggerObjectId) {
+      const obj = await prisma.objectMeta.findFirst({
+        where: { id: triggerObjectId, tenantId },
+        select: { fields: true },
+      });
+      const fields = (obj?.fields as Array<{ apiName?: string; label?: string }> | null) ?? [];
+      if (fields.length > 0) {
+        inputFieldLabels = Object.fromEntries(
+          fields
+            .filter((f) => f.apiName)
+            .map((f) => [f.apiName as string, f.label ?? (f.apiName as string)]),
+        );
+      }
+    }
+
     // R1.4：审批页按环境 bundle 渲染所需上下文
     return {
       ...task,
       boundPageId,
+      allowReject,
+      inputFieldLabels,
       appId: task.instance.processDef.appId,
       runtimeEnv: task.instance.environmentId,
     };

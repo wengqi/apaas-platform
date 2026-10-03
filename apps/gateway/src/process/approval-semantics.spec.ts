@@ -294,6 +294,30 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(processQueue.add).toHaveBeenCalledTimes(1);
     expect(prisma.processTask.create).not.toHaveBeenCalled();
   });
+
+  it('#16：节点 allowReject=false 时驳回决策被拒（此前配置从未强制）', async () => {
+    const schema = makeUserTaskSchema({ approvalMode: 'single', allowReject: false });
+    setupTask(schema);
+    const { engine } = createEngine();
+
+    await expect(engine.completeTask('t1', 'u1', 'reject', '不同意', undefined)).rejects.toThrow(
+      '不允许驳回',
+    );
+    // 拦截发生在原子认领之前——任务未被置为 REJECTED
+    expect(prisma.processTask.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('#16：allowReject 未配置（undefined）视为允许驳回', async () => {
+    const schema = makeUserTaskSchema({ approvalMode: 'single' });
+    setupTask(schema);
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'REJECTED', assignee: 'u1', createdAt: new Date() },
+    ]);
+    const { engine } = createEngine();
+
+    await engine.completeTask('t1', 'u1', 'reject', '不需要', undefined);
+    expect(prisma.processTask.updateMany).toHaveBeenCalled();
+  });
 });
 
 describe('R1.3 UserTaskExecutor — 多模式任务生成', () => {

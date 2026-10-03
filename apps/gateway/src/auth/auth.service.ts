@@ -32,7 +32,7 @@ export class AuthService {
     email: string,
     password: string,
     tenantSlug?: string,
-  ): Promise<ApiResponse<{ accessToken: string; user: LoginUserDto }>> {
+  ): Promise<ApiResponse<{ accessToken: string; refreshToken: string; user: LoginUserDto }>> {
     let user;
 
     if (tenantSlug) {
@@ -109,6 +109,10 @@ export class AuthService {
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
+    const refreshToken = await this.jwtService.signAsync(payload, {
+      secret: refreshSecret(),
+      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+    });
 
     this.logger.log(
       `用户登录成功: ${user.email} (tenant=${user.tenantId ?? 'platform'}, platformAdmin=${user.isPlatformAdmin})`,
@@ -118,6 +122,7 @@ export class AuthService {
       ok: true,
       data: {
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           tenantId: user.tenantId,
@@ -134,6 +139,71 @@ export class AuthService {
       },
     };
   }
+
+  /**
+   * 刷新 accessToken：refresh token（独立派生密钥签发，与 access 不可互换）
+   * 换取新的 access/refresh 对。无状态轮换——旧 refresh 在过期前仍有效
+   * （内部平台取舍，不引入服务端会话存储）。
+   */
+  async refresh(
+    refreshToken: string,
+  ): Promise<ApiResponse<{ accessToken: string; refreshToken: string; user: LoginUserDto }>> {
+    let payload: JwtPayload;
+    try {
+      payload = (await this.jwtService.verifyAsync(refreshToken, {
+        secret: refreshSecret(),
+      })) as JwtPayload;
+    } catch {
+      throw new UnauthorizedException('refreshToken 无效或已过期，请重新登录');
+    }
+
+    // refresh 签发后用户可能被禁用/租户被挂起——刷新时复核状态
+    const user = await prisma.user.findFirst({
+      where: { id: payload.sub },
+      include: { tenant: true, userRoles: { include: { role: true } } },
+    });
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('用户不存在或已禁用');
+    }
+    if (user.tenantId && user.tenant?.status !== 'ACTIVE') {
+      throw new UnauthorizedException('租户已被挂起或归档');
+    }
+
+    const next: JwtPayload = {
+      sub: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      isPlatformAdmin: user.isPlatformAdmin,
+    };
+    return {
+      ok: true,
+      data: {
+        accessToken: await this.jwtService.signAsync(next),
+        refreshToken: await this.jwtService.signAsync(next, {
+          secret: refreshSecret(),
+          expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+        }),
+        user: {
+          id: user.id,
+          tenantId: user.tenantId,
+          email: user.email,
+          name: user.name,
+          avatar: user.avatar,
+          isPlatformAdmin: user.isPlatformAdmin,
+          roles: user.userRoles.map((ur) => ({
+            id: ur.role.id,
+            code: ur.role.code,
+            name: ur.role.name,
+          })),
+        },
+      },
+    };
+  }
+}
+
+/** refresh token 派生密钥：access 密钥追加作用域后缀（签名域隔离，零配置）。 */
+function refreshSecret(): string {
+  return `${process.env.JWT_SECRET || 'dev-secret'}:refresh`;
 }
 
 export interface JwtPayload {

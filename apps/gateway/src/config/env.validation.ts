@@ -29,6 +29,8 @@ export const envValidation = Joi.object({
       return value;
     }, 'production-weak-secret'),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
+  // refreshToken 有效期（派生密钥签发，见 auth.service refreshSecret；MCP 长生命周期客户端续期用）
+  JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
 
   // ---- CORS ----
   CORS_ORIGINS: Joi.string().optional(),

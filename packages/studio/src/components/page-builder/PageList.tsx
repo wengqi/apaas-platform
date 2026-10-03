@@ -12,6 +12,8 @@ import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../../api/pages.js';
 import { PageListItem } from './page-list/PageListItem.js';
 import { CreatePageModal, type CreatePageFormValues } from './page-list/CreatePageModal.js';
+import { buildPageTemplate, supportsTemplate } from '../../utils/page-template.js';
+import { objectsApi } from '../../api/objects.js';
 
 const { Title } = Typography;
 
@@ -50,16 +52,16 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     );
   }, [pages, keyword]);
 
-  /** 创建页面（R1.7 第二轮：统一产出 amis 空页 scaffold，v1 模板已退役）。 */
+  /** 创建页面（QA 交互评审 2026-10-03：表单/列表页基于关联对象字段自动生成
+   * amis 模板，兑现 CreatePageModal 的承诺；其余类型保持空白 scaffold，
+   * 模板进入画布后仍可自由编辑——能力口径 = amis 原生）。 */
   const createMutation = useMutation({
     mutationFn: async (data: CreatePageFormValues) => {
-      // 能力口径 = amis 原生：页面内容在 amis-editor 画布中搭建，
-      // 不再预生成 v1 模板（v1 渲染轨已下线，模板产出不可渲染）
-      const schema: Record<string, unknown> = {
-        type: 'page',
-        title: data.name,
-        body: [],
-      };
+      let schema: Record<string, unknown> = { type: 'page', title: data.name, body: [] };
+      if (data.objectId && supportsTemplate(data.type)) {
+        const obj = await objectsApi.get(data.objectId);
+        schema = buildPageTemplate(data.type, obj, data.name);
+      }
       return pagesApi.create(appId as string, {
         name: data.name,
         apiName: data.slug,

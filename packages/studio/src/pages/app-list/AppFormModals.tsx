@@ -8,6 +8,7 @@
 import { ColorPicker, Form, Input, Modal } from 'antd';
 import type { AppSummary } from '../../api/apps.js';
 import type { CreateFormValues } from './constants.js';
+import EmojiIconPicker from '../../components/shared/EmojiIconPicker.js';
 
 type AppForm = ReturnType<typeof Form.useForm<CreateFormValues>>[0];
 
@@ -68,8 +69,8 @@ export function CreateAppModal({
         <Form.Item label="描述" name="description">
           <Input.TextArea rows={2} placeholder="应用简介（可选）" />
         </Form.Item>
-        <Form.Item label="图标" name="icon" tooltip="输入一个 emoji 或文本">
-          <Input placeholder="📦" maxLength={4} />
+        <Form.Item label="图标" name="icon" tooltip="从图标库选择，或直接输入 emoji">
+          <EmojiIconPicker />
         </Form.Item>
         <Form.Item
           label="主题色"
@@ -120,8 +121,8 @@ export function EditAppModal({ app, form, confirmLoading, onCancel, onOk }: Edit
         <Form.Item label="描述" name="description">
           <Input.TextArea rows={2} placeholder="应用简介（可选）" />
         </Form.Item>
-        <Form.Item label="图标" name="icon" tooltip="输入一个 emoji 或文本">
-          <Input placeholder="📦" maxLength={4} />
+        <Form.Item label="图标" name="icon" tooltip="从图标库选择，或直接输入 emoji">
+          <EmojiIconPicker />
         </Form.Item>
         <Form.Item
           label="主题色"

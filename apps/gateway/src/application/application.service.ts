@@ -527,6 +527,17 @@ export class ApplicationService {
       },
     });
 
+    // 发布人姓名后端直出（A 旅程 2026-10-03：builder 无用户列表权限，
+    // 前端二次查询 403 导致发布历史显示裸用户 ID）
+    const publisherIds = [...new Set(versions.map((v) => v.publishedBy))];
+    const publishers = new Map(
+      (
+        await prisma.user.findMany({
+          where: { id: { in: publisherIds } },
+          select: { id: true, name: true },
+        })
+      ).map((u) => [u.id, u.name]),
+    );
     return versions.map((v) => ({
       id: v.id,
       appId: asAppId(v.appId),
@@ -534,6 +545,7 @@ export class ApplicationService {
       description: v.description,
       status: v.status as 'PUBLISHED' | 'ROLLED_BACK',
       publishedBy: asUserId(v.publishedBy),
+      publishedByName: publishers.get(v.publishedBy),
       publishedAt: v.publishedAt.toISOString(),
     }));
   }

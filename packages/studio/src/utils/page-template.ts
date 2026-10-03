@@ -32,10 +32,11 @@ export function supportsTemplate(type: PageType | undefined): boolean {
   return TEMPLATE_SUPPORTED_TYPES.includes(type as PageType);
 }
 
-/** 单选选项（FieldConfig.options 存储值合同：value 缺省回退 label 由后端保证）。 */
+/** 单选选项（FieldConfig.options 存储值合同：value 缺省回退 label——业务可读值，
+ *  绝不回退选项 id/UUID：UUID 存库后台账与流程条件均不可用，A 旅程 2026-10-03 实测踩坑）。 */
 function selectOptions(f: TemplateField): Array<{ label: string; value: string }> {
   const cfg = f.config as { options?: Array<{ id: string; label: string; value?: string }> };
-  return (cfg.options ?? []).map((o) => ({ label: o.label, value: o.value ?? o.id }));
+  return (cfg.options ?? []).map((o) => ({ label: o.label, value: o.value ?? o.label }));
 }
 
 /** 字段类型 → amis 表单控件（与 seed-procurement amisFieldControl 同口径）。 */
@@ -96,7 +97,10 @@ export function buildPageTemplate(
   const fields = businessFields(obj.fields);
   if (type === 'form_page') {
     // 提交表单：业务字段输入 + 提交按钮（submit 为 amis form 原生 actions 类型，
-    // 已入 G3 白名单——QA 回归 schema-contract.service.spec）
+    // 已入 G3 白名单——QA 回归 schema-contract.service.spec）。
+    // messages.success 必须显式给：amis saveRemote 的成功 notify 是条件触发
+    // （api.messages.success ?? fetcher msg，全空则静默——A 旅程实测连点 3 次
+    // 产生 3 条重复记录）；resetAfterSubmit 提交后清空表单，配合必填校验防重复提交。
     return {
       type: 'page',
       title: name,
@@ -106,6 +110,8 @@ export function buildPageTemplate(
           type: 'form',
           title: `${objLabel}表单`,
           api: { url: `/objects/${obj.id}/records`, method: 'post' },
+          messages: { success: '提交成功', failed: '提交失败，请稍后重试' },
+          resetAfterSubmit: true,
           body: fields.map(fieldToFormControl),
           actions: [{ type: 'submit', label: '提交', level: 'primary' }],
         },

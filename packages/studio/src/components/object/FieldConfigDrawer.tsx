@@ -10,6 +10,7 @@ import {
   type UpdateFieldRequest,
 } from '../../api/objects.js';
 import { getFieldTypeMeta, type FieldType } from '../../constants/fieldTypes.js';
+import { toApiName } from '../../utils/api-name.js';
 import TypeSpecificConfig from './field-config/TypeSpecificConfig.js';
 import DefaultValueItem from './field-config/DefaultValueItem.js';
 import FieldTypeBadge from './field-config/FieldTypeBadge.js';
@@ -210,7 +211,17 @@ export default function FieldConfigDrawer({
             { max: 40, message: '不超过 40 个字符' },
           ]}
         >
-          <Input placeholder="如:客户名称" disabled={isSystem} />
+          <Input
+            placeholder="如:客户名称"
+            disabled={isSystem}
+            onChange={(e) => {
+              // A 旅程（2026-10-03）：字段是 API 名称摩擦最高频处——
+              // 未手填时按显示名称拼音转写自动建议（设备名称→she_bei_ming_cheng），可改
+              if (!isEdit && !isSystem && !form.getFieldValue('apiName')) {
+                form.setFieldValue('apiName', toApiName(e.target.value));
+              }
+            }}
+          />
         </Form.Item>
 
         <Form.Item

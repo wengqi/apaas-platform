@@ -8,7 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { objectsApi } from '../../../api/objects.js';
 import type { PageType } from '../../../api/pages.js';
-import { suggestApiName } from '../../../utils/api-name-suggestion.js';
+import { suggestApiNameFromLabel } from '../../../utils/api-name-suggestion.js';
 
 const { Text } = Typography;
 
@@ -84,10 +84,12 @@ export function CreatePageModal({
         >
           <Input
             placeholder="客户列表页"
-            onChange={() => {
-              // QA 交互评审（2026-10-03）：API 名称未手填时自动生成建议值，可改
-              const slug = form?.getFieldValue('slug');
-              if (!slug) form?.setFieldValue('slug', suggestApiName('page'));
+            onChange={(e) => {
+              // A 旅程（2026-10-03）：API 名称未手填时按显示名称拼音转写自动建议
+              // （onChange 时 form.getFieldValue 还是旧值,必须取 e.target.value）,可改
+              if (!form?.getFieldValue('slug')) {
+                form?.setFieldValue('slug', suggestApiNameFromLabel(e.target.value, 'page'));
+              }
             }}
           />
         </Form.Item>

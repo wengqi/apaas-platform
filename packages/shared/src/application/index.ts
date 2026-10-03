@@ -124,6 +124,8 @@ export interface AppVersionSummary {
   description: string;
   status: AppVersionStatus;
   publishedBy: UserId;
+  /** 发布人姓名（后端 join users 直出——前端不应依赖管理员级用户列表接口做映射） */
+  publishedByName?: string;
   publishedAt: ISODateString;
 }
 

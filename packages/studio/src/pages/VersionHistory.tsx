@@ -10,7 +10,7 @@ import type { AppVersionSummary } from '@apaas/shared';
 const { Title } = Typography;
 
 /**
- * 发布历史页面 — 展示所有发布版本，支持回滚。
+ * 版本历史页面 — 展示所有发布版本，支持回滚。
  */
 export default function VersionHistory() {
   const { appId } = useParams<{ appId: string }>();
@@ -70,7 +70,8 @@ export default function VersionHistory() {
       title: '发布人',
       dataIndex: 'publishedBy',
       key: 'publishedBy',
-      render: (v: string) => userNameById.get(v) ?? v,
+      render: (v: string, record: AppVersionSummary) =>
+        record.publishedByName ?? userNameById.get(v) ?? v,
     },
     {
       title: '发布时间',
@@ -117,7 +118,7 @@ export default function VersionHistory() {
             返回
           </Button>
           <Title level={4} style={{ margin: 0 }}>
-            发布历史
+            版本历史
           </Title>
         </Space>
         <Button type="primary" onClick={() => navigate(`/app/${appId}/publish`)}>

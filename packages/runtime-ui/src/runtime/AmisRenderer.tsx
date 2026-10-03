@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useRef } from 'react';
+import { message } from 'antd';
 import { render } from 'amis';
 import type { RenderOptions } from 'amis-core';
 import 'amis/lib/themes/antd.css';
@@ -150,6 +151,13 @@ export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRen
       theme: 'antd',
       locale: 'zh-CN',
       fetcher: wrapFetcher(fetcher ?? createDefaultFetcher()),
+      // amis 裸 render() 的 env.notify 未接 UI（A 旅程实测提交成功静默无 toast）
+      // ——桥接到 AntD message,成功/失败反馈不再依赖页面自带 toast 组件
+      notify: (type: string, msg: string) => {
+        if (type === 'error') message.error(msg || '操作失败');
+        else if (type === 'warning') message.warning(msg || '注意');
+        else message.success(msg || '操作成功');
+      },
     }),
     [fetcher],
   );

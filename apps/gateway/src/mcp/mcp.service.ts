@@ -19,6 +19,7 @@ import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
 import { ReviewService } from '../review/review.service.js';
+import { ApplicationService } from '../application/application.service.js';
 import { writeAudit } from '../common/audit.js';
 
 /** MCP 工具的结构化返回（JSON-RPC result.content 前的数据负载）。 */
@@ -39,6 +40,7 @@ export class McpService {
     private readonly processService: ProcessService,
     private readonly objectService: ObjectService,
     private readonly reviewService: ReviewService,
+    private readonly applicationService: ApplicationService,
   ) {}
 
   // ===========================================================================
@@ -109,8 +111,47 @@ export class McpService {
   }
 
   // ===========================================================================
-  // 写工具（一律草稿提交；先过 G3 校验合同，再进 R1.2 待审队列）
+  // 写工具（create_application 容器操作即时生效；资源变更一律草稿提交——
+  // 先过 G3 校验合同，再进 R1.2 待审队列）
   // ===========================================================================
+
+  /** 创建应用（容器操作，与人工在搭建器创建语义一致，不入人审）。 */
+  async createApplication(
+    tenantId: string,
+    userId: string,
+    args: {
+      apiName?: string;
+      name: string;
+      description?: string;
+      icon?: string;
+      color?: string;
+    },
+  ): Promise<McpToolResult> {
+    const app = await this.applicationService.create(tenantId, userId, {
+      apiName: args.apiName,
+      name: args.name,
+      description: args.description,
+      icon: args.icon,
+      color: args.color,
+    });
+    writeAudit({
+      tenantId,
+      userId,
+      action: 'MCP_APP_CREATE',
+      resource: 'APPLICATION',
+      resourceId: app.id,
+      appId: app.id,
+      detail: { channel: 'mcp', apiName: app.apiName, appName: app.name },
+    });
+    return {
+      ok: true,
+      appId: app.id,
+      apiName: app.apiName,
+      name: app.name,
+      status: app.status,
+      hint: '应用已创建（DRAFT）。下一步：get_dialect_guide 阅读方言指南 → submit_object_draft 定义业务对象',
+    };
+  }
 
   async submitPageDraft(
     tenantId: string,
@@ -166,7 +207,7 @@ export class McpService {
       pageId: submission.entityId,
       action: args.pageId ? 'submitted_update' : 'submitted_create',
       published: false,
-      hint: '已进入待审队列（未落活表）：人工在审核中心 diff 快审，批准后生效；可用 list_review_submissions 查询审批结果',
+      hint: `已进入待审队列（未落活表）。轮询 list_review_submissions(appId="${args.appId}") 等待人工批准；批准后 list_pages 可拿到新页面 pageId（供流程 user_task 绑定）`,
     };
   }
 
@@ -225,7 +266,7 @@ export class McpService {
       status: submission.status,
       processId: submission.entityId,
       action: args.processId ? 'submitted_update' : 'submitted_create',
-      hint: '已进入待审队列（未落活表）：批准后流程以 DRAFT 落地，需人工发布流程才会激活',
+      hint: `已进入待审队列（未落活表）。轮询 list_review_submissions(appId="${args.appId}") 等待人工批准；批准后流程以 DRAFT 落地，仍需人工在搭建器发布流程才会激活`,
     };
   }
 
@@ -283,7 +324,7 @@ export class McpService {
       status: submission.status,
       objectId: submission.entityId,
       action: args.objectId ? 'submitted_update' : 'submitted_create',
-      hint: '已进入待审队列（未落活表）：批准后对象字段生效（系统字段自动保留）',
+      hint: `已进入待审队列（未落活表）。轮询 list_review_submissions(appId="${args.appId}") 等待人工批准；批准后 list_objects 拿到 objectId（表单页/列表页绑定需要）`,
     };
   }
 

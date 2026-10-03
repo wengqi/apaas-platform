@@ -15,6 +15,8 @@ import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
 import { ReviewService } from '../review/review.service.js';
+import { ApplicationService } from '../application/application.service.js';
+import { requireParams } from './mcp-server.factory.js';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
 
 /** 合法的 amis 页面 schema（审批页同构）。 */
@@ -96,14 +98,23 @@ function makeService() {
   const objectService = {
     create: vi.fn(),
   };
+  const applicationService = {
+    create: vi.fn().mockResolvedValue({
+      id: 'app-new',
+      apiName: 'leave_mgmt',
+      name: '请假管理',
+      status: 'DRAFT',
+    }),
+  };
   const svc = new McpService(
     new SchemaContractService(),
     pageService as unknown as PageService,
     processService as unknown as ProcessService,
     objectService as unknown as ObjectService,
     reviewService as unknown as ReviewService,
+    applicationService as unknown as ApplicationService,
   );
-  return { svc, reviewService, pageService, processService, objectService };
+  return { svc, reviewService, pageService, processService, objectService, applicationService };
 }
 
 describe('MCP 校验闸（G3 前置）', () => {
@@ -329,5 +340,60 @@ describe('MCP 治理查询（list_review_submissions）', () => {
     expect(submissions[0]!.status).toBe('REJECTED');
     expect(submissions[0]!.reviewComment).toBe('金额字段命名不符合规范');
     expect(reviewService.listSubmissions).toHaveBeenCalledWith('t1', 'app-1');
+  });
+});
+
+describe('MCP 创建应用（create_application → 容器操作即时生效）', () => {
+  it('透传 ApplicationService.create 并返回 appId 与下一步 hint', async () => {
+    const { svc, applicationService } = makeService();
+    const r = await svc.createApplication('t1', 'ai-agent', {
+      apiName: 'leave_mgmt',
+      name: '请假管理',
+      icon: '🌴',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.appId).toBe('app-new');
+    expect(r.apiName).toBe('leave_mgmt');
+    expect(typeof r.hint).toBe('string');
+    expect(applicationService.create).toHaveBeenCalledWith('t1', 'ai-agent', {
+      apiName: 'leave_mgmt',
+      name: '请假管理',
+      description: undefined,
+      icon: '🌴',
+      color: undefined,
+    });
+  });
+});
+
+describe('MCP 必填参数守卫（requireParams——静默空结果的防线）', () => {
+  it('必填参数缺失 → 结构化错误而非空串下潜（list_review_submissions 无 appId）', () => {
+    const r = requireParams('list_review_submissions', {});
+    expect(r?.['ok']).toBe(false);
+    expect(r?.['error']).toContain('appId');
+  });
+
+  it('必填参数为空白字符串 → 同样拦截', () => {
+    const r = requireParams('list_objects', { appId: '   ' });
+    expect(r?.['ok']).toBe(false);
+    expect(r?.['error']).toContain('appId');
+  });
+
+  it('多参数部分缺失 → 错误信息列全缺失项', () => {
+    const r = requireParams('submit_object_draft', { name: '只有名字' });
+    expect(r?.['ok']).toBe(false);
+    expect(String(r?.['error'])).toContain('appId');
+    expect(String(r?.['error'])).toContain('apiName');
+    expect(String(r?.['error'])).toContain('fields');
+  });
+
+  it('未知工具 → 列出全部可用工具名', () => {
+    const r = requireParams('no_such_tool', {});
+    expect(r?.['ok']).toBe(false);
+    expect(String(r?.['hint'])).toContain('create_application');
+  });
+
+  it('参数齐全 → 放行（返回 undefined 交由 dispatch）', () => {
+    const r = requireParams('create_application', { name: '请假管理' });
+    expect(r).toBeUndefined();
   });
 });

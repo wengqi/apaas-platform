@@ -600,8 +600,15 @@ export class ProcessService {
       nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
     } | null;
     const nodeDef = defSchema?.nodes?.find((n) => n.id === task.nodeId);
+    // 交互评审（2026-10-04）修复：UI 曾把绑定页写入 formKey（契约外字段名，
+    // 引擎/MCP 均为 pageId）导致审批页绑定对 UI 搭建的流程静默失效——
+    // pageId 为准，formKey 仅回退在途草稿实例的冻结 schema。
     const boundPageId =
-      typeof nodeDef?.data?.['pageId'] === 'string' ? (nodeDef.data['pageId'] as string) : null;
+      typeof nodeDef?.data?.['pageId'] === 'string'
+        ? (nodeDef.data['pageId'] as string)
+        : typeof nodeDef?.data?.['formKey'] === 'string'
+          ? (nodeDef.data['formKey'] as string)
+          : null;
 
     // #16：节点是否允许驳回（undefined=允许），任务中心据此禁用拒绝按钮
     const allowReject = nodeDef?.data?.['allowReject'] !== false;
@@ -627,12 +634,32 @@ export class ProcessService {
       }
     }
 
+    // 交互评审（2026-10-04）P0：申请内容"创建人"解析姓名——审批人不应看到裸 cuid
+    const triggerInputs = (task.instance.triggerContext as Record<string, unknown>)?.['inputs'] as
+      Record<string, unknown> | undefined;
+    const rawCreator = triggerInputs?.['created_by'];
+    const creatorId =
+      typeof rawCreator === 'string'
+        ? rawCreator
+        : Array.isArray(rawCreator) && typeof rawCreator[0] === 'string'
+          ? (rawCreator[0] as string)
+          : undefined;
+    let recordCreatorName: string | undefined;
+    if (creatorId) {
+      const creator = await prisma.user.findUnique({
+        where: { id: creatorId },
+        select: { name: true },
+      });
+      recordCreatorName = creator?.name ?? undefined;
+    }
+
     // R1.4：审批页按环境 bundle 渲染所需上下文
     return {
       ...task,
       boundPageId,
       allowReject,
       inputFieldLabels,
+      recordCreatorName,
       appId: task.instance.processDef.appId,
       runtimeEnv: task.instance.environmentId,
     };

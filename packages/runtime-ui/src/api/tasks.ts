@@ -38,6 +38,8 @@ export interface ProcessTask {
   /** #15：申请内容字段标签（apiName→label，触发对象字段定义）——
    *  未绑定审批页时把 inputs 从裸 key 渲染成友好键值表。 */
   inputFieldLabels?: Record<string, string>;
+  /** 交互评审（2026-10-04）：申请内容"创建人"解析后的姓名（无记录上下文时缺省）。 */
+  recordCreatorName?: string;
   /** R1.4：审批页按环境 bundle 渲染所需上下文（getTask 详情返回，随 processDef 恒存在）。 */
   appId: string;
   runtimeEnv?: string;

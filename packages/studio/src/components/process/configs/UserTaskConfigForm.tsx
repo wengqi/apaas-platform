@@ -11,10 +11,13 @@
  * 改为角色下拉（值=角色 ID，引擎/任务中心的 candidateGroups 契约按角色 ID 匹配）。
  */
 
-import { Divider, Form, Input, InputNumber, Select, Switch } from 'antd';
+import { useState } from 'react';
+import { Divider, Form, Input, InputNumber, Select, Switch, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
+import { optionStoredValue } from '@apaas/shared';
 import { rolesApi, usersApi } from '../../../api/permissions.js';
+import { objectsApi } from '../../../api/objects.js';
 
 export interface UserTaskConfigData {
   taskName?: string;
@@ -30,7 +33,10 @@ export interface UserTaskConfigData {
   assigneeName?: string;
   assigneeNames?: string[];
   approvalMode?: string;
-  formKey?: string;
+  /** 审批页绑定（R1.3"一切界面皆页面"）——契约字段名为 pageId，
+   *  与引擎 getTask boundPageId / MCP 方言一致。曾误写 formKey 导致
+   *  UI 搭建的流程审批页绑定静默失效（交互评审 2026-10-04 修复）。 */
+  pageId?: string;
   dueDate?: number;
   dueUnit?: string;
   title?: string;
@@ -41,6 +47,9 @@ export interface UserTaskConfigData {
   ccAssigneeType?: string;
   ccRecipients?: string[];
   ccTrigger?: string;
+  // --- 审批结果回写（交互评审 2026-10-04 P0：反馈环三断之首） ---
+  /** 节点决策定论后写入触发记录字段：引擎 completeTask 消费（记录触发场景） */
+  writeback?: { field: string; approveValue: string; rejectValue?: string };
 }
 
 export interface UserTaskConfigFormProps {
@@ -51,6 +60,10 @@ export interface UserTaskConfigFormProps {
   formOptions?: { label: string; value: string }[];
   /** 流程中可选的驳回目标节点 */
   nodeOptions?: { label: string; value: string }[];
+  /** 应用对象候选（回写字段的来源对象） */
+  objectOptions?: { label: string; value: string }[];
+  /** 触发器节点绑定的对象（回写对象默认值——记录触发场景） */
+  triggerObjectId?: string;
 }
 
 // 评审整改：导出枚举选项，供节点副标题(nodeMetadata)复用做中文标签映射，避免映射表两处维护
@@ -93,8 +106,30 @@ export default function UserTaskConfigForm({
   disabled = false,
   formOptions = [],
   nodeOptions = [],
+  objectOptions = [],
+  triggerObjectId,
 }: UserTaskConfigFormProps) {
   const update = (patch: Partial<UserTaskConfigData>) => onChange({ ...data, ...patch });
+
+  // --- 审批结果回写：对象选择仅用于列出候选字段（引擎只消费 field 名，记录对象
+  //     以触发记录为准），默认取触发器绑定的对象 ---
+  const [wbObjectId, setWbObjectId] = useState<string | undefined>(
+    triggerObjectId ?? objectOptions[0]?.value,
+  );
+  const { data: wbObject } = useQuery({
+    queryKey: qk.object(wbObjectId!),
+    queryFn: () => objectsApi.get(wbObjectId!),
+    enabled: !!data.writeback && !!wbObjectId,
+  });
+  const wbFields = (wbObject?.fields ?? []).filter((f) => !f.isSystem);
+  const wbField = wbFields.find((f) => f.apiName === data.writeback?.field);
+  const wbSelectOptions =
+    wbField?.config.type === 'single_select'
+      ? (wbField.config.options ?? []).map((o) => ({
+          label: o.label,
+          value: optionStoredValue(o),
+        }))
+      : undefined;
 
   // 成员选择器数据源（React Query 缓存全局共享，多节点配置不重复请求）
   const { data: users } = useQuery({ queryKey: qk.users(), queryFn: () => usersApi.list() });
@@ -248,8 +283,8 @@ export default function UserTaskConfigForm({
       </Form.Item>
       <Form.Item label="任务表单(可选)">
         <Select
-          value={data.formKey}
-          onChange={(v) => update({ formKey: v })}
+          value={data.pageId}
+          onChange={(v) => update({ pageId: v })}
           options={formOptions}
           allowClear
           placeholder="选择审批表单"
@@ -302,6 +337,95 @@ export default function UserTaskConfigForm({
             placeholder="选择驳回后跳回的节点"
           />
         </Form.Item>
+      )}
+      <Divider orientation="left" plain>
+        审批结果回写
+      </Divider>
+      <Form.Item label="审批后自动回写">
+        <Switch
+          checked={!!data.writeback}
+          onChange={(checked) => {
+            if (checked) {
+              setWbObjectId(triggerObjectId ?? objectOptions[0]?.value);
+              update({ writeback: { field: '', approveValue: '', rejectValue: '' } });
+            } else {
+              update({ writeback: undefined });
+            }
+          }}
+        />
+      </Form.Item>
+      {data.writeback && (
+        <>
+          <Form.Item label="回写对象">
+            <Select
+              value={wbObjectId}
+              onChange={(v) => setWbObjectId(v)}
+              options={objectOptions}
+              placeholder="选择触发记录所在对象"
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
+          <Form.Item label="回写字段" required>
+            <Select
+              value={data.writeback.field || undefined}
+              onChange={(v) =>
+                update({
+                  writeback: { ...data.writeback!, field: v, approveValue: '', rejectValue: '' },
+                })
+              }
+              options={wbFields.map((f) => ({
+                label: `${f.label} (${f.apiName})`,
+                value: f.apiName,
+              }))}
+              placeholder="选择要回写的字段（如审批状态）"
+              showSearch
+              optionFilterProp="label"
+            />
+          </Form.Item>
+          <Form.Item label="通过时写入" required>
+            {wbSelectOptions ? (
+              <Select
+                value={data.writeback.approveValue || undefined}
+                onChange={(v) => update({ writeback: { ...data.writeback!, approveValue: v } })}
+                options={wbSelectOptions}
+                placeholder="选择通过后的字段值"
+              />
+            ) : (
+              <Input
+                value={data.writeback.approveValue}
+                onChange={(e) =>
+                  update({ writeback: { ...data.writeback!, approveValue: e.target.value } })
+                }
+                placeholder="通过后写入的字段值"
+              />
+            )}
+          </Form.Item>
+          {data.allowReject !== false && (
+            <Form.Item label="驳回时写入">
+              {wbSelectOptions ? (
+                <Select
+                  value={data.writeback.rejectValue || undefined}
+                  onChange={(v) => update({ writeback: { ...data.writeback!, rejectValue: v } })}
+                  options={wbSelectOptions}
+                  allowClear
+                  placeholder="选择驳回后的字段值（可留空）"
+                />
+              ) : (
+                <Input
+                  value={data.writeback.rejectValue}
+                  onChange={(e) =>
+                    update({ writeback: { ...data.writeback!, rejectValue: e.target.value } })
+                  }
+                  placeholder="驳回后写入的字段值（可留空）"
+                />
+              )}
+            </Form.Item>
+          )}
+          <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+            决策定论后写入触发记录（记录创建/更新触发场景）；非记录触发的流程自动跳过。
+          </Typography.Text>
+        </>
       )}
       <Divider orientation="left" plain>
         抄送配置

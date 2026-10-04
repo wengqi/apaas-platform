@@ -202,6 +202,7 @@ export default function TaskCenter() {
                 onCommentChange={setComment}
                 traceData={traceData ?? null}
                 traceLoading={traceLoading}
+                recordCreatorName={taskDetail.recordCreatorName}
               />
             </>
           )

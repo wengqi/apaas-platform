@@ -20,6 +20,7 @@ import {
   BadRequestException,
   Inject,
   ConflictException,
+  forwardRef,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { prisma, Prisma, getEnvironmentId, runWithEnv } from '@apaas/db';
@@ -31,6 +32,7 @@ import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { RedisLockService } from '../common/redis/redis-lock.service.js';
 import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
+import { RecordService } from '../record/record.service.js';
 
 /**
  * 评审 P1-6：队列作业统一重试/清理策略。
@@ -106,6 +108,9 @@ export class ProcessEngine {
     private readonly environmentResolver: EnvironmentResolverService,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
     @Inject(DELAY_QUEUE) private readonly delayQueue: Queue,
+    // 交互评审（2026-10-04）P0：审批结果自动回写复用记录写内核
+    @Inject(forwardRef(() => RecordService))
+    private readonly recordService: RecordService,
   ) {}
 
   /**
@@ -789,6 +794,12 @@ export class ProcessEngine {
 
       this.logger.log(`任务 ${taskId} 已完成（${decisionUpper}），实例 ${instance.id} 恢复执行`);
 
+      // 交互评审（2026-10-04）P0：审批结果自动回写触发记录——
+      // 小白最短路径（表单提交→审批）此前审批通过后记录状态字段永远停留原值，
+      // 构成"反馈环三断"之首。节点配置 node.data.writeback = { field, approveValue, rejectValue }，
+      // 记录上下文取自实例变量（记录创建触发器写入的 recordId）。
+      await this.writebackApprovalResult(task, instance, nodeDef, variables, isApproved, userId);
+
       // --- 抄送逻辑 ---
       await this.sendCcNotification(
         schema,
@@ -809,6 +820,57 @@ export class ProcessEngine {
 
     // 异步入队：由 BullMQ Worker 消费推进令牌
     await this.processQueue.add('execute', { instanceId: task.instance.id }, DEFAULT_JOB_OPTS);
+  }
+
+  /**
+   * 审批结果自动回写触发记录（交互评审 2026-10-04 P0）。
+   *
+   * 节点配置 node.data.writeback = { field, approveValue, rejectValue }：
+   * 节点决策定论后（聚合完成、令牌推进成功）把对应值写入触发记录的字段。
+   * - 记录上下文取实例变量 recordId（记录创建/更新触发器写入）；无记录上下文
+   *   （手动/API/定时触发）时跳过并留痕。
+   * - 回写失败不阻断审批推进（决策已生效），但必须显式记录错误。
+   * - 复用记录写内核（部分 merge + 公式/Rollup 重算 + 记录事件——
+   *   记录更新触发器因此可被联动触发，与飞书式自动化语义一致）。
+   */
+  private async writebackApprovalResult(
+    task: { id: string; nodeId: string },
+    instance: { id: string; tenantId: string },
+    nodeDef: { data?: Record<string, unknown> } | undefined,
+    variables: Record<string, unknown>,
+    isApproved: boolean,
+    approverId: string,
+  ): Promise<void> {
+    const writeback = nodeDef?.data?.['writeback'] as
+      { field?: string; approveValue?: string; rejectValue?: string } | undefined;
+    if (!writeback?.field) return;
+
+    const value = isApproved ? writeback.approveValue : writeback.rejectValue;
+    if (value === undefined || value === null || value === '') return;
+
+    const recordId =
+      typeof variables['recordId'] === 'string' ? (variables['recordId'] as string) : undefined;
+    if (!recordId) {
+      this.logger.warn(
+        `节点 ${task.nodeId} 配置了审批回写，但实例 ${instance.id} 无记录上下文（非记录触发），跳过`,
+      );
+      return;
+    }
+
+    try {
+      await this.recordService.update(instance.tenantId, recordId, approverId, {
+        [writeback.field]: value,
+      });
+      this.logger.log(
+        `审批回写：记录 ${recordId}.${writeback.field} = ${value}（任务 ${task.id}，审批人 ${approverId}）`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `审批回写失败（不阻断审批推进）：任务 ${task.id} 记录 ${recordId} 字段 ${writeback.field}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   // ===========================================================================

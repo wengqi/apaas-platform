@@ -3,7 +3,7 @@
  * （AGENTS.md 单文件 400 行规范）。
  */
 
-import { Form, Input, Modal, Select, Typography } from 'antd';
+import { Form, Input, Modal, Select, Switch, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { objectsApi } from '../../../api/objects.js';
@@ -27,6 +27,8 @@ export interface CreatePageFormValues {
   slug: string;
   type: PageType;
   objectId?: string;
+  /** 表单页成对生成台账页（交互评审 2026-10-04 P0：申请人进度视图） */
+  withLedger?: boolean;
 }
 
 export function CreatePageModal({
@@ -58,6 +60,7 @@ export function CreatePageModal({
 
   /** 监听页面类型变化,决定关联对象是否必填（原 templates/dispatch 随 v1 搭建器退役） */
   const pageType = Form.useWatch('type', form);
+  const objectId = Form.useWatch('objectId', form);
   const requiresObject = ['list_page', 'detail_page', 'form_page'].includes(pageType ?? 'custom');
 
   return (
@@ -74,7 +77,7 @@ export function CreatePageModal({
       <Form<CreatePageFormValues>
         form={form}
         layout="vertical"
-        initialValues={{ type: 'custom' as PageType }}
+        initialValues={{ type: 'custom' as PageType, withLedger: true }}
         preserve={false}
       >
         <Form.Item
@@ -133,6 +136,17 @@ export function CreatePageModal({
           <Text type="secondary" style={{ fontSize: 12 }}>
             将基于所选对象的字段自动生成页面模板,可在搭建器中进一步编辑。
           </Text>
+        )}
+        {pageType === 'form_page' && objectId && (
+          <Form.Item
+            label="同时生成台账页"
+            name="withLedger"
+            valuePropName="checked"
+            style={{ marginTop: 12 }}
+            tooltip="按对象字段生成列表页（含审批状态列），提交人可在台账中查看申请进度"
+          >
+            <Switch checkedChildren="生成" unCheckedChildren="不生成" />
+          </Form.Item>
         )}
       </Form>
     </Modal>

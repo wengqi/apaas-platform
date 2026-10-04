@@ -94,6 +94,9 @@ export function getNodeSummary(type: string, data: Record<string, unknown>): str
       if (approverLabel) parts.push(approverLabel);
       if (assigneeTypeLabel) parts.push(assigneeTypeLabel);
       if (approvalModeLabel) parts.push(approvalModeLabel);
+      // 交互评审（2026-10-04）P0：回写配置在画布可见（反馈环补完的配置确认点）
+      const writeback = data.writeback as { field?: string } | undefined;
+      if (writeback?.field) parts.push(`回写: ${writeback.field}`);
       return parts.join(' · ');
     }
     case 'notification': {

@@ -40,6 +40,7 @@ function createEngine(executors: NodeExecutor[] = []) {
   const inAppMessageService = { create: vi.fn().mockResolvedValue(undefined) };
   const processQueue = createMockQueue();
   const delayQueue = createMockQueue();
+  const recordService = { update: vi.fn().mockResolvedValue({ id: 'record-mock' }) };
   const redisLock = {
     withLock: (_key: string, fn: () => Promise<unknown>) => fn(),
   } as unknown as ConstructorParameters<typeof ProcessEngine>[2];
@@ -56,8 +57,9 @@ function createEngine(executors: NodeExecutor[] = []) {
     } as unknown as ConstructorParameters<typeof ProcessEngine>[3],
     processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
     delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
+    recordService as unknown as ConstructorParameters<typeof ProcessEngine>[6],
   );
-  return { engine, registry, processQueue };
+  return { engine, registry, processQueue, recordService };
 }
 
 function makeNode(id: string, type: string, data: Record<string, unknown> = {}): WorkflowNode {
@@ -624,5 +626,107 @@ describe('通知模版 CRUD — update/delete', () => {
     const r = await service.deleteTemplate('t1', 'tpl-1');
     expect(r).toEqual({ deleted: true });
     expect(prisma.notificationTemplate.delete).toHaveBeenCalledWith({ where: { id: 'tpl-1' } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 审批结果自动回写（交互评审 2026-10-04 P0：反馈环三断之首）
+// ---------------------------------------------------------------------------
+
+describe('审批结果自动回写 — writeback', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.processInstance.update.mockResolvedValue({});
+    prisma.processInstance.findFirst.mockImplementation((args: { where: { id: string } }) => {
+      return Promise.resolve(makeInstanceRow({ id: args.where.id, status: 'WAITING_USER_TASK' }));
+    });
+    prisma.nodeExecution.update.mockResolvedValue({});
+  });
+
+  function setupWritebackTask(variables: Record<string, unknown>) {
+    const schema = makeUserTaskSchema({
+      approvalMode: 'single',
+      allowReject: true,
+      writeback: { field: 'status', approveValue: 'approved', rejectValue: 'rejected' },
+    });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      variables,
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'APPROVED', assignee: 'u1', createdAt: new Date() },
+    ]);
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+  }
+
+  it('通过：按 approveValue 回写触发记录字段', async () => {
+    setupWritebackTask({ recordId: 'rec-1', objectId: 'obj-1' });
+    const { engine, processQueue, recordService } = createEngine();
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    expect(recordService.update).toHaveBeenCalledWith('tenant-001', 'rec-1', 'u1', {
+      status: 'approved',
+    });
+    // 审批推进不受回写影响
+    expect(processQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('驳回：按 rejectValue 回写', async () => {
+    setupWritebackTask({ recordId: 'rec-1', objectId: 'obj-1' });
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'REJECTED', assignee: 'u1', createdAt: new Date() },
+    ]);
+    const { engine, recordService } = createEngine();
+    await engine.completeTask('t1', 'u1', 'reject', '不同意', undefined);
+
+    expect(recordService.update).toHaveBeenCalledWith('tenant-001', 'rec-1', 'u1', {
+      status: 'rejected',
+    });
+  });
+
+  it('非记录触发（无 recordId）：跳过回写但正常推进', async () => {
+    setupWritebackTask({});
+    const { engine, processQueue, recordService } = createEngine();
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    expect(recordService.update).not.toHaveBeenCalled();
+    expect(processQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('未配置 writeback：不回写', async () => {
+    const schema = makeUserTaskSchema({ approvalMode: 'single', allowReject: true });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'APPROVED', assignee: 'u1', createdAt: new Date() },
+    ]);
+    const { engine, recordService } = createEngine();
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    expect(recordService.update).not.toHaveBeenCalled();
+  });
+
+  it('回写失败：不阻断审批推进（记录错误后照常入队）', async () => {
+    setupWritebackTask({ recordId: 'rec-1', objectId: 'obj-1' });
+    const { engine, processQueue, recordService } = createEngine();
+    (recordService.update as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('字段已删除'));
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    expect(recordService.update).toHaveBeenCalled();
+    expect(processQueue.add).toHaveBeenCalledTimes(1);
   });
 });

@@ -58,17 +58,37 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
   const createMutation = useMutation({
     mutationFn: async (data: CreatePageFormValues) => {
       let schema: Record<string, unknown> = { type: 'page', title: data.name, body: [] };
+      let obj: Awaited<ReturnType<typeof objectsApi.get>> | null = null;
       if (data.objectId && supportsTemplate(data.type)) {
-        const obj = await objectsApi.get(data.objectId);
+        obj = await objectsApi.get(data.objectId);
         schema = buildPageTemplate(data.type, obj, data.name);
       }
-      return pagesApi.create(appId as string, {
+      const page = await pagesApi.create(appId as string, {
         name: data.name,
         apiName: data.slug,
         type: data.type,
         objectId: data.objectId,
         schema: schema as never,
       });
+      // 成对生成台账页（交互评审 2026-10-04 P0：反馈环三断之三——申请人进度视图）。
+      // 表单页默认配台账列表页，提交人不再"提交后石沉大海"。
+      if (data.type === 'form_page' && data.withLedger !== false && data.objectId && obj) {
+        const ledgerName = `${obj.name}台账`;
+        try {
+          await pagesApi.create(appId as string, {
+            name: ledgerName,
+            apiName: `${data.slug}_ledger`,
+            type: 'list_page',
+            objectId: data.objectId,
+            schema: buildPageTemplate('list_page', obj, ledgerName) as never,
+          });
+          message.success(`已同步生成台账页「${ledgerName}」`);
+        } catch {
+          // 主页面已建成，台账失败不回滚——显式提示手动补救
+          message.warning('台账页创建失败，可稍后在页面列表手动创建');
+        }
+      }
+      return page;
     },
     onSuccess: (page) => {
       message.success('页面创建成功');

@@ -215,6 +215,11 @@ function renderConfigForm(
           disabled={readonly}
           formOptions={options.formOptions}
           nodeOptions={options.nodeOptions}
+          objectOptions={options.objectOptions}
+          triggerObjectId={
+            options.schema?.nodes?.find((n) => n.type === 'trigger')?.data?.objectId as
+              string | undefined
+          }
         />
       );
     case 'notification':

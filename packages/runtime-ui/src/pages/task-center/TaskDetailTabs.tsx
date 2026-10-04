@@ -3,7 +3,7 @@
  * AGENTS.md 单文件 400 行规范）。
  */
 
-import { Descriptions, Input, Tabs, Tag, Typography } from 'antd';
+import { Collapse, Descriptions, Input, Tabs, Tag, Typography } from 'antd';
 import type { ProcessTask, ProcessTraceData } from '../../api/tasks.js';
 import TraceViewer from '../../components/TraceViewer.js';
 import { STATUS_COLORS, STATUS_LABELS } from './constants.js';
@@ -19,6 +19,8 @@ interface TaskDetailTabsProps {
   onCommentChange: (value: string) => void;
   traceData: ProcessTraceData | null;
   traceLoading: boolean;
+  /** 申请内容"创建人"的解析姓名（后端 getTask 解析；审批人不应看到裸 cuid） */
+  recordCreatorName?: string;
 }
 
 /** 任务详情 / 流程轨迹页签。 */
@@ -31,6 +33,7 @@ export function TaskDetailTabs({
   onCommentChange,
   traceData,
   traceLoading,
+  recordCreatorName,
 }: TaskDetailTabsProps) {
   return (
     <Tabs
@@ -79,30 +82,47 @@ export function TaskDetailTabs({
                   <Descriptions column={1} size="small" bordered>
                     {triggerData.map(([key, value]) => (
                       <Descriptions.Item key={key} label={key}>
-                        {typeof value === 'object'
-                          ? JSON.stringify(value, null, 2)
-                          : String(value ?? '—')}
+                        {/* 交互评审（2026-10-04）：创建人显示解析姓名而非裸 cuid */}
+                        {key === '创建人' && recordCreatorName
+                          ? recordCreatorName
+                          : typeof value === 'object'
+                            ? JSON.stringify(value, null, 2)
+                            : String(value ?? '—')}
                       </Descriptions.Item>
                     ))}
                   </Descriptions>
                 </div>
               )}
 
+              {/* 交互评审（2026-10-04）：流程变量是开发者调试信息，折叠默认收起——
+                  此前 11 行原始 JSON 全量铺在审批动作之前，决策信息被噪音淹没 */}
               {formData.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    流程变量
-                  </Text>
-                  <Descriptions column={1} size="small" bordered>
-                    {formData.map(([key, value]) => (
-                      <Descriptions.Item key={key} label={key}>
-                        {typeof value === 'object'
-                          ? JSON.stringify(value, null, 2)
-                          : String(value ?? '—')}
-                      </Descriptions.Item>
-                    ))}
-                  </Descriptions>
-                </div>
+                <Collapse
+                  ghost
+                  size="small"
+                  style={{ marginBottom: 16 }}
+                  items={[
+                    {
+                      key: 'vars',
+                      label: (
+                        <Text type="secondary" style={{ fontSize: 13 }}>
+                          流程变量（技术详情）
+                        </Text>
+                      ),
+                      children: (
+                        <Descriptions column={1} size="small" bordered>
+                          {formData.map(([key, value]) => (
+                            <Descriptions.Item key={key} label={key}>
+                              {typeof value === 'object'
+                                ? JSON.stringify(value, null, 2)
+                                : String(value ?? '—')}
+                            </Descriptions.Item>
+                          ))}
+                        </Descriptions>
+                      ),
+                    },
+                  ]}
+                />
               )}
 
               {activeTab === 'pending' && (

@@ -52,6 +52,7 @@
 | [AI-FIRST-POLISH-2026-10-03](./AI-FIRST-POLISH-2026-10-03.md) | 2026-10-03 | AI 第一公民主线打磨第一轮（方法论=主线纵深打磨；八步全链路验证 + 摩擦点 13 项清单（修 6 列 7）+ MCP 参数守卫/create_application/JWT refresh 修复明细 + ZCode 接入指引）|
 | [STATUS-MATRIX-2026-10-03](./STATUS-MATRIX-2026-10-03.md) | 2026-10-03 | 状态矩阵（主线打磨第一轮：八步全通 + 修 6 列 7 + gateway 单测 698；下一轮最高价值=资源依赖链批量提交）|
 | [BATCH-SUBMIT-2026-10-03](./BATCH-SUBMIT-2026-10-03.md) | 2026-10-03 | 资源依赖链批量提交（AI 单波生成完整应用）——submit_app_drafts + @ref: 引用令牌 + 拓扑序批准；4+1 次调用 4 次人审 → 2 次调用 1 次人审；实测会议预定应用单波生成一键批准 |
+| [RUNTIME-JOURNEY-P0-2026-10-04](./RUNTIME-JOURNEY-P0-2026-10-04.md) | 2026-10-04 | 运行态业务用户旅程 P0（主线切至 C 申请人/D 审批人）——反馈环三断全修：审批结果自动回写（引擎 writeback + RecordService 写内核）/表单页成对生成台账页（单选列 mapping 中文标签）/审批人体验（formKey→pageId 契约断裂修复+变量折叠+创建人姓名）；端到端实测回写闭环 |
 | [ROLEPLAY-NEWBIE-JOURNEY-2026-10-03](./ROLEPLAY-NEWBIE-JOURNEY-2026-10-03.md) | 2026-10-03 | 零知识用户 A/B 旅程两轮:①纯 UI 建应用闭环(修 5);②流程画布全链路——审批流+条件分支+状态回写运行时闭环(修 7:H1b toast/fieldMapping→inputsValues 契约/extInfo 并入导出/FieldMapper 死循环/角色审批四连根因/转草稿入口);遗留 #8 可发现性/#15 审批页模板/#16 驳回按钮;extInfo 不进 toJSON 等工程坑 |
 
 ## 文档维护规则

@@ -73,6 +73,9 @@ function createEngine(executors: NodeExecutor[] = []) {
     } as unknown as ConstructorParameters<typeof ProcessEngine>[3],
     processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
     delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
+    {
+      update: vi.fn().mockResolvedValue({ id: 'record-mock' }),
+    } as unknown as ConstructorParameters<typeof ProcessEngine>[6],
   );
   return { engine, registry, inAppMessageService, processQueue, delayQueue };
 }

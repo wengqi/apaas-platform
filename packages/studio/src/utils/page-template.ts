@@ -132,11 +132,22 @@ export function buildPageTemplate(
           method: 'get',
         },
         perPage: 20,
-        columns: fields.slice(0, 6).map((f) => ({
-          name: f.apiName,
-          label: f.label,
-          sortable: true,
-        })),
+        columns: fields.slice(0, 6).map((f) => {
+          const col: Record<string, unknown> = {
+            name: f.apiName,
+            label: f.label,
+            sortable: true,
+          };
+          // 交互评审（2026-10-04）：单选/多选列用 amis mapping 显示选项标签——
+          // 此前台账直接显示存储值（approved），申请人看不懂
+          if (f.type === 'single_select' || f.type === 'multi_select') {
+            const map: Record<string, { label: string }> = {};
+            for (const o of selectOptions(f)) map[o.value] = { label: o.label };
+            col.type = 'mapping';
+            col.map = map;
+          }
+          return col;
+        }),
         features: ['create', 'filter'],
       },
     ],

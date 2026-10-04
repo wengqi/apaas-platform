@@ -23,6 +23,7 @@ import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
+import { collectRefTokens } from './review.service.js';
 
 /** 活表资源提取结果 */
 export interface LiveResource {
@@ -222,16 +223,26 @@ export class ReviewSnapshotService {
     entityId: string | null,
     changedBy: string,
   ): Promise<string> {
+    // #18：schema 中 api.url 等字符串字段的 @ref:object:<apiName> 令牌
+    // 落地时解析为真实对象 ID（AI 无法预知自建对象的 ID，只能以令牌占位）
+    const resolved = (await this.resolveObjectTokens(
+      tenantId,
+      appId,
+      snapshot,
+    )) as PageResourceSnapshot;
+    const finalSnapshot = resolved ?? snapshot;
     const target = entityId
       ? await prisma.pageMeta.findFirst({ where: { id: entityId, tenantId, appId } })
-      : await prisma.pageMeta.findFirst({ where: { tenantId, appId, apiName: snapshot.apiName } });
+      : await prisma.pageMeta.findFirst({
+          where: { tenantId, appId, apiName: finalSnapshot.apiName },
+        });
 
     if (target) {
       // AI 提交批准只落 schema/名称；上线仍随应用发布（isPublished 语义不变）
       await this.pageService.update(
         tenantId,
         target.id,
-        { name: snapshot.name, schema: snapshot.schema as never },
+        { name: finalSnapshot.name, schema: finalSnapshot.schema as never },
         changedBy,
       );
       return target.id;
@@ -240,15 +251,77 @@ export class ReviewSnapshotService {
       tenantId,
       appId,
       {
-        apiName: snapshot.apiName,
-        name: snapshot.name,
-        type: snapshot.type as PageType,
-        objectId: snapshot.objectId ?? undefined,
-        schema: snapshot.schema as never,
+        apiName: finalSnapshot.apiName,
+        name: finalSnapshot.name,
+        type: finalSnapshot.type as PageType,
+        objectId: finalSnapshot.objectId ?? undefined,
+        schema: finalSnapshot.schema as never,
       },
       changedBy,
     );
     return created.id;
+  }
+
+  /**
+   * 页面 schema 内 @ref:object:<apiName> 令牌解析（#18）。
+   * 无令牌时返回 null（调用方沿用原快照，避免无谓深拷贝）。
+   */
+  private async resolveObjectTokens(
+    tenantId: string,
+    appId: string,
+    snapshot: PageResourceSnapshot,
+  ): Promise<PageResourceSnapshot | null> {
+    // api.url 中令牌是路径子串（非整串），需串级扫描替换
+    const urlTokens = new Set<string>();
+    const scanUrls = (v: unknown): void => {
+      if (typeof v === 'string') {
+        for (const m of v.matchAll(/@ref:object:[a-z][a-z0-9_]*/g)) urlTokens.add(m[0]);
+        return;
+      }
+      if (Array.isArray(v)) {
+        v.forEach(scanUrls);
+        return;
+      }
+      if (v !== null && typeof v === 'object') {
+        Object.values(v).forEach(scanUrls);
+      }
+    };
+    scanUrls(snapshot.schema);
+    // 整串令牌（objectId 等字段值）
+    const wholeTokens = collectRefTokens(snapshot.schema);
+    const objectTokens = new Set<string>([
+      ...[...urlTokens],
+      ...[...wholeTokens].filter((t) => t.startsWith('@ref:object:')),
+    ]);
+    if (objectTokens.size === 0) return null;
+    const map = new Map<string, string>();
+    for (const token of objectTokens) {
+      const apiName = token.replace(/^@ref:object:/, '');
+      const obj = await prisma.objectMeta.findFirst({
+        where: { tenantId, appId, apiName },
+        select: { id: true },
+      });
+      if (!obj) {
+        throw new Error(`页面引用的对象「${apiName}」不存在（@ref 令牌解析失败）`);
+      }
+      map.set(token, obj.id);
+    }
+    // URL 子串替换：字符串值按子串替换令牌，其余走整串 map
+    const replaceUrls = (v: unknown): unknown => {
+      if (typeof v === 'string') {
+        let out = v;
+        for (const [token, id] of map) out = out.split(token).join(id);
+        return out;
+      }
+      if (Array.isArray(v)) return v.map(replaceUrls);
+      if (v !== null && typeof v === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(v)) out[k] = replaceUrls(val);
+        return out;
+      }
+      return v;
+    };
+    return replaceUrls(snapshot) as PageResourceSnapshot;
   }
 
   private async applyProcess(

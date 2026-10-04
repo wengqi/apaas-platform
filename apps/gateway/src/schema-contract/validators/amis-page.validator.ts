@@ -205,13 +205,17 @@ function validateActions(node: Record<string, unknown>, path: string, issues: Sc
   }
 }
 
-/** 平台约束：页面内 api 必须走平台相对路径（防 AI 生成外联）。 */
+/** 平台约束：页面内 api 必须走平台相对路径（防 AI 生成外联）。
+ *  推荐写法 /objects/...（axios baseURL='/api' 拼接）；/api/v1/... 前缀
+ *  由运行时 fetcher 兼容剥离，不再报错（AI 直觉写法的自动纠偏）。 */
 function validateApiUrl(url: string, path: string, issues: SchemaIssue[]): void {
+  // @ref: 令牌（批量提交占位，落地时解析为真实对象 ID）合法放行
+  if (url.includes('@ref:')) return;
   if (url.startsWith('http://') || url.startsWith('https://')) {
     issues.push({
       path,
       code: SCHEMA_ISSUE_CODES.INVALID_VALUE,
-      message: '页面内 api.url 必须是平台相对路径（以 / 开头，走网关认证），禁止外联地址',
+      message: '页面内 api.url 必须是平台相对路径（如 /objects/<objectId>/records），禁止外联地址',
       severity: 'error',
     });
   }

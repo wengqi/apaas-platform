@@ -104,3 +104,14 @@
 # 追加批次三 — 资源依赖链批量提交（同日深夜）
 
 > AI-first 打磨轮 backlog 第一优先项落地：`submit_app_drafts` 单波生成完整应用 + 审核中心一键批准（拓扑序落地 + @ref: 引用令牌解析）。实测：2 次 MCP 调用 + 1 次人审生成「会议预定」完整应用（对象+2 页面+流程，跨资源引用自动接线）。gateway 707（+8）/ db 55（迁移 review_batch_id）。实现记录 `BATCH-SUBMIT-2026-10-03.md`。遗留：MCP users/roles 只读工具、表单 api.url 令牌化。
+
+
+---
+
+# 追加批次四 — 会议预定全链路 + 连带三缺陷（2026-10-04）
+
+- `list_users`/`list_roles` 只读 MCP 工具（16 工具）
+- #18 页面 schema `@ref:object:` 令牌落地解析（URL 子串形态支持）
+- #20 运行时 fetcher 失败 toast（与成功对称）
+- #21 方言指南 api.url 契约纠错 + fetcher 前缀兼容
+- 「会议预定」AI 生成应用 0.1.2 全链路终验：提交→审批页绑定渲染→批准→COMPLETED。gateway 710（+1）

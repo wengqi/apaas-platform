@@ -84,6 +84,56 @@ export class McpService {
     return { ok: true, processes };
   }
 
+  /** 应用成员列表（id/姓名/邮箱/角色）——AI 配置审批人（assignee/approveUsers）的选人依据。 */
+  async listUsers(tenantId: string, keyword?: string): Promise<McpToolResult> {
+    const users = await prisma.user.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        ...(keyword
+          ? {
+              OR: [
+                { name: { contains: keyword, mode: 'insensitive' } },
+                { email: { contains: keyword, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        userRoles: { select: { role: { select: { code: true, name: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    return {
+      ok: true,
+      users: users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        roles: u.userRoles.map((ur) => ur.role.code),
+      })),
+      hint: '把 id 填入流程 user_task 的 assignee（单人）或 approveUsers（多人）；角色编码作 candidateGroups 需传角色 ID（用 list_roles 拿）',
+    };
+  }
+
+  /** 角色列表（id/编码/名称）——指定角色审批（candidateGroups）的选角色依据。 */
+  async listRoles(tenantId: string, appId?: string): Promise<McpToolResult> {
+    const roles = await prisma.role.findMany({
+      where: { tenantId, ...(appId ? { appId } : {}) },
+      select: { id: true, code: true, name: true, isBuiltIn: true },
+      orderBy: [{ isBuiltIn: 'desc' }, { createdAt: 'asc' }],
+    });
+    return {
+      ok: true,
+      roles,
+      hint: '流程 user_task 指定角色审批时，把角色 id 填入 candidateGroups（引擎/任务中心按角色 ID 匹配，非编码）',
+    };
+  }
+
   async getPage(tenantId: string, pageId: string): Promise<McpToolResult> {
     const page = await this.pageService.get(tenantId, pageId);
     return { ok: true, page };

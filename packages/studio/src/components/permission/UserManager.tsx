@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -49,7 +50,7 @@ export default function UserManager() {
       form.resetFields();
       void queryClient.invalidateQueries({ queryKey: ['permission-users'] });
     },
-    onError: () => message.error('创建失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '创建失败')),
   });
 
   const deleteMutation = useMutation({
@@ -58,7 +59,7 @@ export default function UserManager() {
       message.success('已删除');
       void queryClient.invalidateQueries({ queryKey: ['permission-users'] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   const columns = [

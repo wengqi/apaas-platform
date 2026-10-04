@@ -22,6 +22,19 @@ export interface ApiResponse<T> {
   error?: { code: string; message: string; fieldErrors?: Record<string, string> };
 }
 
+/**
+ * 从 axios 错误中提取后端错误消息（ApiResponse.error.message），失败时回退 fallback。
+ *
+ * 交互评审（2026-10-04）：此前各 mutation 的 onError 只弹固定文案（如"创建失败"），
+ * 403/400 的真实原因（无权限/字段校验）被吞掉，问题不可诊断——统一走本助手透出。
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const e = err as
+    | { response?: { data?: { error?: { message?: string }; message?: string } }; message?: string }
+    | undefined;
+  return e?.response?.data?.error?.message || e?.response?.data?.message || e?.message || fallback;
+}
+
 /** 请求拦截器:从 auth store 取 token 加到 Authorization header。 */
 client.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;

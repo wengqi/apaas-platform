@@ -2,9 +2,15 @@
  * 通知模版 请求 DTO — class-based，使 ValidationPipe 和 Swagger 同时生效。
  *
  * 对应 process.service.ts 中的 CreateTemplateRequest / UpdateTemplateRequest interface。
+ *
+ * variables 契约（交互评审 2026-10-04 修复）：变量定义是 UI 元数据数组
+ * （[{name, description, sampleValue}]，驱动搭建器的"插入变量/预览"），
+ * 发送侧渲染只用实例变量（renderTemplateDotted(scope)），不读该字段。
+ * 此前 @IsObject() 与 service 默认值 []（数组）及 studio 载荷自相矛盾——
+ * UI 创建模版必然 400"variables must be an object"。
  */
 
-import { IsObject, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTemplateDto {
@@ -24,10 +30,13 @@ export class CreateTemplateDto {
   @IsString()
   bodyTemplate!: string;
 
-  @ApiPropertyOptional({ description: '变量定义（JSON）' })
+  @ApiPropertyOptional({
+    example: [{ name: 'result', description: '审批结果', sampleValue: '通过' }],
+    description: '变量定义（数组，UI 元数据）',
+  })
   @IsOptional()
-  @IsObject()
-  variables?: unknown;
+  @IsArray()
+  variables?: unknown[];
 }
 
 export class UpdateTemplateDto {
@@ -51,8 +60,8 @@ export class UpdateTemplateDto {
   @IsString()
   bodyTemplate?: string;
 
-  @ApiPropertyOptional({ description: '变量定义（JSON）' })
+  @ApiPropertyOptional({ description: '变量定义（数组，UI 元数据）' })
   @IsOptional()
-  @IsObject()
-  variables?: unknown;
+  @IsArray()
+  variables?: unknown[];
 }

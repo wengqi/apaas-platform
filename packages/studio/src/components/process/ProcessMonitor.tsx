@@ -10,7 +10,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Modal, Table, Tabs, message } from 'antd';
+import { apiErrorMessage } from '../../api/client.js';
+import { Empty, Modal, Skeleton, Table, Tabs, message } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { processesApi, type UserTask } from '../../api/processes.js';
@@ -69,12 +70,19 @@ export default function ProcessMonitor() {
     enabled: activeTab === 'tasks' && !!processId,
   });
 
-  /** 实例详情。 */
-  const { data: instanceReport } = useQuery({
+  /** 实例详情。
+   *  交互评审（2026-10-04）修复：查询失败（如 403 仅发起人/参与人可见）此前
+   *  会让弹窗永久空白——instanceReport 为 undefined 时 Modal 内容区什么都没有。 */
+  const {
+    data: instanceReport,
+    error: instanceError,
+    isFetching: instanceLoading,
+  } = useQuery({
     queryKey: ['process-instance', selectedInstanceId],
     queryFn: () => processesApi.getInstance(selectedInstanceId as string),
     enabled: !!selectedInstanceId,
     refetchInterval: 5000,
+    retry: 1,
   });
 
   /** 完成任务 mutation。 */
@@ -86,7 +94,7 @@ export default function ProcessMonitor() {
       setTaskModal(null);
       void queryClient.invalidateQueries({ queryKey: ['process-tasks'] });
     },
-    onError: () => message.error('处理失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '处理失败')),
   });
 
   /** 转办任务 mutation。 */
@@ -98,7 +106,7 @@ export default function ProcessMonitor() {
       setTaskModal(null);
       void queryClient.invalidateQueries({ queryKey: ['process-tasks'] });
     },
-    onError: () => message.error('转办失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '转办失败')),
   });
 
   /** 终止实例 mutation。 */
@@ -108,7 +116,7 @@ export default function ProcessMonitor() {
       message.success('已终止');
       void queryClient.invalidateQueries({ queryKey: ['process-instances'] });
     },
-    onError: () => message.error('终止失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '终止失败')),
   });
 
   const instanceColumns = buildInstanceColumns({
@@ -211,11 +219,18 @@ export default function ProcessMonitor() {
         footer={null}
         width={900}
       >
-        {instanceReport && (
+        {instanceError ? (
+          <Empty
+            description={apiErrorMessage(instanceError, '无法加载实例详情')}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : instanceReport ? (
           <InstanceDetail
             report={instanceReport}
             processName={processNameMap.get(instanceReport.instance.processDefId)}
           />
+        ) : (
+          <Skeleton active paragraph={{ rows: 6 }} loading={instanceLoading} />
         )}
       </Modal>
 

@@ -34,6 +34,8 @@ interface ProcessEditorToolbarProps {
   onRedo: () => void;
   /** 评审整改：触发器配置入口（此前创建后无法配置触发器） */
   onConfigureTrigger: () => void;
+  /** 交互评审（2026-10-04）：预览按钮此前无 onClick——打开结构预览弹窗 */
+  onPreview: () => void;
 }
 
 export default function ProcessEditorToolbar({
@@ -50,6 +52,7 @@ export default function ProcessEditorToolbar({
   onUndo,
   onRedo,
   onConfigureTrigger,
+  onPreview,
 }: ProcessEditorToolbarProps) {
   const statusMeta = getProcessStatusMeta(processDef.status);
   const triggerMeta = getTriggerMeta(processDef.triggerType as string | undefined);
@@ -122,7 +125,7 @@ export default function ProcessEditorToolbar({
             />
           </>
         )}
-        <Button icon={<EyeOutlined />} size="small">
+        <Button icon={<EyeOutlined />} size="small" onClick={onPreview}>
           预览
         </Button>
         {!readonly && (

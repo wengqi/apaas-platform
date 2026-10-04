@@ -196,8 +196,8 @@ export interface NotificationTemplate {
   channel: NotificationChannel;
   /** 标题模版(支持 ${var} 插值) */
   titleTemplate: string;
-  /** 正文模版(支持 ${var} 插值) */
-  contentTemplate: string;
+  /** 正文模版(支持 ${var} 插值) —— 与后端 DTO 字段名一致(bodyTemplate) */
+  bodyTemplate: string;
   /** 变量定义 */
   variables: NotificationTemplateVariable[];
   createdAt: string;
@@ -215,7 +215,7 @@ export interface CreateTemplateRequest {
   name: string;
   channel: NotificationChannel;
   titleTemplate: string;
-  contentTemplate: string;
+  bodyTemplate: string;
   variables: NotificationTemplateVariable[];
 }
 
@@ -223,7 +223,7 @@ export interface UpdateTemplateRequest {
   name?: string;
   channel?: NotificationChannel;
   titleTemplate?: string;
-  contentTemplate?: string;
+  bodyTemplate?: string;
   variables?: NotificationTemplateVariable[];
 }
 

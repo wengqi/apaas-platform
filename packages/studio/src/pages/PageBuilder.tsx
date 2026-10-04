@@ -169,7 +169,12 @@ export default function PageBuilder() {
   };
 
   // wire 字段为 slug（apiName 为 v1 遗留类型字段，值 undefined）
-  const runtimePreviewUrl = page && schema ? `/app/${page.appId}/p/${page.slug}?env=dev` : null;
+  // 交互评审（2026-10-04）修复：此前为相对路径，target=_blank 会在 studio 域上打开
+  // /app/:appId/p/:slug（studio 无此路由）→ 路由兜底静默跳回应用列表。运行时前端
+  // 是独立部署（dev 为 :5174），必须用运行时源前缀；生产单域部署回退同源。
+  const runtimeBase = (import.meta.env.VITE_RUNTIME_BASE_URL as string | undefined) ?? '';
+  const runtimePreviewUrl =
+    page && schema ? `${runtimeBase}/app/${page.appId}/p/${page.slug}?env=dev` : null;
 
   return (
     <div

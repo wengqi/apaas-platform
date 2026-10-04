@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { apiErrorMessage } from '../../api/client.js';
 import ReactFlow, {
   Background,
   Controls,
@@ -173,7 +174,7 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
       message.success('数据流配置已保存');
       void queryClient.invalidateQueries({ queryKey: ['data-flows', appId] });
     },
-    onError: () => message.error('保存失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '保存失败')),
   });
 
   // 预览
@@ -200,7 +201,7 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
         ),
       });
     },
-    onError: () => message.error('预览失败，请检查配置'),
+    onError: (err) => message.error(apiErrorMessage(err, '预览失败，请检查配置')),
   });
 
   // 执行
@@ -213,7 +214,7 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
       void queryClient.invalidateQueries({ queryKey: ['data-flows', appId] });
       void queryClient.invalidateQueries({ queryKey: ['datasets', appId] });
     },
-    onError: () => message.error('执行失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '执行失败')),
   });
 
   const { nodes, edges } = useMemo(() => buildNodesAndEdges(config), [config]);

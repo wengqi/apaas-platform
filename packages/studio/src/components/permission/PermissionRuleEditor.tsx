@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, Drawer, Select, Space, Typography, message } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
@@ -31,6 +32,9 @@ const { Text } = Typography;
 interface PermissionRuleEditorProps {
   open: boolean;
   role: Role;
+  /** 应用上下文兜底：内置角色为租户级（role.appId 为空），规则编辑器仍需
+   *  加载当前应用的对象/页面等资源作为目标选项（交互评审 2026-10-04 修复）。 */
+  appId?: string;
   onClose: () => void;
 }
 
@@ -57,10 +61,17 @@ const PERMISSION_EFFECTS: { value: PermissionEffect; label: string }[] = [
   { value: 'DENY', label: '拒绝' },
 ];
 
-export default function PermissionRuleEditor({ open, role, onClose }: PermissionRuleEditorProps) {
+export default function PermissionRuleEditor({
+  open,
+  role,
+  appId,
+  onClose,
+}: PermissionRuleEditorProps) {
   const queryClient = useQueryClient();
   const [rules, setRules] = useState<CreatePermissionRuleRequest[]>([]);
   const [selectedObjectId, setSelectedObjectId] = useState<string | undefined>();
+  /** 资源查询用 appId：角色自身绑定优先，租户级角色回退页面上下文。 */
+  const contextAppId = role.appId ?? appId;
 
   // 加载已有规则
   const { data: existingRules } = useQuery({
@@ -71,9 +82,9 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
 
   // 加载应用对象列表（用于 RECORD 权限的目标选择）
   const { data: objects } = useQuery({
-    queryKey: qk.appObjects(role.appId!),
-    queryFn: () => objectsApi.list(role.appId!),
-    enabled: open && !!role.appId,
+    queryKey: qk.appObjects(contextAppId!),
+    queryFn: () => objectsApi.list(contextAppId!),
+    enabled: open && !!contextAppId,
   });
 
   // 加载选中对象的字段（用于 QueryBuilderPanel）
@@ -85,23 +96,23 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
 
   // 加载应用页面列表（用于 PAGE 权限的目标选择）
   const { data: pages } = useQuery({
-    queryKey: qk.appPages(role.appId!),
-    queryFn: () => pagesApi.list(role.appId!),
-    enabled: open && !!role.appId,
+    queryKey: qk.appPages(contextAppId!),
+    queryFn: () => pagesApi.list(contextAppId!),
+    enabled: open && !!contextAppId,
   });
 
   // 加载应用流程列表（用于 PROCESS 权限的目标选择）
   const { data: processes } = useQuery({
-    queryKey: ['app-processes', role.appId],
-    queryFn: () => processesApi.list(role.appId!),
-    enabled: open && !!role.appId,
+    queryKey: ['app-processes', contextAppId],
+    queryFn: () => processesApi.list(contextAppId!),
+    enabled: open && !!contextAppId,
   });
 
   // 加载应用连接器列表（用于 CONNECTOR 权限的目标选择）
   const { data: connectors } = useQuery({
-    queryKey: ['connectors', role.appId],
-    queryFn: () => connectorsApi.list(role.appId!),
-    enabled: open && !!role.appId,
+    queryKey: ['connectors', contextAppId],
+    queryFn: () => connectorsApi.list(contextAppId!),
+    enabled: open && !!contextAppId,
   });
 
   useEffect(() => {
@@ -129,7 +140,7 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
       void queryClient.invalidateQueries({ queryKey: ['role-rules', role.id] });
       onClose();
     },
-    onError: () => message.error('保存失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '保存失败')),
   });
 
   const handleAddRule = () => {
@@ -142,7 +153,7 @@ export default function PermissionRuleEditor({ open, role, onClose }: Permission
         targetId: objects?.[0]?.id ?? '*',
         condition: null,
         effect: 'ALLOW',
-        appId: role.appId,
+        appId: contextAppId,
       },
     ]);
   };

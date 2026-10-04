@@ -26,6 +26,7 @@ import { diffResource, stableStringifyEqual } from '@apaas/shared';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { writeAudit } from '../common/audit.js';
 import { LiveResource, ReviewSnapshotService } from './review-snapshot.service.js';
+import { ReviewCallbackService, type ReviewCallbackEvent } from './review-callback.service.js';
 
 /** ResourceVersion 行（Prisma 生成模型） */
 type ResourceVersionRow = {
@@ -111,6 +112,7 @@ export class ReviewService {
   constructor(
     private readonly snapshotService: ReviewSnapshotService,
     private readonly inAppMessage: InAppMessageService,
+    private readonly callbackService: ReviewCallbackService,
   ) {}
 
   // ===========================================================================
@@ -270,7 +272,31 @@ export class ReviewService {
       `提交已批准：${row.name}`,
       `${row.module} 资源「${row.name}」v${row.versionNumber} 已批准生效。`,
     );
+    await this.emitCallback(tenantId, appId, {
+      event: 'review.approved',
+      batchId: row.batchId,
+      submissionId: row.id,
+      module: row.module,
+      apiName: row.apiName,
+      status: 'APPROVED',
+      reviewComment: opts?.comment ?? null,
+      reviewedBy: reviewerId,
+    });
     return updated;
+  }
+
+  /** 组装并发送审批结果出站回调（未配置 REVIEW_CALLBACK_URL 时静默跳过）。 */
+  private async emitCallback(
+    tenantId: string,
+    appId: string,
+    partial: Omit<ReviewCallbackEvent, 'tenantId' | 'appId' | 'timestamp'>,
+  ): Promise<void> {
+    await this.callbackService.notify({
+      ...partial,
+      tenantId,
+      appId,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**
@@ -346,6 +372,16 @@ export class ReviewService {
       `批量提交已批准（${applied.length} 项）`,
       `应用资源批量提交（${rows.map((r) => r.name).join('、')}）已全部批准生效。`,
     );
+    await this.emitCallback(tenantId, appId, {
+      event: 'review.approved',
+      batchId,
+      submissionId: null,
+      module: 'APPLICATION',
+      apiName: `batch:${applied.map((r) => r.apiName).join(',')}`,
+      status: 'APPROVED',
+      reviewComment: opts?.comment ?? null,
+      reviewedBy: reviewerId,
+    });
     this.logger.log(`批量批准: batch=${batchId} ×${applied.length} by ${reviewerId}`);
     return applied;
   }
@@ -390,6 +426,16 @@ export class ReviewService {
       `批量提交已驳回（${res.count} 项）`,
       `驳回意见：${comment}`,
     );
+    await this.emitCallback(tenantId, appId, {
+      event: 'review.rejected',
+      batchId,
+      submissionId: null,
+      module: 'APPLICATION',
+      apiName: `batch:${res.count} rejected`,
+      status: 'REJECTED',
+      reviewComment: comment,
+      reviewedBy: reviewerId,
+    });
     this.logger.log(`批量驳回: batch=${batchId} ×${res.count} by ${reviewerId}`);
     return { rejected: res.count };
   }
@@ -496,6 +542,16 @@ export class ReviewService {
       `提交被驳回：${row.name}`,
       `${row.module} 资源「${row.name}」v${row.versionNumber} 被驳回，意见：${comment}`,
     );
+    await this.emitCallback(tenantId, appId, {
+      event: 'review.rejected',
+      batchId: row.batchId,
+      submissionId: row.id,
+      module: row.module,
+      apiName: row.apiName,
+      status: 'REJECTED',
+      reviewComment: comment,
+      reviewedBy: reviewerId,
+    });
     return this.toDto(updated as ResourceVersionRow, null);
   }
 

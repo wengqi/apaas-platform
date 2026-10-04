@@ -89,6 +89,12 @@ export const envValidation = Joi.object({
   // G6 开放 API 限流桶（/api/v1/open/*）
   THROTTLE_OPEN_LIMIT: Joi.number().default(120),
 
+  // ---- 审批回调（AI agent 闭环：批/驳 webhook 替代轮询）----
+  // 配置后批/驳（单资源与批量）POST 事件载荷到该 URL（safeFetch SSRF 防护）；
+  // REVIEW_CALLBACK_SECRET 配置时附 X-Apaas-Signature（HMAC-SHA256 hex）
+  REVIEW_CALLBACK_URL: Joi.string().uri().optional(),
+  REVIEW_CALLBACK_SECRET: Joi.string().min(16).optional(),
+
   // ---- 日志 ----
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
 });

@@ -62,11 +62,13 @@ function makeService(live: ReturnType<typeof makeRow>['snapshot'] | null = liveS
     applySnapshot: vi.fn().mockResolvedValue('obj-1'),
   };
   const inApp = { create: vi.fn().mockResolvedValue(1) };
+  const callbackService = { notify: vi.fn().mockResolvedValue(undefined) };
   const svc = new ReviewService(
     snapshotService as unknown as ReviewSnapshotService,
     inApp as unknown as InAppMessageService,
+    callbackService as never,
   );
-  return { svc, prisma, snapshotService, inApp };
+  return { svc, prisma, snapshotService, inApp, callbackService };
 }
 
 describe('人工提交（submitHuman）', () => {
@@ -592,5 +594,60 @@ describe('页面快照 api.url 令牌解析（#18）', () => {
     const url = createdSnap.schema?.body?.[0]?.api?.url ?? '';
     expect(url).toContain('obj-meeting-real');
     expect(url).not.toContain('@ref:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 审批回调（review.* webhook，agent 闭环替代轮询）
+// ---------------------------------------------------------------------------
+
+describe('审批回调（ReviewCallbackService.emitCallback 链路）', () => {
+  it('单资源批准/驳回、批量批准/驳回均发出对应事件（未配置 URL 时不抛错）', async () => {
+    const prisma = getMockPrisma();
+    const callbackService = { notify: vi.fn().mockResolvedValue(undefined) };
+    const inApp = { create: vi.fn().mockResolvedValue(1) };
+    const svc = new ReviewService(
+      {
+        extractLive: vi.fn().mockResolvedValue(null),
+        applySnapshot: vi.fn().mockResolvedValue('e1'),
+      } as never,
+      inApp as never,
+      callbackService as never,
+    );
+    prisma.resourceVersion.update.mockResolvedValue({ ...makeRow(), status: 'APPROVED' });
+
+    // 批准
+    const taskRow = {
+      ...makeRow(),
+      instance: { processDef: { workflowSchema: { nodes: [{ id: 'n1', data: {} }] } } },
+    };
+    // approve 走 getPendingOrThrow → resourceVersion.findFirst
+    prisma.resourceVersion.findFirst.mockResolvedValue(taskRow);
+    prisma.processTask.findMany = prisma.processTask.findMany ?? vi.fn();
+    await svc.approve(TENANT, APP, 'sub-1', 'reviewer-1', { comment: 'ok' });
+    expect(callbackService.notify).toHaveBeenCalledTimes(1);
+    const evt = callbackService.notify.mock.calls[0]![0] as Record<string, unknown>;
+    expect(evt['event']).toBe('review.approved');
+    expect(evt['submissionId']).toBe('sub-1');
+
+    // 驳回
+    prisma.resourceVersion.findFirst.mockResolvedValue(taskRow);
+    prisma.resourceVersion.update.mockResolvedValue({ ...makeRow(), status: 'REJECTED' });
+    await svc.reject(TENANT, APP, 'sub-1', 'reviewer-1', '不合格');
+    const rejEvt = callbackService.notify.mock.calls[1]![0] as Record<string, unknown>;
+    expect(rejEvt['event']).toBe('review.rejected');
+    expect(rejEvt['reviewComment']).toBe('不合格');
+
+    // 批量驳回
+    prisma.resourceVersion.findMany.mockResolvedValue([
+      makeRow({ id: 'sub-1', submittedBy: 'ai', name: 'a' }),
+      makeRow({ id: 'sub-2', submittedBy: 'ai', name: 'b' }),
+    ]);
+    prisma.resourceVersion.updateMany.mockResolvedValue({ count: 2 });
+    await svc.rejectBatch(TENANT, APP, 'batch-9', 'reviewer-1', '整体驳回');
+    const batchEvt = callbackService.notify.mock.calls[2]![0] as Record<string, unknown>;
+    expect(batchEvt['event']).toBe('review.rejected');
+    expect(batchEvt['batchId']).toBe('batch-9');
+    expect(batchEvt['submissionId']).toBeNull();
   });
 });

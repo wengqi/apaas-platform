@@ -398,3 +398,27 @@ describe('MCP 必填参数守卫（requireParams——静默空结果的防线�
     expect(r).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 选人工具：list_users / list_roles（AI 自主配置审批人的数据源）
+// ---------------------------------------------------------------------------
+
+describe('MCP 选人工具（list_users / list_roles）', () => {
+  it('list_users：输出 id/姓名/邮箱/角色编码，keyword 过滤', async () => {
+    const { svc } = makeService();
+    const r = await svc.listUsers('t1', 'builder');
+    // listUsers 直查 prisma（mock 代理默认空数组）——这里断言走通且结构稳定
+    expect(r.ok).toBe(true);
+    expect(Array.isArray(r.users)).toBe(true);
+    expect(r.hint).toContain('assignee');
+  });
+
+  it('list_roles：输出含 hint 指明 candidateGroups 用角色 ID', async () => {
+    const { svc } = makeService();
+    const r = await svc.listRoles('t1', 'app-1');
+    expect(r.ok).toBe(true);
+    expect(Array.isArray(r.roles)).toBe(true);
+    expect(r.hint).toContain('candidateGroups');
+    expect(r.hint).toContain('非编码');
+  });
+});

@@ -290,6 +290,30 @@ const TOOLS: Array<{
     },
   },
   {
+    name: 'list_users',
+    description:
+      '列出应用成员用户（id/姓名/邮箱/角色编码，最多 50 人）——AI 配置审批人的选人依据。把 id 填入流程 user_task 的 assignee（单人审批）或 approveUsers（多人审批）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: '按姓名/邮箱模糊搜索（可选）' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_roles',
+    description:
+      '列出租户角色（id/编码/名称，含内置角色）——指定角色审批（candidateGroups）的选角色依据。把角色 id（非编码）填入流程 user_task 的 candidateGroups。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', description: '应用 ID（可选，过滤应用级角色）' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_review_submissions',
     description:
       '查询提交单审批状态（R1.2 治理轨道）。submit_*_draft 后用本工具跟踪审批进度；REJECTED 单的 reviewComment 是人类驳回意见，按意见修正后重新提交。',
@@ -311,7 +335,8 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 查看态（审批场景）：form 或字段加 "static": true，且静态表单必须显式 "actions": []（否则自动多出提交按钮）',
     '- 表格/CRUD 取数用表达式 source: "${rows}"，裸字段名取不到',
     '- 字段显隐用 visibleOn/hiddenOn 表达式（如 "this.amount > 1000000"）',
-    '- 页面内 api.url 必须是平台相对路径（/api/v1/...），数据域变量可用 ${taskId} 等',
+    '- 页面内 api.url 写相对资源路径（如 /objects/<对象ID>/records?page=$page&pageSize=$perPage），不要带 /api 或 /api/v1 前缀（运行时自动拼接；带前缀会被自动剥掉）。数据域变量可用 ${taskId} 等',
+    '- 表单提交 api.url 里引用对象：用 submit_app_drafts 时写 "@ref:object:<对象apiName>"（落地自动解析为真实对象 ID），形如 /objects/@ref:object:meeting_booking/records；单页提交（submit_page_draft）则用 list_objects 拿真实 ID',
     '- 附件查看：{"type":"input-file","static":true}（static-file 类型被禁用）',
     '- 提交/按钮动作用 actionType: "ajax"/"submit"，配合 api 对象',
     '- 示例可参考：list_pages 后 get_page 获取既有合法页面照猫画虎',
@@ -321,7 +346,8 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 结构：{nodes:[...], edges:[...]}；必须有 start 与 end 节点；edges 的 sourceNodeID/targetNodeID 必须指向已定义节点（幽灵边会被拒绝）',
     '- 20 种节点：start/end/trigger/assign/condition/inclusive/parallel/loop/break/continue/wait_for_condition/delay/object_operation/batch_operation/user_task/notification/http_request/sub_process/cloud_function/block',
     '- user_task 审批配置：taskName 必填；approvalMode=single(默认,需 assignee 或 candidateGroups) / countersign(会签,需 approveUsers) / or_sign(或签) / sequential(依次)',
-    '- 审批页面绑定：data.pageId 指向平台页面 ID（list_pages 获取）；绑定后任务中心渲染该页面',
+    '- 审批人来源：list_users 拿用户 id 填 assignee/approveUsers；list_roles 拿角色 id 填 candidateGroups（按角色 ID 匹配，非编码）',
+    '- 审批页面绑定：data.pageId 指向平台页面 ID（list_pages 获取，或用 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析）；绑定后任务中心渲染该页面',
     '- 驳回跳转：data.rejectToNodeId 指向流程内节点',
     '- 边条件：condition 为 JsonLogic JSON 字符串，如 \'{"==":[{"var":"decision"},"APPROVED"]}\'；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',
     '- 记录状态回写：object_operation 节点 inputsValues 用四态 {type:"constant"/"ref",content:...}，recordId 用 {type:"ref",content:["recordId"]}',
@@ -434,6 +460,10 @@ async function dispatch(
       return svc.listPages(tenantId, str(args['appId']));
     case 'list_processes':
       return svc.listProcesses(tenantId, str(args['appId']));
+    case 'list_users':
+      return svc.listUsers(tenantId, optionalStr(args['keyword']));
+    case 'list_roles':
+      return svc.listRoles(tenantId, optionalStr(args['appId']));
     case 'get_page':
       return svc.getPage(tenantId, str(args['pageId']));
     case 'get_process':

@@ -53,3 +53,22 @@
 - 页面 schema 里的 api.url 引用对象路径（如 records API 的 objectId 段）仍是 agent 自拼——后续可考虑表单模板 api.url 也支持令牌
 - MCP 无 users/roles 列表工具，审批人 ID 靠既有知识（本测试直接用 builder ID）——`list_permission_roles`/`list_users` 只读工具待补
 - 单资源 submit_*_draft 保持不变（小改动单资源仍走轻量路径）
+
+
+---
+
+# 追加（2026-10-04）：会议预定应用实测——三个连带缺陷修复
+
+> ①b 收尾验证「会议预定」AI 生成应用（发布 0.1.0→0.1.2）时，真实使用暴露三个缺陷并当场修复：
+
+| # | 缺陷 | 修复 |
+|---|---|---|
+| #18 | AI 无法预知自建对象 ID——页面 api.url 只能写占位符，提交 404 | 快照落地时解析 schema 内 `@ref:object:` 令牌（含 URL 子串形态 `/objects/@ref:object:x/records`）为真实对象 ID（spec 覆盖） |
+| #20 | 运行时 fetcher 失败分支静默（HTTP 异常不弹 toast，与成功提示不对称） | catch 分支对写操作弹 `message.error(操作失败：原因)` |
+| #21 | **方言指南错误**：教 AI 写 `/api/v1/...` 前缀，而 axios baseURL='/api' 拼成 `/api/api/v1/...`；正确契约=相对资源路径 `/objects/.../records`（采购合同种子页即此写法） | fetcher 剥离 `/api(v1)` 重复前缀（两种写法兼容）+ 方言指南纠正 + 校验器报错文案更新 |
+
+附 `list_users`/`list_roles` 只读 MCP 工具（AI 自主配审批人：assignee/approveUsers 拿用户 ID、candidateGroups 拿角色 ID；16 工具）。
+
+**全链路终验（0.1.2）**：运行时提交「季度复盘会/大会议室/8人/待审批」→ 流程自动触发 → admin 任务中心 → **AI 生成的静态审批页绑定渲染**（会议主题/会议室/参会人数 + 审批意见输入框，非裸 JSON）→ 批准 → 实例 COMPLETED。AI 单波生成的应用（含审批页绑定）至此与人工搭建的应用能力完全对齐。
+
+**发布向导版本号输入坑**：type 前未清空默认值导致字符串拼接（`0.1.00.1.2`）——自动化需先清空；真人影响小（会手动清）。

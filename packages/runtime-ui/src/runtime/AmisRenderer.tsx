@@ -121,7 +121,11 @@ function createDefaultFetcher(): FetcherLike {
   return async (api: Record<string, unknown>) => {
     const { default: apiClient } = await import('../api/client.js');
     const method = String(api['method'] ?? 'get').toLowerCase();
-    const url = String(api['url'] ?? '');
+    let url = String(api['url'] ?? '');
+    // #21 契约统一：axios baseURL='/api'，页面 url 应写 /objects/... 相对路径；
+    // AI 按"平台相对路径"直觉写 /api/v1/... 时会拼成 /api/api/v1/...——这里剥掉
+    // 重复前缀（兼容两种写法，种子页面/验收应用不受影响）
+    url = url.replace(/^\/api(?:\/v1)?(?=\/)/, '');
     const payload = api['data'] as Record<string, unknown> | undefined;
     try {
       if (method === 'get') {
@@ -145,10 +149,16 @@ function createDefaultFetcher(): FetcherLike {
       return result;
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
+      // H1b 对称修复（#20）：HTTP 异常（404/500 等）同样静默——写操作失败
+      // 也必须弹 toast（amis 裸 render() 无 notify 链路），否则用户点了没反应
+      const msg = e.response?.data?.error?.message ?? (err as Error).message;
+      if (method !== 'get') {
+        message.error(msg ? `操作失败：${msg}` : '操作失败');
+      }
       return {
         ok: false,
         status: e.response?.status ?? 1,
-        msg: e.response?.data?.error?.message ?? (err as Error).message,
+        msg,
       };
     }
   };

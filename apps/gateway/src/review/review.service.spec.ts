@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ReviewService, collectRefTokens, replaceRefTokens } from './review.service.js';
-import type { ReviewSnapshotService } from './review-snapshot.service.js';
+import { ReviewSnapshotService } from './review-snapshot.service.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 import type { ObjectResourceSnapshot } from '@apaas/shared';
@@ -541,5 +541,56 @@ describe('批量驳回（rejectBatch）', () => {
 
     prisma.resourceVersion.findMany.mockResolvedValue([]);
     await expect(svc.rejectBatch(TENANT, APP, 'batch-x', 'r1', 'x')).rejects.toThrow('批次不存在');
+  });
+});
+
+describe('页面快照 api.url 令牌解析（#18）', () => {
+  it('applyPage 落地页面时把 schema 内 @ref:object 令牌解析为真实对象 ID', async () => {
+    const prisma = getMockPrisma();
+    prisma.objectMeta.findFirst.mockResolvedValue({ id: 'obj-meeting-real' });
+    prisma.pageMeta.findFirst.mockResolvedValue(null); // 新建分支
+    const pageService = {
+      create: vi.fn().mockResolvedValue({ id: 'page-new' }),
+      update: vi.fn(),
+    };
+    const snapshotSvc = new ReviewSnapshotService(
+      pageService as never,
+      {} as never,
+      {} as never,
+      { log: vi.fn() } as never,
+    );
+    const applied = await snapshotSvc.applySnapshot(
+      TENANT,
+      APP,
+      'PAGE',
+      {
+        apiName: 'meeting_form',
+        name: '会议表单',
+        type: 'form_page',
+        schema: {
+          type: 'page',
+          body: [
+            {
+              type: 'form',
+              api: {
+                method: 'post',
+                url: '/api/v1/apps/app-1/objects/@ref:object:meeting_booking/records',
+              },
+            },
+          ],
+        },
+      } as never,
+      null,
+      'review:test',
+    );
+    expect(applied).toBe('page-new');
+    const createdSnap = pageService.create.mock.calls[0]?.[2] as {
+      apiName?: string;
+      schema?: { body?: Array<{ api?: { url?: string } }> };
+    };
+    expect(createdSnap.apiName).toBe('meeting_form');
+    const url = createdSnap.schema?.body?.[0]?.api?.url ?? '';
+    expect(url).toContain('obj-meeting-real');
+    expect(url).not.toContain('@ref:');
   });
 });

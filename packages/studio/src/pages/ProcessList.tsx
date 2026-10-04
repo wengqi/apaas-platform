@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { apiErrorMessage } from '../api/client.js';
 import {
   Button,
   Card,
@@ -96,7 +97,7 @@ export default function ProcessList() {
       message.success('流程已删除');
       void queryClient.invalidateQueries({ queryKey: ['processes', appId] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   /** 评审整改：手动触发流程此前无任何 UI 启动入口（后端 start 端点无消费方）。 */

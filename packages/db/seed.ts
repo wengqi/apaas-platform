@@ -194,6 +194,9 @@ async function main() {
     { type: 'DATA_MODEL', action: 'EDIT', targetId: '*' },
     { type: 'DATA_MODEL', action: 'DELETE', targetId: '*' },
     { type: 'DATA_MODEL', action: 'VIEW', targetId: '*' },
+    // 交互评审（2026-10-04）修复：数据流执行端点要求 DATA_MODEL:EXECUTE，
+    // 此前 BUILDER 缺该规则——能建数据流却无权执行自己创建的物化
+    { type: 'DATA_MODEL', action: 'EXECUTE', targetId: '*' },
     { type: 'PROCESS', action: 'CREATE', targetId: '*' },
     { type: 'PROCESS', action: 'EDIT', targetId: '*' },
     { type: 'PROCESS', action: 'DELETE', targetId: '*' },

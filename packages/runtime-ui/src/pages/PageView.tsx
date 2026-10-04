@@ -40,11 +40,26 @@ export default function PageView() {
   }
 
   if (error || !page) {
+    // 交互评审（2026-10-04）：404 的真实语义是"应用尚未发布到当前环境"或
+    // "页面不在已发布 bundle 中"（运行态只读已发布 bundle，dev 环境需先发布到 dev），
+    // 裸显 axios 消息让搭建者无从判断预览失败的原因
+    const status = (error as { response?: { status?: number } } | null)?.response?.status;
+    const hint =
+      env === 'dev'
+        ? '开发环境仅展示已发布到 dev 的版本——若刚修改了页面，请先在搭建器发布（可选"仅开发（dev，生产不受影响）"）后再预览'
+        : '生产环境仅展示已发布版本——该页面可能尚未包含在当前发布版本中';
     return (
-      <div style={{ textAlign: 'center', padding: 48 }}>
-        <Text type="danger">
-          {error ? `页面加载失败: ${(error as Error).message}` : '页面不存在或未发布'}
+      <div style={{ textAlign: 'center', padding: 48, maxWidth: 560, margin: '0 auto' }}>
+        <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>
+          {status === 404
+            ? '页面不存在或未发布'
+            : `页面加载失败: ${(error as Error)?.message ?? ''}`}
         </Text>
+        {status === 404 && (
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            {hint}
+          </Text>
+        )}
       </div>
     );
   }

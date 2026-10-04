@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiErrorMessage } from '../api/client.js';
 import { Modal, Skeleton, Typography, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +23,7 @@ import SimplifiedEditor from '../components/process/SimplifiedEditor.js';
 import ProcessEditorToolbar from './process-editor/ProcessEditorToolbar.js';
 import EditorErrorBoundary from './process-editor/EditorErrorBoundary.js';
 import TriggerConfigModal from './process-editor/TriggerConfigModal.js';
+import ProcessPreviewModal from './process-editor/ProcessPreviewModal.js';
 
 export { default as EditorErrorBoundary } from './process-editor/EditorErrorBoundary.js';
 
@@ -109,6 +111,8 @@ export default function ProcessEditor() {
 
   /** 评审整改：触发器配置弹窗开关 */
   const [triggerOpen, setTriggerOpen] = useState(false);
+  /** 交互评审（2026-10-04）：结构预览弹窗（预览按钮此前无行为） */
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   /** store 是否已加载当前流程。 */
   const storeLoaded = store.processDef?.id === processId;
@@ -125,7 +129,7 @@ export default function ProcessEditor() {
       store.markSaved();
       void queryClient.invalidateQueries({ queryKey: ['process', processId] });
     },
-    onError: () => message.error('保存失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '保存失败')),
   });
 
   /** 发布。 */
@@ -135,7 +139,7 @@ export default function ProcessEditor() {
       message.success('已发布,生成新版本');
       void queryClient.invalidateQueries({ queryKey: ['process', processId] });
     },
-    onError: () => message.error('发布失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '发布失败')),
   });
 
   /** Schema 变化(仅更新内存状态,不自动保存)。 */
@@ -235,6 +239,14 @@ export default function ProcessEditor() {
         onUndo={() => historyApiRef.current?.undo()}
         onRedo={() => historyApiRef.current?.redo()}
         onConfigureTrigger={() => setTriggerOpen(true)}
+        onPreview={() => setPreviewOpen(true)}
+      />
+      <ProcessPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        schema={store.schema ?? processDef.workflowSchema}
+        dirty={store.dirty}
+        readonly={isReadonly}
       />
       <TriggerConfigModal
         open={triggerOpen}

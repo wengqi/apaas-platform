@@ -28,7 +28,10 @@ export default function CloudFunctionFormModal({ open, editingFn, onClose, onSuc
   const { appId } = useParams<{ appId: string }>();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [code, setCode] = useState('');
+  // 交互评审（2026-10-04）修复：新建时编辑器此前是空字符串——CloudFunctionEditor
+  // 的兜底是 `value ?? DEFAULT_CODE`，空串不是 nullish 不会触发，新手面对全空
+  // 编辑器+底部一行签名说明，普遍写出裸 return（isolated-vm 报 Illegal return statement）。
+  const [code, setCode] = useState(DEFAULT_CODE);
   const [testInput, setTestInput] = useState('{}');
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -43,7 +46,7 @@ export default function CloudFunctionFormModal({ open, editingFn, onClose, onSuc
       setCode(editingFn.code.source);
     } else {
       form.resetFields();
-      setCode('');
+      setCode(DEFAULT_CODE);
     }
     setTestResult(null);
     setTestInput('{}');
@@ -99,7 +102,11 @@ export default function CloudFunctionFormModal({ open, editingFn, onClose, onSuc
       const result = await cloudFunctionsApi.invoke(editingFn.id, { input });
       setTestResult(JSON.stringify(result, null, 2));
     } catch (err) {
-      setTestResult(`错误: ${err instanceof Error ? err.message : String(err)}`);
+      // 交互评审（2026-10-04）：透出后端原因（如"云函数未发布，无法执行"），
+      // 此前只显示 "Request failed with status code 400"
+      const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
+      const reason = axiosErr.response?.data?.error?.message;
+      setTestResult(`错误: ${reason ?? (err instanceof Error ? err.message : String(err))}`);
     } finally {
       setTesting(false);
     }

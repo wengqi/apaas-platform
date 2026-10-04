@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { apiErrorMessage } from '../../api/client.js';
 import {
   Button,
   Card,
@@ -67,7 +68,7 @@ export default function NotificationTemplateManager() {
       void queryClient.invalidateQueries({ queryKey: ['notification-templates', appId] });
       setDrawerOpen(false);
     },
-    onError: () => message.error('创建失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '创建失败')),
   });
 
   /** 更新 mutation。 */
@@ -79,7 +80,7 @@ export default function NotificationTemplateManager() {
       void queryClient.invalidateQueries({ queryKey: ['notification-templates', appId] });
       setDrawerOpen(false);
     },
-    onError: () => message.error('保存失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '保存失败')),
   });
 
   /** 删除 mutation。 */
@@ -89,7 +90,7 @@ export default function NotificationTemplateManager() {
       message.success('模版已删除');
       void queryClient.invalidateQueries({ queryKey: ['notification-templates', appId] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   /** 打开新建。 */
@@ -110,7 +111,7 @@ export default function NotificationTemplateManager() {
       name: template.name,
       channel: template.channel,
       titleTemplate: template.titleTemplate,
-      contentTemplate: template.contentTemplate,
+      bodyTemplate: template.bodyTemplate,
       variables: template.variables.length
         ? template.variables
         : [{ name: '', description: '', sampleValue: '' }],
@@ -125,7 +126,7 @@ export default function NotificationTemplateManager() {
         name: values.name as string,
         channel: values.channel as NotificationChannel,
         titleTemplate: values.titleTemplate as string,
-        contentTemplate: values.contentTemplate as string,
+        bodyTemplate: values.bodyTemplate as string,
         variables: (values.variables as NotificationTemplateVariable[]).filter((v) => v.name),
       };
       if (editingTemplate) {
@@ -249,7 +250,7 @@ interface TemplateFormValues {
   name?: string;
   channel?: NotificationChannel;
   titleTemplate?: string;
-  contentTemplate?: string;
+  bodyTemplate?: string;
   variables?: NotificationTemplateVariable[];
 }
 
@@ -259,7 +260,7 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
   /** 实时预览:用变量示例值替换 ${var}。 */
   const preview = useMemo(() => {
     const title = (values?.titleTemplate as string) ?? '';
-    const content = (values?.contentTemplate as string) ?? '';
+    const content = (values?.bodyTemplate as string) ?? '';
     const variables = (values?.variables as NotificationTemplateVariable[]) ?? [];
     const render = (tmpl: string) =>
       tmpl.replace(/\$\{(\w+)\.(\w+)\}|\$\{(\w+)\}/g, (_m, g1, g2, g3) => {
@@ -275,7 +276,7 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
   }, [values]);
 
   /** 插入变量到标题。 */
-  const insertVariable = (field: 'titleTemplate' | 'contentTemplate', varName: string) => {
+  const insertVariable = (field: 'titleTemplate' | 'bodyTemplate', varName: string) => {
     const current = (form.getFieldValue(field) as string) ?? '';
     form.setFieldValue(field, `${current}\${${varName}}`);
   };
@@ -321,7 +322,7 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
       </Form.Item>
 
       <Title level={5}>正文模版</Title>
-      <Form.Item name="contentTemplate">
+      <Form.Item name="bodyTemplate">
         <TextArea
           rows={6}
           placeholder={'尊敬的 ${recipient.name}:\n\n您提交的 ${record.name} 已审批${result}。'}
@@ -333,7 +334,7 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
           type="link"
           onClick={() => {
             const first = variables.find((v) => v.name);
-            if (first) insertVariable('contentTemplate', first.name);
+            if (first) insertVariable('bodyTemplate', first.name);
           }}
         >
           插入变量

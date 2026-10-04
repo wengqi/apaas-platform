@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { apiErrorMessage } from '../api/client.js';
 import {
   Button,
   Card,
@@ -78,7 +79,7 @@ export default function ConnectorList() {
       message.success('连接器已删除');
       queryClient.invalidateQueries({ queryKey: ['connectors', appId] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   const deleteCredMutation = useMutation({
@@ -87,7 +88,7 @@ export default function ConnectorList() {
       message.success('凭证已删除');
       queryClient.invalidateQueries({ queryKey: ['credentials', appId] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   const connectorColumns: ColumnsType<Connector> = [

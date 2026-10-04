@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -24,7 +25,14 @@ import PermissionRuleEditor from './PermissionRuleEditor.js';
 
 const { Text, Title } = Typography;
 
-export default function RoleManager() {
+interface RoleManagerProps {
+  /** 应用上下文（应用权限页传入）：新建角色绑定到应用 + 规则编辑器加载应用资源。
+   * 交互评审（2026-10-04）修复：此前新建角色不带 appId（恒为租户级），
+   * 规则编辑器的对象/页面查询被禁用 → 目标只有"所有(*)" → 行级条件 UI 不可达。 */
+  appId?: string;
+}
+
+export default function RoleManager({ appId }: RoleManagerProps) {
   const queryClient = useQueryClient();
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -38,14 +46,14 @@ export default function RoleManager() {
   const selectedRole = roles?.find((r) => r.id === selectedRoleId) ?? roles?.[0] ?? null;
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateRoleRequest) => rolesApi.create(data),
+    mutationFn: (data: CreateRoleRequest) => rolesApi.create({ appId, ...data }),
     onSuccess: () => {
       message.success('角色创建成功');
       setCreateOpen(false);
       form.resetFields();
       void queryClient.invalidateQueries({ queryKey: ['permission-roles'] });
     },
-    onError: () => message.error('创建失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '创建失败')),
   });
 
   const deleteMutation = useMutation({
@@ -55,7 +63,7 @@ export default function RoleManager() {
       setSelectedRoleId(null);
       void queryClient.invalidateQueries({ queryKey: ['permission-roles'] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   return (
@@ -144,7 +152,11 @@ export default function RoleManager() {
       {/* 右栏:角色详情 */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {selectedRole ? (
-          <RoleDetail role={selectedRole} onDelete={() => deleteMutation.mutate(selectedRole.id)} />
+          <RoleDetail
+            role={selectedRole}
+            appId={appId}
+            onDelete={() => deleteMutation.mutate(selectedRole.id)}
+          />
         ) : (
           <Card
             style={{
@@ -195,7 +207,15 @@ export default function RoleManager() {
 // 角色详情
 // ---------------------------------------------------------------------------
 
-function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
+function RoleDetail({
+  role,
+  appId,
+  onDelete,
+}: {
+  role: Role;
+  appId?: string;
+  onDelete: () => void;
+}) {
   const [ruleEditorOpen, setRuleEditorOpen] = useState(false);
   const { data: users } = useQuery({
     queryKey: ['role-users', role.id],
@@ -280,6 +300,7 @@ function RoleDetail({ role, onDelete }: { role: Role; onDelete: () => void }) {
       <PermissionRuleEditor
         open={ruleEditorOpen}
         role={role}
+        appId={appId}
         onClose={() => setRuleEditorOpen(false)}
       />
     </Card>

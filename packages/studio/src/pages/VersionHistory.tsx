@@ -1,4 +1,5 @@
 import { Card, Table, Tag, Button, Typography, Space, Popconfirm, message } from 'antd';
+import { apiErrorMessage } from '../api/client.js';
 import { RollbackOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +42,7 @@ export default function VersionHistory() {
         queryClient.invalidateQueries({ queryKey: key });
       }
     },
-    onError: () => message.error('回滚失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '回滚失败')),
   });
 
   const columns = [

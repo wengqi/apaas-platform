@@ -10,13 +10,17 @@
 
 import { Card, Typography } from 'antd';
 import { SafetyOutlined } from '@ant-design/icons';
+import { useParams } from 'react-router-dom';
 import RoleManager from '../components/permission/RoleManager.js';
 
 const { Title, Paragraph } = Typography;
 
 export default function Permissions() {
+  const { appId } = useParams<{ appId: string }>();
   return (
-    <div style={{ height: 'calc(100vh - 56px)', overflow: 'auto', background: '#f5f7fa', padding: 24 }}>
+    <div
+      style={{ height: 'calc(100vh - 56px)', overflow: 'auto', background: '#f5f7fa', padding: 24 }}
+    >
       <Card style={{ marginBottom: 16 }}>
         <Title level={4}>
           <SafetyOutlined /> 角色权限
@@ -26,7 +30,7 @@ export default function Permissions() {
         </Paragraph>
       </Card>
       <Card>
-        <RoleManager />
+        <RoleManager appId={appId} />
       </Card>
     </div>
   );

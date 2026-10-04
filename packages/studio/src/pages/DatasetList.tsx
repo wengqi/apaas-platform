@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { apiErrorMessage } from '../api/client.js';
 import {
   Button,
   Card,
@@ -70,7 +71,7 @@ export default function DatasetList() {
       message.success('数据流执行已启动，请稍后查看数据集状态');
       queryClient.invalidateQueries({ queryKey: ['datasets', appId] });
     },
-    onError: () => message.error('执行失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '执行失败')),
   });
 
   const deleteFlowMutation = useMutation({

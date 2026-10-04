@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -47,7 +48,7 @@ export default function OrgManager() {
       setCreateOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['permission-orgs'] });
     },
-    onError: () => message.error('创建失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '创建失败')),
   });
 
   const deleteMutation = useMutation({
@@ -57,7 +58,7 @@ export default function OrgManager() {
       setSelectedId(null);
       void queryClient.invalidateQueries({ queryKey: ['permission-orgs'] });
     },
-    onError: () => message.error('删除失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });
 
   // 将 OrgNode[] 转为 TreeDataNode[]
@@ -203,7 +204,7 @@ function OrgNodeDetail({
       setSelectedRoleId(undefined);
       void queryClient.invalidateQueries({ queryKey: ['org-role-grants', node.id] });
     },
-    onError: () => message.error('授权失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '授权失败')),
   });
 
   const revokeMutation = useMutation({
@@ -212,7 +213,7 @@ function OrgNodeDetail({
       message.success('已撤销角色授权');
       void queryClient.invalidateQueries({ queryKey: ['org-role-grants', node.id] });
     },
-    onError: () => message.error('撤销失败'),
+    onError: (err) => message.error(apiErrorMessage(err, '撤销失败')),
   });
 
   return (

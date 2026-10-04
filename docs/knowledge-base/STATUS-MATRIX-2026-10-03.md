@@ -115,3 +115,12 @@
 - #20 运行时 fetcher 失败 toast（与成功对称）
 - #21 方言指南 api.url 契约纠错 + fetcher 前缀兼容
 - 「会议预定」AI 生成应用 0.1.2 全链路终验：提交→审批页绑定渲染→批准→COMPLETED。gateway 710（+1）
+
+
+---
+
+# 追加批次五 — 审批回调 webhook（2026-10-04）
+
+- `REVIEW_CALLBACK_URL`/`REVIEW_CALLBACK_SECRET` + ReviewCallbackService：批/驳四点出站回调（HMAC 签名 + safeFetch SSRF 防护 + 失败不阻塞），agent 被动接收审批结果替代轮询
+- 实测：mock 接收器收到 review.rejected，HMAC 验签通过；应用级隔离反向验证（错 app id 正确 400）
+- gateway 711（+1）。接入指引见 BATCH-SUBMIT-2026-10-03.md

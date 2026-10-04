@@ -72,3 +72,27 @@
 **全链路终验（0.1.2）**：运行时提交「季度复盘会/大会议室/8人/待审批」→ 流程自动触发 → admin 任务中心 → **AI 生成的静态审批页绑定渲染**（会议主题/会议室/参会人数 + 审批意见输入框，非裸 JSON）→ 批准 → 实例 COMPLETED。AI 单波生成的应用（含审批页绑定）至此与人工搭建的应用能力完全对齐。
 
 **发布向导版本号输入坑**：type 前未清空默认值导致字符串拼接（`0.1.00.1.2`）——自动化需先清空；真人影响小（会手动清）。
+
+---
+
+# 追加（2026-10-04 下午）：审批回调 webhook（agent 闭环替代轮询）
+
+## 机制
+
+- 环境变量 `REVIEW_CALLBACK_URL`（可选）+ `REVIEW_CALLBACK_SECRET`（可选，≥16 字符）配置后，批/驳（单资源与批量共四点）POST 事件到该 URL
+- 载荷：`{ event: review.approved|review.rejected, tenantId, appId, batchId, submissionId, module, apiName, status, reviewComment, reviewedBy, timestamp }`
+- 签名：`X-Apaas-Signature`（HMAC-SHA256 hex of body）+ `X-Apaas-Event` 头；出站经 safeFetch（SSRF 防护——本地回环默认被拦，开发联调需 `OUTBOUND_ALLOW_PRIVATE=true`）
+- 失败不阻塞审批主流程（审批已落库，接收方按 event+submissionId/batchId 幂等）
+- 未配置 URL = 通道关闭，零开销
+
+## 实测
+
+本地 mock 接收器（:9722）+ 网关带 env 重启：MCP 提交 → 批量驳回 API → 接收器收到 `review.rejected`，**sig_ok=true**（HMAC 验签通过），载荷完整。期间一个插曲：连续 400「批次不存在」实为测试脚本 app id 复制错误（采购合同 ≠ 会议预定）——反向验证了应用级隔离正确生效。
+
+## 接入点
+
+review.service：approve / reject / approveBatch / rejectBatch 四处，经 `emitCallback` 统一组装（ReviewCallbackService 注入，mock 友好；spec +1 覆盖四点断言）。
+
+## Agent 侧接入指引
+
+ZCode 等客户端起一个 HTTP 服务暴露 hook URL，配置 REVIEW_CALLBACK_URL 后即可被动接收审批结果；无回调条件时保留 list_review_submissions 轮询兜底。

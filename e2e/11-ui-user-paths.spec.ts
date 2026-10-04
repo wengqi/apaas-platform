@@ -35,15 +35,16 @@ test.describe('真实 UI 用户路径', () => {
     if (appId) await deleteTestApp(api, appId);
   });
 
-  /** 通过 UI 创建应用并进入应用。 */
+  /** 通过 UI 创建应用并进入应用。
+   *  M4 修复（2026-10-03）后创建成功即自动导航进 /app/:id/dashboard——
+   *  断言 URL 直达，避免列表页/侧栏/工作台标题多元素 strict violation；
+   *  appId 从目标 URL 提取。 */
   async function createAppViaUi(page: Page): Promise<void> {
     await page.goto('/apps');
     await page.getByRole('button', { name: /创建应用/ }).click();
     const dlg = page.getByRole('dialog', { name: '创建应用' });
     await dlg.getByRole('textbox', { name: '显示名称' }).fill(`UI 路径应用 ${SUFFIX}`);
     await dlg.getByRole('button', { name: '创 建' }).click();
-    await expect(page.getByText(`UI 路径应用 ${SUFFIX}`)).toBeVisible({ timeout: 15_000 });
-    await page.getByText(`UI 路径应用 ${SUFFIX}`).first().click();
     await expect(page).toHaveURL(/\/app\/[^/]+\/dashboard/, { timeout: 15_000 });
     appId = page.url().split('/app/')[1]!.split('/')[0]!;
   }

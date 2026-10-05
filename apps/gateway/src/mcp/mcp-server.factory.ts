@@ -355,7 +355,7 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 审批页面绑定：data.pageId 指向平台页面 ID（list_pages 获取，或用 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析）；绑定后任务中心渲染该页面',
     '- 驳回跳转：data.rejectToNodeId 指向流程内节点',
     '- 边条件：condition 为 JsonLogic JSON 字符串，如 \'{"==":[{"var":"decision"},"APPROVED"]}\'；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',
-    '- 最小骨架示例：{nodes:[{id:"start_1",type:"start",data:{title:"开始"}},{id:"t1",type:"user_task",data:{taskName:"审批",assigneeType:"ROLE",candidateGroups:["<角色ID"]}},{id:"end_1",type:"end",data:{title:"结束"}}], edges:[{sourceNodeID:"start_1",targetNodeID:"t1"},{sourceNodeID:"t1",targetNodeID:"end_1"}]}',
+    '- 最小骨架示例：{nodes:[{id:"start_1",type:"start",data:{title:"开始"}},{id:"t1",type:"user_task",data:{taskName:"审批",assigneeType:"ROLE",candidateGroups:["<角色ID>"]}},{id:"end_1",type:"end",data:{title:"结束"}}], edges:[{sourceNodeID:"start_1",targetNodeID:"t1"},{sourceNodeID:"t1",targetNodeID:"end_1"}]}',
     '- 记录状态回写：object_operation 节点 inputsValues 用四态 {type:"constant"/"ref",content:...}，recordId 用 {type:"ref",content:["recordId"]}',
     '- 流程出入参：start 节点 data.inputsValues 定义入参；end 节点 inputsValues 定义出参映射',
     '- triggerType=API 的流程发布后可经开放 API（X-API-Key）触发（G6）；user_task 仍走人工审批',

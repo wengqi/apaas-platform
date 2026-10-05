@@ -28,6 +28,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { processesApi, type ProcessDef } from '../../api/processes.js';
+import { formatDateTime } from '../../utils/user-display.js';
 import { openApiAdminApi } from '../../api/open-api.js';
 import { qk } from '@apaas/shared/stores';
 import { getProcessStatusMeta, getTriggerMeta } from '../../constants/process.js';
@@ -321,7 +322,7 @@ export function ProcessCard({
             {
               title: '发布时间',
               dataIndex: 'createdAt',
-              render: (v: string) => v.replace('T', ' ').slice(0, 19),
+              render: (v: string) => formatDateTime(v),
             },
           ]}
         />

@@ -27,6 +27,7 @@ import type { AppEnvironmentDto, DeploymentDto } from '@apaas/shared';
 import { qk } from '@apaas/shared/stores';
 import { environmentsApi } from '../api/environments.js';
 import { publishApi } from '../api/publish.js';
+import { displayName, formatDateTime, useUserNameMap } from '../utils/user-display.js';
 import EnvVarManager from './environments/EnvVarManager.js';
 
 const { Text } = Typography;
@@ -46,6 +47,8 @@ function EnvironmentPanel({
   const queryClient = useQueryClient();
   const [deployOpen, setDeployOpen] = useState(false);
   const [targetVersionId, setTargetVersionId] = useState<string>('');
+  // 双视角评审（2026-10-04）R10：操作人显示姓名而非裸 cuid，时间为本地时区
+  const userNameMap = useUserNameMap();
 
   const { data: deployments = [], isLoading } = useQuery({
     queryKey: qk.deployments(appId, envKey),
@@ -94,13 +97,18 @@ function EnvironmentPanel({
         </Tag>
       ),
     },
-    { title: '操作人', dataIndex: 'operator', width: 140 },
+    {
+      title: '操作人',
+      dataIndex: 'operator',
+      width: 140,
+      render: (v: string) => displayName(userNameMap, v),
+    },
     { title: '说明', dataIndex: 'note' },
     {
       title: '时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (v: string) => v.replace('T', ' ').slice(0, 19),
+      render: (v: string) => formatDateTime(v),
     },
     {
       title: '操作',
@@ -131,7 +139,7 @@ function EnvironmentPanel({
         </Tag>
         {env?.lastDeployedAt && (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            最近部署 {env.lastDeployedAt.replace('T', ' ').slice(0, 19)}
+            最近部署 {formatDateTime(env.lastDeployedAt)}
           </Text>
         )}
         <Button

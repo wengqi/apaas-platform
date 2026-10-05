@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { TemplateField } from './page-template.js';
-import { buildPageTemplate, supportsTemplate } from './page-template.js';
+import { buildPageTemplate, collectWritebackFields, supportsTemplate } from './page-template.js';
 
 function makeField(
   overrides: Partial<TemplateField> & Pick<TemplateField, 'apiName' | 'type'>,
@@ -119,5 +119,66 @@ describe('buildPageTemplate — 不支持的类型 / 脏数据', () => {
       title: 'X',
       body: [],
     });
+  });
+});
+
+describe('collectWritebackFields — 流程回写字段提取', () => {
+  it('提取 user_task 的 writeback.field，递归 blocks，忽略其他节点', () => {
+    const schemas = [
+      {
+        nodes: [
+          { type: 'start', data: {} },
+          {
+            type: 'user_task',
+            data: { writeback: { field: 'status', approveValue: 'approved' } },
+          },
+          {
+            type: 'parallel',
+            blocks: [
+              { type: 'user_task', data: { writeback: { field: 'approver_note' } } },
+              { type: 'end', data: {} },
+            ],
+          },
+        ],
+      },
+      undefined,
+      null,
+    ];
+    expect(collectWritebackFields(schemas)).toEqual(['status', 'approver_note']);
+  });
+
+  it('无回写配置 / 空输入 → 空数组', () => {
+    expect(collectWritebackFields([{ nodes: [{ type: 'user_task', data: {} }] }])).toEqual([]);
+    expect(collectWritebackFields([])).toEqual([]);
+    expect(collectWritebackFields([undefined])).toEqual([]);
+  });
+});
+
+describe('buildPageTemplate — 回写字段过滤（双视角评审 2026-10-04）', () => {
+  it('form_page 排除 excludeFields（申请人不可自选审批状态）', () => {
+    const schema = buildPageTemplate('form_page', OBJ, '会议室预约', {
+      excludeFields: ['status'],
+    });
+    const formBody = (schema['body'] as Array<Record<string, unknown>>)[0]!['body'] as Array<
+      Record<string, unknown>
+    >;
+    expect(formBody.map((c) => c['name'])).toEqual(['room_name', 'capacity']);
+  });
+
+  it('list_page 不过滤（台账要展示审批状态列）', () => {
+    const schema = buildPageTemplate('list_page', OBJ, '会议室台账', {
+      excludeFields: ['status'],
+    });
+    const crud = (schema['body'] as Array<Record<string, unknown>>)[0]!;
+    const columns = crud['columns'] as Array<Record<string, unknown>>;
+    expect(columns.map((c) => c['name'])).toContain('status');
+  });
+
+  it('全部字段被排除 → 表单控件为空但不抛异常', () => {
+    const schema = buildPageTemplate('form_page', OBJ, 'X', {
+      excludeFields: ['room_name', 'capacity', 'status'],
+    });
+    const formBody = (schema['body'] as Array<Record<string, unknown>>)[0]!['body'];
+    expect(formBody).toEqual([]);
   });
 });

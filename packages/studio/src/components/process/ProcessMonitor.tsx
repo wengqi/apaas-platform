@@ -15,6 +15,7 @@ import { Empty, Modal, Skeleton, Table, Tabs, message } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { processesApi, type UserTask } from '../../api/processes.js';
+import { useUserNameMap } from '../../utils/user-display.js';
 import { buildInstanceColumns, buildTaskColumns } from './process-monitor/columns.js';
 import InstanceDetail from './process-monitor/InstanceDetail.js';
 import InstanceListTab from './process-monitor/InstanceListTab.js';
@@ -32,6 +33,9 @@ export default function ProcessMonitor() {
   const [taskModal, setTaskModal] = useState<UserTask | null>(null);
 
   const queryClient = useQueryClient();
+
+  // 双视角评审（2026-10-04）R10：触发者/发起人显示姓名而非裸 cuid
+  const userNameMap = useUserNameMap();
 
   /** 流程列表(用于筛选下拉 + 名称映射)。 */
   const { data: processes } = useQuery({
@@ -121,6 +125,7 @@ export default function ProcessMonitor() {
 
   const instanceColumns = buildInstanceColumns({
     processNameMap,
+    userNameMap,
     onSelectInstance: setSelectedInstanceId,
     onHandleTask: () => {
       setActiveTab('tasks');
@@ -131,6 +136,7 @@ export default function ProcessMonitor() {
 
   const taskColumns = buildTaskColumns({
     processNameMap,
+    userNameMap,
     taskTab,
     onProcessTask: setTaskModal,
   });

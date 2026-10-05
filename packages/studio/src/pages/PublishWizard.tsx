@@ -215,6 +215,7 @@ function ChangeSetViewer({
   }
 
   const moduleLabels: Record<string, string> = {
+    APPLICATION: '应用',
     PAGE: '页面',
     OBJECT: '对象',
     PROCESS: '流程',

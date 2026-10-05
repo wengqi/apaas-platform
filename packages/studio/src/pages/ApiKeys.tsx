@@ -22,6 +22,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { ServiceIdentityDto } from '@apaas/shared';
 import { qk } from '@apaas/shared/stores';
 import { openApiAdminApi } from '../api/open-api.js';
+import { formatDateTime } from '../utils/user-display.js';
 
 const { Text, Paragraph } = Typography;
 
@@ -81,7 +82,7 @@ export default function ApiKeys() {
       title: '最后使用',
       dataIndex: 'lastUsedAt',
       width: 170,
-      render: (v: string | null) => (v ? v.replace('T', ' ').slice(0, 19) : '从未使用'),
+      render: (v: string | null) => (v ? formatDateTime(v) : '从未使用'),
     },
     {
       title: '操作',

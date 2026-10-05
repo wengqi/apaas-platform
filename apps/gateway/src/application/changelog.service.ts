@@ -21,7 +21,14 @@ export class ChangeLogService {
     tenantId: string;
     appId: string;
     module:
-      'PAGE' | 'OBJECT' | 'PROCESS' | 'PERMISSION' | 'CONNECTOR' | 'CLOUD_FUNCTION' | 'DATASET';
+      | 'APPLICATION'
+      | 'PAGE'
+      | 'OBJECT'
+      | 'PROCESS'
+      | 'PERMISSION'
+      | 'CONNECTOR'
+      | 'CLOUD_FUNCTION'
+      | 'DATASET';
     entityType: string;
     entityId: string;
     entityName?: string;

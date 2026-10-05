@@ -6,11 +6,24 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Table, Tag, Input, Select, Space, Typography, Button, Descriptions } from 'antd';
+import {
+  Card,
+  Table,
+  Tag,
+  Input,
+  Select,
+  Space,
+  Typography,
+  Button,
+  Descriptions,
+  Alert,
+} from 'antd';
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { auditLogsApi, type AuditLogItem } from '../api/audit-logs.js';
+import { apiErrorMessage } from '../api/client.js';
 import { AUDIT_CATEGORY_OPTIONS } from '../constants/audit-category.js';
+import { displayName, useUserNameMap } from '../utils/user-display.js';
 import AuditCategoryTag from '../components/shared/AuditCategoryTag.js';
 
 const { Title } = Typography;
@@ -33,8 +46,10 @@ export default function AuditLogs() {
   const [resourceFilter, setResourceFilter] = useState<string | undefined>();
   const [userIdFilter, setUserIdFilter] = useState<string | undefined>();
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
+  // 双视角评审（2026-10-04）R10：用户列显示姓名而非裸 cuid
+  const userNameMap = useUserNameMap();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error, isError, refetch } = useQuery({
     queryKey: [
       'audit-logs',
       page,
@@ -94,11 +109,15 @@ export default function AuditLogs() {
       ),
     },
     {
-      title: '用户 ID',
+      title: '操作人',
       dataIndex: 'userId',
       key: 'userId',
       width: 200,
-      render: (v: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span>,
+      render: (v: string) => (
+        <span title={v} style={{ fontSize: 12 }}>
+          {displayName(userNameMap, v)}
+        </span>
+      ),
     },
     {
       title: 'IP',
@@ -206,10 +225,25 @@ export default function AuditLogs() {
         </Card>
 
         <Card>
+          {/* 双视角评审（2026-10-04）：403 等查询失败此前被渲染成空表（静默空态）——显式错误态 */}
+          {isError && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="审计日志加载失败"
+              description={apiErrorMessage(error, '无权访问或服务不可用')}
+              action={
+                <Button size="small" onClick={() => refetch()}>
+                  重试
+                </Button>
+              }
+            />
+          )}
           <Table<AuditLogItem>
             loading={isLoading}
             columns={columns}
-            dataSource={data?.items ?? []}
+            dataSource={isError ? [] : (data?.items ?? [])}
             rowKey="id"
             pagination={{
               current: data?.page ?? 1,

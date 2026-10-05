@@ -228,7 +228,7 @@ export interface AppCheckRecord {
 /** 变更清单 — 发布时对比当前开发态与上次发布快照生成 */
 export interface ChangeSet {
   modules: Array<{
-    module: 'PAGE' | 'OBJECT' | 'PROCESS' | 'PERMISSION';
+    module: 'APPLICATION' | 'PAGE' | 'OBJECT' | 'PROCESS' | 'PERMISSION';
     changes: Array<{
       entityId: string;
       entityName: string;

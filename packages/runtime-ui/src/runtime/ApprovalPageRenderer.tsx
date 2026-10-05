@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Spin, Typography } from 'antd';
 import { pagesApi } from '../api/pages.js';
 import AmisRenderer, { adaptApiResponse, type FetcherLike } from './AmisRenderer.js';
+import { makeAmisPageReadonly } from './approval-readonly.js';
 
 const { Text } = Typography;
 
@@ -119,5 +120,13 @@ export default function ApprovalPageRenderer({
 
   // 审批上下文交由 AmisRenderer 统一双通道注入（schema.data page 域 + render 根域，
   // schema 自带 data 作为默认值垫底）——弹窗场景 render 第二参实测会丢失，不单依赖任一路。
-  return <AmisRenderer schema={schema} data={{ ...(ctxData ?? {}) }} fetcher={fetcher} />;
+  // 双视角评审（2026-10-04）：绑定页是提交表单时审批人不能"再提交一次"——
+  // 渲染前统一转为查看态（form static + 清除提交动作，crud 去新增）。
+  return (
+    <AmisRenderer
+      schema={makeAmisPageReadonly(schema)}
+      data={{ ...(ctxData ?? {}) }}
+      fetcher={fetcher}
+    />
+  );
 }

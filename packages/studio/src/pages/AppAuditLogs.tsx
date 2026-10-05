@@ -10,9 +10,10 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { auditLogsApi, type AuditLogItem } from '../api/audit-logs.js';
+import { apiErrorMessage } from '../api/client.js';
 import { AUDIT_CATEGORY_OPTIONS } from '../constants/audit-category.js';
 import AuditCategoryTag from '../components/shared/AuditCategoryTag.js';
 
@@ -56,7 +57,7 @@ export default function AppAuditLogs() {
   const [userIdFilter, setUserIdFilter] = useState<string | undefined>();
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, isError, refetch } = useQuery({
     queryKey: [
       'app-audit-logs',
       appId,
@@ -202,12 +203,27 @@ export default function AppAuditLogs() {
           </Button>
         </Space>
 
+        {/* 双视角评审（2026-10-04）：查询失败（如无权限 403）此前被渲染成空表——显式错误态 */}
+        {isError && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="审计日志加载失败"
+            description={apiErrorMessage(error, '无权访问或服务不可用')}
+            action={
+              <Button size="small" onClick={() => void refetch()}>
+                重试
+              </Button>
+            }
+          />
+        )}
         <Table<AuditLogItem>
           size="small"
           rowKey="id"
           loading={isLoading}
           columns={columns}
-          dataSource={data?.items ?? []}
+          dataSource={isError ? [] : (data?.items ?? [])}
           pagination={{
             current: page,
             pageSize,

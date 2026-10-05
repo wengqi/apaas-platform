@@ -125,6 +125,31 @@ describe('ChangeLogService', () => {
     expect(changeSet.modules.find((m) => m.module === 'OBJECT')?.changes).toHaveLength(1);
   });
 
+  it('getChangeSet：应用级变更（如新建应用）归入 APPLICATION 模块而非页面', async () => {
+    // 双视角评审（2026-10-04）：应用级操作此前误标 module:'PAGE'，发布向导把"新建应用"归入页面组
+    prisma.appVersion.findFirst.mockResolvedValue({
+      versionNumber: '1.2.0',
+      publishedAt: new Date('2026-09-01'),
+    });
+    prisma.changeLog.findMany.mockResolvedValue([
+      {
+        module: 'APPLICATION',
+        entityId: 'app-1',
+        entityName: '礼品申请',
+        changeType: 'CREATE',
+        changedBy: 'u-1',
+        changedAt: new Date('2026-10-05'),
+        changeDescription: '新建应用',
+      },
+    ]);
+
+    const changeSet = await service.getChangeSet('t-1', 'app-1');
+
+    expect(changeSet.modules).toHaveLength(1);
+    expect(changeSet.modules[0]).toMatchObject({ module: 'APPLICATION' });
+    expect(changeSet.modules[0]!.changes).toHaveLength(1);
+  });
+
   it('getChangeSet：无发布历史时基线为 null 且查询全量日志', async () => {
     prisma.appVersion.findFirst.mockResolvedValue(null);
     prisma.changeLog.findMany.mockResolvedValue([]);

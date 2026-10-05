@@ -319,8 +319,11 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
-        // 评审 BUG-05：改用 fixed（不再依赖 body 作为绝对定位上下文，也不被画布裁剪）
-        position: 'fixed',
+        // 评审 BUG-05：面板必须在应用 root 内渲染（body portal 事件委托不可靠）
+        // 双视角评审（2026-10-04）：fixed top:0 会盖住视口右上角的工具栏保存/发布按钮——
+        // 父容器 CanvasColumn 本身 relative 且面板尺寸不超出容器，absolute 即可
+        // 只覆盖画布区、不与工具栏重叠，同时保持 root 内渲染（事件委托可靠）
+        position: 'absolute',
         top: 0,
         right: 0,
         bottom: 0,

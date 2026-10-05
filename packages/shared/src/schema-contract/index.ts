@@ -12,7 +12,7 @@
  */
 
 /** 受管 schema 种类。 */
-export type SchemaKind = 'amis_page' | 'workflow' | 'object_meta';
+export type SchemaKind = 'amis_page' | 'workflow' | 'object_meta' | 'dataset';
 
 /** 问题严重级：error 拒绝提交；warning 放行但提示。 */
 export type SchemaIssueSeverity = 'error' | 'warning';

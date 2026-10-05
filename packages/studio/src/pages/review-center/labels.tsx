@@ -7,6 +7,7 @@ import type { ResourceVersionDto, ReviewModule } from '@apaas/shared';
 
 export const MODULE_LABEL: Record<ReviewModule, string> = {
   OBJECT: '对象',
+  DATASET: '数据集',
   PAGE: '页面',
   PROCESS: '流程',
 };
@@ -24,7 +25,14 @@ export const STATUS_LABEL: Record<ResourceVersionDto['status'], string> = {
 };
 
 export function ModuleTag({ module }: { module: ReviewModule }) {
-  const color = module === 'OBJECT' ? 'geekblue' : module === 'PAGE' ? 'cyan' : 'purple';
+  const color =
+    module === 'OBJECT'
+      ? 'geekblue'
+      : module === 'DATASET'
+        ? 'gold'
+        : module === 'PAGE'
+          ? 'cyan'
+          : 'purple';
   return <Tag color={color}>{MODULE_LABEL[module] ?? module}</Tag>;
 }
 

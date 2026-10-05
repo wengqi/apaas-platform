@@ -11,8 +11,8 @@ export type ResourceVersionStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUPER
 /** 提交来源：AI_MCP 走人审闸门；HUMAN 即时生效并落基线快照 */
 export type ResourceVersionSource = 'HUMAN' | 'AI_MCP';
 
-/** 资源模块（R1.2 统一范围：对象/页面/流程） */
-export type ReviewModule = 'OBJECT' | 'PAGE' | 'PROCESS';
+/** 资源模块（R1.2 统一范围：对象/数据集/页面/流程） */
+export type ReviewModule = 'OBJECT' | 'DATASET' | 'PAGE' | 'PROCESS';
 
 /** 资源快照（ResourceVersion.snapshot 的规范形态，按 module 区分） */
 export interface ObjectResourceSnapshot {
@@ -40,8 +40,17 @@ export interface ProcessResourceSnapshot {
   cron?: string | null;
 }
 
+/** 数据流资源快照（AI 主线第三轮：config 复用 shared DataFlowConfig 结构） */
+export interface DatasetResourceSnapshot {
+  apiName: string;
+  name: string;
+  description?: string;
+  /** 数据流 pipeline 配置（sources/join/filter/aggregation/outputFields） */
+  config: Record<string, unknown>;
+}
+
 export type ResourceSnapshot =
-  ObjectResourceSnapshot | PageResourceSnapshot | ProcessResourceSnapshot;
+  ObjectResourceSnapshot | DatasetResourceSnapshot | PageResourceSnapshot | ProcessResourceSnapshot;
 
 /** diff 条目操作 */
 export type ReviewDiffOp = 'ADDED' | 'REMOVED' | 'MODIFIED';

@@ -12,6 +12,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { prisma } from '@apaas/db';
 import type {
+  DatasetResourceSnapshot,
   ObjectResourceSnapshot,
   PageResourceSnapshot,
   PageType,
@@ -22,6 +23,7 @@ import type {
 import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
+import { DataFlowService } from '../dataset/dataflow.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
 import { collectRefTokens } from './review.service.js';
 
@@ -57,6 +59,7 @@ export class ReviewSnapshotService {
     private readonly pageService: PageService,
     private readonly processService: ProcessService,
     private readonly objectService: ObjectService,
+    private readonly dataFlowService: DataFlowService,
     private readonly changeLogService: ChangeLogService,
   ) {}
 
@@ -82,6 +85,23 @@ export class ReviewSnapshotService {
             icon: obj.icon ?? undefined,
             fields: toBusinessFields(obj.fields),
           } satisfies ObjectResourceSnapshot,
+        };
+      }
+      case 'DATASET': {
+        const flow = await prisma.dataFlow.findFirst({
+          where: { id: entityId, tenantId, appId },
+        });
+        if (!flow) return null;
+        return {
+          entityId: flow.id,
+          apiName: flow.apiName,
+          name: flow.name,
+          snapshot: {
+            apiName: flow.apiName,
+            name: flow.name,
+            description: flow.description ?? undefined,
+            config: flow.config as Record<string, unknown>,
+          } satisfies DatasetResourceSnapshot,
         };
       }
       case 'PAGE': {
@@ -136,6 +156,14 @@ export class ReviewSnapshotService {
           tenantId,
           appId,
           snapshot as ObjectResourceSnapshot,
+          entityId,
+          changedBy,
+        );
+      case 'DATASET':
+        return this.applyDataset(
+          tenantId,
+          appId,
+          snapshot as DatasetResourceSnapshot,
           entityId,
           changedBy,
         );
@@ -216,6 +244,102 @@ export class ReviewSnapshotService {
     return created.id;
   }
 
+  /**
+   * 数据流落地（AI 主线第三轮）：解析 config 内 @ref:object: 令牌 →
+   * 新建/更新 DataFlow（直接 ACTIVE）→ 立即 execute 物化数据集
+   * （同步建 Dataset 行供 @ref:dataset: 引用；行数据 BullMQ 异步物化）。
+   */
+  private async applyDataset(
+    tenantId: string,
+    appId: string,
+    snapshot: DatasetResourceSnapshot,
+    entityId: string | null,
+    changedBy: string,
+  ): Promise<string> {
+    const resolvedConfig = await this.resolveConfigObjectTokens(tenantId, appId, snapshot.config);
+    const target = entityId
+      ? await prisma.dataFlow.findFirst({ where: { id: entityId, tenantId, appId } })
+      : await prisma.dataFlow.findFirst({
+          where: { tenantId, appId, apiName: snapshot.apiName },
+        });
+
+    let flowId: string;
+    if (target) {
+      await prisma.dataFlow.update({
+        where: { id: target.id },
+        data: {
+          name: snapshot.name,
+          description: snapshot.description,
+          config: resolvedConfig,
+          status: 'ACTIVE',
+        },
+      });
+      flowId = target.id;
+    } else {
+      const created = await this.dataFlowService.create(tenantId, appId, changedBy, {
+        apiName: snapshot.apiName,
+        name: snapshot.name,
+        description: snapshot.description,
+        config: resolvedConfig as never,
+      });
+      await prisma.dataFlow.update({
+        where: { id: created.id },
+        data: { status: 'ACTIVE' },
+      });
+      flowId = created.id;
+    }
+    await this.dataFlowService.execute(tenantId, flowId);
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'DATASET',
+      entityType: 'DataFlow',
+      entityId: flowId,
+      entityName: snapshot.name,
+      changeType: 'CREATE',
+      changedBy,
+      changeDescription: `数据流快照落地并执行物化（${changedBy}）`,
+    });
+    this.logger.log(`数据流快照落地: ${flowId}（${snapshot.apiName}）`);
+    return flowId;
+  }
+
+  /** 数据流 config 内 @ref:object:<apiName> 令牌解析（sources[].objectId 整串）。 */
+  private async resolveConfigObjectTokens(
+    tenantId: string,
+    appId: string,
+    config: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const hasToken = JSON.stringify(config).includes('@ref:object:');
+    if (!hasToken) return config;
+    const replace = async (v: unknown): Promise<unknown> => {
+      if (typeof v === 'string') {
+        const m = /^@ref:object:([a-z][a-z0-9_]*)$/.exec(v);
+        if (!m) return v;
+        const obj = await prisma.objectMeta.findFirst({
+          where: { tenantId, appId, apiName: m[1] },
+          select: { id: true },
+        });
+        if (!obj) {
+          throw new Error(`数据流引用的对象「${m[1]}」不存在（@ref 令牌解析失败）`);
+        }
+        return obj.id;
+      }
+      if (Array.isArray(v)) {
+        const out = [];
+        for (const item of v) out.push(await replace(item));
+        return out;
+      }
+      if (v !== null && typeof v === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(v)) out[k] = await replace(val);
+        return out;
+      }
+      return v;
+    };
+    return (await replace(config)) as Record<string, unknown>;
+  }
+
   private async applyPage(
     tenantId: string,
     appId: string,
@@ -293,7 +417,11 @@ export class ReviewSnapshotService {
       ...[...urlTokens],
       ...[...wholeTokens].filter((t) => t.startsWith('@ref:object:')),
     ]);
-    if (objectTokens.size === 0) return null;
+    // @ref:dataset:<数据流apiName> → 物化数据集 ID（chart-data sourceId 等，AI 主线第三轮）
+    const datasetTokens = new Set<string>(
+      [...wholeTokens].filter((t) => t.startsWith('@ref:dataset:')),
+    );
+    if (objectTokens.size === 0 && datasetTokens.size === 0) return null;
     const map = new Map<string, string>();
     for (const token of objectTokens) {
       const apiName = token.replace(/^@ref:object:/, '');
@@ -305,6 +433,17 @@ export class ReviewSnapshotService {
         throw new Error(`页面引用的对象「${apiName}」不存在（@ref 令牌解析失败）`);
       }
       map.set(token, obj.id);
+    }
+    for (const token of datasetTokens) {
+      const apiName = token.replace(/^@ref:dataset:/, '');
+      const ds = await prisma.dataset.findFirst({
+        where: { tenantId, appId, sourceFlow: { apiName } },
+        select: { id: true },
+      });
+      if (!ds) {
+        throw new Error(`页面引用的数据集「${apiName}」不存在（数据流须先于页面批准落地）`);
+      }
+      map.set(token, ds.id);
     }
     // URL 子串替换：字符串值按子串替换令牌，其余走整串 map
     const replaceUrls = (v: unknown): unknown => {

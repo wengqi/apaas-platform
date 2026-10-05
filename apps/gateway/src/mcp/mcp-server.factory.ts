@@ -100,13 +100,49 @@ const TOOLS: Array<{
     },
   },
   {
+    name: 'list_datasets',
+    description:
+      '列出应用下全部数据集（含列定义/行数/物化状态）——写数据集图表（chart-data sourceId=数据集ID）前获取。',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string' } },
+      required: ['appId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'submit_dataset_draft',
+    description:
+      '提交数据流（数据集）草稿：config 为结构化 pipeline（sources/join/filter/aggregation/outputFields）。提交进入待审队列；批准时自动落地（ACTIVE）并执行物化数据集。页面图表 sourceId 可写 "@ref:dataset:<数据流apiName>" 令牌（批准时解析为数据集 ID）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string' },
+        apiName: {
+          type: 'string',
+          description: '数据流标识（snake_case，应用内唯一；更新已有数据流时忽略）',
+        },
+        name: { type: 'string', description: '数据流显示名' },
+        description: { type: 'string', description: '说明（可选）' },
+        config: {
+          type: 'object',
+          description:
+            'pipeline 配置：{sources:[{objectId(可 "@ref:object:<apiName>"), alias}], join?, filter?, aggregation?, outputFields:[{alias,label,source,type}]}',
+        },
+        datasetId: { type: 'string', description: '更新已有数据流时传其 ID' },
+      },
+      required: ['appId', 'apiName', 'name', 'config'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'validate_schema',
     description:
       '校验 schema 是否满足平台合同（不落库，dry-run）。submit_*_draft 前建议先自检；issues 含路径与修正建议。',
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['amis_page', 'workflow', 'object_meta'] },
+        kind: { type: 'string', enum: ['amis_page', 'workflow', 'object_meta', 'dataset'] },
         schema: { type: 'object', description: '待校验的 schema 对象' },
       },
       required: ['kind', 'schema'],
@@ -213,7 +249,7 @@ const TOOLS: Array<{
   {
     name: 'submit_app_drafts',
     description:
-      '批量提交完整应用草稿（对象+页面+流程单波进审，共享 batchId 一次人审）。适用于从零生成完整应用：跨资源引用用令牌占位——页面 objectApiName 引用本批对象；流程 user_task 的 pageId 写 "@ref:page:<页面apiName>" 引用本批页面。人工在审核中心一键批准后按 对象→页面→流程 顺序落地并自动解析令牌。',
+      '批量提交完整应用草稿（对象+数据流+页面+流程单波进审，共享 batchId 一次人审）。适用于从零生成完整应用：跨资源引用用令牌占位——数据流/页面的引用写 "@ref:object:<apiName>"；页面图表 sourceId 写 "@ref:dataset:<数据流apiName>"；流程 user_task 的 pageId 写 "@ref:page:<页面apiName>"。人工在审核中心一键批准后按 对象→数据集→页面→流程 顺序落地并自动解析令牌。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -232,6 +268,25 @@ const TOOLS: Array<{
               fields: { type: 'array', items: { type: 'object' } },
             },
             required: ['apiName', 'name', 'fields'],
+          },
+        },
+        datasets: {
+          type: 'array',
+          description:
+            '数据流草稿数组（AI 主线第三轮；每项同 submit_dataset_draft 除 appId 外的入参）',
+          items: {
+            type: 'object',
+            properties: {
+              apiName: { type: 'string' },
+              name: { type: 'string' },
+              description: { type: 'string' },
+              config: {
+                type: 'object',
+                description: 'pipeline 配置（sources/join/filter/aggregation/outputFields）',
+              },
+              datasetId: { type: 'string', description: '更新已有数据流时传其 ID' },
+            },
+            required: ['apiName', 'name', 'config'],
           },
         },
         pages: {
@@ -368,6 +423,19 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 自动编号必须带 config.format：如 "PO-{seq:0000}"',
     '- 公式字段建议带 config.expression',
   ].join('\n'),
+  dataset: [
+    '## 数据流（数据集）方言指南',
+    '- 数据流 = 结构化 pipeline：{apiName, name, config:{sources, join?, filter?, aggregation?, outputFields}}；执行后物化为数据集（非视图），图表/页面读数据集快照',
+    '- sources：1~2 个 {objectId, alias}；objectId 可写 "@ref:object:<apiName>" 令牌（本批对象或已有对象）；alias 为 snake_case 别名（供 join 与输出路径引用）',
+    '- join（可选，最多 1 个）：{leftAlias, rightAlias, type:"left"|"inner", leftField, rightField}；leftField/rightField 是记录 data 内的裸字段键（不支持点路径）',
+    '- join 后的字段键规则（聚合 groupBy/metrics.field 必须遵守）：左表字段保持裸键（如 "amount"）；右表字段自动加 "{rightAlias}_" 前缀（如右表别名 suppliers 的 name 字段引用为 "suppliers_name"）；outputFields.source 则两种都支持（"alias.field" 自动映射前缀键，聚合场景直接写分组键或指标别名）',
+    '- filter（可选）：JsonLogic 对象，作用于主表字段（如 {"==":[{"var":"status"},"approved"]}）',
+    '- aggregation（可选）：{groupBy:["<字段>"], metrics:[{alias,label,field,function}]}；function ∈ sum/count/avg/max/min',
+    '- outputFields 必填（≤50 列）：{alias, label, source, type}；source 写 "<数据源别名>.<字段apiName>"（如 "orders.amount"）或聚合指标别名；type ∈ string/number/date',
+    '- 典型用法（跨对象汇总报表）：主表 sources+[关联表]+join → aggregation 分组求和 → outputFields 输出分组列与指标列 → 仪表盘 chart 的 api.data 写 {sourceType:"dataset", sourceId:"@ref:dataset:<数据流apiName>", categoryField:"<分组输出列alias>", valueField:"<指标列alias>", aggregation:"sum"}',
+    '- 依赖顺序（submit_app_drafts 单波自动拓扑）：对象 → 数据流 → 页面 → 流程；数据流批准落地时自动执行物化（行数据异步就绪，数据集状态 READY 后图表出数）',
+    '- 提交前用 validate_schema kind="dataset" 自检；list_datasets 可查数据集 ID/列定义/物化状态',
+  ].join('\n'),
 };
 
 /** 构建 MCP Server（每请求一个实例，无状态）。 */
@@ -458,7 +526,7 @@ async function dispatch(
       const guide = DIALECT_GUIDES[kind];
       return guide
         ? { ok: true, kind, guide }
-        : { ok: false, hint: `未知 kind "${kind}"，允许：amis_page/workflow/object_meta` };
+        : { ok: false, hint: `未知 kind "${kind}"，允许：amis_page/workflow/object_meta/dataset` };
     }
     case 'list_objects':
       return svc.listObjects(tenantId, str(args['appId']));
@@ -466,6 +534,8 @@ async function dispatch(
       return svc.listPages(tenantId, str(args['appId']));
     case 'list_processes':
       return svc.listProcesses(tenantId, str(args['appId']));
+    case 'list_datasets':
+      return svc.listDatasets(tenantId, str(args['appId']));
     case 'list_users':
       return svc.listUsers(tenantId, optionalStr(args['keyword']));
     case 'list_roles':
@@ -485,6 +555,15 @@ async function dispatch(
         type: optionalStr(args['type']),
         objectId: optionalStr(args['objectId']),
         pageId: optionalStr(args['pageId']),
+      });
+    case 'submit_dataset_draft':
+      return svc.submitDatasetDraft(tenantId, userId, {
+        appId: str(args['appId']),
+        apiName: str(args['apiName']),
+        name: str(args['name']),
+        config: args['config'],
+        description: optionalStr(args['description']),
+        datasetId: optionalStr(args['datasetId']),
       });
     case 'submit_workflow_draft':
       return svc.submitWorkflowDraft(tenantId, userId, {
@@ -512,6 +591,9 @@ async function dispatch(
         appId: str(args['appId']),
         objects: Array.isArray(args['objects'])
           ? (args['objects'] as Array<Record<string, unknown>>)
+          : [],
+        datasets: Array.isArray(args['datasets'])
+          ? (args['datasets'] as Array<Record<string, unknown>>)
           : [],
         pages: Array.isArray(args['pages'])
           ? (args['pages'] as Array<Record<string, unknown>>)

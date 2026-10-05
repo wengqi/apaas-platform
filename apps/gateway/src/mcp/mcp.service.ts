@@ -84,6 +84,87 @@ export class McpService {
     return { ok: true, processes };
   }
 
+  /** 数据集列表（含列定义与行数/状态）——AI 写数据集图表（chart-data sourceId）的依据。 */
+  async listDatasets(tenantId: string, appId: string): Promise<McpToolResult> {
+    const datasets = await prisma.dataset.findMany({
+      where: { tenantId, appId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        apiName: true,
+        name: true,
+        description: true,
+        status: true,
+        rowCount: true,
+        columns: true,
+        sourceFlowId: true,
+        lastRefreshedAt: true,
+      },
+    });
+    return { ok: true, datasets };
+  }
+
+  /** 提交数据流草稿（AI 主线第三轮）：G3 dataset 校验 → 治理轨道 PENDING；
+   *  批准时落地 ACTIVE 并立即执行物化（@ref:dataset:<数据流apiName> 可被页面引用）。 */
+  async submitDatasetDraft(
+    tenantId: string,
+    userId: string,
+    args: {
+      appId: string;
+      apiName: string;
+      name: string;
+      config: unknown;
+      description?: string | null;
+      datasetId?: string | null;
+    },
+  ): Promise<McpToolResult> {
+    const check = this.schemaContract.validate('dataset', {
+      apiName: args.apiName,
+      name: args.name,
+      config: args.config,
+    });
+    if (!check.valid) return this.rejected(check);
+
+    const snapshot = {
+      apiName: args.apiName,
+      name: args.name,
+      description: args.description ?? undefined,
+      config: args.config as Record<string, unknown>,
+    };
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'DATASET',
+        appId: args.appId,
+        apiName: args.apiName,
+        name: args.name,
+        snapshot,
+        entityId: args.datasetId ?? undefined,
+      },
+      userId,
+    );
+
+    this.auditDraft(
+      tenantId,
+      userId,
+      args.appId,
+      'DATASET',
+      submission.id,
+      args.datasetId ? 'update' : 'create',
+    );
+    this.logger.log(`MCP 数据流草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
+    return {
+      ok: true,
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      datasetId: submission.entityId,
+      action: args.datasetId ? 'submitted_update' : 'submitted_create',
+      published: false,
+      hint: `已进入待审队列（未落活表）。批准时自动落地数据流（ACTIVE）并执行物化数据集；页面图表 sourceId 可写 "@ref:dataset:${args.apiName}"（批准拓扑序：对象→数据集→页面→流程）`,
+    };
+  }
+
   /** 应用成员列表（id/姓名/邮箱/角色）——AI 配置审批人（assignee/approveUsers）的选人依据。 */
   async listUsers(tenantId: string, keyword?: string): Promise<McpToolResult> {
     const users = await prisma.user.findMany({
@@ -394,13 +475,17 @@ export class McpService {
     args: {
       appId: string;
       objects: Array<Record<string, unknown>>;
+      datasets?: Array<Record<string, unknown>>;
       pages: Array<Record<string, unknown>>;
       processes: Array<Record<string, unknown>>;
     },
   ): Promise<McpToolResult> {
-    const { appId, objects, pages, processes } = args;
-    if (objects.length + pages.length + processes.length === 0) {
-      return { ok: false, hint: '批量提交至少包含一项资源（objects/pages/processes 任一非空）' };
+    const { appId, objects, datasets = [], pages, processes } = args;
+    if (objects.length + datasets.length + pages.length + processes.length === 0) {
+      return {
+        ok: false,
+        hint: '批量提交至少包含一项资源（objects/datasets/pages/processes 任一非空）',
+      };
     }
 
     const batchObjectApiNames = new Set(objects.map((o) => String(o['apiName'] ?? '')));
@@ -414,6 +499,16 @@ export class McpService {
         fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
       };
       const check = this.schemaContract.validate('object_meta', meta);
+      if (!check.valid) return this.rejected(check);
+    }
+
+    // 1.5) 数据流逐项 G3 校验（AI 主线第三轮）
+    for (const ds of datasets) {
+      const check = this.schemaContract.validate('dataset', {
+        apiName: String(ds['apiName'] ?? ''),
+        name: String(ds['name'] ?? ''),
+        config: ds['config'] ?? {},
+      });
       if (!check.valid) return this.rejected(check);
     }
 
@@ -462,6 +557,21 @@ export class McpService {
           description: obj['description'] ? String(obj['description']) : undefined,
           icon: obj['icon'] ? String(obj['icon']) : undefined,
           fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
+        },
+      });
+    }
+    for (const ds of datasets) {
+      items.push({
+        module: 'DATASET',
+        appId,
+        apiName: String(ds['apiName']),
+        name: String(ds['name']),
+        entityId: ds['datasetId'] ? String(ds['datasetId']) : undefined,
+        snapshot: {
+          apiName: String(ds['apiName']),
+          name: String(ds['name']),
+          description: ds['description'] ? String(ds['description']) : undefined,
+          config: (ds['config'] as Record<string, unknown>) ?? {},
         },
       });
     }

@@ -422,3 +422,50 @@ describe('MCP 选人工具（list_users / list_roles）', () => {
     expect(r.hint).toContain('非编码');
   });
 });
+
+describe('MCP 数据流提交（submit_dataset_draft → 待审）', () => {
+  /** 合法数据流草稿（单源聚合）。 */
+  const validDatasetDraft = {
+    appId: 'app-1',
+    apiName: 'sales_by_region',
+    name: '区域销售额',
+    config: {
+      sources: [{ objectId: '@ref:object:sales_order', alias: 'orders' }],
+      aggregation: {
+        groupBy: ['region'],
+        metrics: [{ alias: 'total_amount', label: '金额合计', field: 'amount', function: 'sum' }],
+      },
+      outputFields: [
+        { alias: 'region', label: '销售区域', source: 'orders.region', type: 'string' },
+        { alias: 'total_amount', label: '金额合计', source: 'total_amount', type: 'number' },
+      ],
+    },
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('合法 config → 进入待审队列（PENDING，module=DATASET）', async () => {
+    const { svc, reviewService } = makeService();
+    const r = await svc.submitDatasetDraft('t1', 'ai-agent', validDatasetDraft);
+    expect(r.ok).toBe(true);
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({ module: 'DATASET', apiName: 'sales_by_region' }),
+      'ai-agent',
+    );
+  });
+
+  it('非法 config（输出列 source 引用不存在的别名）→ 校验拒绝并返回结构化 issues', async () => {
+    const { svc, reviewService } = makeService();
+    const draft = {
+      ...validDatasetDraft,
+      config: {
+        ...validDatasetDraft.config,
+        outputFields: [{ alias: 'region', label: '区域', source: 'ghost.region', type: 'string' }],
+      },
+    };
+    const r = await svc.submitDatasetDraft('t1', 'ai-agent', draft);
+    expect(r.ok).toBe(false);
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
+  });
+});

@@ -150,6 +150,11 @@ export class DataFlowEngine {
       rows = this.memoryFilter(rows, config.filter);
     }
 
+    // 聚合分支的行键 = groupBy 原样键 + 指标别名（SQL jsonb_build_object 直接输出），
+    // 与数据集对外契约（outputFields.alias）不一致——统一投影重命名
+    // （AI 主线第三轮实测：图表按列 alias 取数取不到，categoryField 显示"未知"）
+    rows = this.projectAggRows(rows, config);
+
     // includeTotal 时 SQL 已带全量计数（窗口函数在 LIMIT 前求值）；
     // 内存兜底路径的 total = 过滤后行数（与旧引擎 total 语义一致）
     const total = opts.includeTotal
@@ -176,9 +181,44 @@ export class DataFlowEngine {
   }
 
   /**
+   * 聚合分支行投影：把 groupBy 原样键/指标别名重命名为 outputFields.alias，
+   * 保证数据集行键与列定义（columns）一致——下游图表按列 alias 取数。
+   * source 解析与 SQL 层 outputValueExpr 同规则：点路径尝试 "{左}_右" 前缀键与裸键。
+   * 非聚合分支行键已是 alias（SQL 输出映射），原样返回。
+   */
+  private projectAggRows(rows: DataRow[], config: DataFlowConfig): DataRow[] {
+    if (!config.aggregation || !config.outputFields?.length) return rows;
+    return rows.map((row) => {
+      const out: DataRow = {};
+      for (const f of config.outputFields) {
+        let v: unknown;
+        if (f.source.includes('.')) {
+          const dot = f.source.indexOf('.');
+          const joinedKey = `${f.source.slice(0, dot)}_${f.source.slice(dot + 1)}`;
+          v = row[joinedKey] ?? row[f.source.slice(dot + 1)];
+        } else {
+          v = row[f.source];
+        }
+        out[f.alias] = v ?? null;
+      }
+      return out;
+    });
+  }
+
+  /**
    * 从配置构建列定义。
    */
   private buildColumns(config: DataFlowConfig): DatasetColumn[] {
+    // 列定义与投影后行键保持一致（projectAggRows）：outputFields.alias 为准；
+    // outputFields 缺省时回退 groupBy+metrics 推导（旧行为）
+    if (config.aggregation && config.outputFields?.length) {
+      return config.outputFields.map((f) => ({
+        apiName: f.alias,
+        label: f.label,
+        type: f.type,
+        source: f.source,
+      }));
+    }
     // 如果有 aggregation，列 = groupBy 字段 + metrics
     if (config.aggregation) {
       const columns: DatasetColumn[] = [];

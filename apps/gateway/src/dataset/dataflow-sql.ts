@@ -148,14 +148,16 @@ export function buildPipelineSql(
     const leftField = ident(join.leftField, '字段键');
     const rightField = ident(join.rightField, '字段键');
     const joinType = join.type === 'inner' ? 'INNER JOIN' : 'LEFT JOIN';
-    // 右表字段加 `{rightAlias}_` 前缀（复刻内存引擎合并键），缺失行聚合为空对象
-    baseSelect = `SELECT (l.data || COALESCE(rp.prefixed, '{}'::jsonb)) AS data
-FROM ${sourceSqls[config.sources.findIndex((s) => s.alias === left)]!} l
-${joinType} ${sourceSqls[config.sources.findIndex((s) => s.alias === right)]!} r
-  ON COALESCE(l.data->>'${leftField}', '') = COALESCE(r.data->>'${rightField}', '')
+    // 右表字段加 `{rightAlias}_` 前缀（复刻内存引擎合并键），缺失行聚合为空对象。
+    // 引擎修复（AI 主线第三轮实测）：sourceSqls 已含 "AS q_<alias> (data)" 表别名，
+    // 不能再叠加 l/r 短别名（PG 语法错误 42601）——直接引用 q_<alias>.data
+    baseSelect = `SELECT (COALESCE(${ident(`q_${left}`, '别名')}.data, '{}'::jsonb) || COALESCE(rp.prefixed, '{}'::jsonb)) AS data
+FROM ${sourceSqls[config.sources.findIndex((s) => s.alias === left)]!}
+${joinType} ${sourceSqls[config.sources.findIndex((s) => s.alias === right)]!}
+  ON COALESCE(${ident(`q_${left}`, '别名')}.data->>'${leftField}', '') = COALESCE(${ident(`q_${right}`, '别名')}.data->>'${rightField}', '')
 LEFT JOIN LATERAL (
   SELECT jsonb_object_agg('${right}_' || key, value) AS prefixed
-  FROM jsonb_each(r.data) e(key, value)
+  FROM jsonb_each(${ident(`q_${right}`, '别名')}.data) e(key, value)
 ) rp ON TRUE`;
   } else {
     baseSelect = `SELECT data FROM ${sourceSqls[0]!}`;

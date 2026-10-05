@@ -78,23 +78,63 @@ function businessFields(fields: TemplateField[]): TemplateField[] {
   return (fields ?? []).filter((f) => f.isSystem !== true);
 }
 
+/** 流程 schema 的最小结构（与 studio WorkflowSchema / 编辑器导出结构化兼容）。 */
+interface WorkflowSchemaLike {
+  nodes?: unknown;
+}
+
+/**
+ * 从应用全部流程 schema 中提取 user_task 的回写字段（如审批状态）。
+ *
+ * 双视角评审（2026-10-04）：提交表单模板若包含流程回写字段，申请人可以
+ * 自选"已批准"直接提交——提交表单必须排除这些字段。列表（台账）模板不过滤：
+ * 台账正要展示审批状态列。
+ *
+ * 节点走 unknown 防御式收窄：WorkflowSchema/编辑器节点类型各自演化，不与任一侧耦合。
+ */
+export function collectWritebackFields(
+  schemas: ReadonlyArray<WorkflowSchemaLike | undefined | null>,
+): string[] {
+  const fields = new Set<string>();
+  const walk = (nodes: unknown): void => {
+    if (!Array.isArray(nodes)) return;
+    for (const n of nodes) {
+      if (!n || typeof n !== 'object') continue;
+      const node = n as { type?: unknown; data?: unknown; blocks?: unknown };
+      if (node.type === 'user_task') {
+        const wb = (node.data as { writeback?: { field?: unknown } } | undefined)?.writeback;
+        if (wb && typeof wb.field === 'string') fields.add(wb.field);
+      }
+      walk(node.blocks);
+    }
+  };
+  for (const s of schemas) walk(s?.nodes);
+  return [...fields];
+}
+
 /**
  * 构建页面初始模板。
  *
  * @param type 页面类型（仅 form_page / list_page 产出模板，其余返回空白页）
  * @param obj  关联对象（含字段定义）
  * @param name 页面显示名（作为页面标题）
+ * @param options.excludeFields 提交表单需排除的字段 apiName（流程回写字段，仅 form_page 消费）
  */
 export function buildPageTemplate(
   type: PageType | undefined,
   obj: { id: string; apiName: string; label?: string; fields: TemplateField[] },
   name: string,
+  options?: { excludeFields?: ReadonlyArray<string> },
 ): Record<string, unknown> {
   const emptyPage = { type: 'page', title: name, body: [] };
   if (!supportsTemplate(type) || !obj?.fields) return emptyPage;
   const objLabel = obj.label ?? obj.apiName;
 
-  const fields = businessFields(obj.fields);
+  const allFields = businessFields(obj.fields);
+  const fields =
+    type === 'form_page' && options?.excludeFields?.length
+      ? allFields.filter((f) => !options.excludeFields!.includes(f.apiName))
+      : allFields;
   if (type === 'form_page') {
     // 提交表单：业务字段输入 + 提交按钮（submit 为 amis form 原生 actions 类型，
     // 已入 G3 白名单——QA 回归 schema-contract.service.spec）。

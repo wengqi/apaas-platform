@@ -79,6 +79,9 @@ export const APPROVAL_MODE_OPTIONS = [
   { label: '单人审批', value: 'SINGLE' },
   { label: '会签(全部同意)', value: 'COUNTERSIGN' },
   { label: '或签(任一同意)', value: 'OR_SIGN' },
+  // 依次审批（R1.3 引擎 sequential 模式）——引擎/completeTask 进度推进均已支持，
+  // 双视角评审（2026-10-04）：此前 UI 从不暴露该选项，能力被面板埋没
+  { label: '依次(按顺序逐个审批)', value: 'SEQUENTIAL' },
 ];
 
 const DUE_UNIT_OPTIONS = [

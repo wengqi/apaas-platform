@@ -132,7 +132,7 @@ export class ApplicationService {
     await this.changeLogService.log({
       tenantId,
       appId: app.id,
-      module: 'PAGE',
+      module: 'APPLICATION',
       entityType: 'Application',
       entityId: app.id,
       entityName: req.name,
@@ -172,7 +172,7 @@ export class ApplicationService {
     await this.changeLogService.log({
       tenantId,
       appId,
-      module: 'PAGE',
+      module: 'APPLICATION',
       entityType: 'Application',
       entityId: appId,
       entityName: req.name ?? existing.name,
@@ -209,7 +209,7 @@ export class ApplicationService {
     await this.changeLogService.log({
       tenantId,
       appId,
-      module: 'PAGE',
+      module: 'APPLICATION',
       entityType: 'Application',
       entityId: appId,
       entityName: app.name,
@@ -263,7 +263,7 @@ export class ApplicationService {
     await this.changeLogService.log({
       tenantId,
       appId,
-      module: 'PAGE',
+      module: 'APPLICATION',
       entityType: 'Application',
       entityId: appId,
       entityName: existing.name,

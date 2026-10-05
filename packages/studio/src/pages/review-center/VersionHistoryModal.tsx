@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ResourceVersionDto } from '@apaas/shared';
 import { qk } from '@apaas/shared/stores';
 import { reviewsApi } from '../../api/reviews.js';
+import { formatDateTime } from '../../utils/user-display.js';
 import { ModuleTag, SourceTag, StatusTag } from './labels.js';
 
 interface VersionHistoryModalProps {
@@ -44,7 +45,7 @@ export default function VersionHistoryModal({ appId, target, onClose }: VersionH
       title: '提交时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (v: string) => v.replace('T', ' ').slice(0, 19),
+      render: (v: string) => formatDateTime(v),
     },
   ];
 

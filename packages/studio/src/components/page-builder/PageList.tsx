@@ -10,9 +10,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../../api/pages.js';
+import { processesApi } from '../../api/processes.js';
 import { PageListItem } from './page-list/PageListItem.js';
 import { CreatePageModal, type CreatePageFormValues } from './page-list/CreatePageModal.js';
-import { buildPageTemplate, supportsTemplate } from '../../utils/page-template.js';
+import {
+  buildPageTemplate,
+  collectWritebackFields,
+  supportsTemplate,
+} from '../../utils/page-template.js';
 import { objectsApi } from '../../api/objects.js';
 
 const { Title } = Typography;
@@ -59,9 +64,33 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
     mutationFn: async (data: CreatePageFormValues) => {
       let schema: Record<string, unknown> = { type: 'page', title: data.name, body: [] };
       let obj: Awaited<ReturnType<typeof objectsApi.get>> | null = null;
+      // 双视角评审（2026-10-04）：提交表单不得包含流程回写字段（如审批状态），
+      // 否则申请人可自选"已批准"直接提交。生成前从应用全部流程 schema 提取回写字段。
+      let excludeFields: string[] = [];
+      if (data.type === 'form_page' && data.objectId && appId) {
+        try {
+          const processes = await processesApi.list(appId);
+          const schemas = await Promise.all(
+            processes.map((p) =>
+              processesApi
+                .get(p.id)
+                .then((d) => d.workflowSchema)
+                .catch(() => undefined),
+            ),
+          );
+          excludeFields = collectWritebackFields(schemas);
+        } catch {
+          // 流程读取失败不阻塞建页——模板仍生成，回写字段过滤尽力而为
+        }
+      }
       if (data.objectId && supportsTemplate(data.type)) {
         obj = await objectsApi.get(data.objectId);
-        schema = buildPageTemplate(data.type, obj, data.name);
+        schema = buildPageTemplate(data.type, obj, data.name, { excludeFields });
+        if (excludeFields.length > 0 && data.type === 'form_page') {
+          const labelOf = (apiName: string) =>
+            obj?.fields?.find((f) => f.apiName === apiName)?.label ?? apiName;
+          message.info(`已从表单排除流程回写字段：${excludeFields.map(labelOf).join('、')}`);
+        }
       }
       const page = await pagesApi.create(appId as string, {
         name: data.name,

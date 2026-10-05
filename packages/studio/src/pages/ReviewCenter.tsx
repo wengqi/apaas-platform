@@ -28,6 +28,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
 import { qk, reviewAffectedKeys } from '@apaas/shared/stores';
 import { reviewsApi } from '../api/reviews.js';
+import { displayName, formatDateTime, useUserNameMap } from '../utils/user-display.js';
 import DiffDrawer from './review-center/DiffDrawer.js';
 import DirtyResourcesTable from './review-center/DirtyResourcesTable.js';
 import VersionHistoryModal from './review-center/VersionHistoryModal.js';
@@ -163,6 +164,8 @@ function SubmissionTable({
   showReviewResult: boolean;
 }) {
   void appId;
+  // 双视角评审（2026-10-04）R10：提交人显示姓名而非裸 cuid，时间为本地时区
+  const userNameMap = useUserNameMap();
   const columns: ColumnsType<ResourceVersionListItemDto> = [
     {
       title: '模块',
@@ -197,12 +200,17 @@ function SubmissionTable({
       width: 220,
       render: (_, record) => record.diff?.summary || '-',
     },
-    { title: '提交人', dataIndex: 'submittedBy', width: 120 },
+    {
+      title: '提交人',
+      dataIndex: 'submittedBy',
+      width: 120,
+      render: (v: string) => displayName(userNameMap, v),
+    },
     {
       title: '提交时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (v: string) => v.replace('T', ' ').slice(0, 19),
+      render: (v: string) => formatDateTime(v),
     },
     ...(showReviewResult
       ? [

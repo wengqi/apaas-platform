@@ -8,6 +8,7 @@ import { Badge, Button, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { ProcessInstance, UserTask } from '../../../api/processes.js';
+import { displayName } from '../../../utils/user-display.js';
 import { getInstanceStateMeta } from '../../../constants/process.js';
 import { formatDuration } from './formatDuration.js';
 
@@ -16,11 +17,13 @@ const { Text } = Typography;
 /** 运行实例表格列。 */
 export function buildInstanceColumns(params: {
   processNameMap: Map<string, string>;
+  /** 双视角评审（2026-10-04）R10：触发者显示姓名而非裸 cuid */
+  userNameMap: Map<string, string>;
   onSelectInstance: (instanceId: string) => void;
   onHandleTask: () => void;
   onCancelInstance: (instanceId: string) => void;
 }): ColumnsType<ProcessInstance> {
-  const { processNameMap, onSelectInstance, onHandleTask, onCancelInstance } = params;
+  const { processNameMap, userNameMap, onSelectInstance, onHandleTask, onCancelInstance } = params;
 
   return [
     {
@@ -36,7 +39,11 @@ export function buildInstanceColumns(params: {
         return <Badge status={meta.badgeStatus} text={meta.label} />;
       },
     },
-    { title: '触发者', dataIndex: 'triggeredByUser', render: (v) => v ?? '系统' },
+    {
+      title: '触发者',
+      dataIndex: 'triggeredByUser',
+      render: (v) => (v ? displayName(userNameMap, v) : '系统'),
+    },
     {
       title: '开始时间',
       dataIndex: 'startTime',
@@ -81,10 +88,12 @@ export function buildInstanceColumns(params: {
 /** 人工任务表格列。 */
 export function buildTaskColumns(params: {
   processNameMap: Map<string, string>;
+  /** 双视角评审（2026-10-04）R10：发起人显示姓名而非裸 cuid */
+  userNameMap: Map<string, string>;
   taskTab: 'pending' | 'completed';
   onProcessTask: (task: UserTask) => void;
 }): ColumnsType<UserTask> {
-  const { processNameMap, taskTab, onProcessTask } = params;
+  const { processNameMap, userNameMap, taskTab, onProcessTask } = params;
 
   return [
     { title: '任务名称', dataIndex: 'taskName' },
@@ -93,7 +102,11 @@ export function buildTaskColumns(params: {
       dataIndex: 'processDefId',
       render: (v) => processNameMap.get(v) ?? v,
     },
-    { title: '发起人', dataIndex: 'starter', render: (v) => v ?? '—' },
+    {
+      title: '发起人',
+      dataIndex: 'starter',
+      render: (v) => (v ? displayName(userNameMap, v) : '—'),
+    },
     {
       title: '到达时间',
       dataIndex: 'arrivedAt',

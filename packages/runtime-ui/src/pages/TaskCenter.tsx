@@ -89,7 +89,7 @@ export default function TaskCenter() {
   const rawInputs = triggerContext?.['inputs'] as Record<string, unknown> | undefined;
   const triggerData: Array<[string, unknown]> = rawInputs
     ? Object.entries(rawInputs)
-        .filter(([key]) => !key.startsWith('_'))
+        .filter(([key]) => !key.startsWith('_') && key !== 'id')
         .map(([key, value]) => [fieldLabels[key] ?? key, value])
     : triggerContext
       ? Object.entries(triggerContext)

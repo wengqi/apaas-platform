@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Card,
   Steps,
@@ -19,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { publishAffectedKeys, qk } from '@apaas/shared/stores';
 import { publishApi } from '../api/publish.js';
 import { environmentsApi } from '../api/environments.js';
+import { apiErrorMessage } from '../api/client.js';
 import type { ChangeSet } from '@apaas/shared';
 
 const { Title, Text, Paragraph: _Paragraph } = Typography;
@@ -36,7 +37,7 @@ export default function PublishWizard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [current, setCurrent] = useState(0);
-  const [version, setVersion] = useState('0.1.0');
+  const [version, setVersion] = useState('');
   // R1.4：目标环境（prod=对外生效；dev=仅内部验证，不触碰生产）
   const [targetEnv, setTargetEnv] = useState<'prod' | 'dev'>('prod');
   const [description, setDescription] = useState('');
@@ -47,6 +48,26 @@ export default function PublishWizard() {
     queryFn: () => publishApi.getChanges(appId!),
     enabled: !!appId,
   });
+
+  /** 获取已有版本 → 智能预填下一个 patch 版本（实测缺陷 2026-10-05：
+   *  默认硬编码 0.1.0，二次发布直接撞"版本号已存在"400） */
+  const { data: versions = [] } = useQuery({
+    queryKey: qk.appVersions(appId!),
+    queryFn: () => publishApi.listVersions(appId!),
+    enabled: !!appId,
+  });
+  const suggestedVersion = useMemo(() => {
+    const triples = versions
+      .map((v) => v.versionNumber.split('.').map((n) => Number.parseInt(n, 10)))
+      .filter((n) => n.length === 3 && n.every((x) => !Number.isNaN(x)));
+    if (triples.length === 0) return '0.1.0';
+    triples.sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!);
+    const top = triples[triples.length - 1]!;
+    return `${top[0]}.${top[1]}.${top[2]! + 1}`;
+  }, [versions]);
+  useEffect(() => {
+    if (suggestedVersion) setVersion(suggestedVersion);
+  }, [suggestedVersion]);
 
   /** 发布 mutation（R1.4：prod 由后端发布即部署；dev 追加切 dev 指针） */
   const publishMutation = useMutation({
@@ -68,8 +89,10 @@ export default function PublishWizard() {
       navigate(`/app/${appId}/versions`);
     },
     onError: (err: unknown) => {
-      const errData = (err as { response?: { data?: { message?: string } } })?.response?.data;
-      message.error(errData?.message ?? '发布失败');
+      // 双视角评审 R11 口径：透出服务端 message（实测缺陷 2026-10-05：此前读
+      // response.data.message 而平台错误结构是 response.data.error.message，
+      // "版本号已存在"等服务端原因被吞成笼统"发布失败"）
+      message.error(apiErrorMessage(err, '发布失败'));
     },
   });
 

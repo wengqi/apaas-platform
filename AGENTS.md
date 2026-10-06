@@ -112,6 +112,11 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
   界面，验证截图后做全帧异常扫描（列出所有状态标签自问是否矛盾），产出走查报告（通过点/
   问题点/证据截图，gui-test-screenshots/ 留档）。与开发验证互补，减少对用户人工 QA 的依赖；
   推送前另跑 `pnpm test:e2e:smoke`（核心旅程冒烟，~16s，见 docs/knowledge-base/TEST-JOURNEY-MAP.md）
+- **QA 测试标准活文档同步（工作约定，2026-10-06）**：全量 QA 测试标准与目标提示词落档
+  `docs/testing/QA-TEST-PLAN-PROMPT.md`（覆盖粒度到 组件×属性 / 流程节点×配置项 / 字段类型×
+  配置项，含四底册与回归锚点）。功能变化（新增 amis 组件或 G3 白名单调整 / 流程节点类型或
+  配置项 / 字段类型 / 数据流节点 / 权限维度 / 页面路由 / 账号与种子应用 / 已修复缺陷）须在
+  **同一提交内**按该文档头部「维护规约」表更新对应清单与锚点，禁止"功能先行、标准欠账"
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
 
 ### 测试规范

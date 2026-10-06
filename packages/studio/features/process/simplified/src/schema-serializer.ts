@@ -254,20 +254,25 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
     };
   }
 
-  return {
+  const result: WorkflowNode = {
     id: node.id,
     type: engineType as WorkflowNode['type'],
     meta: node.meta ?? {},
     data,
     blocks: filteredBlocks.map(flowNodeToWorkflowNode),
-    edges: node.edges?.map((e) => ({
+  };
+  // 仅当存在边时才写 edges 键——无条件写 undefined 会让 JSON.stringify 与
+  // 入库 schema 不等（打开即标"未保存"；用户反馈 2026-10-06）
+  if (node.edges && node.edges.length > 0) {
+    result.edges = node.edges.map((e) => ({
       sourceNodeID: e.sourceNodeID,
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
       label: e.label,
-    })),
-  } as WorkflowNode;
+    }));
+  }
+  return result;
 }
 
 /**

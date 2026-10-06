@@ -25,6 +25,16 @@ import EditorErrorBoundary from './process-editor/EditorErrorBoundary.js';
 import TriggerConfigModal from './process-editor/TriggerConfigModal.js';
 import ProcessPreviewModal from './process-editor/ProcessPreviewModal.js';
 
+/** 键序无关的 JSON 规范化（对象键递归排序；数组保序）——脏判定专用。 */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined) // 忽略 undefined 键（序列化往返产物）
+    .sort(([a], [b]) => a.localeCompare(b));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
 export { default as EditorErrorBoundary } from './process-editor/EditorErrorBoundary.js';
 
 export default function ProcessEditor() {
@@ -154,10 +164,12 @@ export default function ProcessEditor() {
       }
     }
     // 评审 P1-1：打开已保存流程时，挂载期 reconcile 的首次导出若与已保存
-    // 基线内容一致，则不置脏（此前"打开即脏"+撤销栈被污染）
+    // 基线内容一致，则不置脏（此前"打开即脏"+撤销栈被污染）。
+    // 用键序无关的规范化对比——入库 schema 键序（API 形态）与画布导出
+    // 键序（nodes-first）不同，字符串直比会把"内容相同"误判为脏
+    // （用户反馈 2026-10-06：已发布流程打开即标"未保存"）。
     if (!store.dirty) {
-      const baseline = JSON.stringify(processDef?.workflowSchema ?? null);
-      if (JSON.stringify(finalSchema) === baseline) {
+      if (canonicalJson(finalSchema) === canonicalJson(processDef?.workflowSchema ?? null)) {
         store.markSaved();
         return;
       }

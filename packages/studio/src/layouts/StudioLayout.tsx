@@ -59,7 +59,7 @@ export default function StudioLayout() {
   const [checkDrawerOpen, setCheckDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const {
-    token: { colorBgContainer },
+    token: { colorBgContainer, colorText },
   } = theme.useToken();
 
   /** 获取当前应用信息(侧边栏顶部展示名称+图标)。 */
@@ -169,6 +169,7 @@ export default function StudioLayout() {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         width={220}
+        theme="light"
         style={{
           overflow: 'auto',
           height: '100vh',
@@ -176,6 +177,9 @@ export default function StudioLayout() {
           left: 0,
           top: 0,
           bottom: 0,
+          // 浅色主题（QA 2026-10-06：与右侧主内容区协调，弃深色侧栏）
+          background: '#f7f9fc',
+          borderRight: '1px solid #ebedf0',
         }}
       >
         {/* 侧边栏顶部：当前应用名称 + 图标 */}
@@ -184,11 +188,12 @@ export default function StudioLayout() {
             height: 56,
             margin: '12px 12px 8px',
             padding: '0 12px',
-            color: '#fff',
+            color: colorText,
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            background: 'rgba(255,255,255,0.08)',
+            background: colorBgContainer,
+            border: '1px solid #ebedf0',
             borderRadius: 8,
           }}
         >
@@ -232,12 +237,12 @@ export default function StudioLayout() {
           )}
         </div>
         <Menu
-          theme="dark"
+          theme="light"
           mode="inline"
           selectedKeys={[selectedKey]}
           items={menuItems}
           onClick={({ key }) => navigate(`/app/${appId}/${key}`)}
-          style={{ borderRight: 0 }}
+          style={{ borderRight: 0, background: 'transparent' }}
         />
       </Sider>
       <Layout style={{ marginLeft: collapsed ? 80 : 220 }}>

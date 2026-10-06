@@ -120,11 +120,13 @@ export function ProcessCard({
             <TriggerIcon />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Space size={6} align="center">
-              <Text strong style={{ fontSize: 15 }}>
+            {/* 名称+状态 Tag 单行：标题过长时名称 ellipsis，防止换行撑高卡片
+                （QA 2026-10-06：5 字名称+Tag 在窄列下被压缩换行，卡片高度 210 vs 186 不一致） */}
+            <Space size={6} align="center" style={{ minWidth: 0 }}>
+              <Text strong style={{ fontSize: 15 }} ellipsis={{ tooltip: process.name }}>
                 {process.name}
               </Text>
-              <Tag color={statusMeta.tagColor} style={{ margin: 0 }}>
+              <Tag color={statusMeta.tagColor} style={{ margin: 0, flexShrink: 0 }}>
                 {statusMeta.label}
               </Tag>
             </Space>

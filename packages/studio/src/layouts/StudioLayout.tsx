@@ -59,7 +59,7 @@ export default function StudioLayout() {
   const [checkDrawerOpen, setCheckDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const {
-    token: { colorBgContainer, colorText },
+    token: { colorBgContainer },
   } = theme.useToken();
 
   /** 获取当前应用信息(侧边栏顶部展示名称+图标)。 */
@@ -163,57 +163,45 @@ export default function StudioLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        breakpoint="lg"
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        width={220}
-        theme="light"
+      {/* 上部统一顶栏：应用标题（原 Sider 头部）与工具操作合并（QA 2026-10-06） */}
+      <Header
         style={{
-          overflow: 'auto',
-          height: '100vh',
-          position: 'fixed',
-          left: 0,
+          padding: '0 16px',
+          background: colorBgContainer,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          height: 56,
+          lineHeight: '56px',
+          borderBottom: '1px solid #eef0f4',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
+          position: 'sticky',
           top: 0,
-          bottom: 0,
-          // 浅色主题（QA 2026-10-06：与右侧主内容区协调，弃深色侧栏）
-          background: '#f7f9fc',
-          borderRight: '1px solid #ebedf0',
+          zIndex: 100,
         }}
       >
-        {/* 侧边栏顶部：当前应用名称 + 图标 */}
-        <div
-          style={{
-            height: 56,
-            margin: '12px 12px 8px',
-            padding: '0 12px',
-            color: colorText,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            background: colorBgContainer,
-            border: '1px solid #ebedf0',
-            borderRadius: 8,
-          }}
-        >
+        <Space size={12}>
           {appLoading ? (
             <Skeleton
               active
               avatar={{ size: 28 }}
-              paragraph={{ rows: 1, width: 80 }}
+              paragraph={{ rows: 1, width: 120 }}
               title={false}
             />
           ) : (
-            <>
+            <Space
+              size={8}
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate(`/app/${appId}/dashboard`)}
+            >
               <div
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   borderRadius: 8,
                   background: `linear-gradient(135deg, ${app?.color ?? '#1677ff'}, ${app?.color ?? '#1677ff'}dd)`,
                   color: '#fff',
-                  fontSize: 18,
+                  fontSize: 16,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -222,46 +210,12 @@ export default function StudioLayout() {
               >
                 {app?.icon ?? '📦'}
               </div>
-              <span
-                style={{
-                  fontWeight: 600,
-                  fontSize: 14,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+              <Text strong style={{ fontSize: 15 }}>
                 {app?.name ?? 'aPaaS Studio'}
-              </span>
-            </>
+              </Text>
+            </Space>
           )}
-        </div>
-        <Menu
-          theme="light"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems}
-          onClick={({ key }) => navigate(`/app/${appId}/${key}`)}
-          style={{ borderRight: 0, background: 'transparent' }}
-        />
-      </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 220 }}>
-        <Header
-          style={{
-            padding: '0 24px',
-            background: colorBgContainer,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            height: 56,
-            lineHeight: '56px',
-            borderBottom: '1px solid #eef0f4',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
-            position: 'sticky',
-            top: 0,
-            zIndex: 100,
-          }}
-        >
+          <div style={{ width: 1, height: 22, background: '#e5e7eb' }} />
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
@@ -270,28 +224,54 @@ export default function StudioLayout() {
           >
             返回应用列表
           </Button>
-          <Space>
-            <Button icon={<CheckCircleOutlined />} onClick={() => setCheckDrawerOpen(true)}>
-              检查
-            </Button>
-            <Button icon={<HistoryOutlined />} onClick={() => navigate(`/app/${appId}/versions`)}>
-              版本历史
-            </Button>
-            <Button
-              type="primary"
-              icon={<CloudUploadOutlined />}
-              onClick={() => navigate(`/app/${appId}/publish`)}
-            >
-              发布
-            </Button>
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-              <Space style={{ cursor: 'pointer' }}>
-                <Avatar size="small" icon={<UserOutlined />} src={user?.avatar ?? undefined} />
-                <Text style={{ fontSize: 14 }}>{user?.name ?? user?.email ?? '未登录'}</Text>
-              </Space>
-            </Dropdown>
-          </Space>
-        </Header>
+        </Space>
+        <Space>
+          <Button icon={<CheckCircleOutlined />} onClick={() => setCheckDrawerOpen(true)}>
+            检查
+          </Button>
+          <Button icon={<HistoryOutlined />} onClick={() => navigate(`/app/${appId}/versions`)}>
+            版本历史
+          </Button>
+          <Button
+            type="primary"
+            icon={<CloudUploadOutlined />}
+            onClick={() => navigate(`/app/${appId}/publish`)}
+          >
+            发布
+          </Button>
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Space style={{ cursor: 'pointer' }}>
+              <Avatar size="small" icon={<UserOutlined />} src={user?.avatar ?? undefined} />
+              <Text style={{ fontSize: 14 }}>{user?.name ?? user?.email ?? '未登录'}</Text>
+            </Space>
+          </Dropdown>
+        </Space>
+      </Header>
+      {/* 下部左右分栏：左侧菜单（宽度最小化）+ 右侧主内容 */}
+      <Layout style={{ flex: 1, minHeight: 0 }}>
+        <Sider
+          breakpoint="lg"
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          width={170}
+          theme="light"
+          style={{
+            overflow: 'auto',
+            // 浅色主题（QA 2026-10-06：与右侧主内容区协调，弃深色侧栏）
+            background: '#f7f9fc',
+            borderRight: '1px solid #ebedf0',
+          }}
+        >
+          <Menu
+            theme="light"
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems}
+            onClick={({ key }) => navigate(`/app/${appId}/${key}`)}
+            style={{ borderRight: 0, background: 'transparent' }}
+          />
+        </Sider>
         <Content
           style={{
             margin: 0,

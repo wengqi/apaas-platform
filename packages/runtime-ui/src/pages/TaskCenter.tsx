@@ -183,7 +183,10 @@ export default function TaskCenter() {
           taskDetail && (
             <>
               {/* R1.3：审批节点绑定了页面 → 渲染页面（amis 方言，可含表单/关联信息）；
-                  数据域 = 流程变量 + 触发上下文 + taskId，页面内 api 可用 ${taskId} */}
+                  数据域 = 流程变量 + 触发上下文 + taskId，页面内 api 可用 ${taskId}。
+                  业务用户旅程 R3（2026-10-06）：触发上下文的 inputs（记录字段摊平）
+                  再拍平到顶层——绑定提交表单的静态控件按字段名取数，
+                  否则控件全部显示"-"（inputs 嵌套在 triggerContext.inputs 里取不到） */}
               {taskDetail.boundPageId && activeTab === 'pending' ? (
                 <div style={{ marginBottom: 16 }}>
                   <ApprovalPageRenderer
@@ -194,6 +197,9 @@ export default function TaskCenter() {
                       taskId: taskDetail.id,
                       ...(taskDetail.instance?.variables ?? {}),
                       ...(taskDetail.instance?.triggerContext ?? {}),
+                      ...((taskDetail.instance?.triggerContext as Record<string, unknown> | null)?.[
+                        'inputs'
+                      ] as Record<string, unknown> | undefined),
                     }}
                   />
                 </div>

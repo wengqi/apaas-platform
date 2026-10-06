@@ -820,6 +820,9 @@ export class ProcessEngine {
         decisionUpper,
         comment,
       );
+
+      // --- 审批结果默认通知（业务用户旅程 R3 2026-10-06）---
+      await this.notifyInitiatorDefault(schema, instance, task, isApproved, comment);
       return true;
     });
 
@@ -1576,6 +1579,50 @@ export class ProcessEngine {
     }
 
     return [];
+  }
+
+  /**
+   * 审批结果默认通知（业务用户旅程 R3 2026-10-06）：
+   * 流程图未配置任何通知节点时，引擎在审批定论后兜底站内信通知发起人——
+   * 反馈环"驳回/通过无通知"的默认链路；配置了通知节点的流程由配置全权
+   * 驱动（引擎不重复通知）。收件人=发起人（triggeredByUser/record.created_by），
+   * 均无则静默跳过（headless/API 形态无人可通知）。发送失败不阻断审批推进。
+   */
+  private async notifyInitiatorDefault(
+    schema: WorkflowSchema,
+    instance: {
+      tenantId: string;
+      triggerContext: unknown;
+      processDef: { appId: string; name: string };
+    },
+    task: { taskName: string | null },
+    isApproved: boolean,
+    comment?: string,
+  ): Promise<void> {
+    const nodes = schema?.nodes ?? [];
+    if (nodes.some((n) => n?.type === 'notification')) return; // 配置驱动，不兜底
+    const tc = (instance.triggerContext ?? {}) as Record<string, unknown>;
+    const record = tc['record'] as Record<string, unknown> | undefined;
+    const initiator =
+      (tc['triggeredByUser'] as string | undefined) ||
+      (record?.['created_by'] as string | undefined) ||
+      undefined;
+    if (!initiator) return;
+    const outcome = isApproved ? '通过' : '驳回';
+    const title = `「${instance.processDef.name}」审批已${outcome}`;
+    const body = `您发起的「${instance.processDef.name}」在节点「${task.taskName ?? ''}」审批${outcome}${comment ? `，审批意见：${comment}` : ''}。`;
+    try {
+      await this.inAppMessageService.create({
+        tenantId: instance.tenantId,
+        appId: instance.processDef.appId,
+        userIds: [initiator],
+        title,
+        body,
+      });
+      this.logger.log(`默认通知已发送：流程「${instance.processDef.name}」审批${outcome} → 发起人`);
+    } catch (err) {
+      this.logger.warn(`默认通知发送失败（不阻断审批推进）: ${String(err)}`);
+    }
   }
 
   /**

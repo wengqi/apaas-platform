@@ -15,6 +15,7 @@ import {
 } from './validators/workflow.validator.js';
 import { validateObjectMeta } from './validators/object-meta.validator.js';
 import { validateDataset } from './validators/dataset.validator.js';
+import { validatePermission } from './validators/permission.validator.js';
 
 /** 校验上下文：跨引用信息（可选，缺省跳过引用校验防误报）。 */
 export interface SchemaValidationContext {
@@ -43,6 +44,9 @@ export class SchemaContractService {
         break;
       case 'dataset':
         issues = validateDataset(schema);
+        break;
+      case 'permission':
+        issues = validatePermission(schema);
         break;
       default: {
         const exhaustive: never = kind;

@@ -111,6 +111,61 @@ const TOOLS: Array<{
     },
   },
   {
+    name: 'list_permission_rules',
+    description:
+      '列出应用下各角色的权限规则现状（按角色分组，含条件/字段范围/效果）——配置权限前先读现状。',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string' } },
+      required: ['appId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'submit_permission_rule_draft',
+    description:
+      '提交权限规则集草稿（以角色为治理单元）：rules 为该角色的目标规则集，批准时全量替换。规则五维 PAGE/RECORD/PROCESS/DATA_MODEL/CONNECTOR × 动作，RECORD 可带行级 JsonLogic condition，DATA_MODEL 可带 fieldScope 字段白名单；deny-overrides 语义不变。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string' },
+        roleId: { type: 'string', description: '应用级角色 ID（list_roles 获取）' },
+        rules: {
+          type: 'array',
+          description: '目标规则集（全量替换语义）',
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['PAGE', 'RECORD', 'PROCESS', 'DATA_MODEL', 'CONNECTOR'],
+              },
+              action: {
+                type: 'string',
+                enum: ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'EXECUTE', 'APPROVE', 'MANAGE'],
+              },
+              targetId: {
+                type: 'string',
+                description: '目标 ID（list_pages/list_objects/list_processes 获取）',
+              },
+              targetNodeId: { type: 'string', description: '流程节点 ID（仅 PROCESS:APPROVE）' },
+              condition: { type: 'object', description: '行级条件 JsonLogic（仅 RECORD）' },
+              fieldScope: {
+                type: 'array',
+                items: { type: 'string' },
+                description: '字段白名单（仅 DATA_MODEL）',
+              },
+              effect: { type: 'string', enum: ['ALLOW', 'DENY'] },
+            },
+            required: ['type', 'action', 'targetId'],
+          },
+        },
+      },
+      required: ['appId', 'roleId', 'rules'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'submit_dataset_draft',
     description:
       '提交数据流（数据集）草稿：config 为结构化 pipeline（sources/join/filter/aggregation/outputFields）。提交进入待审队列；批准时自动落地（ACTIVE）并执行物化数据集。页面图表 sourceId 可写 "@ref:dataset:<数据流apiName>" 令牌（批准时解析为数据集 ID）。',
@@ -142,7 +197,10 @@ const TOOLS: Array<{
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['amis_page', 'workflow', 'object_meta', 'dataset'] },
+        kind: {
+          type: 'string',
+          enum: ['amis_page', 'workflow', 'object_meta', 'dataset', 'permission'],
+        },
         schema: { type: 'object', description: '待校验的 schema 对象' },
       },
       required: ['kind', 'schema'],
@@ -436,6 +494,17 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 依赖顺序（submit_app_drafts 单波自动拓扑）：对象 → 数据流 → 页面 → 流程；数据流批准落地时自动执行物化（行数据异步就绪，数据集状态 READY 后图表出数）',
     '- 提交前用 validate_schema kind="dataset" 自检；list_datasets 可查数据集 ID/列定义/物化状态',
   ].join('\n'),
+  permission: [
+    '## 权限规则方言指南',
+    '- 治理单元=角色规则集：submit_permission_rule_draft 提交某角色的目标规则集（批准=全量替换；规则数可为 0 表示清空）',
+    '- 规则五维 type：PAGE / RECORD / PROCESS / DATA_MODEL / CONNECTOR；动作 action：VIEW/CREATE/EDIT/DELETE/EXECUTE/APPROVE/MANAGE',
+    '- targetId 用 list_pages/list_objects/list_processes 拿真实 ID（不支持 @ref 令牌）；PROCESS:APPROVE 可加 targetNodeId 定位审批节点',
+    '- RECORD 行级条件 condition：JsonLogic 对象，变量域=记录字段（如 {"==":[{"var":"owner"},"{{user}}"]} 或 {"in":[{"var":"status"},["pending","approved"]]}）；null=无条件',
+    '- DATA_MODEL 字段范围 fieldScope：字符串数组（字段 apiName 白名单），null=全部字段',
+    '- effect：ALLOW/DENY；语义 deny-overrides + default-deny（未授权即拒绝）——只授最小必要权限',
+    '- 角色管理用 list_roles（应用级角色 ID）；角色成员由人工在 studio 配置（AI 不改成员关系）',
+    '- 提交前 validate_schema kind="permission" 自检；list_permission_rules 读现状',
+  ].join('\n'),
 };
 
 /** 构建 MCP Server（每请求一个实例，无状态）。 */
@@ -526,7 +595,10 @@ async function dispatch(
       const guide = DIALECT_GUIDES[kind];
       return guide
         ? { ok: true, kind, guide }
-        : { ok: false, hint: `未知 kind "${kind}"，允许：amis_page/workflow/object_meta/dataset` };
+        : {
+            ok: false,
+            hint: `未知 kind "${kind}"，允许：amis_page/workflow/object_meta/dataset/permission`,
+          };
     }
     case 'list_objects':
       return svc.listObjects(tenantId, str(args['appId']));
@@ -536,6 +608,16 @@ async function dispatch(
       return svc.listProcesses(tenantId, str(args['appId']));
     case 'list_datasets':
       return svc.listDatasets(tenantId, str(args['appId']));
+    case 'list_permission_rules':
+      return svc.listPermissionRules(tenantId, str(args['appId']));
+    case 'submit_permission_rule_draft':
+      return svc.submitPermissionRuleDraft(tenantId, userId, {
+        appId: str(args['appId']),
+        roleId: str(args['roleId']),
+        rules: Array.isArray(args['rules'])
+          ? (args['rules'] as Array<Record<string, unknown>>)
+          : [],
+      });
     case 'list_users':
       return svc.listUsers(tenantId, optionalStr(args['keyword']));
     case 'list_roles':

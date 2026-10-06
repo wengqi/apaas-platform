@@ -560,6 +560,7 @@ describe('页面快照 api.url 令牌解析（#18）', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       { log: vi.fn() } as never,
     );
     const applied = await snapshotSvc.applySnapshot(

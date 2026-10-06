@@ -103,7 +103,13 @@ export function replaceRefTokens<T>(value: T, map: Map<string, string>): T {
 }
 
 /** 批量落地顺序：对象 → 页面 → 流程（页面引用对象，流程引用页面）。 */
-const MODULE_APPLY_ORDER: Record<string, number> = { OBJECT: 0, DATASET: 1, PAGE: 2, PROCESS: 3 };
+const MODULE_APPLY_ORDER: Record<string, number> = {
+  OBJECT: 0,
+  DATASET: 1,
+  PAGE: 2,
+  PROCESS: 3,
+  PERMISSION: 4,
+};
 
 @Injectable()
 export class ReviewService {
@@ -876,6 +882,13 @@ export class ReviewService {
     apiName: string,
   ): Promise<LiveResource | null> {
     const idByModule: Record<ReviewModule, string | null> = {
+      PERMISSION:
+        (
+          await prisma.role.findFirst({
+            where: { tenantId, appId, code: apiName },
+            select: { id: true },
+          })
+        )?.id ?? null,
       DATASET:
         (
           await prisma.dataFlow.findFirst({

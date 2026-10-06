@@ -10,6 +10,7 @@ export const MODULE_LABEL: Record<ReviewModule, string> = {
   DATASET: '数据集',
   PAGE: '页面',
   PROCESS: '流程',
+  PERMISSION: '权限',
 };
 
 export const SOURCE_LABEL: Record<ResourceVersionDto['source'], string> = {
@@ -32,7 +33,9 @@ export function ModuleTag({ module }: { module: ReviewModule }) {
         ? 'gold'
         : module === 'PAGE'
           ? 'cyan'
-          : 'purple';
+          : module === 'PERMISSION'
+            ? 'magenta'
+            : 'purple';
   return <Tag color={color}>{MODULE_LABEL[module] ?? module}</Tag>;
 }
 

@@ -16,6 +16,7 @@ import type {
   ObjectResourceSnapshot,
   PageResourceSnapshot,
   PageType,
+  PermissionResourceSnapshot,
   ProcessResourceSnapshot,
   ResourceSnapshot,
   ReviewModule,
@@ -23,6 +24,7 @@ import type {
 import { PageService } from '../page/page.service.js';
 import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
+import { RoleService } from '../permission/role.service.js';
 import { DataFlowService } from '../dataset/dataflow.service.js';
 import { ChangeLogService } from '../application/changelog.service.js';
 import { collectRefTokens } from './review.service.js';
@@ -60,6 +62,7 @@ export class ReviewSnapshotService {
     private readonly processService: ProcessService,
     private readonly objectService: ObjectService,
     private readonly dataFlowService: DataFlowService,
+    private readonly roleService: RoleService,
     private readonly changeLogService: ChangeLogService,
   ) {}
 
@@ -102,6 +105,32 @@ export class ReviewSnapshotService {
             description: flow.description ?? undefined,
             config: flow.config as Record<string, unknown>,
           } satisfies DatasetResourceSnapshot,
+        };
+      }
+      case 'PERMISSION': {
+        const role = await prisma.role.findFirst({ where: { id: entityId, tenantId, appId } });
+        if (!role) return null;
+        const rules = await prisma.permissionRule.findMany({
+          where: { tenantId, roleId: role.id },
+        });
+        return {
+          entityId: role.id,
+          apiName: role.code,
+          name: role.name,
+          snapshot: {
+            apiName: role.code,
+            name: role.name,
+            roleId: role.id,
+            rules: rules.map((r) => ({
+              type: r.type,
+              action: r.action,
+              targetId: r.targetId,
+              targetNodeId: r.targetNodeId ?? undefined,
+              condition: (r.condition ?? null) as object | null,
+              fieldScope: (r.fieldScope ?? null) as string[] | null,
+              effect: r.effect,
+            })),
+          } satisfies PermissionResourceSnapshot,
         };
       }
       case 'PAGE': {
@@ -165,6 +194,13 @@ export class ReviewSnapshotService {
           appId,
           snapshot as DatasetResourceSnapshot,
           entityId,
+          changedBy,
+        );
+      case 'PERMISSION':
+        return this.applyPermission(
+          tenantId,
+          appId,
+          snapshot as PermissionResourceSnapshot,
           changedBy,
         );
       case 'PAGE':
@@ -242,6 +278,38 @@ export class ReviewSnapshotService {
       },
     });
     return created.id;
+  }
+
+  /**
+   * 权限规则集落地（AI 主线第四轮）：以角色为单元全量替换规则
+   * （与 RoleService.setPermissionRules 同一写内核，含审计）。
+   */
+  private async applyPermission(
+    tenantId: string,
+    appId: string,
+    snapshot: PermissionResourceSnapshot,
+    changedBy: string,
+  ): Promise<string> {
+    const role = await prisma.role.findFirst({
+      where: { tenantId, appId, code: snapshot.apiName },
+    });
+    if (!role) {
+      throw new Error(`权限规则集引用的角色「${snapshot.apiName}」不存在（应用级角色须先创建）`);
+    }
+    await this.roleService.setPermissionRules(tenantId, role.id, snapshot.rules as never);
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PERMISSION',
+      entityType: 'Role',
+      entityId: role.id,
+      entityName: role.name,
+      changeType: 'UPDATE',
+      changedBy,
+      changeDescription: `权限规则集快照落地：${snapshot.rules.length} 条规则（${changedBy}）`,
+    });
+    this.logger.log(`权限规则集落地: 角色 ${role.code}（${snapshot.rules.length} 条）`);
+    return role.id;
   }
 
   /**

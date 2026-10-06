@@ -6,7 +6,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** 受审模块（R1.2 统一范围） */
-export const REVIEW_MODULES = ['OBJECT', 'DATASET', 'PAGE', 'PROCESS'] as const;
+export const REVIEW_MODULES = ['OBJECT', 'DATASET', 'PAGE', 'PROCESS', 'PERMISSION'] as const;
 export type ReviewModuleParam = (typeof REVIEW_MODULES)[number];
 
 /** 提交单状态集合 */

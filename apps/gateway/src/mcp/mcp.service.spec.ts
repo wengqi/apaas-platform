@@ -17,6 +17,7 @@ import { ObjectService } from '../object/object.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
 import { requireParams } from './mcp-server.factory.js';
+import { getMockPrisma } from '../test/test-helpers.js';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
 
 /** 合法的 amis 页面 schema（审批页同构）。 */
@@ -465,6 +466,53 @@ describe('MCP 数据流提交（submit_dataset_draft → 待审）', () => {
       },
     };
     const r = await svc.submitDatasetDraft('t1', 'ai-agent', draft);
+    expect(r.ok).toBe(false);
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('MCP 权限规则集提交（submit_permission_rule_draft → 待审）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('合法规则集 → 进入待审队列（PENDING，module=PERMISSION）', async () => {
+    const { svc, reviewService } = makeService();
+    const db = getMockPrisma();
+    db.role.findFirst.mockResolvedValue({ id: 'role-1', code: 'END_USER', name: '终端用户' });
+    db.pageMeta.findFirst.mockResolvedValue({ id: 'page-1' });
+    const r = await svc.submitPermissionRuleDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      roleId: 'role-1',
+      rules: [{ type: 'PAGE', action: 'VIEW', targetId: 'page-1' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({ module: 'PERMISSION', apiName: 'END_USER' }),
+      'ai-agent',
+    );
+  });
+
+  it('角色不存在 → 拒绝并提示 list_roles', async () => {
+    const { svc } = makeService();
+    const db = getMockPrisma();
+    db.role.findFirst.mockResolvedValue(null);
+    const r = await svc.submitPermissionRuleDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      roleId: 'ghost',
+      rules: [],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('非法规则（未知维度）→ G3 校验拒绝', async () => {
+    const { svc, reviewService } = makeService();
+    const db = getMockPrisma();
+    db.role.findFirst.mockResolvedValue({ id: 'role-1', code: 'END_USER', name: '终端用户' });
+    const r = await svc.submitPermissionRuleDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      roleId: 'role-1',
+      rules: [{ type: 'TENANT', action: 'VIEW', targetId: 'x' }],
+    });
     expect(r.ok).toBe(false);
     expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
   });

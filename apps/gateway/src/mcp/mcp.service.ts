@@ -84,6 +84,149 @@ export class McpService {
     return { ok: true, processes };
   }
 
+  /** 应用权限规则现状（按角色分组）——AI 配置权限前读现状的依据。 */
+  async listPermissionRules(tenantId: string, appId: string): Promise<McpToolResult> {
+    const roles = await prisma.role.findMany({
+      where: { tenantId, appId },
+      select: { id: true, code: true, name: true, description: true, isBuiltIn: true },
+    });
+    const rules = await prisma.permissionRule.findMany({
+      where: { tenantId, appId, roleId: { in: roles.map((r) => r.id) } },
+    });
+    const byRole = roles.map((r) => ({
+      roleId: r.id,
+      code: r.code,
+      name: r.name,
+      description: r.description ?? undefined,
+      isBuiltIn: r.isBuiltIn,
+      rules: rules
+        .filter((x) => x.roleId === r.id)
+        .map((x) => ({
+          type: x.type,
+          action: x.action,
+          targetId: x.targetId,
+          targetNodeId: x.targetNodeId ?? undefined,
+          condition: (x.condition ?? undefined) as unknown,
+          fieldScope: (x.fieldScope ?? undefined) as unknown,
+          effect: x.effect,
+        })),
+    }));
+    return { ok: true, roles: byRole };
+  }
+
+  /**
+   * 提交权限规则集草稿（AI 主线第四轮）：以角色为治理单元，快照=该角色目标
+   * 规则集（批准=全量替换）。targetId 对照活表校验（同 workflow pageId 模式）。
+   */
+  async submitPermissionRuleDraft(
+    tenantId: string,
+    userId: string,
+    args: {
+      appId: string;
+      roleId: string;
+      rules: Array<Record<string, unknown>>;
+    },
+  ): Promise<McpToolResult> {
+    const role = await prisma.role.findFirst({
+      where: { tenantId, appId: args.appId, id: args.roleId },
+    });
+    if (!role) {
+      return {
+        ok: false,
+        hint: `角色 ${args.roleId} 不存在或不是该应用的角色（list_roles 获取应用级角色 ID）`,
+      };
+    }
+
+    const check = this.schemaContract.validate('permission', {
+      apiName: role.code,
+      name: role.name,
+      rules: args.rules,
+    });
+    if (!check.valid) return this.rejected(check);
+
+    // targetId 存在性校验：PAGE/DATA_MODEL/PROCESS/CONNECTOR 的目标须在活表
+    const ruleList = args.rules;
+    for (const [idx, r] of ruleList.entries()) {
+      const type = String(r['type'] ?? '');
+      const targetId = String(r['targetId'] ?? '');
+      if (!targetId || targetId.startsWith('@ref:')) continue; // 令牌交由批准层（现状不支持令牌，提示用户用 list_* 拿真实 ID）
+      let exists = true;
+      if (type === 'PAGE') {
+        exists = Boolean(
+          await prisma.pageMeta.findFirst({
+            where: { tenantId, appId: args.appId, id: targetId },
+            select: { id: true },
+          }),
+        );
+      } else if (type === 'RECORD' || type === 'DATA_MODEL') {
+        exists = Boolean(
+          await prisma.objectMeta.findFirst({
+            where: { tenantId, appId: args.appId, id: targetId },
+            select: { id: true },
+          }),
+        );
+      } else if (type === 'PROCESS') {
+        exists = Boolean(
+          await prisma.processDef.findFirst({
+            where: { tenantId, appId: args.appId, id: targetId },
+            select: { id: true },
+          }),
+        );
+      }
+      if (!exists) {
+        return {
+          ok: false,
+          hint: `rules/${idx} 的 targetId "${targetId}"（${type}）在应用活表中不存在——用 list_pages/list_objects/list_processes 获取真实 ID`,
+        };
+      }
+    }
+
+    const snapshot = {
+      apiName: role.code,
+      name: role.name,
+      roleId: role.id,
+      rules: ruleList as never,
+    };
+    const existingApproved = await prisma.resourceVersion.findFirst({
+      where: {
+        tenantId,
+        appId: args.appId,
+        module: 'PERMISSION',
+        entityId: role.id,
+        status: 'APPROVED',
+      },
+      orderBy: { versionNumber: 'desc' },
+    });
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'PERMISSION',
+        appId: args.appId,
+        apiName: role.code,
+        name: role.name,
+        snapshot: snapshot as never,
+        entityId: role.id,
+      },
+      userId,
+    );
+    void existingApproved;
+
+    this.auditDraft(tenantId, userId, args.appId, 'PERMISSION', submission.id, 'update');
+    this.logger.log(
+      `MCP 权限规则集草稿待审: ${submission.id}（角色 ${role.code}，${ruleList.length} 条）by ${userId}`,
+    );
+    return {
+      ok: true,
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      roleId: role.id,
+      action: 'submitted_ruleset',
+      published: false,
+      hint: `已进入待审队列。批准时全量替换角色「${role.code}」的规则集（${ruleList.length} 条，deny-overrides 语义不变）`,
+    };
+  }
+
   /** 数据集列表（含列定义与行数/状态）——AI 写数据集图表（chart-data sourceId）的依据。 */
   async listDatasets(tenantId: string, appId: string): Promise<McpToolResult> {
     const datasets = await prisma.dataset.findMany({

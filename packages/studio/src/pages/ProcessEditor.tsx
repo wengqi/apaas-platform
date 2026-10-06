@@ -25,6 +25,31 @@ import EditorErrorBoundary from './process-editor/EditorErrorBoundary.js';
 import TriggerConfigModal from './process-editor/TriggerConfigModal.js';
 import ProcessPreviewModal from './process-editor/ProcessPreviewModal.js';
 
+/**
+ * 节点结构默认键归一（脏判定专用）：API 直建的 schema 无 meta/blocks 键，
+ * 画布导出恒有 meta:{}/blocks:[]——语义等价，不构成"未保存"
+ * （CI 实测 2026-10-06：全新库夹具打开即标脏的根因）。
+ */
+function normalizeNodeShape(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeNodeShape);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (k === 'meta' && (v === undefined || v === null)) {
+        out[k] = {};
+        continue;
+      }
+      if (k === 'blocks' && (v === undefined || v === null)) {
+        out[k] = [];
+        continue;
+      }
+      out[k] = normalizeNodeShape(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 /** 键序无关的 JSON 规范化（对象键递归排序；数组保序）——脏判定专用。 */
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null);
@@ -169,7 +194,10 @@ export default function ProcessEditor() {
     // 键序（nodes-first）不同，字符串直比会把"内容相同"误判为脏
     // （用户反馈 2026-10-06：已发布流程打开即标"未保存"）。
     if (!store.dirty) {
-      if (canonicalJson(finalSchema) === canonicalJson(processDef?.workflowSchema ?? null)) {
+      if (
+        canonicalJson(normalizeNodeShape(finalSchema)) ===
+        canonicalJson(normalizeNodeShape(processDef?.workflowSchema ?? null))
+      ) {
         store.markSaved();
         return;
       }

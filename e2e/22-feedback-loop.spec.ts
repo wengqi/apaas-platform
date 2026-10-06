@@ -190,6 +190,14 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
       });
     }
 
+    // 流程发布（关键：DRAFT 流程不进应用发布快照、记录触发不匹配——
+    // CI 全新库实测"任务永不出现"的根因）。重复发布 = 版本+1，幂等安全。
+    try {
+      await admin.post(`/processes/${flow!.id}/publish`, {});
+    } catch {
+      // 已发布流程重复发布同样版本冲突——忽略
+    }
+
     // 发布（幂等：已发布则跳过——版本冲突 400 视为已发布）
     try {
       await admin.post(`/apps/${appId}/publish`, {

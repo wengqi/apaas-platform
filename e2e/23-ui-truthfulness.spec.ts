@@ -94,7 +94,7 @@ test.describe('编辑器 UI 真实性不变量', () => {
     });
 
     await page.goto(`${STUDIO_BASE}/app/${appId}/processes/${created.id}`);
-    await expect(page.getByText('缺审批人')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('缺审批人').first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('有未完成的配置').first()).toBeVisible({ timeout: 10_000 });
 
     // 清理

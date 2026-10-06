@@ -53,10 +53,37 @@ export function createApiClient(token: string) {
  * 2026-09-13 修复：admin@apaas.dev 是 demo 租户的租户管理员（非平台超管），
  * 旧实现不传 tenantSlug 会命中"平台管理员登录"分支而 401。
  */
+/** 登录 token 缓存（auth 端点限流 10/min——e2e 多用例反复登录会触发 429）。 */
+const loginTokenCache = new Map<string, { token: string; expiresAt: number }>();
+const loginUserCache = new Map<string, unknown>();
+const TOKEN_TTL_MS = 10 * 60_000;
+
+/** 组合登录：token（走缓存）+ user（登录响应原文，供注入 zustand persist）。 */
+export async function loginViaApiWithUser(
+  email = SUPERADMIN_EMAIL,
+  password = SUPERADMIN_PASSWORD,
+): Promise<{ token: string; user: unknown }> {
+  const token = await loginViaApi(email, password);
+  const key = `${email}:${password}`;
+  if (!loginUserCache.has(key)) {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, tenantSlug: 'demo' }),
+    });
+    const json = await res.json();
+    if (json.ok) loginUserCache.set(key, json.data.user);
+  }
+  return { token, user: loginUserCache.get(key) ?? null };
+}
+
 export async function loginViaApi(
   email = SUPERADMIN_EMAIL,
   password = SUPERADMIN_PASSWORD,
 ): Promise<string> {
+  const cacheKey = `${email}:${password}`;
+  const cached = loginTokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -64,7 +91,9 @@ export async function loginViaApi(
   });
   const json = await res.json();
   if (!json.ok) throw new Error(`Login failed: ${JSON.stringify(json)}`);
-  return json.data.accessToken as string;
+  const token = json.data.accessToken as string;
+  loginTokenCache.set(cacheKey, { token, expiresAt: Date.now() + TOKEN_TTL_MS });
+  return token;
 }
 
 /** 创建测试应用并返回应用 ID。 */

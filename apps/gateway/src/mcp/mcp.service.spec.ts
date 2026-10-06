@@ -17,6 +17,7 @@ import { ObjectService } from '../object/object.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
 import { requireParams } from './mcp-server.factory.js';
+import { getMockPrisma } from '../test/test-helpers.js';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
 
 /** 合法的 amis 页面 schema（审批页同构）。 */
@@ -420,5 +421,99 @@ describe('MCP 选人工具（list_users / list_roles）', () => {
     expect(Array.isArray(r.roles)).toBe(true);
     expect(r.hint).toContain('candidateGroups');
     expect(r.hint).toContain('非编码');
+  });
+});
+
+describe('MCP 数据流提交（submit_dataset_draft → 待审）', () => {
+  /** 合法数据流草稿（单源聚合）。 */
+  const validDatasetDraft = {
+    appId: 'app-1',
+    apiName: 'sales_by_region',
+    name: '区域销售额',
+    config: {
+      sources: [{ objectId: '@ref:object:sales_order', alias: 'orders' }],
+      aggregation: {
+        groupBy: ['region'],
+        metrics: [{ alias: 'total_amount', label: '金额合计', field: 'amount', function: 'sum' }],
+      },
+      outputFields: [
+        { alias: 'region', label: '销售区域', source: 'orders.region', type: 'string' },
+        { alias: 'total_amount', label: '金额合计', source: 'total_amount', type: 'number' },
+      ],
+    },
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('合法 config → 进入待审队列（PENDING，module=DATASET）', async () => {
+    const { svc, reviewService } = makeService();
+    const r = await svc.submitDatasetDraft('t1', 'ai-agent', validDatasetDraft);
+    expect(r.ok).toBe(true);
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({ module: 'DATASET', apiName: 'sales_by_region' }),
+      'ai-agent',
+    );
+  });
+
+  it('非法 config（输出列 source 引用不存在的别名）→ 校验拒绝并返回结构化 issues', async () => {
+    const { svc, reviewService } = makeService();
+    const draft = {
+      ...validDatasetDraft,
+      config: {
+        ...validDatasetDraft.config,
+        outputFields: [{ alias: 'region', label: '区域', source: 'ghost.region', type: 'string' }],
+      },
+    };
+    const r = await svc.submitDatasetDraft('t1', 'ai-agent', draft);
+    expect(r.ok).toBe(false);
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('MCP 权限规则集提交（submit_permission_rule_draft → 待审）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('合法规则集 → 进入待审队列（PENDING，module=PERMISSION）', async () => {
+    const { svc, reviewService } = makeService();
+    const db = getMockPrisma();
+    db.role.findFirst.mockResolvedValue({ id: 'role-1', code: 'END_USER', name: '终端用户' });
+    db.pageMeta.findFirst.mockResolvedValue({ id: 'page-1' });
+    const r = await svc.submitPermissionRuleDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      roleId: 'role-1',
+      rules: [{ type: 'PAGE', action: 'VIEW', targetId: 'page-1' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(reviewService.submitAiDraft).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({ module: 'PERMISSION', apiName: 'END_USER' }),
+      'ai-agent',
+    );
+  });
+
+  it('角色不存在 → 拒绝并提示 list_roles', async () => {
+    const { svc } = makeService();
+    const db = getMockPrisma();
+    db.role.findFirst.mockResolvedValue(null);
+    const r = await svc.submitPermissionRuleDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      roleId: 'ghost',
+      rules: [],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('非法规则（未知维度）→ G3 校验拒绝', async () => {
+    const { svc, reviewService } = makeService();
+    const db = getMockPrisma();
+    db.role.findFirst.mockResolvedValue({ id: 'role-1', code: 'END_USER', name: '终端用户' });
+    const r = await svc.submitPermissionRuleDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      roleId: 'role-1',
+      rules: [{ type: 'TENANT', action: 'VIEW', targetId: 'x' }],
+    });
+    expect(r.ok).toBe(false);
+    expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
   });
 });

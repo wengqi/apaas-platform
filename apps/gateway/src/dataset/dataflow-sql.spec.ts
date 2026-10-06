@@ -70,9 +70,15 @@ describe('双源 join', () => {
   it('LEFT JOIN + COALESCE 键规范化（复刻 String(v ?? "")）+ 右表字段前缀聚合', () => {
     const r = build(JOINED);
     expect(r.text).toContain('LEFT JOIN');
-    expect(r.text).toContain(`COALESCE(l.data->>'customer_id', '') = COALESCE(r.data->>'cid', '')`);
+    // 引擎修复（AI 主线第三轮实测，PG 42601）：sourceSqls 已含 "AS q_<alias> (data)"
+    // 表别名，join 引用 q_<alias>.data（旧实现的 l/r 双重别名是语法错误）
+    expect(r.text).toContain(
+      `COALESCE(q_orders.data->>'customer_id', '') = COALESCE(q_customers.data->>'cid', '')`,
+    );
     expect(r.text).toContain(`jsonb_object_agg('customers_' || key, value)`);
-    expect(r.text).toContain(`(l.data || COALESCE(rp.prefixed, '{}'::jsonb)) AS data`);
+    expect(r.text).toContain(
+      `(COALESCE(q_orders.data, '{}'::jsonb) || COALESCE(rp.prefixed, '{}'::jsonb)) AS data`,
+    );
     expect(r.values).toEqual(['t1', 'prod', 'obj-orders', 'obj-customers']);
   });
 

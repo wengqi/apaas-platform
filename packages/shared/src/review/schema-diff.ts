@@ -9,6 +9,7 @@
  */
 
 import type {
+  DatasetResourceSnapshot,
   ObjectResourceSnapshot,
   PageResourceSnapshot,
   ProcessResourceSnapshot,
@@ -231,6 +232,14 @@ export function diffPageResource(
   submitted: PageResourceSnapshot,
 ): ResourceDiff {
   return diffResource('PAGE', baseline, submitted);
+}
+
+/** 数据流快照 diff（AI 主线第三轮；config pipeline 深度 diff） */
+export function diffDatasetResource(
+  baseline: DatasetResourceSnapshot | null,
+  submitted: DatasetResourceSnapshot,
+): ResourceDiff {
+  return diffResource('DATASET', baseline, submitted);
 }
 
 /** 流程快照 diff */

@@ -68,7 +68,7 @@ export interface AiDraftInput {
 // ---------------------------------------------------------------------------
 
 /** 令牌形如 "@ref:object:meeting_room" / "@ref:page:approval_form"。 */
-export const REF_TOKEN_RE = /^@ref:(object|page):([a-z][a-z0-9_]*)$/;
+export const REF_TOKEN_RE = /^@ref:(object|dataset|page):([a-z][a-z0-9_]*)$/;
 
 /** 深度收集 value 中所有引用令牌（纯函数，供单测）。 */
 export function collectRefTokens(value: unknown, out: Set<string> = new Set()): Set<string> {
@@ -103,7 +103,13 @@ export function replaceRefTokens<T>(value: T, map: Map<string, string>): T {
 }
 
 /** 批量落地顺序：对象 → 页面 → 流程（页面引用对象，流程引用页面）。 */
-const MODULE_APPLY_ORDER: Record<string, number> = { OBJECT: 0, PAGE: 1, PROCESS: 2 };
+const MODULE_APPLY_ORDER: Record<string, number> = {
+  OBJECT: 0,
+  DATASET: 1,
+  PAGE: 2,
+  PROCESS: 3,
+  PERMISSION: 4,
+};
 
 @Injectable()
 export class ReviewService {
@@ -477,6 +483,27 @@ export class ReviewService {
       row.entityId,
       `review:${reviewerId}`,
     );
+
+    // 基线归一化（实测缺陷 2026-10-05）：落地时解析了 @ref: 令牌（活表存真实 ID），
+    // 若基线快照保留令牌形态，同资源二次 AI 提交的漂移检查必然误报
+    // （活表真实 ID ≠ 基线令牌）。基线必须等于落地形态：重新提取活表回写快照。
+    try {
+      const applied = await this.snapshotService.extractLive(
+        tenantId,
+        appId,
+        module,
+        appliedEntityId,
+      );
+      if (applied) {
+        await prisma.resourceVersion.update({
+          where: { id: row.id },
+          data: { snapshot: applied.snapshot as object },
+        });
+        row.snapshot = applied.snapshot as ResourceVersionRow['snapshot'];
+      }
+    } catch (err) {
+      this.logger.warn(`基线归一化失败（不影响批准结果）: ${row.id} ${(err as Error).message}`);
+    }
 
     const updated = await prisma.resourceVersion.update({
       where: { id: row.id },
@@ -855,6 +882,20 @@ export class ReviewService {
     apiName: string,
   ): Promise<LiveResource | null> {
     const idByModule: Record<ReviewModule, string | null> = {
+      PERMISSION:
+        (
+          await prisma.role.findFirst({
+            where: { tenantId, appId, code: apiName },
+            select: { id: true },
+          })
+        )?.id ?? null,
+      DATASET:
+        (
+          await prisma.dataFlow.findFirst({
+            where: { tenantId, appId, apiName },
+            select: { id: true },
+          })
+        )?.id ?? null,
       OBJECT:
         (
           await prisma.objectMeta.findFirst({

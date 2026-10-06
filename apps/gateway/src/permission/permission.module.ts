@@ -32,6 +32,6 @@ import { PermissionDebugController } from './permission-debug.controller.js';
     PermissionGuard,
     AuditLogService,
   ],
-  exports: [PermissionService, PermissionGuard, AuditLogService],
+  exports: [PermissionService, PermissionGuard, AuditLogService, RoleService],
 })
 export class PermissionModule {}

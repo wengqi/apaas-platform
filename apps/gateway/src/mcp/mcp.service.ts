@@ -84,6 +84,230 @@ export class McpService {
     return { ok: true, processes };
   }
 
+  /** 应用权限规则现状（按角色分组）——AI 配置权限前读现状的依据。 */
+  async listPermissionRules(tenantId: string, appId: string): Promise<McpToolResult> {
+    const roles = await prisma.role.findMany({
+      where: { tenantId, appId },
+      select: { id: true, code: true, name: true, description: true, isBuiltIn: true },
+    });
+    const rules = await prisma.permissionRule.findMany({
+      where: { tenantId, appId, roleId: { in: roles.map((r) => r.id) } },
+    });
+    const byRole = roles.map((r) => ({
+      roleId: r.id,
+      code: r.code,
+      name: r.name,
+      description: r.description ?? undefined,
+      isBuiltIn: r.isBuiltIn,
+      rules: rules
+        .filter((x) => x.roleId === r.id)
+        .map((x) => ({
+          type: x.type,
+          action: x.action,
+          targetId: x.targetId,
+          targetNodeId: x.targetNodeId ?? undefined,
+          condition: (x.condition ?? undefined) as unknown,
+          fieldScope: (x.fieldScope ?? undefined) as unknown,
+          effect: x.effect,
+        })),
+    }));
+    return { ok: true, roles: byRole };
+  }
+
+  /**
+   * 提交权限规则集草稿（AI 主线第四轮）：以角色为治理单元，快照=该角色目标
+   * 规则集（批准=全量替换）。targetId 对照活表校验（同 workflow pageId 模式）。
+   */
+  async submitPermissionRuleDraft(
+    tenantId: string,
+    userId: string,
+    args: {
+      appId: string;
+      roleId: string;
+      rules: Array<Record<string, unknown>>;
+    },
+  ): Promise<McpToolResult> {
+    const role = await prisma.role.findFirst({
+      where: { tenantId, appId: args.appId, id: args.roleId },
+    });
+    if (!role) {
+      return {
+        ok: false,
+        hint: `角色 ${args.roleId} 不存在或不是该应用的角色（list_roles 获取应用级角色 ID）`,
+      };
+    }
+
+    const check = this.schemaContract.validate('permission', {
+      apiName: role.code,
+      name: role.name,
+      rules: args.rules,
+    });
+    if (!check.valid) return this.rejected(check);
+
+    // targetId 存在性校验：PAGE/DATA_MODEL/PROCESS/CONNECTOR 的目标须在活表
+    const ruleList = args.rules;
+    for (const [idx, r] of ruleList.entries()) {
+      const type = String(r['type'] ?? '');
+      const targetId = String(r['targetId'] ?? '');
+      if (!targetId || targetId.startsWith('@ref:')) continue; // 令牌交由批准层（现状不支持令牌，提示用户用 list_* 拿真实 ID）
+      let exists = true;
+      if (type === 'PAGE') {
+        exists = Boolean(
+          await prisma.pageMeta.findFirst({
+            where: { tenantId, appId: args.appId, id: targetId },
+            select: { id: true },
+          }),
+        );
+      } else if (type === 'RECORD' || type === 'DATA_MODEL') {
+        exists = Boolean(
+          await prisma.objectMeta.findFirst({
+            where: { tenantId, appId: args.appId, id: targetId },
+            select: { id: true },
+          }),
+        );
+      } else if (type === 'PROCESS') {
+        exists = Boolean(
+          await prisma.processDef.findFirst({
+            where: { tenantId, appId: args.appId, id: targetId },
+            select: { id: true },
+          }),
+        );
+      }
+      if (!exists) {
+        return {
+          ok: false,
+          hint: `rules/${idx} 的 targetId "${targetId}"（${type}）在应用活表中不存在——用 list_pages/list_objects/list_processes 获取真实 ID`,
+        };
+      }
+    }
+
+    const snapshot = {
+      apiName: role.code,
+      name: role.name,
+      roleId: role.id,
+      rules: ruleList as never,
+    };
+    const existingApproved = await prisma.resourceVersion.findFirst({
+      where: {
+        tenantId,
+        appId: args.appId,
+        module: 'PERMISSION',
+        entityId: role.id,
+        status: 'APPROVED',
+      },
+      orderBy: { versionNumber: 'desc' },
+    });
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'PERMISSION',
+        appId: args.appId,
+        apiName: role.code,
+        name: role.name,
+        snapshot: snapshot as never,
+        entityId: role.id,
+      },
+      userId,
+    );
+    void existingApproved;
+
+    this.auditDraft(tenantId, userId, args.appId, 'PERMISSION', submission.id, 'update');
+    this.logger.log(
+      `MCP 权限规则集草稿待审: ${submission.id}（角色 ${role.code}，${ruleList.length} 条）by ${userId}`,
+    );
+    return {
+      ok: true,
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      roleId: role.id,
+      action: 'submitted_ruleset',
+      published: false,
+      hint: `已进入待审队列。批准时全量替换角色「${role.code}」的规则集（${ruleList.length} 条，deny-overrides 语义不变）`,
+    };
+  }
+
+  /** 数据集列表（含列定义与行数/状态）——AI 写数据集图表（chart-data sourceId）的依据。 */
+  async listDatasets(tenantId: string, appId: string): Promise<McpToolResult> {
+    const datasets = await prisma.dataset.findMany({
+      where: { tenantId, appId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        apiName: true,
+        name: true,
+        description: true,
+        status: true,
+        rowCount: true,
+        columns: true,
+        sourceFlowId: true,
+        lastRefreshedAt: true,
+      },
+    });
+    return { ok: true, datasets };
+  }
+
+  /** 提交数据流草稿（AI 主线第三轮）：G3 dataset 校验 → 治理轨道 PENDING；
+   *  批准时落地 ACTIVE 并立即执行物化（@ref:dataset:<数据流apiName> 可被页面引用）。 */
+  async submitDatasetDraft(
+    tenantId: string,
+    userId: string,
+    args: {
+      appId: string;
+      apiName: string;
+      name: string;
+      config: unknown;
+      description?: string | null;
+      datasetId?: string | null;
+    },
+  ): Promise<McpToolResult> {
+    const check = this.schemaContract.validate('dataset', {
+      apiName: args.apiName,
+      name: args.name,
+      config: args.config,
+    });
+    if (!check.valid) return this.rejected(check);
+
+    const snapshot = {
+      apiName: args.apiName,
+      name: args.name,
+      description: args.description ?? undefined,
+      config: args.config as Record<string, unknown>,
+    };
+    const submission = await this.reviewService.submitAiDraft(
+      tenantId,
+      {
+        module: 'DATASET',
+        appId: args.appId,
+        apiName: args.apiName,
+        name: args.name,
+        snapshot,
+        entityId: args.datasetId ?? undefined,
+      },
+      userId,
+    );
+
+    this.auditDraft(
+      tenantId,
+      userId,
+      args.appId,
+      'DATASET',
+      submission.id,
+      args.datasetId ? 'update' : 'create',
+    );
+    this.logger.log(`MCP 数据流草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
+    return {
+      ok: true,
+      submissionId: submission.id,
+      versionNumber: submission.versionNumber,
+      status: submission.status,
+      datasetId: submission.entityId,
+      action: args.datasetId ? 'submitted_update' : 'submitted_create',
+      published: false,
+      hint: `已进入待审队列（未落活表）。批准时自动落地数据流（ACTIVE）并执行物化数据集；页面图表 sourceId 可写 "@ref:dataset:${args.apiName}"（批准拓扑序：对象→数据集→页面→流程）`,
+    };
+  }
+
   /** 应用成员列表（id/姓名/邮箱/角色）——AI 配置审批人（assignee/approveUsers）的选人依据。 */
   async listUsers(tenantId: string, keyword?: string): Promise<McpToolResult> {
     const users = await prisma.user.findMany({
@@ -394,13 +618,17 @@ export class McpService {
     args: {
       appId: string;
       objects: Array<Record<string, unknown>>;
+      datasets?: Array<Record<string, unknown>>;
       pages: Array<Record<string, unknown>>;
       processes: Array<Record<string, unknown>>;
     },
   ): Promise<McpToolResult> {
-    const { appId, objects, pages, processes } = args;
-    if (objects.length + pages.length + processes.length === 0) {
-      return { ok: false, hint: '批量提交至少包含一项资源（objects/pages/processes 任一非空）' };
+    const { appId, objects, datasets = [], pages, processes } = args;
+    if (objects.length + datasets.length + pages.length + processes.length === 0) {
+      return {
+        ok: false,
+        hint: '批量提交至少包含一项资源（objects/datasets/pages/processes 任一非空）',
+      };
     }
 
     const batchObjectApiNames = new Set(objects.map((o) => String(o['apiName'] ?? '')));
@@ -414,6 +642,16 @@ export class McpService {
         fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
       };
       const check = this.schemaContract.validate('object_meta', meta);
+      if (!check.valid) return this.rejected(check);
+    }
+
+    // 1.5) 数据流逐项 G3 校验（AI 主线第三轮）
+    for (const ds of datasets) {
+      const check = this.schemaContract.validate('dataset', {
+        apiName: String(ds['apiName'] ?? ''),
+        name: String(ds['name'] ?? ''),
+        config: ds['config'] ?? {},
+      });
       if (!check.valid) return this.rejected(check);
     }
 
@@ -462,6 +700,21 @@ export class McpService {
           description: obj['description'] ? String(obj['description']) : undefined,
           icon: obj['icon'] ? String(obj['icon']) : undefined,
           fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
+        },
+      });
+    }
+    for (const ds of datasets) {
+      items.push({
+        module: 'DATASET',
+        appId,
+        apiName: String(ds['apiName']),
+        name: String(ds['name']),
+        entityId: ds['datasetId'] ? String(ds['datasetId']) : undefined,
+        snapshot: {
+          apiName: String(ds['apiName']),
+          name: String(ds['name']),
+          description: ds['description'] ? String(ds['description']) : undefined,
+          config: (ds['config'] as Record<string, unknown>) ?? {},
         },
       });
     }

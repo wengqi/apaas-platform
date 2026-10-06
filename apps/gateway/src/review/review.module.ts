@@ -6,6 +6,7 @@ import { ReviewCallbackService } from './review-callback.service.js';
 import { PageModule } from '../page/page.module.js';
 import { ProcessModule } from '../process/process.module.js';
 import { ObjectModule } from '../object/object.module.js';
+import { DatasetModule } from '../dataset/dataset.module.js';
 import { NotificationModule } from '../notification/notification.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { PermissionModule } from '../permission/permission.module.js';
@@ -22,6 +23,7 @@ import { PermissionModule } from '../permission/permission.module.js';
     PageModule,
     ProcessModule,
     ObjectModule,
+    DatasetModule,
     NotificationModule,
     ChangeLogModule,
     PermissionModule,

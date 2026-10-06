@@ -48,6 +48,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 3. **新增依赖必须说明理由**、同步更新 lockfile、并在 PR 中标注用途；禁止顺手升级无关依赖。
 4. **Prisma 迁移历史不可回改**（详见「数据库变更规范」）。
 5. **破坏性命令**（rm -rf 危险路径 / 删库删卷 / DROP DDL 等）由 `.zcode/config.json` PreToolUse 守卫自动拦截——被拦截说明该操作需要人工执行。
+6. **记录准确性红线（2026-10-06）**：对话中给出的"正式结论级"内容（矩阵/清单/数据/裁决/影响分析）必须与权威文档**同源**——在给出陈述的同一提交内写入对应权威文档，禁止"先说后补"造成陈述与文档双轨；未落档内容必须显式标注"草稿/提案"。文档是唯一事实源，聊天记录不是。陈述与文档不一致按欺骗同类处理。
 
 ## 平台定位与对标原则（2026-09-30 修订，见 ADR-0003 / ADR-0002）
 
@@ -105,6 +106,11 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - **推送前 OCR 评审（工作约定，2026-10-01）**：功能分支推送前执行 `/ocr-review`（OCR 委托模式：
   preview → 逐文件审查 → High/Medium 修复复验 → 结构化报告）。评审与修复在同一推送内完成；
   体系性发现须同步知识库踩坑节。无 LLM 依赖（agent 自身执行），与「盯 CI」约定同级
+- **推送前 QA 走查（工作约定，2026-10-06）**：功能分支推送前除 OCR 代码评审外，另执行一轮
+  GUI 黑盒走查（web-gui-tester 方法论）：按 {草稿,已发布}×{画布创建,API创建} 矩阵覆盖受影响
+  界面，验证截图后做全帧异常扫描（列出所有状态标签自问是否矛盾），产出走查报告（通过点/
+  问题点/证据截图，gui-test-screenshots/ 留档）。与开发验证互补，减少对用户人工 QA 的依赖；
+  推送前另跑 `pnpm test:e2e:smoke`（核心旅程冒烟，~16s，见 docs/knowledge-base/TEST-JOURNEY-MAP.md）
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
 
 ### 测试规范
@@ -222,6 +228,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 ## 当前阶段（2026-09-30 方向修订快照，基线为 2026-09-27 定位修订）
 
+- 🔄 **AI 主线第四轮：权限工具面 + 反馈环 e2e（2026-10-06，本阶段）**：权限治理单元=角色规则集（快照=目标规则集，批准=全量替换 setPermissionRules 写内核，与 UI 编辑器同构）。工具面：list_permission_rules（读现状）+ submit_permission_rule_draft（G3 第五校验器 permission：五维/动作/效果枚举+condition 须 JsonLogic 对象+fieldScope 数组+上限 200；targetId 存在性对照活表校验）；治理轨道 ReviewModule 加 PERMISSION（拓扑序末位，快照 apiName=角色 code 同角色二次提交走收编）；方言指南 permission（deny-overrides/default-deny+最小必要授权+成员人工管理边界）。**实测闭环**：应用级角色+行级规则（RECORD VIEW 采购单 condition supplier_name==华东科技）人审批准后，终端用户 7 条采购单只见 3 条华东科技（JsonLogic 经条件翻译器下推）。**反馈环 e2e 清偿（e2e/22-feedback-loop 三断言）**：驳回→writeback 回写 rejected（轮询断言）/申请人站内信（notification 节点 {{record.created_by}}）/运行时 UI 台账中文标签"已驳回"。e2e 工程修：auth.setup 改 API 登录直写 storageState（zustand persist apaas:auth；UI 登录撞 auth 限流 10/min 间歇失败）+loginViaApi token 缓存；提交→建任务 BullMQ 异步须轮询；驳回路径绕过线性通知节点（rejectToNodeId 须指向通知节点）。gateway 746 全绿。实现记录 docs/knowledge-base/AI-MAINLINE-R4-PERMISSION-TOOLS-2026-10-06.md
+- 🔄 **AI 主线第三轮：数据集工具面——跨对象报表腿打通（2026-10-06，本阶段）**：DSL 不发明新语言——复用 shared DataFlowConfig 结构化 JSON + G3 第四校验器（dataset：别名引用闭合/枚举值域/聚合字段禁点路径）。工具面：submit_dataset_draft + submit_app_drafts datasets 数组（单波）+ list_datasets + validate_schema/dialect_guide 扩 dataset。治理轨道：ReviewModule 加 DATASET（拓扑序 对象→数据集→页面→流程），批准落地解析 @ref:object: 令牌、落 ACTIVE 并立即 execute 物化；页面 @ref:dataset:<数据流apiName> 令牌落地解析为数据集 ID。实测：采购分析应用（供应商×采购单 join→分组求和→数据集→看板柱状图）全链路，3 组供应商金额/单数精确吻合、跨对象图表渲染验证通过；驳回→writeback 驳回值回写实测 ✓。**实测挖出并修复三个真 bug**：①治理基线未归一化——落地解析令牌后基线仍存令牌形态，同资源二次 AI 提交漂移必然误报（OBJECT/PAGE/PROCESS 同病）→ applyApproved 落地后重提活表回写基线；②dataflow-sql join 分支双重别名 PG 42601（G5 遗留，join 分支下推后从未真实执行）→ 引用 q_<alias>.data；③聚合行键与数据集列契约不一致（图表取数"未知"）→ runPipeline 聚合分支投影到 outputFields.alias。引擎字段键契约（join 左表裸键/右表 {rightAlias}_ 前缀，聚合禁点路径）已入方言指南与校验器。gateway 736 全绿。遗留：权限工具面、反馈环 e2e（Playwright）、自动通知默认链路。实现记录 docs/knowledge-base/AI-MAINLINE-R3-DATASET-TOOLS-2026-10-06.md
 - 🔄 **AI 主线第二轮：报表腿打通（2026-10-05，本阶段）**：方法论=先实测后修缺。实测：MCP 现有工具面 2 次调用+1 次人审生成销售订单应用（对象/表单/台账/**仪表盘三图表**/审批回写），v0.1.0 发布后**柱/折线/饼三图表运行时全部正确渲染**——首要成功标准"表单+审批+报表"的报表腿闭环，AI 生成能力与人工搭建对齐。关键确认：@ref 令牌解析覆盖 api.data.sourceId 深层数据域（比已记录更广）；G3 对 chart schema 放行。修复：amis_page 方言指南补 chart 三连节（chart-data 载荷契约/柱折 adaptor 模板/饼图差异+grid 布局）+ workflow 指南补最小骨架示例 + runtime 申请内容过滤裸 id 行。摩擦点定性教训：WorkflowSchema edges 打回是"没先读对应指南"的流程失误非指南缺陷。备忘：REST POST records 为扁平契约（无 data 包裹）。遗留：数据集工具面（跨对象报表，下轮 spike 数据流 DSL 最小子集）、权限工具面、反馈环 e2e。实现记录 docs/knowledge-base/AI-MAINLINE-R2-DASHBOARD-2026-10-05.md
 - ✅ **评审遗留缺陷清零第一轮（2026-10-05）**：方法论=先核实后修复——2026-10-04 双视角评审遗留清单逐项对照当前代码（发现记忆过时项：会签/或签已修，仅 SEQUENTIAL 引擎支持但 UI 从不暴露）+ API 实测（builder 审计 403 复现/admin 对照 200）+ 浏览器回归，确认属实才修。修复 8 项：①提交表单排除流程回写字段（collectWritebackFields+buildPageTemplate excludeFields，台账不过滤——台账正要展示审批状态）②依次审批选项暴露③审批页只读渲染（makeAmisPageReadonly：form static+清提交动作+crud 去新增，绑定页无需强制改详情页）④审计页显式 403 态（AuditLogs/AppAuditLogs，此前渲染成空表）⑤裸 cuid/UTC 全局收敛（useUserNameMap/formatDateTime，6 处 UTC 截断+5 处裸 ID）⑥流程配置面板 fixed→absolute 不再遮挡保存/发布按钮 ⑦应用级变更归 APPLICATION 模块（发布向导不再把"新建应用"归页面组——**AI 主线第二轮中已重启 gateway 后真实验证**）⑧审批弹窗任务 ID 入技术详情折叠区。全绿 gateway 723/studio 124/runtime-ui 20/db 55/shared 17。遗留：审批弹窗数据域映射 UX、logout 残留标准路径未复现（观察）。实现记录 docs/knowledge-base/REVIEW-FOLLOWUP-2026-10-05.md
 - ✅ **运行态业务用户旅程 P0 反馈环补完（2026-10-04）**：方法论从"AI 生成应用"主线切到"业务用户使用应用"主线（C 申请人/D 审批人）。反馈环三断全修：①审批结果自动回写——UserTask 节点新增 writeback 配置（字段+通过值/驳回值，单选字段渲染选项下拉），引擎 completeTask 决约定论后经 RecordService 写内核回写触发记录（非记录触发跳过、失败留痕不阻断），节点摘要画布可见；②表单页成对生成台账页（默认勾选，单选列 amis mapping 中文标签）；③审批人体验——绑定表单渲染修复（UI 曾写 formKey 契约外字段名致绑定静默失效，改 pageId+回退）、流程变量折叠默认收起、申请内容创建人解析姓名。另：审批弹窗绑定的表单可再提交问题——**2026-10-05 已修（审批页统一只读渲染）**。gateway 722、studio 119、db 55 全绿；端到端实测：提交→审批→记录 status=approved→台账"已批准"中文标签。双视角评审（产品+技术）同期完成，修复其 8 项按钮级缺陷（分支 fix/interaction-review-2026-10-04 已并 main）。

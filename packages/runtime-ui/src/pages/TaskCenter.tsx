@@ -165,7 +165,12 @@ export default function TaskCenter() {
             isPending={completeMutation.isPending}
             onClose={() => setModalOpen(false)}
             onComplete={handleComplete}
-            allowReject={taskDetail?.allowReject !== false}
+            allowReject={taskDetail?.allowReject !== false && taskDetail?.rejectConfigured === true}
+            rejectReason={
+              taskDetail?.rejectConfigured === false
+                ? '该节点未配置驳回跳转：流程图无驳回路径时，运行时不提供驳回操作'
+                : undefined
+            }
           />
         }
       >

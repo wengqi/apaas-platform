@@ -92,6 +92,12 @@ export class NotificationExecutor implements NodeExecutor {
           success = await this.sendWebhook(recipients, title, body);
           break;
         case 'EMAIL':
+          // 空收件人跳过发送（与 IN_APP/WEBHOOK 空收件人语义一致：未送达=success=false），
+          // 避免对空 to 发起注定失败的 SMTP 调用
+          if (recipients.length === 0) {
+            success = false;
+            break;
+          }
           success = await this.mailService.sendMail({
             to: recipients,
             subject: title,

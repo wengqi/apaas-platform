@@ -8,6 +8,21 @@ import { Typography } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { getNodeMeta } from '../../../constants/process.js';
 import { checkNodeIncomplete, getNodeSummary } from '../nodeMetadata.js';
+import { useProcessEditorStore } from '../../../stores/processEditor.js';
+import type { WorkflowNode } from '../../../api/processes.js';
+
+/** 在 schema 树中按 id 找节点 data（递归 blocks）。 */
+function findNodeData(
+  nodes: WorkflowNode[] | undefined,
+  id: string,
+): Record<string, unknown> | undefined {
+  for (const n of nodes ?? []) {
+    if (n.id === id) return (n.data ?? {}) as Record<string, unknown>;
+    const found = findNodeData(n.blocks as WorkflowNode[] | undefined, id);
+    if (found) return found;
+  }
+  return undefined;
+}
 
 const { Text } = Typography;
 
@@ -30,12 +45,20 @@ export function BusinessNodeRenderer({
 }: BusinessNodeRendererProps) {
   const type = node?.flowNodeType ?? 'unknown';
   const extInfo = node?.getExtInfo?.() ?? {};
+  // 有效配置 = schema 节点 data 打底 + 画布会话 extInfo 覆盖。
+  // 此前只用 extInfo 判定——API/AI 创建的流程配置存在 data 里、extInfo 为空，
+  // 已配置完成的节点被永远标红"有未完成的配置"（用户反馈 2026-10-06）。
+  const schemaData = findNodeData(
+    useProcessEditorStore((s) => s.schema)?.nodes as WorkflowNode[] | undefined,
+    node?.id ?? '',
+  );
+  const effectiveData = { ...schemaData, ...extInfo };
 
   const meta = getNodeMeta(type);
   const Icon = meta.icon;
-  const title = (extInfo.title as string) || meta.label;
-  const summary = getNodeSummary(type, extInfo);
-  const isIncomplete = checkNodeIncomplete(type, extInfo);
+  const title = (effectiveData.title as string) || meta.label;
+  const summary = getNodeSummary(type, effectiveData);
+  const isIncomplete = checkNodeIncomplete(type, effectiveData);
   const [isSelected, setIsSelected] = useState(false);
 
   useEffect(() => {

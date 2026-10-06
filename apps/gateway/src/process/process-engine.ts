@@ -573,6 +573,15 @@ export class ProcessEngine {
       if (cfgNode?.data?.['allowReject'] === false) {
         throw new BadRequestException('该审批节点已配置为不允许驳回');
       }
+      // 语义裁决（2026-10-06，产品确认）：流程图未配置驳回跳转（rejectToNodeId
+      // 为空）时，运行时不提供驳回操作——驳回操作的存在性由流程图配置驱动，
+      // 每个动作逻辑自洽；此前"无驳回边时驳回继续走下游"的行走为废止。
+      const rejectToNodeId = cfgNode?.data?.['rejectToNodeId'];
+      if (typeof rejectToNodeId !== 'string' || rejectToNodeId.trim() === '') {
+        throw new BadRequestException(
+          '该审批节点未配置驳回跳转（rejectToNodeId）：流程图无驳回路径时，运行时不提供驳回操作',
+        );
+      }
     }
 
     // B2 防护：原子认领任务 — 仅当任务仍为 PENDING 时更新成功。

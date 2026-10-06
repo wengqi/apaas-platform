@@ -210,6 +210,36 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     expect(status).toBe('COMPLETED');
   });
 
+  test('会签无驳回边：运行时不提供驳回操作（语义裁决 2026-10-06）', async () => {
+    // 种子会签节点 rejectToNodeId 为空 → 按语义裁决，运行时拒绝被引擎硬闸拦截，
+    // 且不产生任何副作用（兄弟任务保持 PENDING、实例停留等待）。
+    const { instanceId } = await createContractAndWaitTrigger(
+      `E2E 会签无驳回边 ${Date.now()}`,
+      1_280_000,
+    );
+    const signTasks = await waitForTasks(instanceId, 2);
+    expect(signTasks.length).toBe(2);
+
+    // builder 视角拒绝 → 引擎硬闸 400
+    const builderRaw = await builder.get<Array<{ id: string; instanceId: string }>>(
+      '/tasks?status=pending&page=1&pageSize=50',
+    );
+    const builderTask = builderRaw.filter((t) => t.instanceId === instanceId);
+    expect(builderTask.length).toBe(1);
+    await expect(
+      builder.post(`/tasks/${builderTask[0]!.id}/complete`, {
+        decision: 'reject',
+        comment: '无驳回边应被拦',
+      }),
+    ).rejects.toThrow(/未配置驳回/);
+
+    // 无副作用：两份任务仍 PENDING，实例仍等待审批
+    const stillPending = await waitForTasks(instanceId, 2, 5_000);
+    expect(stillPending.length).toBe(2);
+    const inst = await admin.get<{ status: string }>(`/instances/${instanceId}`);
+    expect(inst.status).toBe('WAITING_USER_TASK');
+  });
+
   test('撤回：发起人可撤回审批中实例，非发起人被拒', async () => {
     const { instanceId } = await createContractAndWaitTrigger(`E2E 撤回合同 ${Date.now()}`, 89_000);
     await waitForTasks(instanceId, 1);

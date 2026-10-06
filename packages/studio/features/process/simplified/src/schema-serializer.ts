@@ -228,10 +228,12 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
   const filteredBlocks = (node.blocks ?? []).filter((b) => b && !isSystemNode(b));
 
   const engineType = toEngineNodeType(node.type ?? '');
-  const data: Record<string, unknown> = {
-    title: node.data?.title ?? node.type,
-    ...(node.data ?? {}),
-  };
+  // 序列化忠实性（2026-10-06 根因修复）：不再注入 title 默认值——此前
+  // `data = { title: node.data?.title ?? node.type, ...node.data }` 会对无 title
+  // 的数据（AI/API 创建的 schema）注入 `title: "<节点类型>"`，往返后与入库
+  // schema 不等，已发布流程打开即误标"未保存"。title 缺失由渲染层回退
+  // 类型标签（meta.label）展示，数据层保持零翻译。
+  const data: Record<string, unknown> = { ...(node.data ?? {}) };
 
   // 对象/批量操作：fieldMapping → inputsValues（引擎唯一消费的输入契约）。
   // fieldMapping 保留原样供编辑器回显往返，inputsValues 每次导出重建；
@@ -254,20 +256,25 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
     };
   }
 
-  return {
+  const result: WorkflowNode = {
     id: node.id,
     type: engineType as WorkflowNode['type'],
     meta: node.meta ?? {},
     data,
     blocks: filteredBlocks.map(flowNodeToWorkflowNode),
-    edges: node.edges?.map((e) => ({
+  };
+  // 仅当存在边时才写 edges 键——无条件写 undefined 会让 JSON.stringify 与
+  // 入库 schema 不等（打开即标"未保存"；用户反馈 2026-10-06）
+  if (node.edges && node.edges.length > 0) {
+    result.edges = node.edges.map((e) => ({
       sourceNodeID: e.sourceNodeID,
       targetNodeID: e.targetNodeID,
       sourcePortID: e.sourcePortID,
       targetPortID: e.targetPortID,
       label: e.label,
-    })),
-  } as WorkflowNode;
+    }));
+  }
+  return result;
 }
 
 /**

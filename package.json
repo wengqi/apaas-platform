@@ -28,7 +28,8 @@
     "docker:logs": "docker compose logs -f",
     "prepare": "husky",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:smoke": "playwright test e2e/01-auth.spec.ts e2e/02-object-crud.spec.ts e2e/16-procurement-approval.spec.ts e2e/22-feedback-loop.spec.ts e2e/23-ui-truthfulness.spec.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",

@@ -4,6 +4,7 @@
  * 从 SimplifiedEditor.tsx 提取。
  */
 
+import { isNodeIncomplete } from '@apaas/shared';
 import { APPROVAL_MODE_OPTIONS, ASSIGNEE_TYPE_OPTIONS } from './configs/UserTaskConfigForm.js';
 
 /** 评审整改：按选项表把枚举值翻译为中文标签(未知值回退原值，空值返回空串)。 */
@@ -15,55 +16,9 @@ function toOptionLabel(
   return options.find((o) => o.value === value)?.label ?? value;
 }
 
-/** 检查节点配置是否完整（必填字段是否已填写）。 */
+/** 检查节点配置是否完整（必填字段是否已填写）——判定收敛到 shared（与发布预检同源）。 */
 export function checkNodeIncomplete(type: string, data: Record<string, unknown>): boolean {
-  switch (type) {
-    case 'trigger':
-      return !data.triggerType;
-    case 'userTask':
-    case 'user_task':
-      // 评审整改：配置表单(UserTaskConfigForm)写入 assignee/assigneeType/approvalMode，
-      // 历史数据可能存 assigneeId —— 两者任一有值即视为已配置审批人；
-      // 会签/或签路径写 approveUsers 数组（成员多选器）；
-      // 指定角色写 candidateGroups 数组（角色 ID，#12 修复）。
-      // 保留判定强度：审批人 + 审批模式 都有值才算完成。
-      return (
-        !(
-          data.assignee ||
-          data.assigneeId ||
-          (Array.isArray(data.candidateGroups) && data.candidateGroups.length > 0) ||
-          (Array.isArray(data.approveUsers) && data.approveUsers.length > 0)
-        ) || !data.approvalMode
-      );
-    case 'notification':
-      return !data.channel || !data.recipient;
-    case 'objectOperation':
-    case 'object_operation':
-      return !data.operation || !data.objectId;
-    case 'httpRequest':
-    case 'http_request':
-      return !data.method || !data.url;
-    case 'delay':
-      return !data.duration;
-    case 'loop':
-      return !data.collection;
-    case 'wait_for_condition':
-      return !data.condition;
-    case 'sub_process':
-      return !data.subProcessKey && !data.subProcessDefId;
-    case 'batch_operation':
-      return !data.operation || !data.objectId;
-    case 'start':
-    case 'end':
-    case 'assign':
-    case 'parallel':
-    case 'inclusive':
-    case 'break':
-    case 'continue':
-      return false;
-    default:
-      return false;
-  }
+  return isNodeIncomplete(type, data);
 }
 
 /** 生成节点摘要文本（显示在节点卡片底部）。 */

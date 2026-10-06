@@ -138,8 +138,26 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(processQueue.add).toHaveBeenCalledTimes(1);
   });
 
-  it('会签：任一 rejected 立即取消兄弟任务并驳回推进', async () => {
+  it('语义裁决（2026-10-06）：未配置 rejectToNodeId 的节点拒绝被硬闸拦截', async () => {
     const schema = makeUserTaskSchema({ approvalMode: 'countersign', approveUsers: ['u1', 'u2'] });
+    setupTask(schema);
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'PENDING', assignee: 'u1', createdAt: new Date() },
+      { id: 't2', status: 'PENDING', assignee: 'u2', createdAt: new Date() },
+    ]);
+
+    const { engine } = createEngine();
+    await expect(engine.completeTask('t1', 'u1', 'reject', '不同意', undefined)).rejects.toThrow(
+      /未配置驳回跳转/,
+    );
+  });
+
+  it('会签：任一 rejected 立即取消兄弟任务并按驳回边推进', async () => {
+    const schema = makeUserTaskSchema({
+      approvalMode: 'countersign',
+      approveUsers: ['u1', 'u2'],
+      rejectToNodeId: 'n2', // 语义裁决（2026-10-06）：驳回操作存在的前提是配置了驳回跳转
+    });
     setupTask(schema);
     prisma.processTask.findMany.mockResolvedValue([
       { id: 't1', status: 'REJECTED', assignee: 'u1', createdAt: new Date() },
@@ -275,6 +293,7 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     const schema = makeUserTaskSchema({
       approvalMode: 'sequential',
       approveUsers: ['u1', 'u2'],
+      rejectToNodeId: 'n2',
     });
     const instance = makeProcessInstance({
       status: 'WAITING_USER_TASK',
@@ -309,8 +328,11 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(prisma.processTask.updateMany).not.toHaveBeenCalled();
   });
 
-  it('#16：allowReject 未配置（undefined）视为允许驳回', async () => {
-    const schema = makeUserTaskSchema({ approvalMode: 'single' });
+  it('#16：allowReject 未配置（undefined）+ 已配置驳回跳转 → 视为允许驳回', async () => {
+    const schema = makeUserTaskSchema({
+      approvalMode: 'single',
+      rejectToNodeId: 'n2',
+    });
     setupTask(schema);
     prisma.processTask.findMany.mockResolvedValue([
       { id: 't1', status: 'REJECTED', assignee: 'u1', createdAt: new Date() },
@@ -649,6 +671,7 @@ describe('审批结果自动回写 — writeback', () => {
     const schema = makeUserTaskSchema({
       approvalMode: 'single',
       allowReject: true,
+      rejectToNodeId: 'n2',
       writeback: { field: 'status', approveValue: 'approved', rejectValue: 'rejected' },
     });
     const instance = makeProcessInstance({

@@ -228,10 +228,12 @@ function flowNodeToWorkflowNode(node: FlowNodeJSON): WorkflowNode {
   const filteredBlocks = (node.blocks ?? []).filter((b) => b && !isSystemNode(b));
 
   const engineType = toEngineNodeType(node.type ?? '');
-  const data: Record<string, unknown> = {
-    title: node.data?.title ?? node.type,
-    ...(node.data ?? {}),
-  };
+  // 序列化忠实性（2026-10-06 根因修复）：不再注入 title 默认值——此前
+  // `data = { title: node.data?.title ?? node.type, ...node.data }` 会对无 title
+  // 的数据（AI/API 创建的 schema）注入 `title: "<节点类型>"`，往返后与入库
+  // schema 不等，已发布流程打开即误标"未保存"。title 缺失由渲染层回退
+  // 类型标签（meta.label）展示，数据层保持零翻译。
+  const data: Record<string, unknown> = { ...(node.data ?? {}) };
 
   // 对象/批量操作：fieldMapping → inputsValues（引擎唯一消费的输入契约）。
   // fieldMapping 保留原样供编辑器回显往返，inputsValues 每次导出重建；

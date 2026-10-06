@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { collectNodeIssues } from '@apaas/shared';
 import { prisma } from '@apaas/db';
 import type { AppSnapshot, CheckResult } from '@apaas/shared';
 import { SnapshotService } from './snapshot.service.js';
@@ -21,19 +22,14 @@ export class CheckService {
   /**
    * 执行预检。
    */
-  async check(
-    tenantId: string,
-    appId: string,
-    checkedBy: string,
-  ): Promise<CheckResult> {
+  async check(tenantId: string, appId: string, checkedBy: string): Promise<CheckResult> {
     // 收集快照（预检基于快照数据进行检查）
-    const snapshot =
-      await this.snapshotService.collectSnapshot(
-        tenantId,
-        appId,
-        '0.0.0', // 预检时版本号暂用占位
-        checkedBy,
-      );
+    const snapshot = await this.snapshotService.collectSnapshot(
+      tenantId,
+      appId,
+      '0.0.0', // 预检时版本号暂用占位
+      checkedBy,
+    );
 
     // 运行各模块检查器
     const issues: CheckResult['issues'] = [
@@ -117,6 +113,24 @@ export class CheckService {
           message: `流程「${proc.name}」的 WorkflowSchema 为空`,
           suggestion: '请先在流程编辑器中编排节点',
         });
+        continue;
+      }
+
+      // 节点配置完整性（用户反馈 2026-10-06："检查"按钮要列出整个流程图哪里
+      // 有问题——与发布硬闸消费同一份 shared 判定，逐节点列原因）
+      const nodes = (schema as { nodes?: unknown }).nodes;
+      if (Array.isArray(nodes)) {
+        const nodeIssues = collectNodeIssues(nodes as Array<Record<string, unknown>>);
+        for (const ni of nodeIssues) {
+          issues.push({
+            level: 'ERROR',
+            module: 'PROCESS',
+            entityId: proc.id,
+            entityName: proc.name,
+            message: `流程「${proc.name}」节点「${ni.nodeTitle}」${ni.reason}`,
+            suggestion: '请在流程编辑器中补全该节点配置',
+          });
+        }
       }
     }
 

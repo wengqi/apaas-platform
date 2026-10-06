@@ -396,3 +396,6 @@ export interface ProcessInstanceReport {
   instance: ProcessInstance;
   nodes: Record<NodeId, NodeExecutionStatus>;
 }
+
+// 节点配置完整性检查（跨端 SSOT：画布标红与发布预检同判定）
+export * from './node-check.js';

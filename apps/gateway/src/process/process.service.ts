@@ -18,6 +18,7 @@ import {
   Logger,
   ForbiddenException,
 } from '@nestjs/common';
+import { collectNodeIssues } from '@apaas/shared';
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
@@ -234,6 +235,20 @@ export class ProcessService {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: '流程 Schema 为空，无法发布',
+      });
+    }
+
+    // 发布硬闸（用户反馈 2026-10-06）：节点配置完整性检查——画布"有未完成的
+    // 配置"标红与发布预检消费同一份判定（shared collectNodeIssues），
+    // 未完成配置的流程保存可以、发布不行。
+    const nodeIssues = collectNodeIssues(schema.nodes as Array<Record<string, unknown>>);
+    if (nodeIssues.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: `流程存在 ${nodeIssues.length} 处未完成的配置，无法发布：${nodeIssues
+          .map((i) => `「${i.nodeTitle}」${i.reason}`)
+          .join('；')}。请在流程编辑器补全后重试。`,
+        issues: nodeIssues as never,
       });
     }
 

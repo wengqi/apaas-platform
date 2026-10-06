@@ -23,3 +23,11 @@ body {
 .ae-Editor {
   height: 100%;
 }
+
+/* 搭建器右侧属性面板宽度收窄（QA 2026-10-06：280px→240px，
+   为画布让出更多空间；宽度仍可拖拽）。
+   amis 同时设 width 17.5rem 与 min-width 280px（后者是实测拦截点），需一并覆盖 */
+.ae-Editor .editor-right-panel {
+  width: 240px !important;
+  min-width: 240px !important;
+}

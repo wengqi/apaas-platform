@@ -34,6 +34,8 @@ import {
   FileDoneOutlined,
   CloudServerOutlined,
   KeyOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -256,8 +258,11 @@ export default function StudioLayout() {
           onCollapse={setCollapsed}
           width={170}
           theme="light"
+          trigger={null}
           style={{
-            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
             // 浅色主题（QA 2026-10-06：与右侧主内容区协调，弃深色侧栏）
             background: '#f7f9fc',
             borderRight: '1px solid #ebedf0',
@@ -269,8 +274,57 @@ export default function StudioLayout() {
             selectedKeys={[selectedKey]}
             items={menuItems}
             onClick={({ key }) => navigate(`/app/${appId}/${key}`)}
-            style={{ borderRight: 0, background: 'transparent' }}
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflow: 'auto',
+              borderRight: 0,
+              background: 'transparent',
+            }}
           />
+          {/* 自绘折叠控制（QA 2026-10-06：替换默认 48px 白条 trigger——胶囊按钮+文案+hover） */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              padding: '10px 12px',
+              borderTop: '1px solid #ebedf0',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setCollapsed(!collapsed)}
+              title={collapsed ? '展开菜单' : '收起菜单'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: collapsed ? 32 : 110,
+                height: 28,
+                border: '1px solid #e5e7eb',
+                borderRadius: 14,
+                background: '#fff',
+                color: 'rgba(0,0,0,0.65)',
+                fontSize: 12,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#e6f4ff';
+                e.currentTarget.style.borderColor = '#91caff';
+                e.currentTarget.style.color = '#1677ff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#fff';
+                e.currentTarget.style.borderColor = '#e5e7eb';
+                e.currentTarget.style.color = 'rgba(0,0,0,0.65)';
+              }}
+            >
+              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              {!collapsed && <span>收起菜单</span>}
+            </button>
+          </div>
         </Sider>
         <Content
           style={{

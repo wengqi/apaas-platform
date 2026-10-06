@@ -59,7 +59,7 @@ function createEngine(executors: NodeExecutor[] = []) {
     delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
     recordService as unknown as ConstructorParameters<typeof ProcessEngine>[6],
   );
-  return { engine, registry, processQueue, recordService };
+  return { engine, registry, processQueue, recordService, inAppMessageService };
 }
 
 function makeNode(id: string, type: string, data: Record<string, unknown> = {}): WorkflowNode {
@@ -341,6 +341,86 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
 
     await engine.completeTask('t1', 'u1', 'reject', '不需要', undefined);
     expect(prisma.processTask.updateMany).toHaveBeenCalled();
+  });
+});
+
+describe('审批结果默认通知（业务用户旅程 R3 2026-10-06）', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.processInstance.update.mockResolvedValue({});
+    prisma.processInstance.findFirst.mockImplementation((args: { where: { id: string } }) => {
+      return Promise.resolve(makeInstanceRow({ id: args.where.id, status: 'WAITING_USER_TASK' }));
+    });
+    prisma.nodeExecution.update.mockResolvedValue({});
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processQueue = undefined;
+  });
+
+  function setupNotifyTask(triggerContext: Record<string, unknown>, withNotifyNode: boolean) {
+    const schema = {
+      nodes: [
+        makeNode('n1', 'user_task', {
+          taskName: '审批',
+          approvalMode: 'single',
+          rejectToNodeId: 'n3',
+        }),
+        ...(withNotifyNode
+          ? [makeNode('n2', 'notification', { channel: 'IN_APP', recipients: ['x'] })]
+          : []),
+        makeNode('n3', 'end'),
+      ],
+      edges: [
+        { sourceNodeID: 'n1', targetNodeID: 'n3' },
+        { sourceNodeID: 'n2', targetNodeID: 'n3' },
+      ],
+    } as unknown as WorkflowSchema;
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      triggerContext,
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    return task;
+  }
+
+  it('流程无通知节点：驳回后引擎兜底站内信通知发起人', async () => {
+    const { engine, inAppMessageService } = createEngine();
+    setupNotifyTask({ triggeredByUser: 'initiator-1' }, false);
+
+    await engine.completeTask('t1', 'initiator-1', 'reject', '不同意', undefined);
+
+    expect(inAppMessageService.create).toHaveBeenCalledOnce();
+    expect(inAppMessageService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userIds: ['initiator-1'],
+        title: expect.stringContaining('驳回'),
+        body: expect.stringContaining('不同意'),
+      }),
+    );
+  });
+
+  it('流程已配置通知节点：引擎不兜底（由配置全权驱动，不重复通知）', async () => {
+    const { engine, inAppMessageService } = createEngine();
+    setupNotifyTask({ triggeredByUser: 'initiator-1' }, true);
+
+    await engine.completeTask('t1', 'initiator-1', 'reject', '不同意', undefined);
+
+    expect(inAppMessageService.create).not.toHaveBeenCalled();
+  });
+
+  it('无发起人（headless/API 形态）：静默跳过', async () => {
+    const { engine, inAppMessageService } = createEngine();
+    setupNotifyTask({ triggeredByUser: null, record: null }, false);
+
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    expect(inAppMessageService.create).not.toHaveBeenCalled();
   });
 });
 

@@ -13,6 +13,8 @@ interface TaskModalFooterProps {
   onComplete: (decision: string) => void;
   /** #16：节点配置不允许驳回时禁用拒绝按钮（引擎侧同口径强制） */
   allowReject?: boolean;
+  /** 不可驳回的具体原因（未配置驳回跳转时展示该文案而非默认文案） */
+  rejectReason?: string;
 }
 
 /** 审批操作（批准 / 拒绝）/ 关闭按钮。 */
@@ -22,13 +24,14 @@ export function TaskModalFooter({
   onClose,
   onComplete,
   allowReject = true,
+  rejectReason,
 }: TaskModalFooterProps) {
   if (activeTab !== 'pending') {
     return <Button onClick={onClose}>关闭</Button>;
   }
   return (
     <Space>
-      <Tooltip title={allowReject ? undefined : '该审批节点已配置为不允许驳回'}>
+      <Tooltip title={allowReject ? undefined : (rejectReason ?? '该审批节点已配置为不允许驳回')}>
         <Button
           danger
           icon={<CloseOutlined />}

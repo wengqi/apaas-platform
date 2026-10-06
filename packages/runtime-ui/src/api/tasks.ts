@@ -35,6 +35,8 @@ export interface ProcessTask {
   boundPageId?: string | null;
   /** #16：节点是否允许驳回（undefined=允许）——任务中心据此禁用拒绝按钮。 */
   allowReject?: boolean;
+  /** 语义裁决（2026-10-06）：节点是否配置了驳回跳转——未配置时运行时不提供驳回操作 */
+  rejectConfigured?: boolean;
   /** #15：申请内容字段标签（apiName→label，触发对象字段定义）——
    *  未绑定审批页时把 inputs 从裸 key 渲染成友好键值表。 */
   inputFieldLabels?: Record<string, string>;

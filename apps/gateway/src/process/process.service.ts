@@ -627,6 +627,11 @@ export class ProcessService {
 
     // #16：节点是否允许驳回（undefined=允许），任务中心据此禁用拒绝按钮
     const allowReject = nodeDef?.data?.['allowReject'] !== false;
+    // 语义裁决（2026-10-06）：未配置驳回跳转的节点运行时不提供驳回操作——
+    // 任务中心据此隐藏拒绝按钮（与引擎硬闸同口径）
+    const rejectConfigured =
+      typeof nodeDef?.data?.['rejectToNodeId'] === 'string' &&
+      (nodeDef.data['rejectToNodeId'] as string).trim() !== '';
 
     // #15：申请内容字段标签（apiName→label）——未绑定审批页时任务中心
     // 用它把 triggerContext.inputs 从裸 key 渲染成友好键值表
@@ -673,6 +678,7 @@ export class ProcessService {
       ...task,
       boundPageId,
       allowReject,
+      rejectConfigured,
       inputFieldLabels,
       recordCreatorName,
       appId: task.instance.processDef.appId,

@@ -290,7 +290,9 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
     [ctx.operation, deleteNodeStore],
   );
 
-  if (!selectedNode || readonly) return null;
+  // 只读（已发布流程）也渲染面板：配置全部只读展示——否则确认节点配置
+  // （审批人/回写/条件等）没有任何入口（双视角反馈 2026-10-06）
+  if (!selectedNode) return null;
 
   const w = window as unknown as {
     __apaasConfigOptions?: {
@@ -348,7 +350,7 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
         }}
       >
         <Text strong style={{ fontSize: 14 }}>
-          节点配置
+          节点配置{readonly ? '（已发布 · 只读）' : ''}
         </Text>
         <Button
           type="text"
@@ -363,7 +365,7 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
       <div style={{ flex: 1, overflow: 'auto' }}>
         <NodeConfigPanel
           node={selectedNode}
-          readonly={false}
+          readonly={readonly}
           objectOptions={options.objectOptions}
           formOptions={options.formOptions}
           templateOptions={options.templateOptions}

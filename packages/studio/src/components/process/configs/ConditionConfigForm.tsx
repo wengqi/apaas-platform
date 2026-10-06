@@ -187,7 +187,7 @@ export default function ConditionConfigForm({
                     type="text"
                     danger
                     icon={<DeleteOutlined />}
-                    disabled={isElse || branches.length <= 2}
+                    disabled={disabled || isElse || branches.length <= 2}
                   />
                 </Popconfirm>
               </div>
@@ -196,6 +196,7 @@ export default function ConditionConfigForm({
                 onChange={(cond) => updateBranch(index, { condition: cond })}
                 qbConfig={qbConfig}
                 isElse={isElse}
+                disabled={disabled}
               />
             </div>
           );

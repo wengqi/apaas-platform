@@ -30,6 +30,8 @@ interface ConditionEditorProps {
   onChange: (condition: object | null) => void;
   qbConfig: ReturnType<typeof buildQbConfig>;
   isElse?: boolean;
+  /** 只读（已发布流程查看态）：RAQB settings.readonly 隐藏全部操作并禁用控件 */
+  disabled?: boolean;
 }
 
 export function ConditionEditor({
@@ -37,6 +39,7 @@ export function ConditionEditor({
   onChange,
   qbConfig,
   isElse = false,
+  disabled = false,
 }: ConditionEditorProps) {
   const [tree, setTree] = useState<ImmutableTree>(() => loadFromJsonLogic(condition, qbConfig));
 
@@ -83,7 +86,13 @@ export function ConditionEditor({
       )}
       <div style={{ minHeight: 60 }}>
         {createElement(Query, {
-          ...qbConfig,
+          ...(disabled
+            ? ({
+                ...qbConfig,
+                // RAQB readonly：隐藏全部操作按钮并禁用控件（已发布流程查看态）
+                settings: { ...qbConfig.settings, readonly: true },
+              } as typeof qbConfig)
+            : qbConfig),
           value: tree,
           onChange: onQbChange,
           renderBuilder: renderBuilder,

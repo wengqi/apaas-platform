@@ -24,8 +24,8 @@ cmd = sys.argv[1] if len(sys.argv) > 1 else ""
 RULES = [
     (r"\brm\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*[rf][a-zA-Z]*\s+(?:\S+\s+)?(?:/|~|\$HOME|\.)(?:/\*?)?(\s|$)",
      "rm 递归删除根目录/家目录/当前目录目标 —— 请人工确认后在自己的终端执行"),
-    (r"\bgit\s+push\s+(?:\S+\s+)*(?<![\w-])(?:-f\b|--force(?!-with-lease)|--no-verify)\b",
-     "git push 强制推送或绕过钩子 —— 红线禁止，需人工执行"),
+    (r"\bgit\s+push\s+(?:\S+\s+)*(?<![\w-])(?:-f\b|--force(?:-with-lease)?\b|--no-verify)\b",
+     "git push 强制推送（含 --force-with-lease）或绕过钩子 —— 红线禁止，已推送提交的修正一律追加提交，需人工执行"),
     (r"\bgit\s+reset\s+--hard\b",
      "git reset --hard 会丢弃未提交改动 —— 用 git stash / git restore 替代"),
     (r"\bdocker\s+(?:system\s+prune|volume\s+(?:rm|prune)|compose\s+down\b[^|;&]*-v|compose\s+rm\b[^|;&]*-v)",
@@ -41,6 +41,37 @@ for pat, msg in RULES:
     if re.search(pat, cmd, re.IGNORECASE):
         print(msg)
         break
+
+# git 纪律（2026-10-06 红线）：amend 仅限未推送提交——改写已推送历史按红线拦截
+# （机械守卫：比对 HEAD 是否已包含于 origin/<branch>；git 不可用时 fail-open）
+if re.search(r"\bgit\s+commit\s+(?:--amend\b|-[-a-zA-Z]*amend)", cmd):
+    try:
+        import subprocess
+
+        def git(*args: str) -> str:
+            return subprocess.run(
+                ["git", *args], capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+
+        branch = git("rev-parse", "--abbrev-ref", "HEAD")
+        head = git("rev-parse", "HEAD")
+        upstream = git("rev-parse", "--verify", "--quiet", f"origin/{branch}")
+        if (
+            branch
+            and branch != "HEAD"
+            and head
+            and upstream
+            and subprocess.run(
+                ["git", "merge-base", "--is-ancestor", head, upstream],
+                capture_output=True, text=True, timeout=5,
+            ).returncode == 0
+        ):
+            print(
+                "git commit --amend 改写已推送提交 —— 红线禁止："
+                "已推送提交的修正一律追加新提交（本分支可能挂着在途 PR）"
+            )
+    except Exception:
+        pass  # fail-open：git 不可用时不阻塞
 PY
 )
 

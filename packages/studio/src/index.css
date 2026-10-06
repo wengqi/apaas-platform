@@ -15,3 +15,11 @@ body {
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
+
+/* 页面搭建器画布撑满视口剩余高度（QA 修复 2026-10-06）：
+   amis-editor-core 的单类 height:100% 规则未随样式集加载，实际仅
+   min-height:450px 生效——切换左侧面板（组件/大纲/代码）Tab 时
+   画布固定 450px、下方大片留白。显式继承父链 flex:1 高度。 */
+.ae-Editor {
+  height: 100%;
+}

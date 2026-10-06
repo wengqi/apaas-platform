@@ -120,6 +120,20 @@ export default function ProcessEditor() {
 
   const formOptions = (pages ?? []).map((p) => ({ label: p.name, value: p.id }));
 
+  /** 加载通知模版列表（通知节点 templateId 下拉用）。
+   *  QA D-015 修复（2026-10-06）：此前 templateOptions 从未接线，
+   *  通知节点"选择模版后自动填充标题/正文"下拉永远为空。 */
+  const { data: notificationTemplates } = useQuery({
+    queryKey: ['notification-templates', appId],
+    queryFn: () => processesApi.listTemplates(appId as string),
+    enabled: !!appId,
+  });
+
+  const templateOptions = (notificationTemplates ?? []).map((t) => ({
+    label: t.name,
+    value: t.id,
+  }));
+
   /** 加载已发布流程列表（子流程节点选择用，排除自身防自引用）。 */
   const { data: publishedProcesses } = useQuery({
     queryKey: ['processes', appId],
@@ -305,6 +319,7 @@ export default function ProcessEditor() {
           objectOptions={objectOptions}
           formOptions={formOptions}
           processOptions={processOptions}
+          templateOptions={templateOptions}
           onHistoryReady={handleHistoryReady}
         />
       </EditorErrorBoundary>

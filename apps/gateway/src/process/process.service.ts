@@ -557,13 +557,14 @@ export class ProcessService {
       }
     }
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       prisma.processTask.findMany({
         where,
         include: {
           instance: {
             select: {
               id: true,
+              triggerContext: true,
               processDef: { select: { name: true, apiName: true } },
             },
           },
@@ -574,6 +575,18 @@ export class ProcessService {
       }),
       prisma.processTask.count({ where }),
     ]);
+
+    // 映射为 shared UserTask 契约（QA D-013 修复：此前返回原始 Prisma 行，
+    // 缺 starter/arrivedAt/processName——监控页任务列表与处理面板三列全 "—"）。
+    // dueAt：截止时间配置（UserTaskConfig.dueDate）尚未持久化到任务行，诚实留空。
+    const items = rawItems.map((t) => ({
+      ...t,
+      processName: t.instance?.processDef?.name ?? undefined,
+      starter:
+        ((t.instance?.triggerContext as Record<string, unknown> | null)?.['triggeredByUser'] as
+          string | undefined) ?? undefined,
+      arrivedAt: t.createdAt.toISOString(),
+    }));
 
     return { items, total, page, pageSize };
   }

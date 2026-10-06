@@ -127,7 +127,8 @@ export default function NotificationTemplateManager() {
         channel: values.channel as NotificationChannel,
         titleTemplate: values.titleTemplate as string,
         bodyTemplate: values.bodyTemplate as string,
-        variables: (values.variables as NotificationTemplateVariable[]).filter((v) => v.name),
+        // v 空槽防御（QA D-014：Form.List undefined 槽位致保存崩溃）
+        variables: (values.variables as NotificationTemplateVariable[]).filter((v) => v && v.name),
       };
       if (editingTemplate) {
         updateMutation.mutate({ id: editingTemplate.id, data: payload });
@@ -261,7 +262,9 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
   const preview = useMemo(() => {
     const title = (values?.titleTemplate as string) ?? '';
     const content = (values?.bodyTemplate as string) ?? '';
-    const variables = (values?.variables as NotificationTemplateVariable[]) ?? [];
+    // Form.List 新增行的瞬间数组会含 undefined 槽位——过滤空槽，
+    // 否则下方 v.name 对 undefined 抛 TypeError 整页崩溃（QA D-014）
+    const variables = ((values?.variables as NotificationTemplateVariable[]) ?? []).filter(Boolean);
     const render = (tmpl: string) =>
       tmpl.replace(/\$\{(\w+)\.(\w+)\}|\$\{(\w+)\}/g, (_m, g1, g2, g3) => {
         const name = g1 ?? g3;
@@ -281,7 +284,8 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
     form.setFieldValue(field, `${current}\${${varName}}`);
   };
 
-  const variables = (values?.variables as NotificationTemplateVariable[]) ?? [];
+  // Form.List 新增行瞬间数组含 undefined 槽位——过滤空槽防 v.name 崩溃（QA D-014）
+  const variables = ((values?.variables as NotificationTemplateVariable[]) ?? []).filter(Boolean);
 
   return (
     <Form form={form} layout="vertical">

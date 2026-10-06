@@ -164,6 +164,10 @@ qa 应用实测：草稿（对象/页面/流程）→ 发布 prod → runtime �
 | D-009 | P3 | user_task 审批人类型切换残留旧值（USER+candidateGroups 并存） | 流程编辑器类型切换未清理 | ROLE 选角色→切 USER→API 看 schema | ✅修复：assigneeType 变更即清理全部审批人字段（assignee 语义随类型而变）；await 回归（§10.7） |
 | D-010 | P3 | fetcher 失败 toast 仅覆盖写操作：GET 取数失败完全静默 | `AmisRenderer.tsx:144/157`（注释明示"GET 保持静默"） | runtime 打开含坏 API service 页面→无提示 | ✅修复（用户决策：GET 也 toast，401 除外）：catch 分支去掉 method 判断；回归：qa_fetcher_neg 弹 `操作失败：Cannot GET ...`（§10.2） |
 | D-011 | **P1** | 流程监控页运行实例列表点"详情"整页报错（用户实测发现） | 契约漂移：后端 `GET /api/instances/:id` 返回扁平实例 DTO（nodeExecutions 数组），前端 shared 契约与 api 层类型谎报为 `ProcessInstanceReport {instance, nodes}`——InstanceDetail 读 `report.instance.state` 抛 TypeError，冒泡至根 ErrorBoundary | 监控页任一实例点详情 → 整页错误遮罩 | ✅修复（用户实测报告）：`processesApi.getInstance` 在 API 层单点适配（nodeExecutions 数组→nodes 对象，NodeExecStatus 枚举与契约值域一一对应仅字段改名）+ InstanceDetail nodes 空值防御；回归：监控页点详情弹窗完整渲染节点状态（§10.9）；复盘见 §11 |
+| D-012 | P3 | 效率分析平均耗时显示原始浮点（`46.333333333333336ms`） | `process-analytics/format.ts` `<1s` 分支未取整（avg 聚合值为浮点） | 监控页效率分析 Tab | ✅修复：`Math.round(ms)`；回归无浮点残留 |
+| D-013 | **P2** | 监控页人工任务列表与处理面板的 发起人/到达时间/截止 三列全 "—" | 后端 `listTasks` 返回原始 Prisma 行，缺 shared UserTask 契约字段 starter/arrivedAt/processName（include 未取 triggerContext） | 监控页人工任务 Tab 任意行 | ✅修复：listTasks 映射契约字段（starter=instance.triggerContext.triggeredByUser、arrivedAt=createdAt、processName；dueAt 后端未持久化诚实留空 —）；回归：发起人"管理员"/时间有值（§10.10） |
+| D-014 | **P1** | 通知模板新建 Drawer 填变量定义整页崩溃 `Cannot read properties of undefined (reading 'name')` | AntD Form.List 新增行瞬间数组含 undefined 槽位，`v.name` 无防御（预览 useMemo/插入变量下拉/保存过滤三处） | 新建模版→添加变量→交互即崩 | ✅修复：variables 入口统一 `filter(Boolean)`（三处）+保存过滤空槽；回归：双变量添加/预览替换/保存全通（§10.10） |
+| D-015 | **P2** | 通知节点"通知模版"下拉永远为空——"选择模版后自动填充标题/正文"从未可用 | `ProcessEditor` 只传 object/form/process 三组 options，`templateOptions` 从未接线（ConfigSidebar prop 默认 []） | 画布通知节点→通知模版下拉 | ✅修复：ProcessEditor 加 templates useQuery 并传 templateOptions；回归：下拉出现"QA通知模板"（§10.10） |
 | 观察① | P3 | join 右表裸键静默全 null 无纠错提示 | — | — | ⏸延后：建议在数据流预览/校验器对"无 r_ 前缀的右表字段"给出警告（归档建议） |
 | 观察② | P3 | 数据 Tab 记录表单对 user/attachment/lookup/sub_form 渲染纯文本框 | — | — | ⏸延后：建议数据 Tab 表单接入 amis 控件口径或复用表单生成器映射（归档建议） |
 | 观察③ | P3 | 长会话中搜索一次未生效（刷新后正常，未能复现） | — | — | ⏸延后：未能复现，观测 |
@@ -536,6 +540,30 @@ gateway 单测 766/766 ✓、studio 125/125 ✓、runtime-ui 20/20 ✓、全仓 
 
 ### 10.9 D-011 监控实例详情修复回归（用户实测报告，2026-10-06 晚）
 新建 API 身份启动 QA开放流实例 → 监控页实例列表出现行 → 点"详情" → **弹窗完整渲染**：流程 QA开放流/状态 已完成/触发者 系统/耗时 44ms/实例 ID + 节点执行状态（start_1 已执行、end_1 已执行），无页面崩溃（截图 qa_fix_monitor_instance_detail.png）。studio typecheck ✓。
+
+### 10.10 纪律红线补测轮（TC-134~148，用户指令"完成之前全量测试没有测试到的场景"）
+
+**纪律背景**：D-011 暴露"结构通过掩盖二级交互缺失"后，用户设立测试执行纪律红线（AGENTS.md 红线第 8 条），并要求补完全部未执行场景。自查产出 15 项清单（TC-134~148），逐项执行结果：
+
+| 编号 | 场景 | 结果 | 证据/备注 |
+|---|---|---|---|
+| TC-134 | 监控页·终止实例 | ✅通过 | 等待中实例终止→列表"已终止"（截图 qa_tc134_terminate_instance.png） |
+| TC-135 | 监控页·人工任务 Tab+任务处理面板 | ✅通过+**D-013** | 双 Tab（待审批 19/已审批）+处理面板（审批意见/驳回/转办/通过）全渲染；**发现三列全 "—"（D-013）**；面板"通过"动作链路 ✓（toast+实例完成） |
+| TC-136 | 监控页·效率分析 Tab | ✅通过+**D-012** | 6 统计卡+按流程拆分表完整；**发现平均耗时浮点（D-012）** |
+| TC-137 | 通知模板·新建 Drawer 全流程 | ✅通过+**D-014 修复** | 名称/渠道/标题/正文/双变量/实时预览（示例值替换 ✓）/保存+列表——首测崩溃（D-014），修复后全通（截图 qa_tc137_template_vars_preview.png） |
+| TC-138 | 通知节点·模板 templateId 联动 | ✅通过+**D-015 修复** | 首测下拉空（D-015 未接线），修复后草稿流通知节点下拉出现"QA通知模板"（截图 qa_tc138_template_linkage.png）；已发布只读禁用 ✓ |
+| TC-139 | 环境管理·环境变量+部署历史 | ✅通过 | 新建定义（Key/描述/G4 必填/G3 敏感）→设值 Password 框→"已配置（不可读）"；部署历史 v0.1.0-v0.4.0+回滚按钮（截图 qa_tc139_envvar_password.png） |
+| TC-140 | 组织架构·新建根节点 | ✅部分 | 根节点创建 ✓（QA补测部门/QA_DEPT）；子节点/成员入口 hover 未定位——记录覆盖缺口（非缺陷判定） |
+| TC-141 | 用户管理·新建用户全流程 | ✅通过 | 创建（姓名/邮箱/密码/角色）→**新账号 API 登录成功**→角色绑定（角色成员端点 201） |
+| TC-142 | 连接器·Webhook 类型 | ✅通过 | 创建（类型 Webhook/启用）→编辑内 **Webhook URL 展示+复制按钮+允许方法配置**；测试按钮禁用（入站合理）（截图 qa_tc142_webhook_url.png） |
+| TC-143 | 开放链·旧 major 兼容 | ✅通过 | release major2 → latest 启动 major=2 → **major/1 钉版启动仍 major=1**（版本承诺实证）→ 吊销清理 |
+| TC-144 | 发布向导·dev 环境路径 | ✅通过 | v0.5.0 仅开发发布 → **dev 指针=0.5.0、prod 指针仍 0.4.0**（"生产不受影响"实证） |
+| TC-145 | 分支 RAQB 面板画布内交互 | ❌不可达 | 三轮尝试（单击/双击分支行标签/TreeWalker 定位）均无法打开面板——入口未定位，标注覆盖缺口待人工确认 |
+| TC-146 | 记录导入文件上传 | ⛔不可测 | IAB 浏览器无 file chooser 能力（外部依赖） |
+| TC-147 | AI 链（MCP 草稿→人审） | ⛔不可测 | 本会话无 mcp__apaas 工具面（外部依赖） |
+| TC-148 | 审核中心 PENDING 深度（批次批准/漂移 409） | ⛔不可测 | 治理语义=仅 AI 提交需人审，人工提交即时基线；无 AI 通道无法造 PENDING（e2e 17 号既有覆盖） |
+
+**补测战果**：12 项执行（9 通过/1 部分/2 不可达归档），**新发现缺陷 4 个**（D-012 P3、D-013 P2、D-014 P1、D-015 P2）全部当场修复并回归——其中 D-014/D-015 均为"功能从未可用"级别（通知模板变量交互崩溃、模板联动从未接线），印证纪律红线的必要性：**结构走查给出的是"页面能打开"，不是"功能能用"**。
 
 ---
 

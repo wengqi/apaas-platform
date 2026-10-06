@@ -282,12 +282,13 @@ export default function StudioLayout() {
               background: 'transparent',
             }}
           />
-          {/* 自绘折叠控制（QA 2026-10-06：替换默认 48px 白条 trigger——胶囊按钮+文案+hover） */}
+          {/* 自绘折叠控制（QA 2026-10-06：替换默认 48px 白条 trigger——
+              胶囊按钮悬浮于底部偏上，与底边留空、带轻投影） */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'center',
-              padding: '10px 12px',
+              padding: '10px 12px 16px',
               borderTop: '1px solid #ebedf0',
             }}
           >
@@ -308,6 +309,7 @@ export default function StudioLayout() {
                 color: 'rgba(0,0,0,0.65)',
                 fontSize: 12,
                 cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                 transition: 'all 0.2s ease',
               }}
               onMouseEnter={(e) => {

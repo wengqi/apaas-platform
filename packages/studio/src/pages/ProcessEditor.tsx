@@ -27,23 +27,21 @@ import ProcessPreviewModal from './process-editor/ProcessPreviewModal.js';
 
 /**
  * 节点结构默认键归一（脏判定专用）：API 直建的 schema 无 meta/blocks 键，
- * 画布导出恒有 meta:{}/blocks:[]——语义等价，不构成"未保存"
- * （CI 实测 2026-10-06：全新库夹具打开即标脏的根因）。
+ * 画布导出恒有 meta:{}/blocks:[]——语义等价，不构成"未保存"。
+ * meta 是布局元数据（fixed-layout 自动计算坐标），内容差异永不构成脏——
+ * 整键剥离；blocks 缺省视为 []（CI 实测 2026-10-06：仅补"存在但为 null"的键
+ * 覆盖不了"键整个缺失"场景，必须无条件归一）。
  */
 function normalizeNodeShape(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeNodeShape);
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      if (k === 'meta' && (v === undefined || v === null)) {
-        out[k] = {};
-        continue;
-      }
-      if (k === 'blocks' && (v === undefined || v === null)) {
-        out[k] = [];
-        continue;
-      }
+      if (k === 'meta' || v === undefined) continue;
       out[k] = normalizeNodeShape(v);
+    }
+    if (typeof out['id'] === 'string' && typeof out['type'] === 'string' && !('blocks' in out)) {
+      out['blocks'] = [];
     }
     return out;
   }

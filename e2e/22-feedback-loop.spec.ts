@@ -143,6 +143,12 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
 
     // 审批流（幂等）：提交 → user_task（回写 approved/rejected）→ 条件分支
     // （驳回走 rejectToNodeId 回跳? 不——本流简化为驳回即结束+驳回通知节点）
+    // 动态解析租户管理员角色 ID（CI 全新种子库的角色 cuid 与本地不同——
+    // 硬编码会导致任务创建了但无人匹配，"任务永不出现"，CI 实测 2026-10-06）
+    const roles = await admin.get<Array<{ id: string; code: string }>>('/permissions/roles');
+    const tenantAdminRoleId = roles.find((r) => r.code === 'TENANT_ADMIN')!.id;
+    expect(tenantAdminRoleId).toBeTruthy();
+
     const flows = await admin.get<Array<{ id: string; apiName: string }>>(
       `/apps/${appId}/processes`,
     );
@@ -161,7 +167,7 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
               data: {
                 taskName: '反馈审批',
                 assigneeType: 'ROLE',
-                candidateGroups: ['cmurtqf5u0004wb3aui90lttt'],
+                candidateGroups: [tenantAdminRoleId],
                 approvalMode: 'SINGLE',
                 allowReject: true,
                 rejectToNodeId: 'notify_reject_1',

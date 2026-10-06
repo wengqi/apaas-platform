@@ -48,7 +48,8 @@ export default function InstanceDetail({
       )}
       <Title level={5}>节点执行状态</Title>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {Object.entries(nodes).map(([nodeId, exec]) => {
+        {/* nodes 空值防御：形状漂移时降级为空列表而非整页崩溃 */}
+        {Object.entries(nodes ?? {}).map(([nodeId, exec]) => {
           const meta = getNodeStateMeta(exec.state);
           return (
             <div

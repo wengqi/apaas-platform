@@ -325,11 +325,45 @@ export const processesApi = {
       })
       .then((res) => res.data.data as ProcessInstance[]),
 
-  /** 实例详情(含节点执行状态) */
+  /** 实例详情(含节点执行状态)。
+   *
+   * QA 2026-10-06 修复（监控页点"详情"整页报错）：后端 GET /api/instances/:id
+   * 返回扁平实例 DTO（nodeExecutions 数组），并非 shared 契约的
+   * ProcessInstanceReport { instance, nodes }——此前直接透传导致
+   * InstanceDetail 读取 report.instance.state 抛 TypeError、整页崩溃。
+   * 本处在 API 层单点适配为契约形状；NodeExecStatus 枚举与
+   * NodeExecutionStatus.state 值域一一对应，仅需字段改名。 */
   getInstance: (instanceId: string) =>
     client
-      .get<ApiResponse<ProcessInstanceReport>>(`/api/instances/${instanceId}`)
-      .then((res) => res.data.data as ProcessInstanceReport),
+      .get<
+        ApiResponse<
+          ProcessInstance & {
+            nodeExecutions?: Array<{
+              nodeId: string;
+              status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING' | 'SKIPPED';
+              startedAt: string | null;
+              finishedAt: string | null;
+              error: string | null;
+            }>;
+          }
+        >
+      >(`/api/instances/${instanceId}`)
+      .then((res) => {
+        const dto = res.data.data!;
+        const nodes = Object.fromEntries(
+          (dto.nodeExecutions ?? []).map((n) => [
+            n.nodeId,
+            {
+              nodeId: n.nodeId,
+              state: n.status,
+              startTime: n.startedAt ?? undefined,
+              endTime: n.finishedAt ?? undefined,
+              error: n.error ?? undefined,
+            },
+          ]),
+        );
+        return { instance: dto, nodes } as ProcessInstanceReport;
+      }),
 
   /** 流程轨迹（节点状态 + 连线） */
   getTrace: (instanceId: string) =>

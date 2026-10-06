@@ -163,6 +163,7 @@ qa 应用实测：草稿（对象/页面/流程）→ 发布 prod → runtime �
 | D-008 | P3 | ~~排序仅两态无取消态~~ | — | — | ❌撤销：代码注释与 handler 均三态（RecordList.tsx:200），GUI 可区分数据复验三击完整循环（默认→升→降→取消）；此前误判源于批量数据 created-desc 恰等于 quantity-desc |
 | D-009 | P3 | user_task 审批人类型切换残留旧值（USER+candidateGroups 并存） | 流程编辑器类型切换未清理 | ROLE 选角色→切 USER→API 看 schema | ✅修复：assigneeType 变更即清理全部审批人字段（assignee 语义随类型而变）；await 回归（§10.7） |
 | D-010 | P3 | fetcher 失败 toast 仅覆盖写操作：GET 取数失败完全静默 | `AmisRenderer.tsx:144/157`（注释明示"GET 保持静默"） | runtime 打开含坏 API service 页面→无提示 | ✅修复（用户决策：GET 也 toast，401 除外）：catch 分支去掉 method 判断；回归：qa_fetcher_neg 弹 `操作失败：Cannot GET ...`（§10.2） |
+| D-011 | **P1** | 流程监控页运行实例列表点"详情"整页报错（用户实测发现） | 契约漂移：后端 `GET /api/instances/:id` 返回扁平实例 DTO（nodeExecutions 数组），前端 shared 契约与 api 层类型谎报为 `ProcessInstanceReport {instance, nodes}`——InstanceDetail 读 `report.instance.state` 抛 TypeError，冒泡至根 ErrorBoundary | 监控页任一实例点详情 → 整页错误遮罩 | ✅修复（用户实测报告）：`processesApi.getInstance` 在 API 层单点适配（nodeExecutions 数组→nodes 对象，NodeExecStatus 枚举与契约值域一一对应仅字段改名）+ InstanceDetail nodes 空值防御；回归：监控页点详情弹窗完整渲染节点状态（§10.9）；复盘见 §11 |
 | 观察① | P3 | join 右表裸键静默全 null 无纠错提示 | — | — | ⏸延后：建议在数据流预览/校验器对"无 r_ 前缀的右表字段"给出警告（归档建议） |
 | 观察② | P3 | 数据 Tab 记录表单对 user/attachment/lookup/sub_form 渲染纯文本框 | — | — | ⏸延后：建议数据 Tab 表单接入 amis 控件口径或复用表单生成器映射（归档建议） |
 | 观察③ | P3 | 长会话中搜索一次未生效（刷新后正常，未能复现） | — | — | ⏸延后：未能复现，观测 |
@@ -532,4 +533,25 @@ UserTaskConfigForm assigneeType onChange 现统一清理 assignee/assigneeName/a
 
 ### 10.8 全量测试基线
 gateway 单测 766/766 ✓、studio 125/125 ✓、runtime-ui 20/20 ✓、全仓 typecheck 11/11 ✓。e2e smoke 修复轮首轮 9 过/5 败——**429 限流第三次实证**（手工 QA 会话与 e2e 并发互踩；error-context 原文 `ThrottlerException`）；静置后隔离重跑 **6/6 全过**（含驳回腿/无驳回边/撤回/未保存标注锚点），非产品回归。修复轮手工回归：§10.1–10.6 六处全过，10.7 代码评审级论证、标注 GUI 往返未单独复测。
+
+### 10.9 D-011 监控实例详情修复回归（用户实测报告，2026-10-06 晚）
+新建 API 身份启动 QA开放流实例 → 监控页实例列表出现行 → 点"详情" → **弹窗完整渲染**：流程 QA开放流/状态 已完成/触发者 系统/耗时 44ms/实例 ID + 节点执行状态（start_1 已执行、end_1 已执行），无页面崩溃（截图 qa_fix_monitor_instance_detail.png）。studio typecheck ✓。
+
+---
+
+## 十一、复盘：D-011 为何在全量测试中遗漏
+
+**事实**：QA 活文档底册 B 明确列有"监控 3 Tab：运行实例/待办任务/效率分析 + **实例详情** + 终止实例"——测试点在计划内，执行时缺失。
+
+**三层原因**：
+
+1. **执行层（直接原因）**：全量测试对监控页只做到了"入口可达"（矩阵 2 验证了流程卡片监控按钮能打开页面），"实例详情/终止实例"这两个弹窗级交互从未点击。当时监控页实例列表恰为空（本会话造的实例在其它流程），"空列表"让该交互自然跳过——**没有主动构造数据把二级交互走通**，违反了执行纪律第 4 条"有始有终"的精神（有始无终：进了监控页没验证到详情）。
+2. **计划层（结构性原因）**：底册 B 的 14 个模块在单会话内逐格实测不现实，部分模块降级为"结构走查"并标"结构通过"——但 TC-116 等条目把"监控页"并入环境管理一行粗粒度标记，**实例详情这个二级交互没有被拆成独立用例行**，缺失在执行时不可见。矩阵与用例清单的粒度在"弹窗级交互"上不够细。
+3. **防御层（本可拦截）**：该 bug 属于**前后端契约漂移**（shared `ProcessInstanceReport {instance, nodes}` vs 后端扁平 DTO），api 层 `getInstance` 类型标注直接谎报契约——`as ProcessInstanceReport` 断言让 TypeScript 全程沉默。若有**契约一致性测试**（后端响应形状 vs shared 类型）或对该弹窗的组件级单测，漂移会在 CI 拦截。这与 R3 轮"apiName/float8 单测与实现同错全绿"同属"契约无第三方验证"的同类风险。
+
+**改进落地**：
+- 修复：API 层单点适配（本提交），InstanceDetail 加 nodes 空值防御；
+- 活文档 v1.0.2 追加"监控页二级交互必须显式点击验证"教训锚点（防再犯）；
+- 覆盖口径修正：后续 QA 报告中"结构通过"必须列出**未执行的二级交互清单**，不得隐没在模块级结论里；
+- 待办：契约一致性测试（后端响应 vs shared 类型）列为技术债，建议随 gateway 单测补齐。
 

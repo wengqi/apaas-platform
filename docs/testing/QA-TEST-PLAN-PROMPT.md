@@ -35,7 +35,7 @@
 ## 一、被测环境事实（以此为准，勿凭记忆假设）
 
 - **入口**：搭建器 Studio `http://localhost:5173`；运行时 Runtime-UI `http://localhost:5174`；API 网关 `http://localhost:3000`（Swagger `/api/docs`）。
-- **账号**（租户 slug=`demo`，登录需带；密码 admin123/builder123/user123）：`admin@apaas.dev` 租户管理员（全管理面）/ `builder@apaas.dev` 搭建者 / `user@apaas.dev` 终端用户；`superadmin@apaas.dev` 平台超管（登录留空租户）。
+- **账号**（租户 slug=`demo`，登录需带；密码 admin123/builder123/user123）：`admin@apaas.dev` 租户管理员（全管理面）/ `builder@apaas.dev` 搭建者 / `user@apaas.dev` 终端用户；`superadmin@apaas.dev` 平台超管（密码 `superadmin123`，登录留空租户）。
 - **种子应用（回归基线，禁删改）**：资产管理 `asset_management`、采购合同管理 `procurement`（含金额分支→会签→依次审批流）。新建测试资源一律 `qa_` 前缀。
 - **关键机制**：auth 限流 10/min（优先 API 登录复用 token，勿反复 UI 登录）；页面发布走应用级发布向导（页面搭建器无发布按钮）；未发布改草稿不影响已部署环境（bundle 唯一/活表二分）；无驳回边的审批节点运行时必须无驳回入口。
 
@@ -69,7 +69,7 @@
 ## 四、阶段 2：组件级全覆盖矩阵（本计划核心，逐格给结论）
 
 **矩阵 1 · 页面搭建器：amis 组件 × 属性**
-画布物料面板为 amis-editor 6.13 默认全量（未裁剪）；保存时服务端 G3 白名单约 166 型（容器 23/表单 78/展示 65）拦截，黑名单 `static-file`、`input-cascader`，另有 19 条别名纠正建议。测试法：
+画布物料面板为 amis-editor 6.13 默认全量（未裁剪）；保存时服务端 G3 白名单 162 型（容器 23/表单 77/展示 64，`group` 跨类去重后唯一数 162）拦截，黑名单 `static-file`、`input-cascader`，另有 21 条别名纠正建议。测试法：
 1) 遍历物料面板每个分组每个组件拖入画布，每组件一行；矩阵列=「画布渲染 / 属性枚举数 / 保存 G3 结论 / 重进持久化 / runtime(5174) 渲染」五列结论。
 2) **属性逐项**：每个组件打开右侧属性面板，按 常规/外观/事件/其他 四个 Tab 枚举每一个可见配置项（记录项名），逐项设非默认值→验证画布即时反映→保存→重进画布确认持久化→runtime 预览确认渲染一致。数据类属性（api/source/字段绑定）额外验证取数正确。
 3) 深测组件：crud（分页/筛选/批量/新增/编辑/删除 API 契约）、form（校验/提交/resetAfterSubmit/成功失败提示）、chart 柱·折线·饼（取数非"未知"）、input-file、nested-select、grid/flex 布局、button 与动作组、static 族、mapping 标签渲染。
@@ -144,3 +144,4 @@
 | 日期 | 版本 | 变更 | 来源 |
 |---|---|---|---|
 | 2026-10-06 | v1.0 | 建立标准：十四域提示词升级为组件级全覆盖版（三大覆盖矩阵+四底册+八条 E2E 链+回归锚点），清单基线当日代码核实 | 用户要求全功能覆盖到组件×属性粒度 |
+| 2026-10-06 | v1.0.1 | 事实修正（全量 QA 实测发现）：G3 白名单 166→162（容器 23/表单 77/展示 64，group 去重）；别名建议 19→21 条；补记 superadmin 密码 superadmin123。测试结果见 docs/testing/QA-FULL-REPORT-2026-10-06.md | QA 全量执行（组件级全覆盖） |

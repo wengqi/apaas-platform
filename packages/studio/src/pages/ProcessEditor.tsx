@@ -124,7 +124,7 @@ export default function ProcessEditor() {
    *  QA D-015 修复（2026-10-06）：此前 templateOptions 从未接线，
    *  通知节点"选择模版后自动填充标题/正文"下拉永远为空。 */
   const { data: notificationTemplates } = useQuery({
-    queryKey: ['notification-templates', appId],
+    queryKey: qk.notificationTemplates(appId!),
     queryFn: () => processesApi.listTemplates(appId as string),
     enabled: !!appId,
   });

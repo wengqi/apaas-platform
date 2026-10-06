@@ -61,6 +61,10 @@ export const qk = {
   apiReleases: (appId: string, processDefId: string) =>
     ['api-releases', appId, processDefId] as const,
 
+  // —— 通知模版（流程编辑器通知节点下拉 + 模版管理页）——
+  /** 应用内通知模版列表（QA D-015 接线时入册） */
+  notificationTemplates: (appId: string) => ['notification-templates', appId] as const,
+
   // —— 对象级 ——
   /** 对象详情（含字段定义） */
   object: (objectId: string) => ['object', objectId] as const,

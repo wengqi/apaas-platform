@@ -579,6 +579,9 @@ export class ProcessService {
     // 映射为 shared UserTask 契约（QA D-013 修复：此前返回原始 Prisma 行，
     // 缺 starter/arrivedAt/processName——监控页任务列表与处理面板三列全 "—"）。
     // dueAt：截止时间配置（UserTaskConfig.dueDate）尚未持久化到任务行，诚实留空。
+    // 注：`...t` 会携带 instance.triggerContext 全量（含 record 快照）——
+    // 可见者已被 where 限定为 发起人/参与人/管理员，任务面板本就展示申请内容，
+    // 暴露面与既有任务详情（getTask）一致（OCR 评审 M1 已评估）。
     const items = rawItems.map((t) => ({
       ...t,
       processName: t.instance?.processDef?.name ?? undefined,

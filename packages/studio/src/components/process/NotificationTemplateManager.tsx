@@ -30,6 +30,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, MoreOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
+import { qk } from '@apaas/shared/stores';
 import dayjs from 'dayjs';
 import {
   processesApi,
@@ -54,7 +55,7 @@ export default function NotificationTemplateManager() {
 
   /** 模版列表。 */
   const { data: templates, isLoading } = useQuery({
-    queryKey: ['notification-templates', appId],
+    queryKey: qk.notificationTemplates(appId!),
     queryFn: () => processesApi.listTemplates(appId as string),
     enabled: !!appId,
   });
@@ -65,7 +66,7 @@ export default function NotificationTemplateManager() {
       processesApi.createTemplate(appId as string, data),
     onSuccess: () => {
       message.success('模版已创建');
-      void queryClient.invalidateQueries({ queryKey: ['notification-templates', appId] });
+      void queryClient.invalidateQueries({ queryKey: qk.notificationTemplates(appId!) });
       setDrawerOpen(false);
     },
     onError: (err) => message.error(apiErrorMessage(err, '创建失败')),
@@ -77,7 +78,7 @@ export default function NotificationTemplateManager() {
       processesApi.updateTemplate(params.id, params.data),
     onSuccess: () => {
       message.success('模版已保存');
-      void queryClient.invalidateQueries({ queryKey: ['notification-templates', appId] });
+      void queryClient.invalidateQueries({ queryKey: qk.notificationTemplates(appId!) });
       setDrawerOpen(false);
     },
     onError: (err) => message.error(apiErrorMessage(err, '保存失败')),
@@ -88,7 +89,7 @@ export default function NotificationTemplateManager() {
     mutationFn: (id: string) => processesApi.deleteTemplate(id),
     onSuccess: () => {
       message.success('模版已删除');
-      void queryClient.invalidateQueries({ queryKey: ['notification-templates', appId] });
+      void queryClient.invalidateQueries({ queryKey: qk.notificationTemplates(appId!) });
     },
     onError: (err) => message.error(apiErrorMessage(err, '删除失败')),
   });

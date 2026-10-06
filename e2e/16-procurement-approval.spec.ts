@@ -210,6 +210,56 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     expect(status).toBe('COMPLETED');
   });
 
+  test('会签驳回聚合：任一拒绝立即取消兄弟任务（影响矩阵缺口③ 2026-10-06）', async () => {
+    // 大额合同 → 会签（admin + builder 并行）→ builder 拒绝
+    const { instanceId } = await createContractAndWaitTrigger(
+      `E2E 会签驳回 ${Date.now()}`,
+      1_280_000,
+    );
+    const signTasks = await waitForTasks(instanceId, 2);
+    expect(signTasks.length).toBe(2);
+
+    // builder 视角拒绝自己的那份
+    const builderRaw = await builder.get<Array<{ id: string; instanceId: string }>>(
+      '/tasks?status=pending&page=1&pageSize=50',
+    );
+    const builderTask = builderRaw.filter((t) => t.instanceId === instanceId);
+    expect(builderTask.length).toBe(1);
+    await builder.post(`/tasks/${builderTask[0]!.id}/complete`, {
+      decision: 'reject',
+      comment: '会签驳回聚合断言',
+    });
+
+    // 断言 1（聚合核心）：其余 PENDING 兄弟任务被立即取消
+    // （ completed 列表映射含 CANCELLED；admin 那份应从 pending 消失且状态为 CANCELLED）
+    const deadline = Date.now() + 10_000;
+    let adminCancelled = false;
+    while (Date.now() < deadline && !adminCancelled) {
+      const done = await admin.get<Array<{ id: string; status: string }>>(
+        '/tasks?status=completed&page=1&pageSize=100',
+      );
+      const adminSibling = done.filter(
+        (t) => t.instanceId === instanceId && signTasks.some((st) => st.id === t.id),
+      );
+      adminCancelled =
+        adminSibling.length > 0 && adminSibling.every((t) => t.status === 'CANCELLED');
+      if (!adminCancelled) await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(adminCancelled, '会签任一拒绝后兄弟任务应被取消').toBe(true);
+
+    // 断言 2（记录现状——语义待产品裁决，2026-10-06 取证）：
+    // 种子会签节点 rejectToNodeId 为空 → 引擎按常规下游推进，
+    // 驳回后依次终审任务仍生成、实例回到 WAITING_USER_TASK。
+    // 若产品裁决"驳回应终止/回跳"，需同步修改引擎与本断言。
+    const finalTasks = await waitForTasks(instanceId, 1, 20_000);
+    expect(
+      finalTasks.some((t) => t.status === 'PENDING'),
+      '会签驳回后（无驳回边）下游终审任务按现状继续生成',
+    ).toBe(true);
+    const inst = await admin.get<{ status: string }>(`/instances/${instanceId}`);
+    expect(inst.status).toBe('WAITING_USER_TASK');
+  });
+
   test('撤回：发起人可撤回审批中实例，非发起人被拒', async () => {
     const { instanceId } = await createContractAndWaitTrigger(`E2E 撤回合同 ${Date.now()}`, 89_000);
     await waitForTasks(instanceId, 1);

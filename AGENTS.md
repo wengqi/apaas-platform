@@ -108,7 +108,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - **推送前 QA 走查（工作约定，2026-10-06）**：功能分支推送前除 OCR 代码评审外，另执行一轮
   GUI 黑盒走查（web-gui-tester 方法论）：按 {草稿,已发布}×{画布创建,API创建} 矩阵覆盖受影响
   界面，验证截图后做全帧异常扫描（列出所有状态标签自问是否矛盾），产出走查报告（通过点/
-  问题点/证据截图，gui-test-screenshots/ 留档）。与开发验证互补，减少对用户人工 QA 的依赖
+  问题点/证据截图，gui-test-screenshots/ 留档）。与开发验证互补，减少对用户人工 QA 的依赖；
+  推送前另跑 `pnpm test:e2e:smoke`（核心旅程冒烟，~16s，见 docs/knowledge-base/TEST-JOURNEY-MAP.md）
 - pre-push 钩子：`pnpm typecheck` + `pnpm test` 全量检查（紧急情况可 `git push --no-verify` 跳过）
 
 ### 测试规范

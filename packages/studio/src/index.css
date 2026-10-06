@@ -24,10 +24,9 @@ body {
   height: 100%;
 }
 
-/* 搭建器右侧属性面板宽度收窄（QA 2026-10-06：280px→240px→210px，
-   为画布让出更多空间；宽度仍可拖拽）。
-   amis 同时设 width 17.5rem 与 min-width 280px（后者是实测拦截点），需一并覆盖 */
-.ae-Editor .editor-right-panel {
-  width: 210px !important;
-  min-width: 210px !important;
+/* 应用侧栏（StudioLayout）：sider-children 转 flex 列布局——
+   使菜单 flex:1 拉伸、折叠按钮贴底，消除底部空隙（QA 2026-10-06） */
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
 }

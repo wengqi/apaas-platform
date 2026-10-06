@@ -256,7 +256,7 @@ export default function StudioLayout() {
           collapsible
           collapsed={collapsed}
           onCollapse={setCollapsed}
-          width={170}
+          width={150}
           theme="light"
           trigger={null}
           style={{
@@ -283,12 +283,12 @@ export default function StudioLayout() {
             }}
           />
           {/* 自绘折叠控制（QA 2026-10-06：替换默认 48px 白条 trigger——
-              胶囊按钮悬浮于底部偏上，与底边留空、带轻投影） */}
+              贴靠页面底部固定（菜单滚动时按钮始终在底部可见），轻投影保持悬浮感） */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'center',
-              padding: '10px 12px 16px',
+              padding: '10px 12px 8px',
               borderTop: '1px solid #ebedf0',
             }}
           >

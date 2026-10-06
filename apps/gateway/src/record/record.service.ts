@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -33,13 +34,17 @@ import { writeAudit } from '../common/audit.js';
 
 /**
  * 存储在 ObjectMeta.fields JSON 数组中的字段定义（与 object.service.ts 的 StoredField 一致）。
- * 此处仅声明计算所需的最小结构。
+ * 此处仅声明计算所需的最小结构（required/unique/label/isSystem 供 D-002 约束校验消费）。
  */
 interface ObjectField {
   id: string;
   apiName: string;
   type: string;
   config: unknown;
+  label?: string;
+  required?: boolean;
+  unique?: boolean;
+  isSystem?: boolean;
 }
 
 /** 查询记录参数。 */
@@ -478,6 +483,15 @@ export class RecordService {
     // 复制过滤后的 data，避免修改调用方传入的对象
     const computedData: Record<string, unknown> = { ...filteredData };
 
+    // 0. 服务端字段约束校验（QA D-002：required/maxLength/unique）
+    await this.validateFieldConstraints({
+      tenantId,
+      appId: obj.appId,
+      objectId,
+      fields,
+      data: filteredData,
+    });
+
     // 1. 生成 AutoNumber 字段编号
     for (const field of fields) {
       if (field.type !== FieldType.AutoNumber) continue;
@@ -620,6 +634,18 @@ export class RecordService {
       ...(existing.data as Record<string, unknown>),
       ...incoming,
     };
+
+    // 1.5 服务端字段约束校验（QA D-002）：required 只拦"本次把必填字段清空"，
+    // 存量历史缺值不阻塞无关更新；maxLength/unique 对合并后完整数据生效
+    await this.validateFieldConstraints({
+      tenantId,
+      appId: existing.appId,
+      objectId: existing.objectId,
+      fields,
+      data: mergedData,
+      incomingKeys: new Set(Object.keys(incoming)),
+      excludeRecordId: recordId,
+    });
 
     // 2. 重新计算 Formula 字段
     const formulaResults = this.formulaEngine.computeRecordFields(
@@ -898,6 +924,73 @@ export class RecordService {
   private parseFields(raw: unknown): ObjectField[] {
     if (!Array.isArray(raw)) return [];
     return raw as ObjectField[];
+  }
+
+  /**
+   * 服务端字段约束校验（QA D-002 修复，2026-10-06）：
+   * required / maxLength / unique 在写内核强制——此前仅客户端拦截，
+   * API 直连、AI 生成页面、流程对象操作节点可绕过写入脏数据。
+   *
+   * 语义：
+   * - required：create 对全部必填字段生效；update 仅拦"把必填字段清空"
+   *   （存量历史数据缺值不阻塞无关的部分更新）。
+   * - maxLength：text/long_text/rich_text 的 config.maxLength。
+   * - unique：同对象同字段等值已存在其他记录 → 409。JSONB 等值走
+   *   path+equals（GIN 可达）；应用层 check-then-write 存在并发窗口，
+   *   宽表架构无 DB 约束可用，容忍 best-effort。
+   * - 系统字段与 AutoNumber/Formula/Rollup 系统计算字段不适用。
+   */
+  private async validateFieldConstraints(input: {
+    tenantId: string;
+    appId: string;
+    objectId: string;
+    fields: ObjectField[];
+    /** 校验数据（create=完整提交数据；update=合并后的完整数据） */
+    data: Record<string, unknown>;
+    /** update 场景：本次显式写入的键（required 只拦这些键被清空） */
+    incomingKeys?: ReadonlySet<string>;
+    /** update 场景：排除自身记录 */
+    excludeRecordId?: string;
+  }): Promise<void> {
+    const { tenantId, appId, objectId, fields, data } = input;
+    const computedTypes = new Set<string>([
+      FieldType.AutoNumber,
+      FieldType.Formula,
+      FieldType.Rollup,
+    ]);
+    for (const field of fields) {
+      if (field.isSystem || computedTypes.has(field.type)) continue;
+      const label = field.label ?? field.apiName;
+      const value = data[field.apiName];
+      const isEmpty = value === undefined || value === null || value === '';
+
+      if (field.required && isEmpty) {
+        if (!input.incomingKeys || input.incomingKeys.has(field.apiName)) {
+          throw new BadRequestException(`字段「${label}」为必填项`);
+        }
+      }
+      const config = field.config as { maxLength?: number } | undefined;
+      if (typeof value === 'string' && config?.maxLength && value.length > config.maxLength) {
+        throw new BadRequestException(
+          `字段「${label}」长度 ${value.length} 超出最大长度 ${config.maxLength}`,
+        );
+      }
+      if (field.unique && !isEmpty) {
+        const dup = await prisma.record.findFirst({
+          where: {
+            tenantId,
+            appId,
+            objectId,
+            ...(input.excludeRecordId ? { id: { not: input.excludeRecordId } } : {}),
+            data: { path: [field.apiName], equals: value } as Prisma.JsonFilter,
+          },
+          select: { id: true },
+        });
+        if (dup) {
+          throw new ConflictException(`字段「${label}」的值「${String(value)}」已存在（唯一约束）`);
+        }
+      }
+    }
   }
 
   /**

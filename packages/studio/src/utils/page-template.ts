@@ -124,7 +124,7 @@ export function buildPageTemplate(
   type: PageType | undefined,
   obj: { id: string; apiName: string; label?: string; fields: TemplateField[] },
   name: string,
-  options?: { excludeFields?: ReadonlyArray<string> },
+  options?: { excludeFields?: ReadonlyArray<string>; includeFields?: ReadonlyArray<string> },
 ): Record<string, unknown> {
   const emptyPage = { type: 'page', title: name, body: [] };
   if (!supportsTemplate(type) || !obj?.fields) return emptyPage;
@@ -172,7 +172,10 @@ export function buildPageTemplate(
           method: 'get',
         },
         perPage: 20,
-        columns: fields.slice(0, 6).map((f) => {
+        // 列策略（QA D-004 修复）：默认取前 5 列；流程回写引用的字段（审批状态）
+        // 必入列并追加在末位——此前硬编码 slice(0,6) 会把靠后的状态列裁掉，
+        // 申请人台账看不到审批进度。必含列以 mapping 中文标签渲染（下方统一处理）。
+        columns: ledgerColumns(fields, options?.includeFields).map((f) => {
           const col: Record<string, unknown> = {
             name: f.apiName,
             label: f.label,
@@ -192,4 +195,25 @@ export function buildPageTemplate(
       },
     ],
   };
+}
+
+/** 台账默认列数上限（不含必含的回写状态列）。 */
+const LEDGER_DEFAULT_COLUMNS = 5;
+
+/** 台账列选取：前 N 列 + 必含列（如回写状态字段）去重追加于末位。 */
+function ledgerColumns(
+  allFields: TemplateField[],
+  includeFields?: ReadonlyArray<string>,
+): TemplateField[] {
+  const picked = allFields.slice(0, LEDGER_DEFAULT_COLUMNS);
+  if (!includeFields?.length) return picked;
+  const pickedNames = new Set(picked.map((f) => f.apiName));
+  for (const name of includeFields) {
+    const f = allFields.find((x) => x.apiName === name);
+    if (f && !pickedNames.has(name)) {
+      picked.push(f);
+      pickedNames.add(name);
+    }
+  }
+  return picked;
 }

@@ -141,7 +141,7 @@ function createDefaultFetcher(): FetcherLike {
       );
       // 写操作成功提示（H1b 兜底）：amis 裸 render() 的 notify 链路未接 UI
       // （实测 form 提交成功无任何 toast）——在 fetcher 层对 POST/PUT/DELETE
-      // 成功直接弹 AntD message,不依赖 env.notify;查询 GET 保持静默。
+      // 成功直接弹 AntD message,不依赖 env.notify。
       if (result.ok) {
         const apiMsgs = api['messages'] as { success?: string } | undefined;
         message.success(apiMsgs?.success ?? '操作成功');
@@ -149,10 +149,11 @@ function createDefaultFetcher(): FetcherLike {
       return result;
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
-      // H1b 对称修复（#20）：HTTP 异常（404/500 等）同样静默——写操作失败
-      // 也必须弹 toast（amis 裸 render() 无 notify 链路），否则用户点了没反应
+      // H1b 对称修复（#20）：HTTP 异常（404/500 等）不能静默——amis 裸 render()
+      // 无 notify 链路，失败必须弹 toast，否则页面空数据用户无从得知
+      // （QA D-010：GET 取数失败此前静默；401 交给登录态处理避免未登录刷屏）
       const msg = e.response?.data?.error?.message ?? (err as Error).message;
-      if (method !== 'get') {
+      if (e.response?.status !== 401) {
         message.error(msg ? `操作失败：${msg}` : '操作失败');
       }
       return {

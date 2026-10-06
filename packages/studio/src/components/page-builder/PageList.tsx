@@ -66,8 +66,10 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
       let obj: Awaited<ReturnType<typeof objectsApi.get>> | null = null;
       // 双视角评审（2026-10-04）：提交表单不得包含流程回写字段（如审批状态），
       // 否则申请人可自选"已批准"直接提交。生成前从应用全部流程 schema 提取回写字段。
+      // （QA D-004）列表页/成对台账反向消费同一集合：回写状态列必入台账列，
+      // 否则申请人看不到审批进度——收集范围因此扩展到 list_page。
       let excludeFields: string[] = [];
-      if (data.type === 'form_page' && data.objectId && appId) {
+      if (data.objectId && appId && supportsTemplate(data.type)) {
         try {
           const processes = await processesApi.list(appId);
           const schemas = await Promise.all(
@@ -85,7 +87,11 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
       }
       if (data.objectId && supportsTemplate(data.type)) {
         obj = await objectsApi.get(data.objectId);
-        schema = buildPageTemplate(data.type, obj, data.name, { excludeFields });
+        schema = buildPageTemplate(data.type, obj, data.name, {
+          excludeFields,
+          // 列表页必含回写状态列（表单页的 includeFields 不生效，由其分支忽略）
+          includeFields: data.type === 'list_page' ? excludeFields : undefined,
+        });
         if (excludeFields.length > 0 && data.type === 'form_page') {
           const labelOf = (apiName: string) =>
             obj?.fields?.find((f) => f.apiName === apiName)?.label ?? apiName;
@@ -109,7 +115,9 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
             apiName: `${data.slug}_ledger`,
             type: 'list_page',
             objectId: data.objectId,
-            schema: buildPageTemplate('list_page', obj, ledgerName) as never,
+            schema: buildPageTemplate('list_page', obj, ledgerName, {
+              includeFields: excludeFields,
+            }) as never,
           });
           message.success(`已同步生成台账页「${ledgerName}」`);
         } catch {

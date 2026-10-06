@@ -89,7 +89,7 @@ describe('buildPageTemplate — form_page', () => {
 });
 
 describe('buildPageTemplate — list_page', () => {
-  it('crud 列取业务字段前 6 个，带平台取数路径', () => {
+  it('crud 列取业务字段前 5 个，带平台取数路径', () => {
     const schema = buildPageTemplate('list_page', OBJ, '会议室列表');
     const crud = (schema['body'] as Array<Record<string, unknown>>)[0]!;
     expect(crud['type']).toBe('crud');
@@ -100,6 +100,40 @@ describe('buildPageTemplate — list_page', () => {
     const columns = crud['columns'] as Array<Record<string, unknown>>;
     expect(columns).toHaveLength(3);
     expect(columns[0]).toMatchObject({ name: 'room_name', label: '会议室名称', sortable: true });
+  });
+
+  it('includeFields：回写状态列被裁后必入列并追加末位（QA D-004）', () => {
+    const fields = [
+      ...Array.from({ length: 7 }, (_, i) => ({
+        apiName: `f${i + 1}`,
+        label: `字段${i + 1}`,
+        type: 'text',
+      })),
+      {
+        apiName: 'status',
+        label: '状态',
+        type: 'single_select',
+        config: { options: [{ id: 'o1', label: '已批准' }] },
+      },
+    ];
+    const wide = { ...OBJ, fields: fields as never };
+
+    // 默认：前 5 列，status（第 8 字段）被裁
+    const plain = buildPageTemplate('list_page', wide, '台账');
+    const plainCols = (plain['body'] as Array<Record<string, unknown>>)[0]!['columns'] as Array<
+      Record<string, unknown>
+    >;
+    expect(plainCols.map((c) => c['name'])).toEqual(['f1', 'f2', 'f3', 'f4', 'f5']);
+
+    // includeFields：status 必入列且追加末位，带 mapping 中文标签
+    const withInclude = buildPageTemplate('list_page', wide, '台账', {
+      includeFields: ['status'],
+    });
+    const cols = (withInclude['body'] as Array<Record<string, unknown>>)[0]!['columns'] as Array<
+      Record<string, unknown>
+    >;
+    expect(cols.map((c) => c['name'])).toEqual(['f1', 'f2', 'f3', 'f4', 'f5', 'status']);
+    expect(cols[5]).toMatchObject({ type: 'mapping', map: { 已批准: { label: '已批准' } } });
   });
 });
 

@@ -406,6 +406,120 @@ describe('RecordService', () => {
       const createCall = prisma.record.create.mock.calls[0]![0];
       expect(createCall.data.data).toEqual({ name: 'Test', salary: 999 });
     });
+
+    // ======================================================================
+    // 服务端字段约束校验（QA D-002 修复，2026-10-06）
+    // ======================================================================
+    it('required 字段缺失 → BadRequestException', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'name',
+              label: '名称',
+              type: FieldType.Text,
+              required: true,
+              config: {},
+            },
+          ],
+        }),
+      );
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { name: '' }),
+      ).rejects.toThrow('字段「名称」为必填项');
+    });
+
+    it('maxLength 超长 → BadRequestException', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'name',
+              label: '名称',
+              type: FieldType.Text,
+              config: { type: 'text', maxLength: 5 },
+            },
+          ],
+        }),
+      );
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { name: '123456' }),
+      ).rejects.toThrow('超出最大长度 5');
+    });
+
+    it('unique 字段重名 → ConflictException（含 @> 等值查询）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'name',
+              label: '名称',
+              type: FieldType.Text,
+              unique: true,
+              config: {},
+            },
+          ],
+        }),
+      );
+      prisma.record.findFirst.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { name: '重复名' }),
+      ).rejects.toThrow('已存在（唯一约束）');
+      const where = prisma.record.findFirst.mock.calls[0]![0].where;
+      expect(where.data).toEqual({ path: ['name'], equals: '重复名' });
+    });
+
+    it('unique 校验通过（无重名）→ 正常创建', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [{ id: 'f1', apiName: 'name', type: FieldType.Text, unique: true, config: {} }],
+        }),
+      );
+      prisma.record.findFirst.mockResolvedValue(null);
+      prisma.record.create.mockResolvedValue(makeRecord({ data: { name: '唯一名' } }));
+      const { service } = createService();
+
+      const result = await service.create('tenant-001', 'obj-001', 'user-001', { name: '唯一名' });
+      expect(result.data.name).toBe('唯一名');
+    });
+
+    it('AutoNumber/Formula/Rollup 与系统字段不参与约束校验', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'order_no',
+              type: FieldType.AutoNumber,
+              required: true,
+              config: { autoNumber: { format: 'A-{seq}' } },
+            },
+            {
+              id: 'f2',
+              apiName: 'owner',
+              type: FieldType.User,
+              required: true,
+              isSystem: true,
+              config: {},
+            },
+          ],
+        }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      // 两者均由系统生成/管理——不因用户未传而拦截
+      await expect(service.create('tenant-001', 'obj-001', 'user-001', {})).resolves.toBeTruthy();
+    });
   });
 
   // =========================================================================
@@ -420,6 +534,64 @@ describe('RecordService', () => {
       await expect(service.update('tenant-001', 'missing-rec', 'user-001', {})).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('把必填字段清空 → BadRequestException（QA D-002）', async () => {
+      const fields = [
+        {
+          id: 'f1',
+          apiName: 'name',
+          label: '名称',
+          type: FieldType.Text,
+          required: true,
+          config: {},
+        },
+      ];
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: '旧名' }, object: { fields } }),
+      );
+      const { service } = createService();
+
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { name: '' }),
+      ).rejects.toThrow('字段「名称」为必填项');
+    });
+
+    it('存量缺必填值不阻塞无关更新（required 只拦本次清空）', async () => {
+      const fields = [
+        {
+          id: 'f1',
+          apiName: 'name',
+          label: '名称',
+          type: FieldType.Text,
+          required: true,
+          config: {},
+        },
+      ];
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: {}, object: { fields } }), // 历史数据缺 name
+      );
+      prisma.record.update.mockResolvedValue(makeRecord({ data: { remark: 'x' } }));
+      const { service } = createService();
+
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { remark: 'x' }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('unique 校验排除自身记录（QA D-002）', async () => {
+      const fields = [
+        { id: 'f1', apiName: 'name', type: FieldType.Text, unique: true, config: {} },
+      ];
+      prisma.record.findFirst
+        .mockResolvedValueOnce(makeRecord({ data: { name: '我自己的名字' }, object: { fields } })) // 取 existing
+        .mockResolvedValueOnce(null); // unique 查重 → 无重复
+      prisma.record.update.mockResolvedValue(makeRecord({ data: { name: '我自己的名字' } }));
+      const { service } = createService();
+
+      await service.update('tenant-001', 'rec-001', 'user-001', { name: '我自己的名字' });
+      const uniqueWhere = prisma.record.findFirst.mock.calls[1]![0].where;
+      expect(uniqueWhere.id).toEqual({ not: 'rec-001' });
     });
 
     it('AutoNumber 字段在更新时被忽略', async () => {

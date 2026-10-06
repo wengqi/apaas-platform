@@ -103,11 +103,32 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
         }
       }
 
+      // groupBy 契约为 string[]（shared DataFlowConfig），输入框是逗号分隔文本——
+      // 提交前拆分（QA D-005：字符串直提导致引擎 agg.groupBy.map 崩溃；
+      // 转换实现与可视化编辑器 NodeConfigPanel 一致）
+      const rawAgg = values.aggregation as
+        | {
+            groupBy?: string | string[];
+            metrics?: NonNullable<DataFlowConfig['aggregation']>['metrics'];
+          }
+        | undefined;
+      let aggregation: DataFlowConfig['aggregation'] = undefined;
+      if (hasAggregation && rawAgg) {
+        const groupBy =
+          typeof rawAgg.groupBy === 'string'
+            ? rawAgg.groupBy
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : (rawAgg.groupBy ?? []);
+        aggregation = { ...rawAgg, groupBy, metrics: rawAgg.metrics ?? [] };
+      }
+
       const config: DataFlowConfig = {
         sources: values.sources || [],
         join: hasJoin ? values.join : undefined,
         filter: hasFilter ? parsedFilter : null,
-        aggregation: hasAggregation ? values.aggregation : undefined,
+        aggregation,
         outputFields: values.outputFields || [],
       };
 

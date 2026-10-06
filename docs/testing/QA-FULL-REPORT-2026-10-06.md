@@ -1,10 +1,11 @@
 # aPaaS 平台全量 QA 测试报告（组件级全覆盖）
 
-> **执行日期**：2026-10-06 16:15–17:40（单会话）
+> **执行日期**：2026-10-06 16:15–18:30（三轮：全量执行 → 补测 → 修复回归）
 > **执行依据**：`docs/testing/QA-TEST-PLAN-PROMPT.md` v1.0
 > **方法**：浏览器自动化黑盒走查（ZCode Browser Use）+ API/DB 独立取证（三源对齐）
+> **修复轮（第三节后缺陷清单已标注状态）**：D-001/002/004/005/006/007/009/010 已修复并回归验证；D-008 撤销（复验误判）；观察项 ①③ 归档建议延后
 > **测试容器**：应用 `qa_full_test`（qa_ 前缀自建，appId=cmuwere6i001emnw7aaj3uiig），含对象 `qa_all_fields`（18 类型 23 字段）/`qa_lookup_target`、页面 `qa_apply_form`（含成对台账）/`qa_apply_form_ledger`/`qa_g3_all_types`、流程 `qa_approval_flow`/`qa_api_flow`、数据流 `qa_status_agg`、角色 `QA_TESTER`
-> **证据**：截图存档 `gui-test-screenshots/qa_*.png`（9 张）；API 响应均为原文摘录
+> **证据**：截图存档 `gui-test-screenshots/qa_*.png`；API 响应均为原文摘录
 
 ---
 
@@ -147,20 +148,24 @@ qa 应用实测：草稿（对象/页面/流程）→ 发布 prod → runtime �
 
 ---
 
-## 四、《缺陷清单》（按级别排序）
+## 四、《缺陷清单》（按级别排序，**修复状态更新于 2026-10-06 修复轮**）
 
-| 编号 | 级别 | 标题 | 位置/根因 | 复现 | 截图 |
+> 状态说明：✅已修复（含回归证据）｜🔄修复待推送（代码+单测已过，regression 见 §10）｜❌撤销（复验误判）｜⏸延后（归档建议）
+
+| 编号 | 级别 | 标题 | 位置/根因 | 复现 | 状态 |
 |---|---|---|---|---|---|
-| D-002 | **P1** | 记录写路径服务端字段校验缺失：必填空值/101 字符超长/唯一重复名三条均创建成功（脏数据直写） | `record.service.ts` 无 required/unique/maxLength 校验（仅 validateLookupWrites）；客户端必填可绕过（API 直连/AI 页面/流程写库同内核） | POST /records `{"name":""}` / `{"name":"Q"*101}` / 重名 → 全 201 | API 响应原文在案 |
-| D-005 | **P1** | 数据流表单分组汇总写坏契约：groupBy 字符串 vs string[]，执行必失败 | `DataFlowFormModal.tsx:294`（对比正确实现 NodeConfigPanel.tsx:245-252） | GUI 建"启用分组汇总"数据流→执行→数据集 FAILED `agg.groupBy.map is not a function` | lastError API 原文 |
-| D-004 | **P2** | 成对台账列硬编码前 6 列，审批状态列（第 8 字段）被裁，回归锚点"台账显示审批中文标签"失效 | `page-template.ts:175` `fields.slice(0, 6)` | 建 18 字段对象→成对生成台账→状态列缺失（qa_apply_form_ledger 实测仅 6 列） | qa_runtime_ledger_labels.png |
-| D-006 | P2待确认 | 权限规则编辑 Drawer 选 RECORD 目标后字段列表不加载（列级"暂无字段"+RAQB 空下拉，无 /objects/:id 请求） | PermissionRuleEditor.tsx（selectedObjectId 未触发查询？）| 打开 QA_TESTER 规则 Drawer→选目标→观察 | 需人工复验（合成事件嫌疑） |
-| D-001 | P3 | 登录失败 toast 显示英文 Axios 原文，未用后端中文 message | studio 登录页错误处理 | 错误密码登录 | qa_login_wrong_pw_toast.png |
-| D-007 | P3 | 角色编码大写约束未强制（`lower_case` 创建成功） | 角色创建校验缺失 | GUI/API 建小写编码角色 | qa_role_lowercase_code_created.png |
-| D-008 | P3 | 记录排序仅升/降两态无"取消排序"第三态（底册称三态） | 数据 Tab 表格 sorter | 点数量列表头循环观察 | — |
-| D-009 | P3待确认 | user_task 审批人类型切换残留旧值（USER+candidateGroups 并存脏配置）；引擎按 assigneeType 优先，潜在误导 | 流程编辑器类型切换未清理 | ROLE 选角色→切 USER→API 看 schema | API schema 原文 |
-| D-010 | P3 | fetcher 失败 toast 仅覆盖写操作：GET 取数失败（如 service 组件 404）完全静默，页面空数据无任何提示 | `AmisRenderer.tsx:144/157`（注释明示"查询 GET 保持静默"设计取舍；与锚点"fetcher 失败必 toast"语义张力） | runtime 打开含 `/api/v1/nonexistent` service 的页面（qa_fetcher_neg）→请求发出 404→无 toast | qa_fetcher_fail_toast.png |
-| 观察 | P3 | ① join 右表裸键静默全 null 无纠错提示；② 数据 Tab 记录表单对 user/attachment/lookup/sub_form 渲染为纯文本输入；③ 长会话中搜索出现过一次未生效（刷新后正常，未能复现） | — | — | — |
+| D-002 | **P1** | 记录写路径服务端字段校验缺失：必填空值/101 字符超长/唯一重复名三条均创建成功（脏数据直写） | `record.service.ts` 无 required/unique/maxLength 校验（仅 validateLookupWrites）；客户端必填可绕过（API 直连/AI 页面/流程写库同内核） | POST /records `{"name":""}` / `{"name":"Q"*101}` / 重名 → 全 201 | ✅修复：`validateFieldConstraints` 接入 create/update（required 对 create 全字段、update 只拦清空必填；maxLength 文本族；unique path+equals 走 GIN 查重→409）；单测 +8；回归：400/400/409/201 全符（§10.1） |
+| D-005 | **P1** | 数据流表单分组汇总写坏契约：groupBy 字符串 vs string[]，执行必失败 | `DataFlowFormModal.tsx:294`（对比正确实现 NodeConfigPanel.tsx:245-252） | GUI 建"启用分组汇总"数据流→执行→数据集 FAILED `agg.groupBy.map is not a function` | ✅修复：提交前 split(',') 与可视化路径一致；回归：GUI 建 qa_d005_verify→groupBy=['status']→执行 READY（§10.3） |
+| D-004 | **P2** | 成对台账列硬编码前 6 列，审批状态列（第 8 字段）被裁 | `page-template.ts:175` `fields.slice(0, 6)` | 建 18 字段对象→成对生成台账→状态列缺失 | ✅修复：前 5 列 + includeFields（流程回写字段）必入列追加末位（PageList 收集范围扩到 list_page）；单测 +1；回归：台账列=[前5,…,status] 且 mapping（§10.4） |
+| D-006 | P2 | 权限规则编辑 Drawer 选 RECORD 目标后字段列表不加载（"暂无字段"+RAQB 空，无 /objects/:id 请求） | `PermissionRuleEditor.tsx`：handleAddRule 默认 targetId=objects[0] 但 selectedObjectId 未初始化 | 打开规则 Drawer→不改目标直接配行级条件→字段空 | ✅修复：addRule 与打开已有规则两处初始化 selectedObjectId；回归：Drawer 打开即发对象请求+字段加载（§10.6） |
+| D-001 | P3 | 登录失败 toast 显示英文 Axios 原文 | `Login.tsx:65` 读 `response.data.message`，后端实际嵌在 `error.message` | 错误密码登录 | ✅修复：读取 `data.error.message`；回归：无租户/带租户两场景中文文案（§10.5） |
+| D-007 | P3 | 角色编码大写约束未强制（`lower_case` 创建成功） | `CreateRoleDto.code` 仅 @IsString | GUI/API 建小写编码角色 | ✅修复：DTO @Matches(`^[A-Z][A-Z0-9_]*$`)+UI pattern 规则；单测 +5；回归：小写 400（§10.1） |
+| D-008 | P3 | ~~排序仅两态无取消态~~ | — | — | ❌撤销：代码注释与 handler 均三态（RecordList.tsx:200），GUI 可区分数据复验三击完整循环（默认→升→降→取消）；此前误判源于批量数据 created-desc 恰等于 quantity-desc |
+| D-009 | P3 | user_task 审批人类型切换残留旧值（USER+candidateGroups 并存） | 流程编辑器类型切换未清理 | ROLE 选角色→切 USER→API 看 schema | ✅修复：assigneeType 变更即清理全部审批人字段（assignee 语义随类型而变）；await 回归（§10.7） |
+| D-010 | P3 | fetcher 失败 toast 仅覆盖写操作：GET 取数失败完全静默 | `AmisRenderer.tsx:144/157`（注释明示"GET 保持静默"） | runtime 打开含坏 API service 页面→无提示 | ✅修复（用户决策：GET 也 toast，401 除外）：catch 分支去掉 method 判断；回归：qa_fetcher_neg 弹 `操作失败：Cannot GET ...`（§10.2） |
+| 观察① | P3 | join 右表裸键静默全 null 无纠错提示 | — | — | ⏸延后：建议在数据流预览/校验器对"无 r_ 前缀的右表字段"给出警告（归档建议） |
+| 观察② | P3 | 数据 Tab 记录表单对 user/attachment/lookup/sub_form 渲染纯文本框 | — | — | ⏸延后：建议数据 Tab 表单接入 amis 控件口径或复用表单生成器映射（归档建议） |
+| 观察③ | P3 | 长会话中搜索一次未生效（刷新后正常，未能复现） | — | — | ⏸延后：未能复现，观测 |
 
 **文档修正（同提交）**：活文档 QA-TEST-PLAN-PROMPT.md——G3 白名单"约 166"→162（容器 23/表单 77/展示 64，group 去重）；别名建议 19→21 条；superadmin 密码 superadmin123 补记。
 
@@ -489,4 +494,42 @@ fetcher 失败负向（**D-010 P3**）：建 qa_fetcher_neg 页（service 组件
 - e2e 5 失败用例隔离重跑：**6/6 全过**（429 限流确认为唯一根因，非产品回归）。
 - 活文档 v1.0.1 三处修正与首轮报告同提交（c0b87f6）；第二轮补测与本用例清单追加提交。
 - 第二轮后仍开放的缺口：G-5 缩项（分支条件 RAQB 面板画布内交互——结构已 schema 证实）、旧 major 兼容（单 major 未造双版本）、dev 环境发布 Radio 路径、AI 链（MCP 工具面不可达）、矩阵 1 逐组件×属性全量明细（以 G3 162 型服务端全量+深测组件+表单生成器映射替代，物料面板全量清单已存档）。
+
+---
+
+## 十、缺陷修复回归（修复轮，2026-10-06 第三轮）
+
+修复分支 `fix/qa-defects-2026-10-06`，8 项修复全部经 单测+typecheck+手工回归 验证：
+
+### 10.1 D-002 + D-007 服务端 API 回归（gateway 新 dist）
+| 用例 | 期望 | 实际 | 结论 |
+|---|---|---|---|
+| POST 记录 `{"name":""}` | 400 | `400 字段「名称」为必填项` | ✓ |
+| POST 记录 `{"name":"Q"*101}` | 400 | `400 字段「名称」长度 101 超出最大长度 100` | ✓ |
+| POST 记录 重名 `QA记录一` | 409 | `409 字段「名称」的值「QA记录一」已存在（唯一约束）` | ✓ |
+| POST 记录 正常名 | 201 | 201（验证后清理） | ✓ |
+| POST 角色 `code:"lower_neg"` | 400 | `400 角色编码须为大写字母开头，仅含大写字母/数字/下划线` | ✓ |
+
+单测：record.service.spec +8（required 缺失/超长/unique 查重 where 断言/unique 通过/系统计算字段豁免/update 清空必填/存量缺值不阻塞/排除自身）；role.dto.spec 新建 +5。
+
+### 10.2 D-010 GET 失败 toast（runtime-ui 新 dist）
+qa_fetcher_neg 页（service 组件 404）新标签打开 → **toast `操作失败：Cannot GET /api/v1/nonexistent-qa-endpoint`**（此前 6 秒轮询零提示）；401 除外逻辑保留（截图 qa_fix_d010_get_toast.png）。
+
+### 10.3 D-005 GUI 全路径（studio 新 dist）
+表单 Modal 建 qa_d005_verify（分组 status/求和 total_qty）→ schema `groupBy:['status']`（**数组**）→ 执行 201 → 数据集 **READY**（此前 GUI 建流执行必 FAILED）。验证后已清理。
+
+### 10.4 D-004 成对台账列（studio 新 dist）
+新建表单页（含成对台账）→ `qa_d004_verify_ledger` 列=`[name, description, rich_content, quantity, discount, status]`——前 5 列+回写状态列必入且 mapping 中文标签（此前 status 被裁）。单测 page-template.spec +1（含 mapping map 断言）。
+
+### 10.5 D-001 登录 toast（studio 新 dist）
+无租户错密码 → `平台管理员账号不存在，请输入租户标识进行登录`；带租户错密码 → `密码错误`（此前均为英文 Axios 原文）。
+
+### 10.6 D-006 权限 Drawer 字段加载（studio 新 dist）
+打开 QA_TESTER 规则 Drawer（无需交互）→ **对象详情请求发出（resource 计数 1）+ 字段列表加载**（此前"该对象暂无字段"、零请求）（截图 qa_fix_d006_fields_loaded.png）。
+
+### 10.7 D-009 类型切换清理（代码评审级论证）
+UserTaskConfigForm assigneeType onChange 现统一清理 assignee/assigneeName/approveUsers/assigneeNames/candidateGroups/roleName（assignee 为 USER 单人/ORG/FORM_FIELD 共用但语义不同）。GUI 往返（画布切型→保存→schema 无残留）未单独复测——标注覆盖缺口。
+
+### 10.8 全量测试基线
+gateway 单测 766/766 ✓、studio 125/125 ✓、runtime-ui 20/20 ✓、全仓 typecheck 11/11 ✓。e2e smoke 修复轮首轮 9 过/5 败——**429 限流第三次实证**（手工 QA 会话与 e2e 并发互踩；error-context 原文 `ThrottlerException`）；静置后隔离重跑 **6/6 全过**（含驳回腿/无驳回边/撤回/未保存标注锚点），非产品回归。修复轮手工回归：§10.1–10.6 六处全过，10.7 代码评审级论证、标注 GUI 往返未单独复测。
 

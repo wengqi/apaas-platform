@@ -130,6 +130,14 @@ export default function PermissionRuleEditor({
           appId: r.appId,
         })),
       );
+      // 打开已有规则时同步 selectedObjectId，否则行级条件/列级字段列表
+      // 不加载（QA D-006：曾显示"该对象暂无字段"且 RAQB 字段下拉为空）
+      const firstRecordRule = existingRules.find(
+        (r) => (r.type === 'RECORD' || r.type === 'DATA_MODEL') && r.targetId !== '*',
+      );
+      if (firstRecordRule) {
+        setSelectedObjectId(firstRecordRule.targetId);
+      }
     }
   }, [existingRules]);
 
@@ -156,6 +164,11 @@ export default function PermissionRuleEditor({
         appId: contextAppId,
       },
     ]);
+    // 新规则默认目标 = 第一个对象——同步 selectedObjectId 以加载其字段
+    // （QA D-006：默认目标不触发 handleTargetChange，字段列表曾不加载）
+    if (objects?.[0]?.id) {
+      setSelectedObjectId(objects[0].id);
+    }
   };
 
   const handleUpdateRule = (index: number, patch: Partial<CreatePermissionRuleRequest>) => {

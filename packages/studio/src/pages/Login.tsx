@@ -58,11 +58,17 @@ export default function Login() {
         message.error(body.error?.message ?? '登录失败');
       }
     } catch (err) {
+      // 后端错误体为 { ok:false, error:{ code, message } }——中文文案在 error.message
       const axErr = err as {
-        response?: { data?: { message?: string } };
+        response?: { data?: { error?: { message?: string }; message?: string } };
         message?: string;
       };
-      message.error(axErr.response?.data?.message ?? axErr.message ?? '登录失败,请重试');
+      message.error(
+        axErr.response?.data?.error?.message ??
+          axErr.response?.data?.message ??
+          axErr.message ??
+          '登录失败,请重试',
+      );
     } finally {
       setLoading(false);
     }

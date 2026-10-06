@@ -4,8 +4,12 @@
  * 对应 role.controller.ts 中内联的 @Body() 类型。
  */
 
-import { IsArray, IsOptional, IsString, IsObject, ArrayNotEmpty } from 'class-validator';
+import { IsArray, IsOptional, IsString, IsObject, ArrayNotEmpty, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/** 角色编码格式：大写字母开头，大写字母/数字/下划线（QA D-007：此前未强制）。 */
+const ROLE_CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+const ROLE_CODE_MSG = '角色编码须为大写字母开头，仅含大写字母/数字/下划线';
 
 export class CreateRoleDto {
   @ApiProperty({ example: '管理员', description: '角色名称' })
@@ -14,6 +18,7 @@ export class CreateRoleDto {
 
   @ApiProperty({ example: 'ADMIN', description: '角色编码' })
   @IsString()
+  @Matches(ROLE_CODE_PATTERN, { message: ROLE_CODE_MSG })
   code!: string;
 
   @ApiPropertyOptional({ example: '系统管理员', description: '角色描述' })

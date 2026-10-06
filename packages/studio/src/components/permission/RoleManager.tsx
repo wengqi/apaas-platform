@@ -190,7 +190,13 @@ export default function RoleManager({ appId }: RoleManagerProps) {
           <Form.Item
             name="code"
             label="角色编码"
-            rules={[{ required: true, message: '请输入角色编码' }]}
+            rules={[
+              { required: true, message: '请输入角色编码' },
+              {
+                pattern: /^[A-Z][A-Z0-9_]*$/,
+                message: '角色编码须为大写字母开头，仅含大写字母/数字/下划线',
+              },
+            ]}
           >
             <Input placeholder="如:APPROVER (大写字母+下划线)" />
           </Form.Item>

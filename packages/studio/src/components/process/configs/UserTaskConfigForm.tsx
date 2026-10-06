@@ -191,6 +191,16 @@ export default function UserTaskConfigForm({
             ) {
               patch.approvalMode = 'SINGLE';
             }
+            // 切换类型时清理旧类型的审批人字段，避免 schema 残留混合配置
+            // （QA D-009：曾出现 USER + candidateGroups 并存的脏数据）。
+            // assignee 为 USER 单人/ORG/FORM_FIELD 共用字段但语义不同
+            // （用户ID/组织编码/字段名），切换即一并清理。
+            patch.assignee = undefined;
+            patch.assigneeName = undefined;
+            patch.approveUsers = undefined;
+            patch.assigneeNames = undefined;
+            patch.candidateGroups = undefined;
+            patch.roleName = undefined;
             update(patch);
           }}
           options={ASSIGNEE_TYPE_OPTIONS}

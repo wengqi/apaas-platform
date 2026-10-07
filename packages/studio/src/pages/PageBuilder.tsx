@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Input, Space, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Drawer, Input, Modal, Space, Tooltip, Typography, message } from 'antd';
 import { CodeOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../api/pages.js';
+import { objectsApi } from '../api/objects.js';
 import AmisEditorCanvas from '../components/page-builder/AmisEditorCanvas.js';
+import {
+  setBoundObjectFields,
+  getBoundObjectSnapshot,
+} from '../components/page-builder/field-binding-store.js';
+import { collectFieldBindingIssues } from '../utils/page-binding.js';
 
 const { Text } = Typography;
 
@@ -88,6 +94,39 @@ export default function PageBuilder() {
     }
   }, [page]);
 
+  // 字段绑定专项（2026-10-07）：页面绑定对象（schema.data.objectId）变化时拉取字段。
+  // 走 React Query 治理键 qk.object（P2-1 键治理口径），再写入 field-binding-store
+  // 供编辑器插件面板同步读取与保存校验共用
+  const boundObjectId = (() => {
+    const data = schema?.['data'];
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const oid = (data as Record<string, unknown>)['objectId'];
+    return typeof oid === 'string' && oid !== '' ? oid : null;
+  })();
+
+  const { data: boundObject } = useQuery({
+    queryKey: qk.object(boundObjectId!),
+    queryFn: () => objectsApi.get(boundObjectId!),
+    enabled: !!boundObjectId,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (!boundObjectId) {
+      setBoundObjectFields(null, []);
+      return;
+    }
+    if (!boundObject) {
+      // 拉取中或失败：清空字段列表，避免上一绑定对象的字段残留被误选
+      setBoundObjectFields(boundObjectId, []);
+      return;
+    }
+    setBoundObjectFields(
+      boundObjectId,
+      (boundObject.fields ?? []).map((f) => ({ apiName: f.apiName, label: f.label ?? f.apiName })),
+    );
+  }, [boundObjectId, boundObject]);
+
   // 评审 P1-2 沿革：加载失败显式暴露，绝不静默回退空 Schema（防覆盖线上内容）
   const saveMutation = useMutation({
     mutationFn: (next: Record<string, unknown>) =>
@@ -149,6 +188,56 @@ export default function PageBuilder() {
       </div>
     );
   }
+
+  // 保存前绑定校验（字段绑定专项）：表单内控件 name 未命中对象字段 → 显式告警，可强制保存
+  const handleSave = () => {
+    if (!schema) return;
+    const snapshot = getBoundObjectSnapshot();
+    const issues =
+      snapshot.objectId && snapshot.fields.length > 0
+        ? collectFieldBindingIssues(schema, new Set(snapshot.fields.map((f) => f.apiName)))
+        : [];
+    if (issues.length === 0) {
+      saveMutation.mutate(schema);
+      return;
+    }
+    Modal.confirm({
+      title: `${issues.length} 个控件的「字段名」未匹配对象字段`,
+      width: 560,
+      content: (
+        <div style={{ maxHeight: 320, overflow: 'auto' }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+            提交时这些值将以未知键原样存入记录、不落入任何字段（服务端不拒绝未知键）。建议
+            在控件「对象字段绑定」面板中改选正确字段。
+          </Text>
+          <ul style={{ paddingLeft: 18, margin: 0 }}>
+            {issues.slice(0, 20).map((it) => (
+              <li key={`${it.path}-${it.name}`} style={{ marginBottom: 4 }}>
+                <Text code>{it.name}</Text>
+                {it.label ? `（${it.label}）` : ''}
+                {it.type ? ` · ${it.type}` : ''}
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {it.path}
+                </Text>
+              </li>
+            ))}
+          </ul>
+          {issues.length > 20 && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              …其余 {issues.length - 20} 项略
+            </Text>
+          )}
+        </div>
+      ),
+      okText: '仍要保存',
+      okButtonProps: { danger: true },
+      cancelText: '返回修改',
+      onOk: () => {
+        saveMutation.mutate(schema);
+      },
+    });
+  };
 
   const openCode = () => {
     setCodeDraft(schema ? JSON.stringify(schema, null, 2) : '');
@@ -243,7 +332,7 @@ export default function PageBuilder() {
             icon={<SaveOutlined />}
             disabled={!dirty || saveMutation.isPending}
             loading={saveMutation.isPending}
-            onClick={() => schema && saveMutation.mutate(schema)}
+            onClick={handleSave}
           >
             保存
           </Button>

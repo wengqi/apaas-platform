@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Input, Modal, Space, Tooltip, Typography, message } from 'antd';
 import { CodeOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
@@ -8,10 +8,12 @@ import { pagesApi } from '../api/pages.js';
 import { objectsApi } from '../api/objects.js';
 import AmisEditorCanvas from '../components/page-builder/AmisEditorCanvas.js';
 import {
-  setBoundObjectFields,
+  setBoundObjectObjects,
+  clearBoundObjectObjects,
   getBoundObjectSnapshot,
+  type BoundObjectField,
 } from '../components/page-builder/field-binding-store.js';
-import { collectFieldBindingIssues } from '../utils/page-binding.js';
+import { collectFieldBindingIssues, collectBoundObjectIds } from '../utils/page-binding.js';
 
 const { Text } = Typography;
 
@@ -94,38 +96,43 @@ export default function PageBuilder() {
     }
   }, [page]);
 
-  // 字段绑定专项（2026-10-07）：页面绑定对象（schema.data.objectId）变化时拉取字段。
-  // 走 React Query 治理键 qk.object（P2-1 键治理口径），再写入 field-binding-store
-  // 供编辑器插件面板同步读取与保存校验共用
-  const boundObjectId = (() => {
-    const data = schema?.['data'];
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-    const oid = (data as Record<string, unknown>)['objectId'];
-    return typeof oid === 'string' && oid !== '' ? oid : null;
-  })();
-
-  const { data: boundObject } = useQuery({
-    queryKey: qk.object(boundObjectId!),
-    queryFn: () => objectsApi.get(boundObjectId!),
-    enabled: !!boundObjectId,
-    retry: 1,
-  });
+  // 字段绑定专项（2026-10-07 v2 多表）：收集页面内全部绑定对象（每个 form 优先解析
+  // 自身 api.url，页面级 data.objectId 兜底），经 React Query 治理键 qk.object 拉取
+  // （queryClient.fetchQuery 复用缓存），写入 field-binding-store 供编辑器插件
+  // （原生字段名选择器）与保存校验同步消费
+  const boundObjectIds = useMemo(() => collectBoundObjectIds(schema), [schema]);
 
   useEffect(() => {
-    if (!boundObjectId) {
-      setBoundObjectFields(null, []);
+    if (boundObjectIds.length === 0) {
+      clearBoundObjectObjects();
       return;
     }
-    if (!boundObject) {
-      // 拉取中或失败：清空字段列表，避免上一绑定对象的字段残留被误选
-      setBoundObjectFields(boundObjectId, []);
-      return;
-    }
-    setBoundObjectFields(
-      boundObjectId,
-      (boundObject.fields ?? []).map((f) => ({ apiName: f.apiName, label: f.label ?? f.apiName })),
-    );
-  }, [boundObjectId, boundObject]);
+    let cancelled = false;
+    void (async () => {
+      const objects: Record<string, BoundObjectField[]> = {};
+      for (const objectId of boundObjectIds) {
+        try {
+          // fetchQuery 与 ObjectDesigner 等共用 qk.object 缓存键（staleTime 内不重复请求）
+          const obj = await queryClient.fetchQuery({
+            queryKey: qk.object(objectId),
+            queryFn: () => objectsApi.get(objectId),
+            staleTime: 5 * 60 * 1000,
+          });
+          objects[objectId] = (obj.fields ?? []).map((f) => ({
+            apiName: f.apiName,
+            label: f.label ?? f.apiName,
+          }));
+        } catch {
+          // 拉取失败（权限/网络）：保留空列表显式化，选择器提示"字段加载失败"
+          objects[objectId] = [];
+        }
+      }
+      if (!cancelled) setBoundObjectObjects(objects);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [boundObjectIds, queryClient]);
 
   // 评审 P1-2 沿革：加载失败显式暴露，绝不静默回退空 Schema（防覆盖线上内容）
   const saveMutation = useMutation({
@@ -189,14 +196,17 @@ export default function PageBuilder() {
     );
   }
 
-  // 保存前绑定校验（字段绑定专项）：表单内控件 name 未命中对象字段 → 显式告警，可强制保存
+  // 保存前绑定校验（字段绑定专项 v2 多表）：各 form 控件 name 未命中所属对象字段 → 告警可强制保存
   const handleSave = () => {
     if (!schema) return;
     const snapshot = getBoundObjectSnapshot();
-    const issues =
-      snapshot.objectId && snapshot.fields.length > 0
-        ? collectFieldBindingIssues(schema, new Set(snapshot.fields.map((f) => f.apiName)))
-        : [];
+    const fieldsByObject = new Map(
+      Object.entries(snapshot.objects).map(([objectId, fields]) => [
+        objectId,
+        new Set(fields.map((f) => f.apiName)),
+      ]),
+    );
+    const issues = fieldsByObject.size > 0 ? collectFieldBindingIssues(schema, fieldsByObject) : [];
     if (issues.length === 0) {
       saveMutation.mutate(schema);
       return;

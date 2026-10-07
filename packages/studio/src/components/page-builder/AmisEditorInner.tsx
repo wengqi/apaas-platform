@@ -6,8 +6,8 @@
  */
 
 import type { ComponentProps } from 'react';
-import { Editor } from 'amis-editor';
-import FieldBindingPanelPlugin from './FieldBindingPanelPlugin.js';
+import { Editor, FormPlugin } from 'amis-editor';
+import ApaasFormPlugin from './ApaasFormPlugin.js';
 
 type EditorProps = ComponentProps<typeof Editor>;
 
@@ -22,8 +22,13 @@ export default function AmisEditorInner({ value, onChange }: AmisEditorInnerProp
     onChange: ((schema: unknown) =>
       onChange(schema as Record<string, unknown>)) as EditorProps['onChange'],
     theme: 'antd' as const,
-    // 平台自定义插件：表单控件「对象字段绑定」下拉面板（字段绑定专项 2026-10-07）
-    plugins: [FieldBindingPanelPlugin] as EditorProps['plugins'],
+    // 字段绑定专项（2026-10-07）：禁用内置 FormPlugin，由平台子类接管 form 节点，
+    // 为原生「字段名」选择器（感叹号弹窗）提供对象字段数据源（分组+搜索）。
+    // 精确按构造器匹配，避免误伤子类自身。
+    disablePluginList: ((_id: string, plugin: unknown) => {
+      return plugin === FormPlugin || (plugin as object)?.constructor === FormPlugin;
+    }) as EditorProps['disablePluginList'],
+    plugins: [ApaasFormPlugin] as EditorProps['plugins'],
     // 编辑器文案本地化不在本 prop（i18n-runtime 读 localStorage，
     // 见 AmisEditorCanvas 顶部的 suda-i18n-locale 钉死逻辑）
   };

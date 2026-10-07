@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { collectFieldBindingIssues, isBindableControlType } from './page-binding.js';
+import {
+  collectBoundObjectIds,
+  collectFieldBindingIssues,
+  extractObjectIdFromApiUrl,
+  isBindableControlType,
+} from './page-binding.js';
 
-const FIELDS = new Set(['name', 'description', 'quantity', 'status']);
+const FIELDS_A = new Set(['name', 'description', 'quantity']);
+const FIELDS_B = new Set(['title', 'amount']);
+const FIELDS_BY_OBJECT = new Map([
+  ['obj_a', FIELDS_A],
+  ['obj_b', FIELDS_B],
+]);
 
 describe('isBindableControlType', () => {
   it('表单控件类型为绑定候选', () => {
@@ -21,133 +31,153 @@ describe('isBindableControlType', () => {
   });
 });
 
-describe('collectFieldBindingIssues', () => {
-  const form = (controls: unknown[]) => ({
-    type: 'page',
-    title: '测试页',
-    body: [{ type: 'form', title: '表单', body: controls }],
+describe('extractObjectIdFromApiUrl', () => {
+  it('解析 string 与 {url} 两态的平台约定地址', () => {
+    expect(extractObjectIdFromApiUrl('/objects/obj_a/records')).toBe('obj_a');
+    expect(extractObjectIdFromApiUrl({ url: '/objects/obj_b/records', method: 'post' })).toBe(
+      'obj_b',
+    );
   });
 
-  it('控件 name 全部命中字段 → 无 issue', () => {
-    const schema = form([
-      { type: 'input-text', name: 'name', label: '名称' },
-      { type: 'textarea', name: 'description', label: '描述' },
-    ]);
-    expect(collectFieldBindingIssues(schema, FIELDS)).toEqual([]);
+  it('非对象地址/形态不符返回 null', () => {
+    expect(extractObjectIdFromApiUrl('/api/other')).toBeNull();
+    expect(extractObjectIdFromApiUrl(undefined)).toBeNull();
+    expect(extractObjectIdFromApiUrl({ method: 'post' })).toBeNull();
   });
+});
 
-  it('手输错误字段名 → 列出 issue（含 path/label/type）', () => {
-    const schema = form([
-      { type: 'input-text', name: 'name', label: '名称' },
-      { type: 'input-number', name: 'quantityy', label: '数量' },
-    ]);
-    const issues = collectFieldBindingIssues(schema, FIELDS);
-    expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({
-      name: 'quantityy',
-      label: '数量',
-      type: 'input-number',
-      path: 'body[0].body[1]',
-    });
-  });
-
-  it('label 缺失时回退 title', () => {
-    const schema = form([{ type: 'input-text', name: 'oops', title: '标题回退' }]);
-    expect(collectFieldBindingIssues(schema, FIELDS)[0]?.label).toBe('标题回退');
-  });
-
-  it('form 之外的节点不参与比对（runtime 取数展示不受影响）', () => {
+describe('collectBoundObjectIds', () => {
+  it('逐 form 解析自身 api.url，页面级 objectId 兜底并去重', () => {
     const schema = {
       type: 'page',
+      data: { objectId: 'obj_page' },
       body: [
-        { type: 'crud', name: 'not_a_field_list' },
-        { type: 'static', name: 'not_a_field_disp' },
+        { type: 'form', api: { url: '/objects/obj_a/records' }, body: [] },
+        { type: 'form', api: { url: '/objects/obj_b/records' }, body: [] },
+        { type: 'form', body: [] },
       ],
     };
-    expect(collectFieldBindingIssues(schema, FIELDS)).toEqual([]);
+    expect(collectBoundObjectIds(schema).sort()).toEqual(['obj_a', 'obj_b', 'obj_page']);
   });
 
-  it('form 内结构容器（grid 自身 name）不比对，其子控件仍比对', () => {
-    const schema = form([
-      {
-        type: 'grid',
-        name: 'grid_layout_key',
-        columns: [
-          { type: 'input-text', name: 'name', label: '名称' },
-          { type: 'input-text', name: 'bad_key', label: '错键' },
-        ],
-      },
-    ]);
-    const issues = collectFieldBindingIssues(schema, FIELDS);
-    expect(issues).toHaveLength(1);
-    expect(issues[0]?.name).toBe('bad_key');
+  it('容器内嵌套 form 也被检出；无任何绑定返回空', () => {
+    expect(
+      collectBoundObjectIds({
+        type: 'page',
+        body: [{ type: 'grid', columns: [{ type: 'form', api: '/objects/obj_c/records' }] }],
+      }),
+    ).toEqual(['obj_c']);
+    expect(collectBoundObjectIds({ type: 'page', body: [] })).toEqual([]);
   });
+});
 
-  it('form 嵌套在容器中（grid > form）仍被检出', () => {
-    const schema = {
-      type: 'page',
-      body: [
-        {
-          type: 'grid',
-          columns: [{ type: 'form', body: [{ type: 'select', name: 'sttatus' }] }],
-        },
-      ],
-    };
-    const issues = collectFieldBindingIssues(schema, FIELDS);
-    expect(issues).toHaveLength(1);
-    expect(issues[0]?.name).toBe('sttatus');
-  });
-
-  it('form 自身 name 与 actions 内按钮 name 不比对', () => {
+describe('collectFieldBindingIssues（多表）', () => {
+  it('各 form 控件命中各自对象字段 → 无 issue', () => {
     const schema = {
       type: 'page',
       body: [
         {
           type: 'form',
-          name: 'form_scope_key',
-          body: [{ type: 'input-text', name: 'name' }],
-          actions: [
-            { type: 'button', name: 'submit_btn_key', label: '提交' },
-            { type: 'submit', name: 'submit_key' },
-          ],
+          api: { url: '/objects/obj_a/records' },
+          body: [{ type: 'input-text', name: 'name', label: '名称' }],
+        },
+        {
+          type: 'form',
+          api: { url: '/objects/obj_b/records' },
+          body: [{ type: 'input-text', name: 'amount', label: '金额' }],
         },
       ],
     };
-    expect(collectFieldBindingIssues(schema, FIELDS)).toEqual([]);
+    expect(collectFieldBindingIssues(schema, FIELDS_BY_OBJECT)).toEqual([]);
   });
 
-  it('dialog 内的 form 同样检出（actions 递归不吞弹层表单）', () => {
+  it('错配按所属对象判定：A 表合法键在 B 表 form 中应报', () => {
     const schema = {
       type: 'page',
       body: [
         {
-          type: 'button',
-          actionType: 'dialog',
-          dialog: {
-            type: 'dialog',
-            name: 'dialog_key',
-            body: [{ type: 'form', body: [{ type: 'input-text', name: 'nope' }] }],
-          },
+          type: 'form',
+          api: { url: '/objects/obj_b/records' },
+          body: [{ type: 'input-text', name: 'name', label: '跨表错绑' }],
         },
       ],
     };
-    const issues = collectFieldBindingIssues(schema, FIELDS);
+    const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
     expect(issues).toHaveLength(1);
-    expect(issues[0]?.name).toBe('nope');
+    expect(issues[0]).toMatchObject({ name: 'name', objectId: 'obj_b', path: 'body[0].body[0]' });
   });
 
-  it('空 name / 非 string name 跳过；命中字段的 name 不报', () => {
-    const schema = form([
-      { type: 'input-text', label: '无 name' },
-      { type: 'input-text', name: '', label: '空 name' },
-      { type: 'input-number', name: 42 },
-      { type: 'select', name: 'status' },
-    ]);
-    expect(collectFieldBindingIssues(schema, FIELDS)).toEqual([]);
+  it('页面级 data.objectId 兜底无自身 api 的 form', () => {
+    const schema = {
+      type: 'page',
+      data: { objectId: 'obj_a' },
+      body: [{ type: 'form', body: [{ type: 'input-number', name: 'qtyy', label: '数量' }] }],
+    };
+    const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.objectId).toBe('obj_a');
   });
 
-  it('无 form 的自定义页面 → 无 issue', () => {
-    const schema = { type: 'page', body: [{ type: 'chart', name: 'chart_key' }] };
-    expect(collectFieldBindingIssues(schema, FIELDS)).toEqual([]);
+  it('无法解析对象的 form 跳过判定（不误报）', () => {
+    const schema = {
+      type: 'page',
+      body: [{ type: 'form', body: [{ type: 'input-text', name: 'whatever' }] }],
+    };
+    expect(collectFieldBindingIssues(schema, FIELDS_BY_OBJECT)).toEqual([]);
+  });
+
+  it('form 外节点、结构容器、actions 按钮不比对；dialog 内 form 检出', () => {
+    const schema = {
+      type: 'page',
+      body: [
+        { type: 'crud', name: 'not_checked' },
+        {
+          type: 'button',
+          dialog: {
+            type: 'dialog',
+            body: [
+              {
+                type: 'form',
+                api: '/objects/obj_a/records',
+                body: [{ type: 'input-text', name: 'oops' }],
+              },
+            ],
+          },
+        },
+        {
+          type: 'form',
+          api: '/objects/obj_a/records',
+          name: 'form_key',
+          actions: [{ type: 'button', name: 'btn_key' }],
+          body: [
+            { type: 'grid', name: 'grid_key', columns: [{ type: 'input-text', name: 'name' }] },
+          ],
+        },
+      ],
+    };
+    const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.name).toBe('oops');
+  });
+
+  it('label 缺失回退 title；空/非 string name 跳过', () => {
+    const schema = {
+      type: 'page',
+      data: { objectId: 'obj_a' },
+      body: [
+        {
+          type: 'form',
+          body: [
+            { type: 'input-text', name: 'nope', title: '标题回退' },
+            { type: 'input-text', label: '无 name' },
+            { type: 'input-text', name: '' },
+            { type: 'select', name: 'name' },
+          ],
+        },
+      ],
+    };
+    const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.label).toBe('标题回退');
   });
 });

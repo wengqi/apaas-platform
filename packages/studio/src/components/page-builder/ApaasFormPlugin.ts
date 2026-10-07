@@ -82,14 +82,47 @@ export default class ApaasFormPlugin extends FormPlugin {
     super(manager);
     // 弹窗打开必经 manager.getAvailableContextFields。两类故障都在此兜底：
     // ① 官方实现在节点树更新过渡期抛 MST 死节点异常（DataBindingControl 的
-    //    catch 显示「加载可用字段失败」）；
+    //    catch 显示「加载可用字段失败」）——深不可变树上构建异常堆栈开销可感知；
     // ② 作用域真空窗口期返回空（顶层「暂无可绑定字段」）。
+    // 性能策略（2026-10-07 卡顿修复）：先做 form 作用域存在性预检——真空期
+    // 跳过官方调用直接走兜底（避免每次支付 MST 异常构建开销），作用域正常
+    // 才跑官方快路径。防叠层：host 打标记，重复构造不二次包装。
     // 兜底锚点用 store.activeId 的当前选中节点（活引用）——弹窗必属于当前
     // 选中控件；传入的 node 参数可能是已死亡的面板旧引用。
     const host = manager as unknown as Record<string, unknown>;
+    if (host['__apaasFieldsPatched']) return;
+    host['__apaasFieldsPatched'] = true;
     const raw = host['getAvailableContextFields'];
     this.rawGetAvailableContextFields = raw;
+    const resolveActiveNode = (): EditorNodeType | undefined => {
+      const store = (
+        this.manager as unknown as {
+          store?: { activeId?: string; getNodeById?: (id: string) => EditorNodeType };
+        }
+      ).store;
+      return store?.activeId && store.getNodeById ? store.getNodeById(store.activeId) : undefined;
+    };
+    /** form 作用域是否在位（官方 scope id 约定 = `${node.id}-${node.type}`）。 */
+    const formScopeReady = (formNode: EditorNodeType): boolean => {
+      try {
+        const dataSchema = (
+          this.manager as unknown as { dataSchema?: { hasScope?: (id: string) => boolean } }
+        ).dataSchema;
+        return Boolean(
+          dataSchema?.hasScope?.(`${formNode.id as unknown as string}-${String(formNode.type)}`),
+        );
+      } catch {
+        return false;
+      }
+    };
     host['getAvailableContextFields'] = async (...args: unknown[]) => {
+      // 预检：目标控件的 form 作用域真空 → 直接兜底（跳过官方调用，
+      // 消除真空期每次打开弹窗的 MST 异常开销）
+      const active = resolveActiveNode();
+      const formNode = this.findFormAncestor(active);
+      if (formNode && !formScopeReady(formNode)) {
+        return this.buildFieldsPanel(formNode, active ?? undefined);
+      }
       let result: unknown;
       try {
         result =
@@ -97,23 +130,15 @@ export default class ApaasFormPlugin extends FormPlugin {
             ? await (raw as (...a: unknown[]) => Promise<unknown>).apply(host, args)
             : undefined;
       } catch {
-        // 官方内部状态异常：忽略走兜底
+        // 官方内部状态异常（罕见：作用域在但节点过渡态）：忽略走兜底
         result = undefined;
       }
       if (result) return result;
       try {
-        const store = (
-          this.manager as unknown as {
-            store?: { activeId?: string; getNodeById?: (id: string) => EditorNodeType };
-          }
-        ).store;
-        const active =
-          store?.activeId && store.getNodeById ? store.getNodeById(store.activeId) : undefined;
-        const formNode =
-          this.findFormAncestor(active) ??
-          this.findFormAncestor((args[1] ?? args[0]) as EditorNodeType);
-        if (formNode) {
-          return this.buildFieldsPanel(formNode, active ?? undefined);
+        const fallbackForm =
+          formNode ?? this.findFormAncestor((args[1] ?? args[0]) as EditorNodeType);
+        if (fallbackForm) {
+          return this.buildFieldsPanel(fallbackForm, active ?? undefined);
         }
       } catch {
         // 兜底自身遇过渡态异常：放行官方结果（空提示）

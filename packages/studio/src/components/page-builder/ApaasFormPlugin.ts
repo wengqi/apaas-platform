@@ -28,14 +28,31 @@ interface BindingPanelChild {
   value: string;
 }
 
-/** 读取 form 节点解析出的绑定对象字段（store 同步缓存，可能为空=未拉到）。 */
+/** 读取 form 节点解析出的绑定对象字段（store 同步缓存，可能为空=未拉到）。
+ *  对象解析与保存校验同口径：form.api.url 优先，页面级 data.objectId 兜底。 */
 function resolveFormFields(scopeNode: EditorNodeType | undefined): {
   objectId: string | null;
   fields: readonly BoundObjectField[];
   objectLabel: string;
 } {
   const formSchema = (scopeNode?.schema ?? {}) as Record<string, unknown>;
-  const objectId = extractObjectIdFromApiUrl(formSchema['api']);
+  // 沿父链找页面节点的 data.objectId 兜底（form 自身 api 未设置时）
+  let pageObjectId: string | null = null;
+  let ancestor: { schema?: Record<string, unknown>; parent?: unknown } | undefined =
+    scopeNode?.parent;
+  while (ancestor) {
+    if (ancestor.schema?.['type'] === 'page') {
+      const data = ancestor.schema['data'];
+      const oid =
+        data && typeof data === 'object' && !Array.isArray(data)
+          ? (data as Record<string, unknown>)['objectId']
+          : undefined;
+      if (typeof oid === 'string' && oid !== '') pageObjectId = oid;
+      break;
+    }
+    ancestor = ancestor.parent as typeof ancestor;
+  }
+  const objectId = extractObjectIdFromApiUrl(formSchema['api']) ?? pageObjectId;
   const snapshot = getBoundObjectSnapshot();
   const fields = objectId ? (snapshot.objects[objectId] ?? []) : [];
   const objectLabel =
@@ -61,7 +78,33 @@ export default class ApaasFormPlugin extends FormPlugin {
     target: EditorNodeType,
   ): Promise<Record<string, unknown> | void> {
     const { objectId, fields, objectLabel } = resolveFormFields(scopeNode);
-    if (!objectId) return;
+    if (!objectId) {
+      // 未绑定对象：返回引导组而非 void——void 会触发官方顶层提示
+      // 「暂无可绑定字段」，用户无从知道原因与修法
+      return {
+        type: 'ae-SimpleDataBindingPanel',
+        fields: [
+          {
+            label: '表单未绑定对象：需提交地址 /objects/:id/records 或页面级绑定',
+            value: 'unbound',
+            children: [],
+          },
+        ],
+      };
+    }
+    if (fields.length === 0) {
+      // 对象已识别但字段未加载（拉取中/失败）：显式化，区别于"无字段"
+      return {
+        type: 'ae-SimpleDataBindingPanel',
+        fields: [
+          {
+            label: `对象字段加载中或加载失败（${objectLabel || objectId}），请重开弹窗重试`,
+            value: `${objectId}__loading`,
+            children: [],
+          },
+        ],
+      };
+    }
     const targetSchema = (target?.schema ?? {}) as Record<string, unknown>;
     const { compatible, incompatible } = partitionFieldsByCompat(
       targetSchema['type'],
@@ -88,10 +131,13 @@ export default class ApaasFormPlugin extends FormPlugin {
   }
 
   /**
-   * 为 form 节点注册数据域作用域（无此作用域，官方选择器的作用域遍历不会
-   * 停在 form 上，钩子不会被触发）。属性键=字段 apiName，与运行时表单数据域
-   * 键序一致（表达式编辑器的变量提示同步受益）。字段未加载时回退内置行为
-   * （按画布子控件聚合），避免数据域空洞。
+   * 为 form 节点注册数据域作用域。**必须总是注册**（识别出绑定对象时）：
+   * 官方选择器的遍历找"最近的有作用域祖先"，若 form 无作用域会越过 form
+   * 调用更上层节点的钩子（返回空 → 顶层「暂无可绑定字段」），且作用域只在
+   * 节点挂载时构建一次——挂载时字段缓存未到（硬刷新后首开必现）就走回退
+   * 会永久错过。字段面板内容在弹窗打开时经钩子同步读 store，不受此缓存
+   * 陈旧影响；属性表（表达式变量提示）在字段到货后随节点重建刷新。
+   * 完全未绑定对象的 form 回退内置行为（按画布子控件聚合）。
    */
   override async buildDataSchemas(
     node: EditorNodeType,
@@ -99,7 +145,7 @@ export default class ApaasFormPlugin extends FormPlugin {
     trigger?: EditorNodeType,
   ): Promise<Record<string, unknown>> {
     const { objectId, fields } = resolveFormFields(node);
-    if (!objectId || fields.length === 0) {
+    if (!objectId) {
       return super.buildDataSchemas(node, region, trigger);
     }
     const properties: Record<string, unknown> = {};

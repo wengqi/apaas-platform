@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>aPaaS 平台 — 产品思路与架构总览</title>
+<style>
+  /* ── 色板（cascade palette · cold/minimal 派生）──────────────────
+     text #17191a · muted #82888b · 结构 #4a6d7e · 强调 #50839d · info #466c93
+     带 #edeeef / #f2f4f4 · 边 #aabdc7（同色系透明度分层）              */
+  @page { size: A4; margin: 15mm 14mm 17mm 14mm; }
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  body {
+    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Microsoft YaHei', 'Apple Color Emoji', sans-serif;
+    font-size: 10pt; line-height: 1.68; color: #17191a;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    line-break: strict;
+  }
+  .mono { font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace; }
+
+  /* ── 封面（html2pdf-next.js 对 .cover 注入零边距命名页 + 40px 内边距）── */
+  .cover {
+    background: #eef1f2;
+    height: 100vh; box-sizing: border-box;
+    display: flex; flex-direction: column;
+    break-after: page;
+  }
+  .cov-top { display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid rgba(74,109,126,.4); padding-bottom: 10px; }
+  .cov-kicker { font-size: 12px; letter-spacing: 3px; color: #4a6d7e; font-weight: 600; }
+  .cov-date { font-size: 12px; color: #82888b; letter-spacing: 1px; }
+  .cov-mid { margin-top: auto; margin-bottom: auto; }
+  .cov-hero { font-size: 46px; font-weight: 900; line-height: 1.22; margin: 0; letter-spacing: 1px; }
+  .cov-sub { font-size: 22px; font-weight: 500; color: #4a6d7e; margin: 10px 0 0 2px; letter-spacing: 6px; }
+  .cov-bar { width: 64px; height: 6px; background: #4a6d7e; margin: 26px 0; }
+  .cov-summary { font-size: 13.5px; line-height: 1.9; color: #3c4348; max-width: 640px; margin: 0; }
+  .cov-stats { font-size: 12px; color: #82888b; margin: 18px 0 0 2px; letter-spacing: .5px; }
+  .cov-bottom { border-top: 1px solid rgba(74,109,126,.4); padding-top: 16px; }
+  .cov-meta { display: flex; gap: 36px; }
+  .cov-meta > div { flex: 1; }
+  .cov-meta b { display: block; font-size: 11px; color: #4a6d7e; letter-spacing: 2px; margin-bottom: 4px; }
+  .cov-meta span { font-size: 11.5px; color: #5f676b; line-height: 1.7; display: block; }
+  .cov-foot { margin-top: 18px; font-size: 10.5px; letter-spacing: 4px; color: #82888b; }
+
+  /* ── 正文标题体系 ── */
+  h2.sec { font-size: 15pt; font-weight: 800; margin: 26pt 0 10pt; padding-bottom: 5pt;
+    border-bottom: 2px solid #4a6d7e; break-after: avoid; break-inside: avoid; }
+  h2.sec:first-child { margin-top: 0; }
+  h2.sec .n { color: #4a6d7e; margin-right: 8pt; }
+  h3 { font-size: 11.5pt; font-weight: 700; margin: 16pt 0 6pt; padding-left: 8pt;
+    border-left: 3.5px solid #50839d; break-after: avoid; }
+  p { margin: 6pt 0; text-align: justify; }
+  strong { color: #17191a; }
+  ul, ol { margin: 6pt 0; padding-left: 20pt; }
+  li { margin: 3pt 0; }
+  a { color: #466c93; text-decoration: none; }
+
+  /* ── 表格 ── */
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0 10pt; font-size: 9pt; line-height: 1.55; }
+  thead { display: table-header-group; }
+  th { background: #edeeef; color: #17191a; font-weight: 700; text-align: left;
+    padding: 4.5pt 7pt; border: 1px solid rgba(74,109,126,.30); }
+  td { padding: 4.5pt 7pt; border: 1px solid rgba(74,109,126,.22); vertical-align: top; }
+  tbody tr:nth-child(even) { background: #f7f9fa; }
+  table.avoid { break-inside: avoid; }
+
+  /* ── 代码块 ── */
+  pre { background: #f5f6f6; border: 1px solid rgba(74,109,126,.25); border-radius: 4pt;
+    padding: 9pt 11pt; font-size: 8pt; line-height: 1.55; overflow: hidden;
+    font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace; break-inside: avoid; }
+  code { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: .92em;
+    background: #f2f4f4; padding: 0 3pt; border-radius: 2pt; }
+
+  /* ── 引用/提示块 ── */
+  blockquote { margin: 8pt 0; padding: 7pt 11pt; background: #f2f4f4;
+    border-left: 3px solid #4a6d7e; font-size: 9.5pt; color: #3c4348; break-inside: avoid; }
+
+  /* ── 图（HTML 原绘）── */
+  figure.fig { display: block; width: 100%; margin: 10pt 0 12pt; break-inside: avoid; }
+  figcaption { text-align: center; font-size: 8.5pt; color: #82888b; margin-top: 6pt; }
+  .fig svg { width: 100%; height: auto; }
+
+  /* 分层带图（三层架构 / 全局拓扑） */
+  .band { border: 1px solid rgba(74,109,126,.35); border-radius: 5pt; background: #f4f6f7;
+    padding: 7pt 9pt 8pt; }
+  .band + .band-gap { height: 2pt; }
+  .band-title { font-size: 9pt; font-weight: 800; color: #4a6d7e; letter-spacing: 1.5px; margin-bottom: 5pt; }
+  .band-title small { font-weight: 500; color: #82888b; letter-spacing: 0; margin-left: 6pt; }
+  .cards { display: flex; gap: 5pt; flex-wrap: wrap; }
+  .card { flex: 1 1 0; min-width: 88pt; background: #ffffff; border: 1px solid rgba(74,109,126,.35);
+    border-radius: 3.5pt; padding: 4.5pt 6pt; }
+  .card b { display: block; font-size: 8.5pt; line-height: 1.4; margin-bottom: 1.5pt; }
+  .card span { display: block; font-size: 8.2pt; color: #5f676b; line-height: 1.5; }
+  .card.gw { border-width: 1.5px; border-color: rgba(74,109,126,.55); }
+  .cols2 { display: flex; gap: 8pt; }
+  .cols2 > div { flex: 1; }
+  .flow { text-align: center; color: #50839d; font-size: 8pt; padding: 3pt 0; letter-spacing: 1px; }
+  .flow b { color: #4a6d7e; font-weight: 700; }
+
+  /* 横向链图（版本指针 / 权限链） */
+  .chain { display: flex; align-items: stretch; gap: 0; }
+  .chain .node { flex: 1; background: #ffffff; border: 1px solid rgba(74,109,126,.4); border-radius: 4pt;
+    padding: 6pt 8pt; }
+  .chain .node b { display: block; font-size: 8.8pt; margin-bottom: 2pt; }
+  .chain .node span { display: block; font-size: 7.8pt; color: #5f676b; line-height: 1.5; }
+  .chain .arr { flex: 0 0 22pt; display: flex; flex-direction: column; justify-content: center;
+    align-items: center; color: #50839d; }
+  .chain .arr i { font-style: normal; font-size: 12pt; line-height: 1; }
+  .chain .arr em { font-style: normal; font-size: 8pt; color: #5f676b; text-align: center; line-height: 1.35; }
+  .fnote { margin-top: 6pt; font-size: 8pt; color: #5f676b; background: #f4f6f7;
+    border: 1px dashed rgba(74,109,126,.4); border-radius: 3.5pt; padding: 5pt 8pt; }
+
+  /* 时间线图 */
+  .tl { position: relative; padding-left: 14pt; }
+  .tl::before { content: ''; position: absolute; left: 4pt; top: 6pt; bottom: 6pt;
+    width: 2px; background: rgba(74,109,126,.4); }
+  .tl-stage { position: relative; margin-bottom: 9pt; }
+  .tl-stage::before { content: ''; position: absolute; left: -13.5pt; top: 5pt; width: 7pt; height: 7pt;
+    border-radius: 50%; background: #4a6d7e; }
+  .tl-head { font-size: 9.5pt; font-weight: 800; color: #4a6d7e; }
+  .tl-head small { font-weight: 600; color: #82888b; margin-left: 6pt; letter-spacing: .5px; }
+  .tl-item { font-size: 9pt; color: #2b3238; margin: 3pt 0 0 10pt; line-height: 1.6; }
+  .tl-item b { color: #17191a; }
+
+  /* 时序图（角色芯片 + 消息流） */
+  .seq { border: 1px solid rgba(74,109,126,.35); border-radius: 5pt; overflow: hidden; }
+  .seq-actors { display: flex; background: #edeeef; border-bottom: 1px solid rgba(74,109,126,.35); }
+  .seq-actors div { flex: 1; text-align: center; padding: 5pt 4pt; font-size: 8.8pt; font-weight: 800;
+    color: #4a6d7e; border-left: 1px dashed rgba(74,109,126,.3); }
+  .seq-actors div:first-child { border-left: none; }
+  .seq-actors small { display: block; font-weight: 500; color: #82888b; font-size: 8pt; }
+  .seq-row { display: flex; align-items: baseline; padding: 3.2pt 8pt; font-size: 8.6pt; line-height: 1.55; }
+  .seq-row:nth-child(even) { background: #f7f9fa; }
+  .seq-no { flex: 0 0 14pt; color: #82888b; font-size: 8pt; }
+  .seq-msg { flex: 1; }
+  .chip { display: inline-block; font-size: 8pt; font-weight: 700; color: #ffffff; background: #50839d;
+    border-radius: 2.5pt; padding: 0 4pt; margin: 0 1pt; vertical-align: baseline; }
+  .chip.alt { background: #4a6d7e; }
+  .seq-msg i { font-style: normal; color: #466c93; font-weight: 700; padding: 0 2pt; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ 封面 ═══════════ -->
+<section class="cover">
+  <div class="cov-top">
+    <span class="cov-kicker">aPaaS PLATFORM · 企业内部低代码平台</span>
+    <span class="cov-date">2026-10-05 快照</span>
+  </div>
+  <div class="cov-mid">
+    <h1 class="cov-hero">aPaaS 平台</h1>
+    <div class="cov-sub">产品思路与架构总览</div>
+    <div class="cov-bar"></div>
+    <p class="cov-summary">
+      本文汇总平台的产品定位演进、核心原则、系统架构与关键机制：AI&nbsp;Agent 经 MCP/Schema
+      接口生成应用元数据，只产出草稿；人通过审核中心 schema&nbsp;diff 快审把关后发布，是唯一闸门；
+      界面层统一 amis 单方言；自研聚焦流程引擎、权限内核、对象模型与身份层——元数据与治理轨道是产品本体。
+    </p>
+    <p class="cov-stats">自研 ~61.5k 行 · gateway 722 单测 · e2e 88/88 · 页面层唯一方言 amis · 验收应用：采购合同类流程审批</p>
+  </div>
+  <div class="cov-bottom">
+    <div class="cov-meta">
+      <div><b>汇总依据</b><span>ADR-0002 / ADR-0003 · docs/architecture/ARCHITECTURE.md · 重构蓝图 2026-09-30 · ROADMAP</span></div>
+      <div><b>定位一句话</b><span>受约束的 AI 应用生成底座 —— Schema 优先，全环境人审，AI 生成的应用与人工搭建能力完全对齐</span></div>
+    </div>
+    <div class="cov-foot">SCHEMA 优先 · AMIS 单方言 · 全环境人审 · 单体优先</div>
+  </div>
+</section>
+
+<!-- ═══════════ 正文 ═══════════ -->
+<main>
+
+<h2 class="sec"><span class="n">1</span>一页速览</h2>
+<p><strong>这是什么</strong>：面向<strong>企业内部真实使用</strong>的低代码/aPaaS 平台，产品论 = <strong>受约束的 AI 应用生成底座</strong>。</p>
+<p><strong>一句话</strong>：AI Agent 经 MCP/Schema 接口生成应用元数据（只出草稿），人通过审核中心 schema diff 快审把关后发布，业务用户在运行端使用"表单 + 审批 + 报表"类应用——<strong>元数据与治理轨道是产品本体，AI 是第一公民用户，界面层统一 amis 单方言</strong>。</p>
+<table class="avoid">
+  <thead><tr><th style="width:38%">关键事实（2026-10-05 快照）</th><th>数值</th></tr></thead>
+  <tbody>
+    <tr><td>自研代码规模</td><td>~61.5k 行（R1.7 删旧后；目标 ~50k）</td></tr>
+    <tr><td>页面层方言</td><td>唯一 amis（唯一搭建器 amis-editor / 唯一渲染器 / 唯一 G3 校验）</td></tr>
+    <tr><td>单元测试</td><td>gateway 722 / studio 119 / db 55 / shared 17，全绿</td></tr>
+    <tr><td>e2e</td><td>88/88（2026-10-02 快照，Playwright）</td></tr>
+    <tr><td>首个验收应用</td><td>采购合同类流程审批（全链路 e2e 走通）</td></tr>
+    <tr><td>AI 生成完整应用成本</td><td>2 次 MCP 调用 + 1 次人审（资源依赖链批量提交）</td></tr>
+    <tr><td>技术栈</td><td>pnpm monorepo + Turborepo · React+Vite+AntD+amis+flowgram.ai · NestJS+Prisma · PostgreSQL+Redis+BullMQ</td></tr>
+  </tbody>
+</table>
+
+<h2 class="sec"><span class="n">2</span>产品思路演进</h2>
+<p>平台方向经历三次收敛，每次都有 ADR 背书：</p>
+
+<figure class="fig">
+  <div class="tl">
+    <div class="tl-stage">
+      <div class="tl-head">对标期 <small>2026-08 ~ 2026-09</small></div>
+      <div class="tl-item"><b>2026-08</b>：全功能复刻飞书 aPaaS——对象 / 页面 / 流程 / 权限 / 连接器 / 数据集 / 云函数依次落地。</div>
+      <div class="tl-item"><b>2026-09-27</b>：实地对标调研（36 项能力矩阵，对齐度约 53%）→ ADR-0002 定位收缩。</div>
+    </div>
+    <div class="tl-stage">
+      <div class="tl-head">方向修订 <small>2026-09-30</small></div>
+      <div class="tl-item"><b>ADR-0003</b>：产品论 = 受约束的 AI 应用生成底座——AI 第一公民 · amis 单方言 · 全环境人审 · 自研瘦身 79.6k → 约 50k。</div>
+      <div class="tl-item"><b>重构蓝图</b>：P0 流程+表单闭环 / P1 治理轨道 / P2 页面层整页化。</div>
+    </div>
+    <div class="tl-stage">
+      <div class="tl-head">收官与纵深 <small>2026-10</small></div>
+      <div class="tl-item"><b>2026-10-01~02</b>：版本模型 / 多环境 / Schema 合同 / MCP / 数据下沉 / Open API 全部落地；amis 迁移删旧 -18.7k 行。</div>
+      <div class="tl-item"><b>2026-10-03~04</b>：AI 主线八步全通 · 批量提交 · 审批回调；业务用户旅程 P0（审批回写 / 台账 / 审批人体验）。</div>
+    </div>
+  </div>
+  <figcaption>图 1 · 产品思路演进时间线</figcaption>
+</figure>
+
+<h3>2.1 起点：全功能对标飞书（2026-08）</h3>
+<p>以飞书 aPaaS 完整功能体系为目标，按 Phase 0-10 依次建成对象建模、可视化页面搭建器、自研流程引擎、权限多租户、连接器、数据集、仪表盘、云函数、应用管理发布。</p>
+
+<h3>2.2 定位收缩（ADR-0002，2026-09-27）</h3>
+<p>36 项能力实测对齐度仅 ~53%，全面补齐远超承载 → 四项定位答案：</p>
+<ol>
+  <li><strong>企业内部真实使用</strong>——首要成功标准从"对齐度数字"改为"能完整交付并运行一个真实业务应用（表单+审批+报表）"；</li>
+  <li><strong>目标环境为非飞书的企业环境</strong>——组织与身份经可插拔对接层接入（确认 CAS SSO + LDAP/人力主数据）；</li>
+  <li><strong>使用者先开发者后业务</strong>；</li>
+  <li>飞书只作<strong>能力形态参考</strong>（版本模型/权限语义/流程节点语义/观测分类/编辑器信息架构），飞书生态特有项（连接器市场、飞书审批/事件、行业模板市场）移出对标范围。</li>
+</ol>
+<p>新 P0 五项：身份与组织对接层、草稿→提交版本模型、流程表单与审批语义、多环境化、端到端真实应用交付。</p>
+
+<h3>2.3 AI 原生（ADR-0003，2026-09-30）— 当前有效</h3>
+<p>结构性根因诊断：~37k 行投在搭建器 UI，86 组件渲染矩阵没有显式"属性合同"（属性面板写入的字段名 ≠ 渲染器读取的字段名，一次实测爆发 9 个同口径 bug），而真正决定平台价值的元数据/治理层反而最薄 → <strong>产品重心放错层</strong>。叠加行业信号（NocoBase 转向 "AI + no-code"，渲染器/引擎类 OSS 集体进入静默期），做出五个决策：</p>
+<ol>
+  <li><strong>产品论</strong>：平台 = 受约束的 AI 应用生成底座。AI Agent 为第一公民用户（经 MCP/Schema 接口，<strong>仅出草稿</strong>），企业开发者第二（代码逃生舱），拖拽搭建降级为人工兜底；</li>
+  <li><strong>治理闸门 = 全环境人审</strong>：AI 产出必须过审核中心 diff 快审，任何环境发布无例外；</li>
+  <li><strong>界面层 = amis 单方言</strong>：撤销自研 86 组件矩阵，form 是 page 体系内的组件类型，<strong>不设"页面/表单"两套概念，不引入 formily</strong>；</li>
+  <li><strong>自研瘦身</strong>：渲染矩阵/数据集引擎/双渲染器换开源或下沉，流程引擎、权限内核、对象模型、身份层保留并加强；</li>
+  <li><strong>首个验收应用锁定采购合同类流程审批</strong>——重构与首个真实应用交付合二为一。</li>
+</ol>
+
+<h3>2.4 演进中不变的东西</h3>
+<ul>
+  <li>自研流程引擎与审批语义<strong>不外接审批中心</strong>（ADR-0002 决策 5）；</li>
+  <li>零兼容原则（未上线即零历史包袱，果断删旧，见知识库 Zero-Compat）；</li>
+  <li>类型契约先行（shared SSOT）、文档/测试与功能同轨交付的工程纪律。</li>
+</ul>
+
+<h2 class="sec"><span class="n">3</span>核心产品原则（不变量）</h2>
+<table>
+  <thead><tr><th style="width:4%">#</th><th style="width:20%">原则</th><th>内容</th><th style="width:12%">出处</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><strong>双端分离</strong></td><td>构建端（studio）永远操作草稿态；运行端只读已发布快照（AppVersion bundle + 环境指针）；未部署应用在搭建期读活表（dev 模式）</td><td>架构铁律</td></tr>
+    <tr><td>2</td><td><strong>AI 只出草稿，人审是唯一发布闸门</strong></td><td>全环境无例外；审核中心 schema diff 快审是验收项</td><td>ADR-0003</td></tr>
+    <tr><td>3</td><td><strong>一切界面皆页面</strong></td><td>审批节点绑定的是页面（纯表单页或表单+关联信息页）；同一搭建器、同一校验器、随应用快照统一版本</td><td>ADR-0003</td></tr>
+    <tr><td>4</td><td><strong>Schema 优先 / 元数据驱动</strong></td><td>页面=amis 方言、流程=WorkflowSchema、数据=对象元数据；三类元数据皆 JSON Schema 校验合同（G3），非法即拒</td><td>ADR-0003</td></tr>
+    <tr><td>5</td><td><strong>WorkflowSchema SSOT</strong></td><td>流程引擎直接消费 JSON Schema，编辑器（flowgram 单模式）零翻译</td><td>ADR-0001</td></tr>
+    <tr><td>6</td><td><strong>单体优先</strong></td><td>三个微服务骨架保留但不拆分，全部业务在 gateway</td><td>ADR-0001 (TD-16)</td></tr>
+    <tr><td>7</td><td><strong>JSONB 宽表</strong></td><td>记录存储用通用 records 表 + data JSONB + GIN 索引，非每对象建表</td><td>ADR-0001</td></tr>
+    <tr><td>8</td><td><strong>行级权限走条件翻译</strong></td><td>PermissionService 算 condition → translator 翻译为 Prisma where → RecordService 注入查询</td><td>ADR-0001</td></tr>
+    <tr><td>9</td><td><strong>事件驱动，禁定时器轮询</strong></td><td>状态同步一律事件 API / Pub-Sub / 队列；ESLint 拦截 setInterval</td><td>工程红线</td></tr>
+    <tr><td>10</td><td><strong>多租户全域行隔离</strong></td><td>tenantId 三层：手动 → Prisma $extends 自动注入（ALS）→ RLS（未来）</td><td>架构</td></tr>
+  </tbody>
+</table>
+
+<h2 class="sec"><span class="n">4</span>参与者与应用形态</h2>
+<h3>4.1 四类参与者</h3>
+<table>
+  <thead><tr><th style="width:22%">参与者</th><th style="width:34%">入口</th><th>权限语义</th></tr></thead>
+  <tbody>
+    <tr><td><strong>AI Agent</strong>（第一公民）</td><td>平台外 MCP 客户端（Claude Code / Cursor 等），推理不落平台</td><td>服务身份（API Key）；只能产出草稿；操作全量审计；AI 生成的应用跑在同一权限内核</td></tr>
+    <tr><td><strong>企业开发者</strong>（第二）</td><td>studio SPA</td><td>人工提交即时 APPROVED 基线；代码逃生舱（自定义组件/节点/云函数/REST API）</td></tr>
+    <tr><td><strong>业务用户</strong>（申请人 C / 审批人 D）</td><td>runtime-ui SPA</td><td>行级 ABAC 可见性；任务中心审批</td></tr>
+    <tr><td><strong>外部系统</strong></td><td>Open API（/open/*）</td><td>X-API-Key 服务身份；major 版本稳定性承诺</td></tr>
+  </tbody>
+</table>
+<h3>4.2 应用三形态</h3>
+<pre>① 纯页面        表单收集 + 台账/报表展示
+② 流程 + 页面   ★ 验收形态（采购合同审批）：表单提交 → 条件分支 → 多级审批 → 状态回写 → 台账
+③ 纯流程 headless  API 触发器 + API Key + 流程版本稳定性承诺（外部系统对接）</pre>
+
+<h2 class="sec"><span class="n">5</span>目标态三层架构</h2>
+<figure class="fig">
+  <div class="band">
+    <div class="band-title">界面层 — amis 单方言 <small>一切界面皆页面</small></div>
+    <div class="cards">
+      <div class="card"><b>① 审批页面</b><span>user_task 绑定页面，form static=查看态</span></div>
+      <div class="card"><b>② AI 生成页面</b><span>amis page（LLM 语料红利）</span></div>
+      <div class="card"><b>③ 拖拽兜底编辑器</b><span>amis-editor（人工兜底）</span></div>
+    </div>
+  </div>
+  <div class="flow">▼ <b>承载</b>（界面层是底座元数据的消费形态）</div>
+  <div class="band">
+    <div class="band-title">生成层 — 两类用户</div>
+    <div class="cards">
+      <div class="card"><b>AI Agent（第一公民）</b><span>MCP / Schema 接口 · 只产出草稿</span></div>
+      <div class="card"><b>企业开发者（第二）</b><span>代码逃生舱：自定义组件 / 节点 / 云函数 / REST</span></div>
+      <div class="card"><b>人工兜底</b><span>拖拽搭建</span></div>
+    </div>
+  </div>
+  <div class="flow">▼ <b>治理约束</b>（生成层的一切写入都受治理轨道约束）</div>
+  <div class="band">
+    <div class="band-title">底座层 — 产品本体 <small>自建保留并加强</small></div>
+    <div class="cards">
+      <div class="card"><b>对象 / 记录</b><span>JSONB 宽表 + GIN</span></div>
+      <div class="card"><b>流程引擎</b><span>+ 审批语义</span></div>
+      <div class="card"><b>权限内核</b><span>ABAC 行级下推</span></div>
+      <div class="card"><b>身份对接</b><span>CAS / LDAP</span></div>
+      <div class="card"><b>版本模型</b><span>草稿 → 提交 → 发布</span></div>
+      <div class="card"><b>多环境 · 审计 · 治理轨道</b><span>发布闸门 + 全量审计</span></div>
+    </div>
+  </div>
+  <figcaption>图 2 · 目标态三层架构（层间为依赖/承载关系）</figcaption>
+</figure>
+<blockquote>不设"页面/表单"两套概念——amis 中 form 是 page 体系内的组件类型，应用的一切界面都是页面。审批节点（user_task）绑定的是页面，可以是纯表单页，也可以是包含表单+关联信息的任意页面；任务中心受限壳渲染该页面（页面内 form 提交映射为 completeTask），与普通页面同存储、同搭建器、同校验器、随应用快照统一版本。</blockquote>
+
+<h2 class="sec"><span class="n">6</span>技术架构</h2>
+<h3>6.1 全局拓扑</h3>
+<figure class="fig">
+  <div class="band">
+    <div class="band-title">参与者</div>
+    <div class="cards">
+      <div class="card"><b>AI Agent</b><span>平台外 MCP 客户端（Claude Code / Cursor）；仅草稿（虚线）</span></div>
+      <div class="card"><b>企业开发者</b><span>经构建端 studio</span></div>
+      <div class="card"><b>业务用户</b><span>申请人 / 审批人 — 经运行端</span></div>
+      <div class="card"><b>外部系统</b><span>经 Open API</span></div>
+    </div>
+  </div>
+  <div class="flow">▼</div>
+  <div class="cols2">
+    <div class="band">
+      <div class="band-title">构建端 · studio SPA <small>开发态 · 只操作草稿</small></div>
+      <div class="cards">
+        <div class="card"><b>设计器三件套</b><span>对象 18 字段类型 · 流程 flowgram 20 节点 · 页面 amis-editor</span></div>
+        <div class="card"><b>审核中心</b><span>schema diff 快审 · 人批闸门</span></div>
+        <div class="card"><b>环境 / 版本 / 其余</b><span>环境管理 · 版本发布 · 权限中心 · 连接器 · 数据集 · 云函数 IDE · 审计观测</span></div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="band-title">运行端 · runtime-ui SPA + Open API</div>
+      <div class="cards">
+        <div class="card"><b>门户 / 页面渲染</b><span>应用门户 · amis 页面渲染</span></div>
+        <div class="card"><b>任务中心 / 审批</b><span>渲染绑定页面 · 会签/或签/依次/加签/转办/撤回</span></div>
+        <div class="card"><b>消息 + Open API</b><span>站内信/邮件 · X-API-Key · /open/* · major 版本承诺</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="flow">▼ REST</div>
+  <div class="band" style="border-width:1.5px; border-color:rgba(74,109,126,.6);">
+    <div class="band-title">gateway 单体 <small>NestJS · 全部业务逻辑（单体优先，TD-16）</small></div>
+    <div class="cards">
+      <div class="card gw"><b>元数据 + 记录</b><span>JSONB 宽表 · GIN · 条件翻译下推</span></div>
+      <div class="card gw"><b>流程引擎</b><span>状态机 + BullMQ + 20 执行器 · 会签/或签/依次 + 结果回写</span></div>
+      <div class="card gw"><b>权限内核</b><span>RBAC + ABAC + 组织继承</span></div>
+      <div class="card gw"><b>版本 / 发布 / 多环境</b><span>不可变快照 + 环境指针</span></div>
+      <div class="card gw"><b>MCP Server</b><span>仅出草稿 · G3 校验合同</span></div>
+      <div class="card gw"><b>数据集 / 云函数 / 连接器 / 通知</b><span>SQL 下推 · isolated-vm · webhook</span></div>
+      <div class="card gw"><b>审计 + 观测</b><span>四分类事件 + traceId 全链路</span></div>
+    </div>
+  </div>
+  <div class="flow">▼</div>
+  <div class="band">
+    <div class="band-title">数据层</div>
+    <div class="cards">
+      <div class="card"><b>PostgreSQL</b><span>元数据 + records JSONB 宽表 · tenantId 行级隔离</span></div>
+      <div class="card"><b>Redis</b><span>BullMQ 队列 + 分布式锁</span></div>
+    </div>
+  </div>
+  <figcaption>图 3 · 全局拓扑（参与者 → 双端 → gateway 单体 → 数据层）</figcaption>
+</figure>
+<p><strong>部署形态</strong>：nginx（TLS + 双前端静态产物）→ gateway ×N → PostgreSQL + Redis；附件当前本地卷（生产建议对象存储，待立项）。</p>
+
+<h3>6.2 工程结构（pnpm monorepo + Turborepo）</h3>
+<pre>apps/gateway/          NestJS API 网关 —— 所有后端业务逻辑集中于此（单体优先）
+packages/shared/       跨层类型契约 SSOT（Branded types / DTO / 观测分类）
+packages/db/           Prisma schema + 迁移 + 种子数据
+packages/studio/       搭建器前端（React + Vite + AntD + amis-editor + flowgram.ai）
+packages/runtime-ui/   运行时前端（React + Vite + AntD + AmisRenderer）
+packages/meta-svc/     微服务骨架（仅 health check，业务在 gateway）
+packages/process-svc/  同上
+packages/runtime-svc/  同上
+infra/                 Docker Compose + Nginx + 启动脚本
+docs/                  PRD / DESIGN / ADR / RESEARCH / ROADMAP / knowledge-base</pre>
+
+<h3>6.3 技术栈选型及理由</h3>
+<table>
+  <thead><tr><th style="width:16%">层</th><th style="width:30%">选型</th><th>理由</th></tr></thead>
+  <tbody>
+    <tr><td>界面方言</td><td><strong>amis</strong>（6.x，Apache-2.0）</td><td>成熟渲染合同从土壤上消除"属性合同"类缺陷；LLM 语料红利；fork 预案可行。明确不引入 formily（停更 + 场景不匹配）</td></tr>
+    <tr><td>流程编辑器</td><td><strong>flowgram.ai</strong></td><td>单模式画布，extInfo 经 EventBridge 并入导出，WorkflowSchema 零翻译</td></tr>
+    <tr><td>后端</td><td>NestJS + Prisma + PostgreSQL</td><td>JSONB 宽表 + GIN + <code>$extends</code> 租户自动注入</td></tr>
+    <tr><td>异步</td><td>BullMQ + Redis</td><td>流程/延迟/数据集/webhook 队列 + 分布式锁</td></tr>
+    <tr><td>云函数</td><td>isolated-vm</td><td>沙箱隔离 + 并发预算</td></tr>
+    <tr><td>质量</td><td>Vitest（单测）+ Playwright（e2e）+ G3 三校验器</td><td>覆盖率阈值强制；非法元数据合同层拒收</td></tr>
+  </tbody>
+</table>
+
+<h2 class="sec"><span class="n">7</span>关键机制与数据流</h2>
+
+<h3>7.1 版本模型与多环境</h3>
+<p><strong>资源级三态</strong>（对象/页面/流程统一）：<code>draft → submitted → published</code>；<strong>应用级</strong>：AppVersion 不可变快照 + 环境指针（dev/prod）。发布双闸 = 预检 + 人审。</p>
+<figure class="fig">
+  <div class="chain">
+    <div class="node"><b>元数据草稿（构建端操作）</b><span>对象 / 页面 / 流程<br>draft → submitted → published</span></div>
+    <div class="arr"><i>→</i><em>预检 + 人审<br>+ 发布</em></div>
+    <div class="node"><b>AppVersion 不可变快照</b><span>v1.2.0 · v1.3.0 …<br>修复只产生新版本，不篡改历史</span></div>
+    <div class="arr"><i>→</i><em>发布 = 切指针</em></div>
+    <div class="node"><b>环境指针</b><span>dev → v1.3.0<br>prod → v1.2.0</span></div>
+  </div>
+  <div class="fnote">运行端读取语义：已部署应用读 bundle（快照，唯一路径）；未部署应用在搭建期直接读活表（dev 模式）——环境二分。</div>
+  <figcaption>图 4 · 版本模型与环境指针</figcaption>
+</figure>
+<p><strong>版本谱系</strong>——hotfix 线与特性线并行，线上修复不携带半成品特性；对外 API 绑定 major 版本（v2 发布不破坏 v1 调用方）。谱系示意见图 5。</p>
+<figure class="fig"><svg id="gg" width="100%" xmlns="http://www.w3.org/2000/svg" style="max-width: 502.625px;" viewBox="-194.625 -23.5 502.625 219.7095184326172" role="graphics-document document" aria-roledescription="gitGraph"><style>#gg{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;font-size:15px;fill:#17191a;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#gg .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#gg .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#gg .error-icon{fill:hsl(0, 8.3333333333%, 100%);}#gg .error-text{fill:#000000;stroke:#000000;}#gg .edge-thickness-normal{stroke-width:1px;}#gg .edge-thickness-thick{stroke-width:3.5px;}#gg .edge-pattern-solid{stroke-dasharray:0;}#gg .edge-thickness-invisible{stroke-width:0;fill:none;}#gg .edge-pattern-dashed{stroke-dasharray:3;}#gg .edge-pattern-dotted{stroke-dasharray:2;}#gg .marker{fill:#50839d;stroke:#50839d;}#gg .marker.cross{stroke:#50839d;}#gg svg{font-family:'PingFang SC','Hiragino Sans GB',sans-serif;font-size:15px;}#gg p{margin:0;}#gg .commit-id,#gg .commit-msg,#gg .branch-label{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:'trebuchet ms',verdana,arial,sans-serif;}#gg .branch-label0{fill:#ffffff;}#gg .commit0{stroke:#4a6d7e;fill:#4a6d7e;}#gg .commit-highlight0{stroke:rgb(228.175, 215.4875, 209.325);fill:rgb(228.175, 215.4875, 209.325);}#gg .label0{fill:#4a6d7e;}#gg .arrow0{stroke:#4a6d7e;}#gg .branch-label1{fill:#ffffff;}#gg .commit1{stroke:#8fa8b5;fill:#8fa8b5;}#gg .commit-highlight1{stroke:rgb(176.8225806452, 150.4112903226, 136.6774193548);fill:rgb(176.8225806452, 150.4112903226, 136.6774193548);}#gg .label1{fill:#8fa8b5;}#gg .arrow1{stroke:#8fa8b5;}#gg .branch-label2{fill:#17191a;}#gg .commit2{stroke:hsl(0, 8.3333333333%, 75%);fill:hsl(0, 8.3333333333%, 75%);}#gg .commit-highlight2{stroke:rgb(58.4375, 69.0625, 69.0625);fill:rgb(58.4375, 69.0625, 69.0625);}#gg .label2{fill:hsl(0, 8.3333333333%, 75%);}#gg .arrow2{stroke:hsl(0, 8.3333333333%, 75%);}#gg .branch-label3{fill:#17191a;}#gg .commit3{stroke:hsl(150, 8.3333333333%, 70.2941176471%);fill:hsl(150, 8.3333333333%, 70.2941176471%);}#gg .commit-highlight3{stroke:rgb(82.0624999999, 69.4374999999, 75.7499999999);fill:rgb(82.0624999999, 69.4374999999, 75.7499999999);}#gg .label3{fill:hsl(150, 8.3333333333%, 70.2941176471%);}#gg .arrow3{stroke:hsl(150, 8.3333333333%, 70.2941176471%);}#gg .branch-label4{fill:#17191a;}#gg .commit4{stroke:hsl(120, 8.3333333333%, 70.2941176471%);fill:hsl(120, 8.3333333333%, 70.2941176471%);}#gg .commit-highlight4{stroke:rgb(82.0624999999, 69.4374999999, 82.0624999999);fill:rgb(82.0624999999, 69.4374999999, 82.0624999999);}#gg .label4{fill:hsl(120, 8.3333333333%, 70.2941176471%);}#gg .arrow4{stroke:hsl(120, 8.3333333333%, 70.2941176471%);}#gg .branch-label5{fill:#17191a;}#gg .commit5{stroke:hsl(90, 8.3333333333%, 70.2941176471%);fill:hsl(90, 8.3333333333%, 70.2941176471%);}#gg .commit-highlight5{stroke:rgb(75.7499999999, 69.4374999999, 82.0624999999);fill:rgb(75.7499999999, 69.4374999999, 82.0624999999);}#gg .label5{fill:hsl(90, 8.3333333333%, 70.2941176471%);}#gg .arrow5{stroke:hsl(90, 8.3333333333%, 70.2941176471%);}#gg .branch-label6{fill:#17191a;}#gg .commit6{stroke:hsl(240, 8.3333333333%, 70.2941176471%);fill:hsl(240, 8.3333333333%, 70.2941176471%);}#gg .commit-highlight6{stroke:rgb(82.0624999999, 82.0624999999, 69.4374999999);fill:rgb(82.0624999999, 82.0624999999, 69.4374999999);}#gg .label6{fill:hsl(240, 8.3333333333%, 70.2941176471%);}#gg .arrow6{stroke:hsl(240, 8.3333333333%, 70.2941176471%);}#gg .branch-label7{fill:#17191a;}#gg .commit7{stroke:hsl(300, 8.3333333333%, 70.2941176471%);fill:hsl(300, 8.3333333333%, 70.2941176471%);}#gg .commit-highlight7{stroke:rgb(69.4374999999, 82.0624999999, 69.4374999999);fill:rgb(69.4374999999, 82.0624999999, 69.4374999999);}#gg .label7{fill:hsl(300, 8.3333333333%, 70.2941176471%);}#gg .arrow7{stroke:hsl(300, 8.3333333333%, 70.2941176471%);}#gg .branch-label8{fill:#ffffff;}#gg .commit8{stroke:#4a6d7e;fill:#4a6d7e;}#gg .commit-highlight8{stroke:rgb(228.175, 215.4875, 209.325);fill:rgb(228.175, 215.4875, 209.325);}#gg .label8{fill:#4a6d7e;}#gg .arrow8{stroke:#4a6d7e;}#gg .branch-label9{fill:#ffffff;}#gg .commit9{stroke:#8fa8b5;fill:#8fa8b5;}#gg .commit-highlight9{stroke:rgb(176.8225806452, 150.4112903226, 136.6774193548);fill:rgb(176.8225806452, 150.4112903226, 136.6774193548);}#gg .label9{fill:#8fa8b5;}#gg .arrow9{stroke:#8fa8b5;}#gg .branch-label10{fill:#17191a;}#gg .commit10{stroke:hsl(0, 8.3333333333%, 75%);fill:hsl(0, 8.3333333333%, 75%);}#gg .commit-highlight10{stroke:rgb(58.4375, 69.0625, 69.0625);fill:rgb(58.4375, 69.0625, 69.0625);}#gg .label10{fill:hsl(0, 8.3333333333%, 75%);}#gg .arrow10{stroke:hsl(0, 8.3333333333%, 75%);}#gg .branch-label11{fill:#17191a;}#gg .commit11{stroke:hsl(150, 8.3333333333%, 70.2941176471%);fill:hsl(150, 8.3333333333%, 70.2941176471%);}#gg .commit-highlight11{stroke:rgb(82.0624999999, 69.4374999999, 75.7499999999);fill:rgb(82.0624999999, 69.4374999999, 75.7499999999);}#gg .label11{fill:hsl(150, 8.3333333333%, 70.2941176471%);}#gg .arrow11{stroke:hsl(150, 8.3333333333%, 70.2941176471%);}#gg .branch{stroke-width:1;stroke:#50839d;stroke-dasharray:2;}#gg .commit-label{font-size:10px;fill:rgb(10.9999999999, 10.9999999999, 12.9999999999);}#gg .commit-label-bkg{font-size:10px;fill:hsl(60, 8.3333333333%, 95.2941176471%);opacity:0.5;}#gg .tag-label{font-size:10px;fill:#17191a;}#gg .tag-label-bkg{fill:#f2f4f4;stroke:#4a6d7e;}#gg .tag-hole{fill:#17191a;}#gg .commit-merge{stroke:#f2f4f4;fill:#f2f4f4;}#gg .commit-reverse{stroke:#f2f4f4;fill:#f2f4f4;stroke-width:3;}#gg .commit-highlight-inner{stroke:#f2f4f4;fill:#f2f4f4;}#gg .arrow{stroke-width:8;stroke-linecap:round;fill:none;}#gg .gitTitleText{text-anchor:middle;font-size:18px;fill:#17191a;}#gg .node .neo-node{stroke:#4a6d7e;}#gg [data-look="neo"].node rect,#gg [data-look="neo"].cluster rect,#gg [data-look="neo"].node polygon{stroke:url(#gg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#gg [data-look="neo"].swimlane.cluster rect{filter:none;}#gg [data-look="neo"].node path{stroke:url(#gg-gradient);stroke-width:1px;}#gg [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#gg [data-look="neo"].node .neo-line path{stroke:#4a6d7e;filter:none;}#gg [data-look="neo"].node circle{stroke:url(#gg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#gg [data-look="neo"].node circle .state-start{fill:#000000;}#gg [data-look="neo"].icon-shape .icon{fill:url(#gg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#gg [data-look="neo"].icon-shape .icon-neo path{stroke:url(#gg-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#gg :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g></g><defs><linearGradient id="gg-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#4a6d7e" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(60, 0%, 85.2941176471%)" stop-opacity="1"></stop></linearGradient></defs><g class="commit-bullets"></g><g class="commit-labels"></g><g><line x1="0" y1="-2" x2="300" y2="-2" class="branch branch0"></line><rect class="branchLabelBkg label0" rx="4" ry="4" x="-67.4375" y="-0.5" width="51.4375" height="25" transform="translate(-19, -14)"></rect><g class="branchLabel"><g class="label branch-label0" transform="translate(-77.4375, -14.5)"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">main</tspan></text></g></g><line x1="0" y1="88" x2="300" y2="88" class="branch branch1"></line><rect class="branchLabelBkg label1" rx="4" ry="4" x="-167.625" y="-0.5" width="151.625" height="25" transform="translate(-19, 76)"></rect><g class="branchLabel"><g class="label branch-label1" transform="translate(-177.625, 75.5)"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">hotfix/amount-rule</tspan></text></g></g></g><g class="commit-arrows"><path d="M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 60 88" class="arrow arrow1"></path><path d="M 60 88 L 110 88" class="arrow arrow1"></path><path d="M 10 -2 L 160 -2" class="arrow arrow0"></path><path d="M 160 -2 L 210 -2" class="arrow arrow0"></path><path d="M 110 88 L 190 88 A 20 20, 0, 0, 0, 210 68 L 210 -2" class="arrow arrow1"></path><path d="M 210 -2 L 260 -2" class="arrow arrow0"></path></g><g class="commit-bullets"><circle cx="10" cy="-2" r="10" class="commit v1.2.0 发布→prod commit0"></circle><circle cx="60" cy="88" r="10" class="commit 取回 v1.2.0 → 修复草稿 commit1"></circle><circle cx="110" cy="88" r="10" class="commit v1.2.1 热修发布 commit1"></circle><circle cx="160" cy="-2" r="10" class="commit v1.3.0 特性线 commit0"></circle><circle cx="210" cy="-2" r="10" class="commit 修复合回主线 commit0"></circle><circle cx="210" cy="-2" r="6" class="commit commit-merge 修复合回主线 commit0"></circle><circle cx="260" cy="-2" r="10" class="commit v1.3.1 commit0"></circle></g><g class="commit-labels"><g transform="translate(-41.9553125, 37.4284375) rotate(-45, 0, -2)"><rect class="commit-label-bkg" x="-32.3359375" y="11.5" width="84.671875" height="18"></rect><text x="-30.3359375" y="23" class="commit-label">v1.2.0 发布→prod</text></g><g transform="translate(-51.6215625, 46.0771875) rotate(-45, 50, 88)"><rect class="commit-label-bkg" x="4.9453125" y="101.5" width="110.109375" height="18"></rect><text x="6.9453125" y="113" class="commit-label">取回 v1.2.0 → 修复草稿</text></g><g transform="translate(-36.9321875, 32.934062499999996) rotate(-45, 100, 88)"><rect class="commit-label-bkg" x="74.2734375" y="101.5" width="71.453125" height="18"></rect><text x="76.2734375" y="113" class="commit-label">v1.2.1 热修发布</text></g><g transform="translate(-33.892187500000006, 30.214062499999997) rotate(-45, 150, -2)"><rect class="commit-label-bkg" x="128.2734375" y="11.5" width="63.453125" height="18"></rect><text x="130.2734375" y="23" class="commit-label">v1.3.0 特性线</text></g><g transform="translate(-34.099999999999994, 30.4) rotate(-45, 200, -2)"><rect class="commit-label-bkg" x="178" y="11.5" width="64" height="18"></rect><text x="180" y="23" class="commit-label">修复合回主线</text></g><g transform="translate(-20.4675, 18.2025) rotate(-45, 250, -2)"><rect class="commit-label-bkg" x="245.9375" y="11.5" width="28.125" height="18"></rect><text x="247.9375" y="23" class="commit-label">v1.3.1</text></g></g></svg><figcaption>图 5 · 版本谱系：hotfix 线与特性线并行，修复合回主线防丢失</figcaption></figure>
+<p><strong>运行态不变量</strong>：① 运行端看不到未发布变更；② 快照不可变，修复只产生新版本；③ 流程实例绑定发布版本执行。</p>
+
+<h3>7.2 AI 生成与治理链路（平台外生成，平台内审核）</h3>
+<figure class="fig">
+  <div class="seq">
+    <div class="seq-actors">
+      <div>AI Agent<small>平台外</small></div>
+      <div>MCP Server<small>挂 gateway · 含 G3 校验</small></div>
+      <div>审核中心<small>人审</small></div>
+      <div>版本 / 发布 / 环境<small>平台内</small></div>
+    </div>
+    <div class="seq-row"><span class="seq-no">①</span><div class="seq-msg"><span class="chip">AI</span><i>→</i><span class="chip alt">MCP</span> 读元数据 / 方言指南 / 用户角色（list_*、get_dialect_guide、list_users/roles）</div></div>
+    <div class="seq-row"><span class="seq-no">②</span><div class="seq-msg"><span class="chip">AI</span><i>↺</i> 生成 amis 页面 / WorkflowSchema / 对象元数据</div></div>
+    <div class="seq-row"><span class="seq-no">③</span><div class="seq-msg"><span class="chip">AI</span><i>→</i><span class="chip alt">MCP</span> submit_*_draft 或 submit_app_drafts（@ref 令牌跨资源引用）</div></div>
+    <div class="seq-row"><span class="seq-no">④</span><div class="seq-msg"><span class="chip alt">MCP</span><i>↺</i> G3 校验合同：非法 → 结构化错误返回，agent 读错自修正重提（回到 ③）</div></div>
+    <div class="seq-row"><span class="seq-no">⑤</span><div class="seq-msg"><span class="chip alt">MCP</span><i>→</i><span class="chip">审核</span> 合法 → 草稿落库待审（PENDING，不进活表；批量提交共享 batchId 一次人审）</div></div>
+    <div class="seq-row"><span class="seq-no">⑥</span><div class="seq-msg"><span class="chip">审核</span><i>↺</i> 人看 schema diff → 批准 / 驳回（驳回意见回传 agent）</div></div>
+    <div class="seq-row"><span class="seq-no">⑦</span><div class="seq-msg"><span class="chip">审核</span><i>→</i><span class="chip alt">发布</span> 批准 → 拓扑序落地（对象 → 页面 → 流程）→ 人工发布切环境指针</div></div>
+    <div class="seq-row"><span class="seq-no">⑧</span><div class="seq-msg"><span class="chip alt">发布</span><i>→</i><span class="chip">AI</span> 审批结果经回调 webhook 推送（HMAC-SHA256 签名，失败不阻塞）</div></div>
+  </div>
+  <figcaption>图 6 · AI 生成与治理链路：平台外生成，平台内审核</figcaption>
+</figure>
+<p><strong>MCP 工具面</strong>：<code>get_platform_overview</code> / <code>create_application</code> / <code>list_objects|pages|processes</code> / <code>get_page|process</code> / <code>get_dialect_guide</code>（三类方言指南）/ <code>validate_schema</code>（dry-run）/ <code>submit_object|page|workflow_draft</code> / <code>submit_app_drafts</code>（单波批量）/ <code>list_review_submissions</code> / <code>list_users|roles</code>。</p>
+<p><strong>规范传导四层机制</strong>（外部工具"提交时强制服从"，不依赖模型恰好训练过方言）：</p>
+<ol>
+  <li>校验反馈闭环——校验器即编译器，报错即教学，合法率随回合收敛（最硬一道）；</li>
+  <li>工具参数即合同——MCP 工具自带参数 JSON Schema；</li>
+  <li>方言指南作为 MCP Resources 下发；</li>
+  <li>服务端 few-shot 与现存合法 schema 只读示例。</li>
+</ol>
+
+<h3>7.3 业务用户运行时闭环（申请人 C / 审批人 D）</h3>
+<figure class="fig">
+  <div class="seq">
+    <div class="seq-actors">
+      <div>申请人 C<small>业务用户</small></div>
+      <div>运行端<small>runtime-ui</small></div>
+      <div>gateway<small>引擎 + 记录内核</small></div>
+      <div>审批人 D<small>业务用户</small></div>
+    </div>
+    <div class="seq-row"><span class="seq-no">①</span><div class="seq-msg"><span class="chip">C</span><i>→</i><span class="chip alt">RT</span> 表单页填写提交（amis form → create_record）</div></div>
+    <div class="seq-row"><span class="seq-no">②</span><div class="seq-msg"><span class="chip alt">RT</span><i>→</i><span class="chip">GW</span> POST /records</div></div>
+    <div class="seq-row"><span class="seq-no">③</span><div class="seq-msg"><span class="chip">GW</span><i>↺</i> 记录事件 → 触发器 → 流程实例启动（绑定发布版本 schema）</div></div>
+    <div class="seq-row"><span class="seq-no">④</span><div class="seq-msg"><span class="chip">GW</span><i>→</i><span class="chip">D</span> UserTask 待办（绑定页面 pageId）+ 站内信/邮件通知</div></div>
+    <div class="seq-row"><span class="seq-no">⑤</span><div class="seq-msg"><span class="chip">D</span><i>→</i><span class="chip alt">RT</span> 任务中心打开审批（渲染绑定页面查看申请内容）</div></div>
+    <div class="seq-row"><span class="seq-no">⑥</span><div class="seq-msg"><span class="chip">D</span><i>→</i><span class="chip">GW</span> 批准 / 驳回（会签/或签/依次聚合 + 加签/转办/撤回）</div></div>
+    <div class="seq-row"><span class="seq-no">⑦</span><div class="seq-msg"><span class="chip">GW</span><i>↺</i> completeTask 决约定论 → writeback 回写记录字段（通过值 / 驳回值）</div></div>
+    <div class="seq-row"><span class="seq-no">⑧</span><div class="seq-msg"><span class="chip">GW</span><i>↺</i> 条件分支（如金额）→ 后续节点 → 归档，实例 COMPLETED</div></div>
+    <div class="seq-row"><span class="seq-no">⑨</span><div class="seq-msg"><span class="chip alt">RT</span><i>→</i><span class="chip">C</span> 台账页成对展示（单选列 amis mapping 中文标签，如"已批准"）</div></div>
+  </div>
+  <figcaption>图 7 · 业务用户运行时闭环：提交 → 审批 → 状态回写 → 台账</figcaption>
+</figure>
+<blockquote>回写走 RecordService 写内核（触发记录事件，可再级联流程）；非记录触发跳过、失败留痕不阻断主流程。</blockquote>
+
+<h3>7.4 权限：RBAC + ABAC 行级下推</h3>
+<figure class="fig">
+  <div class="chain">
+    <div class="node"><b>PermissionService</b><span>请求入口（JWT / CAS SSO）· RBAC 五级 + ABAC 规则</span></div>
+    <div class="arr"><i>→</i></div>
+    <div class="node"><b>行级 condition</b><span>JsonLogic</span></div>
+    <div class="arr"><i>→</i></div>
+    <div class="node"><b>condition-translator</b><span>翻译为 Prisma where</span></div>
+    <div class="arr"><i>→</i></div>
+    <div class="node"><b>RecordService</b><span>查询注入 tenantId + where</span></div>
+    <div class="arr"><i>→</i></div>
+    <div class="node"><b>PostgreSQL</b><span>records JSONB + GIN</span></div>
+  </div>
+  <div class="fnote">列级：fieldScope 字段裁剪 · 语义：deny-overrides + default-deny（拒绝优先）。</div>
+  <figcaption>图 8 · 权限行级下推链路：condition → Prisma where → 查询注入</figcaption>
+</figure>
+<ul>
+  <li>资源五级：页面 / 记录 / 流程 / 数据模型 / 连接器；组织树授权上级自动继承全部后代（BFS 扩散防环）；</li>
+  <li><strong>AI 无特权路径</strong>：AI 生成的应用跑在同一权限内核；"审核/批准"本身是权限点；AI 产出的草稿带服务身份与 diff，人批后以发布人身份入版本历史；</li>
+  <li>配套调试工具：<code>PermissionService.explain</code> + 权限调试页（"谁能看到这条记录"反向验证）。</li>
+</ul>
+
+<h3>7.5 数据层与多租户</h3>
+<ul>
+  <li><strong>PostgreSQL</strong>：元数据表族 + <code>records</code> JSONB 宽表（<code>data</code> GIN、等值过滤 <code>@&gt;</code>、按类型 cast 排序）+ 版本/环境/审计表；新增模型铁律：<code>tenantId</code> + <code>@@index([tenantId])</code> + Tenant 关系 + 级联删除 + JSON <code>@default("{}")</code>；</li>
+  <li><strong>租户隔离三层</strong>：L1 手动 tenantId / L2 Prisma <code>$extends</code> 自动注入（11 操作 × 24 模型，ALS 上下文，BullMQ worker 恢复）/ L3 RLS（未来）；</li>
+  <li><strong>数据集已全量下推 SQL</strong>（G5）：聚合/物化为 PostgreSQL 子查询 + GROUP BY（regex 守卫），非聚合 filter 内存兜底、聚合不可下推显式报错——消灭内存 join 卡死类 bug；</li>
+  <li><strong>Redis</strong>：BullMQ 队列 + 分布式锁（多副本压测为遗留风险项）。</li>
+</ul>
+
+<h2 class="sec"><span class="n">8</span>AI 可控性设计（产品论的成立前提）</h2>
+<p>AI 可控 = 三层机制，缺一层就不可信：</p>
+<table class="avoid">
+  <thead><tr><th style="width:18%">层</th><th>机制</th><th style="width:10%">状态</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Schema 合同层</strong></td><td>G3 三类 JSON Schema 校验器（amis / WorkflowSchema / 对象元数据），非法即拒 + 结构化错误返 agent 自修正</td><td>✅</td></tr>
+    <tr><td><strong>治理轨道层</strong></td><td>G1 版本模型：AI 仅草稿 → diff 快审 → 人批才落地；漂移保护；批量审计</td><td>✅</td></tr>
+    <tr><td><strong>运行时权限层</strong></td><td>ABAC 条件下推 + 租户隔离 + 全量审计（AI 生成的应用跑在同一内核）</td><td>✅（既有自研资产）</td></tr>
+  </tbody>
+</table>
+<p>配套：审批结果回调 webhook（<code>REVIEW_CALLBACK_URL</code>，替代轮询）+ 观测四分类（FUNCTION_EXEC / SLOW_QUERY / PAGE_ERROR / OPEN_API_CALL）+ traceId 全链路。</p>
+<blockquote><strong>生成位置的分界线</strong>：AI 推理与 agent 循环在平台外（Claude Code/Cursor，先开发者后业务）；<strong>审核与发布永远在平台内</strong>。自建对话式 agent 界面明确不做（未来若做，也只是又一个 MCP 客户端）。</blockquote>
+
+<h2 class="sec"><span class="n">9</span>自研边界</h2>
+<h3>9.1 瘦身清单（79.6k → 61.5k，目标 ~50k）</h3>
+<table class="avoid">
+  <thead><tr><th style="width:36%">处置对象</th><th style="width:10%">规模</th><th style="width:30%">去向</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr><td>86 组件渲染矩阵 + 双渲染器</td><td>~12k</td><td>换 amis 渲染器</td><td>✅</td></tr>
+    <tr><td>v1 搭建器 + 渲染残骸 + 方言合同</td><td>~18.7k</td><td>物理删除</td><td>✅</td></tr>
+    <tr><td>数据集内存 join 引擎</td><td>~2.5k</td><td>下沉 PostgreSQL SQL</td><td>✅</td></tr>
+    <tr><td><strong>保留并加强</strong>（差异化内核）</td><td>未单独统计</td><td>流程引擎+审批语义 / 权限内核 / 对象模型 / 身份层 / 治理轨道</td><td>持续投入</td></tr>
+  </tbody>
+</table>
+<h3>9.2 明确不做</h3>
+<ul>
+  <li><strong>formily</strong>（停更；审批表单场景用不上其深度字段联动；极端动态表单走 amis 自定义 React 组件逃生舱）</li>
+  <li><strong>NocoBase 底座替换</strong>（仅作架构参照 + Plan B；其付费墙功能恰为自研强项）</li>
+  <li><strong>AI 无审核直接发布</strong>（全环境人审为硬闸门）</li>
+  <li><strong>自建对话式 agent 编排界面</strong>（外部 IDE 级 agent 循环能力最强）</li>
+  <li><strong>飞书生态特有项</strong>（连接器市场、飞书审批/事件、行业模板市场）</li>
+  <li><strong>独立移动端</strong>（响应式基础即可）、定时器轮询类实现</li>
+</ul>
+
+<h2 class="sec"><span class="n">10</span>演进状态（截至 2026-10-05）</h2>
+<pre>P0 流程+表单闭环      ✅ S1 spike / S2 amis 渲染 / S3 R1.3 审批语义 / S4 采购合同应用 / S5 e2e 全绿
+P1 治理轨道           ✅ G1 版本+审核中心 / G2 多环境 / G3 校验合同 / G4 MCP / G5 数据下沉 / G6 Open API
+                      ✅ 观测事件四分类 + traceId + 流程效率分析 + 权限调试 + 审计分类（2026-10-02）
+P2 页面层整页化       ✅ R1.7 三批次：v1 运行时下线 → amis-editor 画布 → v1 搭建器物理删除（-18.7k 行）
+AI 第一公民主线       🔄 八步全通（建应用→草稿→人审→发布→触发→审批→回写→通知）
+                      ✅ 批量提交（2 调用+1 人审）/ 审批回调 webhook / 必填守卫 / MCP 建应用
+业务用户旅程 P0       ✅（2026-10-04）审批结果自动回写 + 表单/台账成对生成 + 审批人体验修复
+双视角评审            ✅ 产品+技术双视角，8 项按钮级缺陷已修复</pre>
+<p><strong>质量基线</strong>：gateway 722 / studio 119 / db 55 / shared 17 单测全绿；e2e 88/88；CI 四 job（static/test/build→e2e）+ 分支保护。</p>
+
+<h2 class="sec"><span class="n">11</span>风险与开放问题</h2>
+<table>
+  <thead><tr><th style="width:44%">风险 / 遗留</th><th style="width:12%">等级</th><th>处置</th></tr></thead>
+  <tbody>
+    <tr><td>amis 维护放缓（末 commit 2026-03）</td><td>中</td><td>锁定版本 + fork 预案（Apache-2.0/ISC 无法律障碍）</td></tr>
+    <tr><td>2 人审核吞吐（全环境人审）</td><td>中</td><td>diff 快审 UX 已交付；批量提交一次人审</td></tr>
+    <tr><td>多副本 Redis 锁未压测</td><td>中</td><td>水平扩展前补压测（已内置进程内降级）</td></tr>
+    <tr><td>审批弹窗绑定表单页会允许审批人再提交</td><td>低</td><td>已知项，下轮改页面选择器过滤或只读渲染</td></tr>
+    <tr><td>附件本地卷</td><td>低</td><td>生产前迁对象存储（待立项）</td></tr>
+    <tr><td>LIKE/范围条件无法走 GIN</td><td>低</td><td>大表压测后评估</td></tr>
+  </tbody>
+</table>
+
+<p style="margin-top:14pt; font-size:8.5pt; color:#82888b; border-top:1px solid rgba(74,109,126,.3); padding-top:6pt;">
+本文为汇总快照（2026-10-05），冲突时以权威来源为准：方向决策 <span class="mono">docs/adr/0002 / 0003</span> · 技术架构全文 <span class="mono">docs/architecture/ARCHITECTURE.md</span> · 阶段蓝图 <span class="mono">docs/design/DESIGN-refactor-blueprint-2026-09-30.md</span> · 路线图 <span class="mono">docs/roadmap/ROADMAP.md</span>（2026-09-30 方向修订节）。
+</p>
+
+</main>
+</body>
+</html>

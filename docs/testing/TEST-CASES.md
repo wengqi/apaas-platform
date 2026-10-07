@@ -130,7 +130,7 @@
 | TC-079 | runtime 常驻页签导航与高亮 | P2 | 应用已发布且含多页面 | ① runtime 打开应用 | 常驻页面页签导航出现，当前页签高亮 | 未自动化 | — |
 | TC-080 | runtime 表单渲染提交与 AUTO 回显 | P1 | 应用已发布含表单页（含 auto_number 字段） | ① runtime 打开表单页 ② 填写提交 | 18 控件正确渲染；提交成功；AUTO 编号回显（AUTO-xxxx 形态） | 未自动化 | 截图基线 qa_runtime_form_render |
 | TC-081 | fetcher GET 失败弹 toast | P1 | 已发布页面含 service 组件，url 指向不存在端点（如 `/api/v1/nonexistent-qa-endpoint`） | ① runtime 打开该页面（新标签） ② 观察提示 | 页面渲染同时请求失败弹 toast（如「操作失败：Cannot GET /api/v1/nonexistent-qa-endpoint」）；401 除外（401 走登录态处理） | 未自动化 | 回归 D-010（GET 失败不再静默）；截图基线 qa_fix_d010_get_toast |
-| TC-149 | 原生字段名选择器（字段绑定专项 v2+类型兼容 v3） | P1 | 已登录搭建者；页面绑定对象；画布选中 form 内控件并切原生属性面板 | ① 点击「字段名」输入框内感叹号 ② 弹窗列出分组字段：兼容组在前（组头=对象字段（form 标题）），不兼容字段在「类型不兼容（控件 <type>）」组 ③ 兼容性随控件类型变化（数字控件兼容组仅 number/percent/currency）④ 选中兼容字段点「确认」核对联动 ⑤ 矩阵外控件全量不分组 | 兼容组按 field-control-compat 矩阵过滤（镜像 fieldToFormControl 生成映射）；select 按 multiple 细分；矩阵外控件不过滤；确认写回 name+联动标题；手输通道保留 | 未自动化 | 字段绑定专项 2026-10-07（v3 类型兼容）；镜像一致性有单测守护 |
+| TC-149 | 原生字段名选择器（字段绑定专项 v2+类型兼容 v3） | P1 | 已登录搭建者；页面绑定对象；画布选中 form 内控件并切原生属性面板 | ① 点击「字段名」输入框内感叹号 ② 弹窗列出分组字段：兼容组在前（组头=对象字段（form 标题）），不兼容字段在「类型不兼容（控件 <type>）」组 ③ 兼容性随控件类型变化（数字控件兼容组仅 number/percent/currency）④ 选中兼容字段点「确认」核对联动 ⑤ 矩阵外控件全量不分组 | 兼容组按 field-control-compat 矩阵过滤（镜像 fieldToFormControl 生成映射）；select 按 multiple 细分；矩阵外控件不过滤；确认写回 name+联动标题；手输通道保留 | 未自动化 | 字段绑定专项 2026-10-07（v3 类型兼容）；镜像一致性有单测守护；绑定确认后再开为空已修（官方 scope 重挂载真空期 manager 钩子兜底，见 ApaasFormPlugin 文件头） |
 | TC-150 | 保存时绑定告警（未匹配+类型不兼容两类） | P1 | 同 TC-149 | ① 造错键（name→nam）保存 ② 造类型错绑（数字控件绑 date 字段）保存 ③ 核对弹窗分类统计与逐条标注 ④「返回修改」还原后保存 ⑤ 负向：「仍要保存」强制保存 | 弹窗区分两类：kind=unknown_field（未匹配字段）与 kind=type_mismatch（类型不兼容，标注「控件 X ↔ 字段 Y」）；标题含分类计数；返回修改不保存；仍要保存可强制；矩阵外控件不触发类型判定 | 未自动化 | 字段绑定专项 2026-10-07 v3；纯函数 collectFieldBindingIssues 单测覆盖 |
 
 ### G. 数据集（TC-082~088）
@@ -242,3 +242,4 @@
 | 2026-10-07 | v1.1 | 字段绑定专项：分组 F 追加 TC-149（对象字段绑定下拉面板）/TC-150（保存错配告警）两条用例 | feat/field-binding-picker 功能轮 |
 | 2026-10-07 | v1.2 | 字段绑定专项 v2：TC-149 改写为原生感叹号选择器（分组+搜索+确认联动）；TC-150 保存错配告警升级为逐 form 按所属对象比对（多表） | feat/field-binding-picker |
 | 2026-10-07 | v1.3 | 类型兼容专项：TC-149 补选择器软过滤断言；TC-150 升级两类告警（unknown_field/type_mismatch） | feat/field-binding-picker |
+| 2026-10-07 | v1.3.1 | 缺陷修复：绑定确认后立刻再开选择器弹窗为空（官方渲染包装卸载清 scope 的真空窗口+官方钩子 MST 死节点异常）——manager.getAvailableContextFields 包装兜底（store.activeId 活节点锚点） | feat/field-binding-picker 用户复现轮 |

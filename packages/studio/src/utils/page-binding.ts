@@ -9,6 +9,8 @@
  * 「表单内控件 name ∈ 所属对象字段 apiName」做显式比对，错配列出告警（非阻断）。
  */
 
+import { isControlFieldCompatible } from './field-control-compat.js';
+
 export interface FieldBindingIssue {
   /** 控件在页面 schema 中的路径（如 body[0].body[3]），便于在代码 Tab 定位 */
   path: string;
@@ -20,6 +22,10 @@ export interface FieldBindingIssue {
   type?: string;
   /** 该控件所在 form 解析出的绑定对象 ID */
   objectId?: string;
+  /** 问题类别：unknown_field=提交成未知键；type_mismatch=字段存在但类型不兼容 */
+  kind: 'unknown_field' | 'type_mismatch';
+  /** kind=type_mismatch 时命中的字段类型 */
+  fieldType?: string;
 }
 
 /**
@@ -139,17 +145,20 @@ export function collectBoundObjectIds(schema: unknown): string[] {
 }
 
 /**
- * 收集页面 schema 中「表单内控件 name 未命中所属对象字段」的错配项。
+ * 收集页面 schema 中的绑定问题（2026-10-07 类型兼容专项升级）：
+ * - kind='unknown_field'：控件 name 未命中所属对象的任何字段（提交成未知键静默落库）；
+ * - kind='type_mismatch'：name 命中字段但控件类型与字段类型不兼容（值形状/格式错配）。
  *
  * 规则：
  * - 逐 form 解析绑定对象（api.url 优先，页面级 data.objectId 兜底）；
  *   无法解析对象的 form 跳过（无法判定，避免误报）；
  * - form 自身 name、结构容器 name、actions 内按钮不比对；
+ * - 控件类型不在兼容矩阵（unknown）→ 不做类型判定（与选择器过滤同口径）；
  * - 嵌套容器（grid/panel/dialog 等）递归，dialog 内的 form 同样检出。
  */
 export function collectFieldBindingIssues(
   schema: unknown,
-  fieldsByObject: ReadonlyMap<string, ReadonlySet<string>>,
+  fieldsByObject: ReadonlyMap<string, ReadonlyMap<string, string>>,
 ): FieldBindingIssue[] {
   const issues: FieldBindingIssue[] = [];
   const pageFallback =
@@ -161,20 +170,27 @@ export function collectFieldBindingIssues(
     rec: Record<string, unknown>,
     path: string,
     objectId: string,
-    apiNames: ReadonlySet<string> | undefined,
+    fields: ReadonlyMap<string, string> | undefined,
   ): void => {
-    if (!apiNames) return;
+    if (!fields) return;
     const name = rec['name'];
-    if (typeof name !== 'string' || name === '' || apiNames.has(name)) return;
+    if (typeof name !== 'string' || name === '') return;
+    const controlType = typeof rec['type'] === 'string' ? rec['type'] : undefined;
     const label = typeof rec['label'] === 'string' ? rec['label'] : undefined;
     const title = typeof rec['title'] === 'string' ? rec['title'] : undefined;
-    issues.push({
-      path,
-      name,
-      label: label ?? title,
-      type: typeof rec['type'] === 'string' ? rec['type'] : undefined,
-      objectId,
-    });
+    const base = { path, name, label: label ?? title, type: controlType, objectId };
+
+    const fieldType = fields.get(name);
+    if (fieldType === undefined) {
+      issues.push({ ...base, kind: 'unknown_field' });
+      return;
+    }
+    // 命中字段再查类型兼容；控件类型未知（矩阵外）不判定
+    if (controlType === undefined) return;
+    const verdict = isControlFieldCompatible(controlType, rec['multiple'] === true, fieldType);
+    if (verdict === 'incompatible') {
+      issues.push({ ...base, kind: 'type_mismatch', fieldType });
+    }
   };
 
   const walk = (node: unknown, path: string, inForm: boolean, objectId: string | null): void => {

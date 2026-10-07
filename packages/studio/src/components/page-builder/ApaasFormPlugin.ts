@@ -8,8 +8,9 @@
  * - buildDataSchemas：为 form 节点注册数据域（作用域），使官方选择器的
  *   作用域遍历能停在 form 上；
  * - getAvailableContextFields：返回 ae-SimpleDataBindingPanel schema（官方
- *   选择器渲染器），字段按"对象（显示名）"分组、官方自带搜索，选中后由
- *   官方 onBindingChange 写回 name 并联动 label。
+ *   选择器渲染器），字段按「对象」分组、官方自带搜索；类型兼容专项（v3）：
+ *   按目标控件类型经 field-control-compat 矩阵软过滤——兼容组在前，不兼容
+ *   字段折叠为「类型不兼容」组（保留逃生舱，与保存告警哲学一致）。
  *
  * 绑定对象解析：form.api.url 优先（/objects/:id/records），页面级
  * data.objectId 兜底——同页多表各归各的 form。
@@ -20,6 +21,12 @@ import { FormPlugin } from 'amis-editor';
 import type { BoundObjectField } from './field-binding-store.js';
 import { getBoundObjectSnapshot } from './field-binding-store.js';
 import { extractObjectIdFromApiUrl } from '../../utils/page-binding.js';
+import { partitionFieldsByCompat } from '../../utils/field-control-compat.js';
+
+interface BindingPanelChild {
+  label: string;
+  value: string;
+}
 
 /** 读取 form 节点解析出的绑定对象字段（store 同步缓存，可能为空=未拉到）。 */
 function resolveFormFields(scopeNode: EditorNodeType | undefined): {
@@ -45,26 +52,39 @@ export default class ApaasFormPlugin extends FormPlugin {
    * 官方选择器数据源：返回分组字段面板 schema。
    * 结构约定（amis-editor DataBindingControl）：顶层项=分组（label/value/children），
    * children 项选中后 childItem.value 写回控件 name、childItem.label 联动 label。
+   * 列表项 label 只用显示名——官方 onBindingChange 会把选中项 label 联动写入控件
+   * 标题，复合后缀（apiName）会污染页面标题；apiName 可经搜索按 value 命中。
+   * 类型兼容（v3）：按目标控件软过滤，不兼容字段单独成组放后。
    */
   override async getAvailableContextFields(
     scopeNode: EditorNodeType,
-    _target: EditorNodeType,
+    target: EditorNodeType,
   ): Promise<Record<string, unknown> | void> {
     const { objectId, fields, objectLabel } = resolveFormFields(scopeNode);
     if (!objectId) return;
-    // 列表项 label 只用显示名——官方 onBindingChange 会把选中项 label 联动写入控件
-    // 标题，复合后缀（apiName）会污染页面标题；apiName 可经搜索按 value 命中
-    const children = fields.map((f) => ({ label: f.label, value: f.apiName }));
-    return {
-      type: 'ae-SimpleDataBindingPanel',
-      fields: [
-        {
-          label: `对象字段（${objectLabel || objectId}）`,
-          value: objectId,
-          children,
-        },
-      ],
-    };
+    const targetSchema = (target?.schema ?? {}) as Record<string, unknown>;
+    const { compatible, incompatible } = partitionFieldsByCompat(
+      targetSchema['type'],
+      targetSchema['multiple'] === true,
+      fields,
+    );
+    const toChildren = (list: readonly BoundObjectField[]): BindingPanelChild[] =>
+      list.map((f) => ({ label: f.label, value: f.apiName }));
+    const groups: Array<{ label: string; value: string; children: BindingPanelChild[] }> = [
+      {
+        label: `对象字段（${objectLabel || objectId}）`,
+        value: objectId,
+        children: toChildren(compatible),
+      },
+    ];
+    if (incompatible.length > 0) {
+      groups.push({
+        label: `类型不兼容（控件 ${String(targetSchema['type'])}）`,
+        value: `${objectId}__incompatible`,
+        children: toChildren(incompatible),
+      });
+    }
+    return { type: 'ae-SimpleDataBindingPanel', fields: groups };
   }
 
   /**

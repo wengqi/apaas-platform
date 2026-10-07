@@ -11,6 +11,8 @@
 export interface BoundObjectField {
   apiName: string;
   label: string;
+  /** 字段类型（shared FieldType 字符串值），供类型兼容过滤与保存告警消费 */
+  type: string;
 }
 
 export interface BoundObjectSnapshot {

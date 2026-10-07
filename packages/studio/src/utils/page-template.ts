@@ -39,8 +39,9 @@ function selectOptions(f: TemplateField): Array<{ label: string; value: string }
   return (cfg.options ?? []).map((o) => ({ label: o.label, value: o.value ?? o.label }));
 }
 
-/** 字段类型 → amis 表单控件（与 seed-procurement amisFieldControl 同口径）。 */
-function fieldToFormControl(f: TemplateField): Record<string, unknown> {
+/** 字段类型 → amis 表单控件（与 seed-procurement amisFieldControl 同口径）。
+ *  导出供 field-control-compat 镜像一致性单测消费（防止矩阵与生成映射漂移）。 */
+export function fieldToFormControl(f: TemplateField): Record<string, unknown> {
   const base: Record<string, unknown> = {
     name: f.apiName,
     label: f.label,

@@ -6,11 +6,26 @@ import {
   isBindableControlType,
 } from './page-binding.js';
 
-const FIELDS_A = new Set(['name', 'description', 'quantity']);
-const FIELDS_B = new Set(['title', 'amount']);
+/** objectId → (apiName → 字段类型) */
 const FIELDS_BY_OBJECT = new Map([
-  ['obj_a', FIELDS_A],
-  ['obj_b', FIELDS_B],
+  [
+    'obj_a',
+    new Map([
+      ['name', 'text'],
+      ['description', 'long_text'],
+      ['quantity', 'number'],
+      ['deadline', 'date'],
+      ['status', 'single_select'],
+      ['auto_no', 'auto_number'],
+    ]),
+  ],
+  [
+    'obj_b',
+    new Map([
+      ['title', 'text'],
+      ['amount', 'currency'],
+    ]),
+  ],
 ]);
 
 describe('isBindableControlType', () => {
@@ -71,27 +86,30 @@ describe('collectBoundObjectIds', () => {
   });
 });
 
-describe('collectFieldBindingIssues（多表）', () => {
-  it('各 form 控件命中各自对象字段 → 无 issue', () => {
+describe('collectFieldBindingIssues（多表+类型兼容）', () => {
+  it('各 form 控件命中各自对象字段且类型兼容 → 无 issue', () => {
     const schema = {
       type: 'page',
       body: [
         {
           type: 'form',
           api: { url: '/objects/obj_a/records' },
-          body: [{ type: 'input-text', name: 'name', label: '名称' }],
+          body: [
+            { type: 'input-text', name: 'name', label: '名称' },
+            { type: 'input-number', name: 'quantity', label: '数量' },
+          ],
         },
         {
           type: 'form',
           api: { url: '/objects/obj_b/records' },
-          body: [{ type: 'input-text', name: 'amount', label: '金额' }],
+          body: [{ type: 'input-number', name: 'amount', label: '金额' }],
         },
       ],
     };
     expect(collectFieldBindingIssues(schema, FIELDS_BY_OBJECT)).toEqual([]);
   });
 
-  it('错配按所属对象判定：A 表合法键在 B 表 form 中应报', () => {
+  it('未匹配字段：kind=unknown_field（A 表合法键在 B 表 form 中）', () => {
     const schema = {
       type: 'page',
       body: [
@@ -104,7 +122,61 @@ describe('collectFieldBindingIssues（多表）', () => {
     };
     const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
     expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({ name: 'name', objectId: 'obj_b', path: 'body[0].body[0]' });
+    expect(issues[0]).toMatchObject({
+      kind: 'unknown_field',
+      name: 'name',
+      objectId: 'obj_b',
+      path: 'body[0].body[0]',
+    });
+  });
+
+  it('类型不兼容：kind=type_mismatch（数字控件绑日期字段）', () => {
+    const schema = {
+      type: 'page',
+      data: { objectId: 'obj_a' },
+      body: [
+        {
+          type: 'form',
+          body: [{ type: 'input-number', name: 'deadline', label: '截止日期' }],
+        },
+      ],
+    };
+    const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      kind: 'type_mismatch',
+      name: 'deadline',
+      fieldType: 'date',
+      type: 'input-number',
+    });
+  });
+
+  it('select 控件按 multiple 细分判定', () => {
+    const schema = {
+      type: 'page',
+      data: { objectId: 'obj_a' },
+      body: [
+        {
+          type: 'form',
+          body: [
+            { type: 'select', name: 'status', label: '单选' },
+            { type: 'select', name: 'deadline', label: '错绑', multiple: true },
+          ],
+        },
+      ],
+    };
+    const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ kind: 'type_mismatch', name: 'deadline' });
+  });
+
+  it('矩阵外控件类型不做类型判定（不误报）', () => {
+    const schema = {
+      type: 'page',
+      data: { objectId: 'obj_a' },
+      body: [{ type: 'form', body: [{ type: 'input-tree', name: 'deadline', label: '树绑日期' }] }],
+    };
+    expect(collectFieldBindingIssues(schema, FIELDS_BY_OBJECT)).toEqual([]);
   });
 
   it('页面级 data.objectId 兜底无自身 api 的 form', () => {
@@ -115,6 +187,7 @@ describe('collectFieldBindingIssues（多表）', () => {
     };
     const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
     expect(issues).toHaveLength(1);
+    expect(issues[0]?.kind).toBe('unknown_field');
     expect(issues[0]?.objectId).toBe('obj_a');
   });
 
@@ -171,7 +244,7 @@ describe('collectFieldBindingIssues（多表）', () => {
             { type: 'input-text', name: 'nope', title: '标题回退' },
             { type: 'input-text', label: '无 name' },
             { type: 'input-text', name: '' },
-            { type: 'select', name: 'name' },
+            { type: 'input-text', name: 'name' },
           ],
         },
       ],
@@ -179,5 +252,6 @@ describe('collectFieldBindingIssues（多表）', () => {
     const issues = collectFieldBindingIssues(schema, FIELDS_BY_OBJECT);
     expect(issues).toHaveLength(1);
     expect(issues[0]?.label).toBe('标题回退');
+    expect(issues[0]?.kind).toBe('unknown_field');
   });
 });

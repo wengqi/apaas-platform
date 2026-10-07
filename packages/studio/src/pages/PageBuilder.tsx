@@ -100,7 +100,13 @@ export default function PageBuilder() {
   // 自身 api.url，页面级 data.objectId 兜底），经 React Query 治理键 qk.object 拉取
   // （queryClient.fetchQuery 复用缓存），写入 field-binding-store 供编辑器插件
   // （原生字段名选择器）与保存校验同步消费
-  const boundObjectIds = useMemo(() => collectBoundObjectIds(schema), [schema]);
+  // 按内容键稳定化：schema 每次编辑都换引用，直接 useMemo 返回新数组会让下游
+  // effect 每次编辑都重跑；join 成 key 后内容不变则引用不变
+  const boundObjectIdsKey = useMemo(() => collectBoundObjectIds(schema).join('|'), [schema]);
+  const boundObjectIds = useMemo(
+    () => (boundObjectIdsKey ? boundObjectIdsKey.split('|') : []),
+    [boundObjectIdsKey],
+  );
 
   useEffect(() => {
     if (boundObjectIds.length === 0) {
@@ -121,6 +127,7 @@ export default function PageBuilder() {
           objects[objectId] = (obj.fields ?? []).map((f) => ({
             apiName: f.apiName,
             label: f.label ?? f.apiName,
+            type: f.type,
           }));
         } catch {
           // 拉取失败（权限/网络）：保留空列表显式化，选择器提示"字段加载失败"
@@ -203,7 +210,7 @@ export default function PageBuilder() {
     const fieldsByObject = new Map(
       Object.entries(snapshot.objects).map(([objectId, fields]) => [
         objectId,
-        new Set(fields.map((f) => f.apiName)),
+        new Map(fields.map((f) => [f.apiName, f.type])),
       ]),
     );
     const issues = fieldsByObject.size > 0 ? collectFieldBindingIssues(schema, fieldsByObject) : [];
@@ -211,21 +218,28 @@ export default function PageBuilder() {
       saveMutation.mutate(schema);
       return;
     }
+    const unknownCount = issues.filter((it) => it.kind === 'unknown_field').length;
+    const mismatchCount = issues.length - unknownCount;
     Modal.confirm({
-      title: `${issues.length} 个控件的「字段名」未匹配对象字段`,
+      title: `${issues.length} 个控件与对象字段不匹配`,
       width: 560,
       content: (
         <div style={{ maxHeight: 320, overflow: 'auto' }}>
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-            提交时这些值将以未知键原样存入记录、不落入任何字段（服务端不拒绝未知键）。建议
-            在控件「对象字段绑定」面板中改选正确字段。
+            未匹配字段（{unknownCount}）的值提交时将以未知键原样存入记录、不落入任何字段
+            （服务端不拒绝未知键）；类型不兼容（{mismatchCount}）的值形状或格式与字段定义
+            错配。建议在「字段名」选择器中改选兼容字段。
           </Text>
           <ul style={{ paddingLeft: 18, margin: 0 }}>
             {issues.slice(0, 20).map((it) => (
-              <li key={`${it.path}-${it.name}`} style={{ marginBottom: 4 }}>
+              <li key={`${it.path}-${it.name}-${it.kind}`} style={{ marginBottom: 4 }}>
+                <Text type={it.kind === 'type_mismatch' ? 'warning' : undefined} code>
+                  {it.kind === 'type_mismatch' ? '类型不兼容' : '未匹配字段'}
+                </Text>{' '}
                 <Text code>{it.name}</Text>
                 {it.label ? `（${it.label}）` : ''}
-                {it.type ? ` · ${it.type}` : ''}
+                {it.type ? ` · 控件 ${it.type}` : ''}
+                {it.kind === 'type_mismatch' && it.fieldType ? ` ↔ 字段 ${it.fieldType}` : ''}
                 <br />
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {it.path}

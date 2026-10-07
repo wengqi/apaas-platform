@@ -77,7 +77,7 @@
 5) 表单生成器 12 映射逐项验证：text/long_text→textarea/number/currency（千分位+precision2）/percent/single_select（options value 回退 label 不回退 id）/multi_select（multiple）/date（YYYY-MM-DD）/date_time（含秒）/auto_number→static 只读/checkbox→switch/attachment→input-file；排除系统字段与流程回写字段。
 6) 顶栏功能：重置（弃本地修改）/代码 Tab（JSON 编辑+本地预检三规则：根 type=page、body 数组、无外链 URL+校验并应用）/runtime 预览/?env=dev/保存（非脏禁用）/未保存 Tag 真实性（外部改数据后重进不误标）。
 7) 疑点核实（先核实再定性）：存档点 API 存在但无 UI 入口；详情/仪表盘/自定义模板生成空白 scaffold 是否符合预期。
-8) 平台字段绑定（2026-10-07 专项，v2 原生接管）：禁用内置 FormPlugin、由平台子类（ApaasFormPlugin）接管 form 节点——原生「字段名」输入框的感叹号弹窗（ae-DataBindingControl）变为对象字段选择器：字段按所属对象分组（组头=对象字段（form 标题））、官方自带搜索、列表项=纯显示名，选中经「确认」写回 name 并联动控件标题；绑定对象按 form 解析（api.url 优先，页面级 data.objectId 兜底，同页多表各归各）；保存时 collectFieldBindingIssues 逐 form 比对控件 name 与所属对象字段，错配弹窗列出（name·label·type·路径，非阻断可强制保存）。
+8) 平台字段绑定（2026-10-07 专项，v2 原生接管）：禁用内置 FormPlugin、由平台子类（ApaasFormPlugin）接管 form 节点——原生「字段名」输入框的感叹号弹窗（ae-DataBindingControl）变为对象字段选择器：字段按所属对象分组（组头=对象字段（form 标题））、官方自带搜索、列表项=纯显示名，选中经「确认」写回 name 并联动控件标题；绑定对象按 form 解析（api.url 优先，页面级 data.objectId 兜底，同页多表各归各）；类型兼容专项（v3）：选择器按目标控件类型经 field-control-compat 矩阵软过滤——兼容组在前、不兼容字段折叠为「类型不兼容（控件 <type>）」组（矩阵锚=fieldToFormControl 生成映射的镜像，矩阵外控件不过滤）；保存时 collectFieldBindingIssues 区分两类告警（kind=unknown_field 未匹配字段 / kind=type_mismatch 类型不兼容，弹窗分类统计+「控件 X ↔ 字段 Y」标注，均非阻断可强制保存）。
 
 **矩阵 2 · 流程设计器：节点类型 × 配置项（18 种全测）**
 通用项（所有节点）：标题编辑+删除节点 Popconfirm+已发布只读。逐节点配置字段：
@@ -157,3 +157,4 @@
 | 2026-10-06 | v1.0.2 | 修复轮同步：第七节追加 9 条修复锚点（D-001/002/004/005/006/007/009/010 + D-008 撤销复验）；维护规约表映射不变（已修复缺陷→第七节） | 缺陷修复轮（fix/qa-defects-2026-10-06） |
 | 2026-10-07 | v1.0.3 | 字段绑定专项：矩阵 1 追加第 8 条（对象字段绑定插件面板+保存校验）；第七节追加专项锚点 | feat/field-binding-picker |
 | 2026-10-07 | v1.0.4 | 字段绑定专项 v2：独立注入面板退役，原生字段名选择器接管（FormPlugin 子类提供数据源）；多表按 form 解析；矩阵 1 第 8 条改写 | feat/field-binding-picker |
+| 2026-10-07 | v1.0.5 | 类型兼容专项：矩阵 1 第 8 条补选择器软过滤与保存告警两类区分（兼容矩阵=生成映射镜像） | feat/field-binding-picker |

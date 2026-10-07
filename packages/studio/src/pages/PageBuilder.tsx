@@ -1,12 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Input, Modal, Space, Tooltip, Typography, message } from 'antd';
-import { CodeOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import {
+  CodeOutlined,
+  ReloadOutlined,
+  SaveOutlined,
+  ThunderboltOutlined,
+  UndoOutlined,
+  RedoOutlined,
+} from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../api/pages.js';
 import { objectsApi } from '../api/objects.js';
 import AmisEditorCanvas from '../components/page-builder/AmisEditorCanvas.js';
+import type { EditorHandle } from '../components/page-builder/AmisEditorInner.js';
 import {
   setBoundObjectObjects,
   clearBoundObjectObjects,
@@ -71,6 +79,29 @@ export default function PageBuilder() {
   // 基线随之刷新；窗口外的变更按内容比对计脏（事件驱动，无定时器）
   const savedJsonRef = useRef<string>('');
   const editorReadyAtRef = useRef(0);
+  // 撤销/重做：编辑器实例句柄 + 可用态（事件驱动刷新——onChange/undo/redo 后同步读
+  // 编辑器 store 的 canUndo/canRedo，无轮询）
+  const editorRef = useRef<EditorHandle | null>(null);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  const syncHistoryState = useCallback(() => {
+    const store = editorRef.current?.store;
+    if (store) setHistoryState({ canUndo: store.canUndo, canRedo: store.canRedo });
+  }, []);
+  const onEditorReady = useCallback(
+    (editor: EditorHandle) => {
+      editorRef.current = editor;
+      syncHistoryState();
+    },
+    [syncHistoryState],
+  );
+  const handleUndo = useCallback(() => {
+    editorRef.current?.undo();
+    syncHistoryState();
+  }, [syncHistoryState]);
+  const handleRedo = useCallback(() => {
+    editorRef.current?.redo();
+    syncHistoryState();
+  }, [syncHistoryState]);
 
   const {
     data: page,
@@ -342,6 +373,22 @@ export default function PageBuilder() {
               重置
             </Button>
           </Tooltip>
+          <Tooltip title="撤销（Ctrl+Z）">
+            <Button
+              size="small"
+              icon={<UndoOutlined />}
+              disabled={!historyState.canUndo}
+              onClick={handleUndo}
+            />
+          </Tooltip>
+          <Tooltip title="重做（Ctrl+Y）">
+            <Button
+              size="small"
+              icon={<RedoOutlined />}
+              disabled={!historyState.canRedo}
+              onClick={handleRedo}
+            />
+          </Tooltip>
           <Button size="small" icon={<CodeOutlined />} onClick={openCode}>
             代码
           </Button>
@@ -368,6 +415,7 @@ export default function PageBuilder() {
         {schema && (
           <AmisEditorCanvas
             value={schema}
+            onEditorReady={onEditorReady}
             onChange={(next) => {
               setSchema(next);
               const now = Date.now();
@@ -378,9 +426,11 @@ export default function PageBuilder() {
                 // 编辑器初始化规范化窗口：基线跟随，不计脏
                 savedJsonRef.current = JSON.stringify(next);
                 setDirty(false);
-                return;
+              } else {
+                setDirty(JSON.stringify(next) !== savedJsonRef.current);
               }
-              setDirty(JSON.stringify(next) !== savedJsonRef.current);
+              // 编辑/撤销/重做都会经 onChange：同步刷新顶栏按钮可用态
+              syncHistoryState();
             }}
           />
         )}

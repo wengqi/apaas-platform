@@ -124,7 +124,7 @@
 | TC-073 | 表单生成器系统字段排除 | P1 | 同上 | ① 查看可勾选字段清单 | 不含 created_by/updated_by 等系统字段与流程回写字段 | 未自动化 | — |
 | TC-074 | chart 组件属性面板持久化 | P2 | 画布含 chart 组件 | ① 属性面板逐项设值→保存→重进画布 | 属性面板枚举完整、设置逐项持久化一致 | 未自动化 | 截图基线 qa_page_builder_canvas_chart |
 | TC-075 | 成对台账列含回写状态列且中文标签 | P1 | 新建含成对台账的表单页 | ① 提交生成台账页 ② API 查看台账页 crud 列配置 | 列=前 5 字段+status（回写状态列必入）且 mapping 中文标签（如 status 列 [name, description, rich_content, quantity, discount, status] 形态） | 未自动化 | 回归 D-004（此前 status 被裁） |
-| TC-076 | 搭建器顶栏四功能可用 | P2 | 已打开页面画布 | ① 重置 ② 代码 Tab ③ runtime 预览 ④ 保存 | 全部可用；保存按钮非脏状态禁用 | 未自动化 | — |
+| TC-076 | 搭建器顶栏功能可用（重置/撤销/重做/代码/runtime 预览/保存） | P2 | 已打开页面画布 | ① 重置 ② 撤销/重做按钮：做一次编辑→撤销（值回退）→重做（值恢复）；按钮禁用态随历史变化（无撤销历史时置灰）③ 代码 Tab ④ runtime 预览 ⑤ 保存 | 全部可用；撤销/重做与 Ctrl+Z/Ctrl+Y 快捷键等效（调用编辑器内置 schemaHistory）；保存按钮非脏状态禁用；刷新/重置后历史链清空（回到服务端版本） | 未自动化 | 2026-10-07 撤销/重做按钮补齐（此前仅快捷键未暴露入口） |
 | TC-077 | 代码 Tab 三规则负向 | P2 | 已打开代码 Tab | ① 分别提交：根 type≠page、body 非数组、含外链 URL 的 JSON | 三条本地预检规则 alert 精确提示 | 未自动化 | — |
 | TC-078 | 代码 Tab 校验并应用与 G3 说明 | P3 | 同上 | ① 提交合法页面 JSON，点校验并应用 ② 查看 G3 说明文案 | 校验通过并应用；G3 说明文案符合 | 未自动化 | — |
 | TC-079 | runtime 常驻页签导航与高亮 | P2 | 应用已发布且含多页面 | ① runtime 打开应用 | 常驻页面页签导航出现，当前页签高亮 | 未自动化 | — |
@@ -243,3 +243,4 @@
 | 2026-10-07 | v1.2 | 字段绑定专项 v2：TC-149 改写为原生感叹号选择器（分组+搜索+确认联动）；TC-150 保存错配告警升级为逐 form 按所属对象比对（多表） | feat/field-binding-picker |
 | 2026-10-07 | v1.3 | 类型兼容专项：TC-149 补选择器软过滤断言；TC-150 升级两类告警（unknown_field/type_mismatch） | feat/field-binding-picker |
 | 2026-10-07 | v1.3.1 | 缺陷修复：绑定确认后立刻再开选择器弹窗为空（官方渲染包装卸载清 scope 的真空窗口+官方钩子 MST 死节点异常）——manager.getAvailableContextFields 包装兜底（store.activeId 活节点锚点） | feat/field-binding-picker 用户复现轮 |
+| 2026-10-07 | v1.3.2 | 页面搭建器顶栏补撤销/重做按钮（接 amis-editor 内置 schemaHistory，事件驱动禁用态）；TC-076 更新为六功能 | 用户需求（撤销重做入口） |

@@ -29,6 +29,11 @@ const AmisEditorInner = lazy(() => import('./AmisEditorInner.js'));
 interface AmisEditorCanvasProps {
   value: Record<string, unknown>;
   onChange: (schema: Record<string, unknown>) => void;
+  onEditorReady?: (editor: {
+    undo(): void;
+    redo(): void;
+    store: { canUndo: boolean; canRedo: boolean };
+  }) => void;
 }
 
 /** amis-editor 懒加载兜底态。 */
@@ -40,11 +45,15 @@ function EditorFallback() {
   );
 }
 
-export default function AmisEditorCanvas({ value, onChange }: AmisEditorCanvasProps) {
+export default function AmisEditorCanvas({
+  value,
+  onChange,
+  onEditorReady,
+}: AmisEditorCanvasProps) {
   return (
     <Suspense fallback={<EditorFallback />}>
       <div style={{ height: '100%' }}>
-        <AmisEditorInner value={value} onChange={onChange} />
+        <AmisEditorInner value={value} onChange={onChange} onEditorReady={onEditorReady} />
       </div>
     </Suspense>
   );

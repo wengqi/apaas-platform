@@ -83,22 +83,57 @@ export default function PageBuilder() {
   // 编辑器 store 的 canUndo/canRedo，无轮询）
   const editorRef = useRef<EditorHandle | null>(null);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  // 官方历史链长度基线：部分面板控件（如开关类 boolean 配置）的修改不走官方
+  // traceableSetSchema（实测 2026-10-07：文本输入可撤销、开关不可撤销）——
+  // onChange 时对比链长，官方漏记录则手动补一条，让撤销/重做/快捷键全套生效
+  const historyLenRef = useRef<number | null>(null);
+  // undo/redo 自身触发的 onChange 链长不变，会误判为"官方漏记录"而把撤销重做回去——抑制之
+  const suppressEnsureRef = useRef(false);
   const syncHistoryState = useCallback(() => {
     const store = editorRef.current?.store;
-    if (store) setHistoryState({ canUndo: store.canUndo, canRedo: store.canRedo });
+    if (store) {
+      setHistoryState({ canUndo: store.canUndo, canRedo: store.canRedo });
+      const len = (store as { schemaHistory?: unknown[] }).schemaHistory?.length;
+      if (typeof len === 'number') historyLenRef.current = len;
+    }
+  }, []);
+  /** 官方漏记录时手动补一条可撤销历史（store.traceableSetSchema 会 push 并切换当前版本）。 */
+  const ensureHistoryRecorded = useCallback((next: Record<string, unknown>) => {
+    const store = editorRef.current?.store as
+      | {
+          schemaHistory?: Array<{ schema?: unknown }>;
+          traceableSetSchema?: (s: Record<string, unknown>) => void;
+        }
+      | undefined;
+    if (!store || typeof store.traceableSetSchema !== 'function') return;
+    const len = store.schemaHistory?.length;
+    if (
+      typeof len !== 'number' ||
+      historyLenRef.current === null ||
+      len !== historyLenRef.current
+    ) {
+      return;
+    }
+    // 撤销/重做（含 Ctrl+Z 快捷键）后 next 即链顶历史项的引用——不是漏记录
+    const top = store.schemaHistory?.[len - 1];
+    if (top && top.schema === next) return;
+    store.traceableSetSchema(next);
   }, []);
   const onEditorReady = useCallback(
     (editor: EditorHandle) => {
       editorRef.current = editor;
+      historyLenRef.current = null; // 新实例新链，下次 onChange 重新建立基线
       syncHistoryState();
     },
     [syncHistoryState],
   );
   const handleUndo = useCallback(() => {
+    suppressEnsureRef.current = true;
     editorRef.current?.undo();
     syncHistoryState();
   }, [syncHistoryState]);
   const handleRedo = useCallback(() => {
+    suppressEnsureRef.current = true;
     editorRef.current?.redo();
     syncHistoryState();
   }, [syncHistoryState]);
@@ -429,7 +464,13 @@ export default function PageBuilder() {
               } else {
                 setDirty(JSON.stringify(next) !== savedJsonRef.current);
               }
-              // 编辑/撤销/重做都会经 onChange：同步刷新顶栏按钮可用态
+              // 官方漏记录的改动（开关类面板配置）补入撤销历史；undo/redo 自身的
+              // onChange 跳过（否则会把刚撤销/重做的又推回历史）；随后刷新按钮可用态
+              if (suppressEnsureRef.current) {
+                suppressEnsureRef.current = false;
+              } else {
+                ensureHistoryRecorded(next);
+              }
               syncHistoryState();
             }}
           />

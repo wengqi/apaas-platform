@@ -630,6 +630,9 @@ importers:
       '@flowgram.ai/variable-plugin':
         specifier: ^1.0.12
         version: 1.0.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@fortawesome/fontawesome-free':
+        specifier: ^6.7.2
+        version: 6.7.2
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.56.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1846,6 +1849,10 @@ packages:
 
   '@flowgram.ai/variable-plugin@1.0.12':
     resolution: {integrity: sha512-yfUgzJFxy16WA8QvW/Eb/7vRz664xZ8Ib62f3IsNR3CH3e5v/1mw23H/uj4U7nHXk30hHpfGidy9PLXDywYFVg==}
+
+  '@fortawesome/fontawesome-free@6.7.2':
+    resolution: {integrity: sha512-JUOtgFW6k9u4Y+xeIaEiLr3+cjoUPiAuLXoyKOJSia6Duzb7pq+A76P9ZdPDoAoxHdHzq6gE9/jKBGXlZT8FbA==}
+    engines: {node: '>=6'}
 
   '@hapi/hoek@9.3.0':
     resolution: {integrity: sha512-/c6rf4UJlmHlC9b5BaNvzAcFv7HZ2QHaV0D4/HNlBdvFnvQq8RI4kYdhyPCl7Xj+oWvTWQ8ujhqS53LIgAe6KQ==}
@@ -9265,6 +9272,8 @@ snapshots:
     transitivePeerDependencies:
       - react
       - react-dom
+
+  '@fortawesome/fontawesome-free@6.7.2': {}
 
   '@hapi/hoek@9.3.0': {}
 

@@ -1,11 +1,29 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Input, Space, Tooltip, Typography, message } from 'antd';
-import { CodeOutlined, ReloadOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Drawer, Input, Modal, Space, Tooltip, Typography, message } from 'antd';
+import {
+  CodeOutlined,
+  ReloadOutlined,
+  SaveOutlined,
+  ThunderboltOutlined,
+  UndoOutlined,
+  RedoOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+} from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { pagesApi } from '../api/pages.js';
+import { objectsApi } from '../api/objects.js';
 import AmisEditorCanvas from '../components/page-builder/AmisEditorCanvas.js';
+import type { EditorHandle } from '../components/page-builder/AmisEditorInner.js';
+import {
+  setBoundObjectObjects,
+  clearBoundObjectObjects,
+  getBoundObjectSnapshot,
+  type BoundObjectField,
+} from '../components/page-builder/field-binding-store.js';
+import { collectFieldBindingIssues, collectBoundObjectIds } from '../utils/page-binding.js';
 
 const { Text } = Typography;
 
@@ -63,6 +81,31 @@ export default function PageBuilder() {
   // 基线随之刷新；窗口外的变更按内容比对计脏（事件驱动，无定时器）
   const savedJsonRef = useRef<string>('');
   const editorReadyAtRef = useRef(0);
+  // 撤销/重做：编辑器实例句柄 + 可用态（事件驱动刷新——onChange/undo/redo 后同步读
+  // 编辑器 store 的 canUndo/canRedo，无轮询）
+  const editorRef = useRef<EditorHandle | null>(null);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  // 预览模式：画布切预览渲染（当前设计的所见即所得，数据走真实平台 API）
+  const [previewMode, setPreviewMode] = useState(false);
+  const syncHistoryState = useCallback(() => {
+    const store = editorRef.current?.store;
+    if (store) setHistoryState({ canUndo: store.canUndo, canRedo: store.canRedo });
+  }, []);
+  const onEditorReady = useCallback(
+    (editor: EditorHandle) => {
+      editorRef.current = editor;
+      syncHistoryState();
+    },
+    [syncHistoryState],
+  );
+  const handleUndo = useCallback(() => {
+    editorRef.current?.undo();
+    syncHistoryState();
+  }, [syncHistoryState]);
+  const handleRedo = useCallback(() => {
+    editorRef.current?.redo();
+    syncHistoryState();
+  }, [syncHistoryState]);
 
   const {
     data: page,
@@ -87,6 +130,51 @@ export default function PageBuilder() {
       setDirty(false);
     }
   }, [page]);
+
+  // 字段绑定专项（2026-10-07 v2 多表）：收集页面内全部绑定对象（每个 form 优先解析
+  // 自身 api.url，页面级 data.objectId 兜底），经 React Query 治理键 qk.object 拉取
+  // （queryClient.fetchQuery 复用缓存），写入 field-binding-store 供编辑器插件
+  // （原生字段名选择器）与保存校验同步消费
+  // 按内容键稳定化：schema 每次编辑都换引用，直接 useMemo 返回新数组会让下游
+  // effect 每次编辑都重跑；join 成 key 后内容不变则引用不变
+  const boundObjectIdsKey = useMemo(() => collectBoundObjectIds(schema).join('|'), [schema]);
+  const boundObjectIds = useMemo(
+    () => (boundObjectIdsKey ? boundObjectIdsKey.split('|') : []),
+    [boundObjectIdsKey],
+  );
+
+  useEffect(() => {
+    if (boundObjectIds.length === 0) {
+      clearBoundObjectObjects();
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const objects: Record<string, BoundObjectField[]> = {};
+      for (const objectId of boundObjectIds) {
+        try {
+          // fetchQuery 与 ObjectDesigner 等共用 qk.object 缓存键（staleTime 内不重复请求）
+          const obj = await queryClient.fetchQuery({
+            queryKey: qk.object(objectId),
+            queryFn: () => objectsApi.get(objectId),
+            staleTime: 5 * 60 * 1000,
+          });
+          objects[objectId] = (obj.fields ?? []).map((f) => ({
+            apiName: f.apiName,
+            label: f.label ?? f.apiName,
+            type: f.type,
+          }));
+        } catch {
+          // 拉取失败（权限/网络）：保留空列表显式化，选择器提示"字段加载失败"
+          objects[objectId] = [];
+        }
+      }
+      if (!cancelled) setBoundObjectObjects(objects);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [boundObjectIds, queryClient]);
 
   // 评审 P1-2 沿革：加载失败显式暴露，绝不静默回退空 Schema（防覆盖线上内容）
   const saveMutation = useMutation({
@@ -150,6 +238,66 @@ export default function PageBuilder() {
     );
   }
 
+  // 保存前绑定校验（字段绑定专项 v2 多表）：各 form 控件 name 未命中所属对象字段 → 告警可强制保存
+  const handleSave = () => {
+    if (!schema) return;
+    const snapshot = getBoundObjectSnapshot();
+    const fieldsByObject = new Map(
+      Object.entries(snapshot.objects).map(([objectId, fields]) => [
+        objectId,
+        new Map(fields.map((f) => [f.apiName, f.type])),
+      ]),
+    );
+    const issues = fieldsByObject.size > 0 ? collectFieldBindingIssues(schema, fieldsByObject) : [];
+    if (issues.length === 0) {
+      saveMutation.mutate(schema);
+      return;
+    }
+    const unknownCount = issues.filter((it) => it.kind === 'unknown_field').length;
+    const mismatchCount = issues.length - unknownCount;
+    Modal.confirm({
+      title: `${issues.length} 个控件与对象字段不匹配`,
+      width: 560,
+      content: (
+        <div style={{ maxHeight: 320, overflow: 'auto' }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+            未匹配字段（{unknownCount}）的值提交时将以未知键原样存入记录、不落入任何字段
+            （服务端不拒绝未知键）；类型不兼容（{mismatchCount}）的值形状或格式与字段定义
+            错配。建议在「字段名」选择器中改选兼容字段。
+          </Text>
+          <ul style={{ paddingLeft: 18, margin: 0 }}>
+            {issues.slice(0, 20).map((it) => (
+              <li key={`${it.path}-${it.name}-${it.kind}`} style={{ marginBottom: 4 }}>
+                <Text type={it.kind === 'type_mismatch' ? 'warning' : undefined} code>
+                  {it.kind === 'type_mismatch' ? '类型不兼容' : '未匹配字段'}
+                </Text>{' '}
+                <Text code>{it.name}</Text>
+                {it.label ? `（${it.label}）` : ''}
+                {it.type ? ` · 控件 ${it.type}` : ''}
+                {it.kind === 'type_mismatch' && it.fieldType ? ` ↔ 字段 ${it.fieldType}` : ''}
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {it.path}
+                </Text>
+              </li>
+            ))}
+          </ul>
+          {issues.length > 20 && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              …其余 {issues.length - 20} 项略
+            </Text>
+          )}
+        </div>
+      ),
+      okText: '仍要保存',
+      okButtonProps: { danger: true },
+      cancelText: '返回修改',
+      onOk: () => {
+        saveMutation.mutate(schema);
+      },
+    });
+  };
+
   const openCode = () => {
     setCodeDraft(schema ? JSON.stringify(schema, null, 2) : '');
     setCodeError(null);
@@ -205,10 +353,27 @@ export default function PageBuilder() {
           )}
         </Space>
         <Space size={8}>
+          <Tooltip
+            title={
+              previewMode
+                ? '退出预览，返回编辑'
+                : '预览当前设计的页面效果（含未保存修改，数据走真实接口）'
+            }
+          >
+            <Button
+              size="small"
+              type={previewMode ? 'primary' : 'default'}
+              icon={previewMode ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+              onClick={() => setPreviewMode((v) => !v)}
+            >
+              {previewMode ? '退出预览' : '预览'}
+            </Button>
+          </Tooltip>
           <Tooltip title="从服务端重新加载（放弃本地修改）">
             <Button
               size="small"
               icon={<ReloadOutlined />}
+              disabled={previewMode}
               onClick={() => {
                 // 同步从缓存重置（refetch 结构共享返回同引用时 useEffect 不会触发）；
                 // 再后台刷新拉取服务端最新（引用变化时经 useEffect 覆盖）
@@ -229,7 +394,23 @@ export default function PageBuilder() {
               重置
             </Button>
           </Tooltip>
-          <Button size="small" icon={<CodeOutlined />} onClick={openCode}>
+          <Tooltip title="撤销（Ctrl+Z）">
+            <Button
+              size="small"
+              icon={<UndoOutlined />}
+              disabled={previewMode || !historyState.canUndo}
+              onClick={handleUndo}
+            />
+          </Tooltip>
+          <Tooltip title="重做（Ctrl+Y）">
+            <Button
+              size="small"
+              icon={<RedoOutlined />}
+              disabled={previewMode || !historyState.canRedo}
+              onClick={handleRedo}
+            />
+          </Tooltip>
+          <Button size="small" icon={<CodeOutlined />} onClick={openCode} disabled={previewMode}>
             代码
           </Button>
           {runtimePreviewUrl && (
@@ -241,9 +422,9 @@ export default function PageBuilder() {
             size="small"
             type="primary"
             icon={<SaveOutlined />}
-            disabled={!dirty || saveMutation.isPending}
+            disabled={previewMode || !dirty || saveMutation.isPending}
             loading={saveMutation.isPending}
-            onClick={() => schema && saveMutation.mutate(schema)}
+            onClick={handleSave}
           >
             保存
           </Button>
@@ -255,6 +436,9 @@ export default function PageBuilder() {
         {schema && (
           <AmisEditorCanvas
             value={schema}
+            preview={previewMode}
+            onPreview={setPreviewMode}
+            onEditorReady={onEditorReady}
             onChange={(next) => {
               setSchema(next);
               const now = Date.now();
@@ -265,9 +449,11 @@ export default function PageBuilder() {
                 // 编辑器初始化规范化窗口：基线跟随，不计脏
                 savedJsonRef.current = JSON.stringify(next);
                 setDirty(false);
-                return;
+              } else {
+                setDirty(JSON.stringify(next) !== savedJsonRef.current);
               }
-              setDirty(JSON.stringify(next) !== savedJsonRef.current);
+              // 编辑/撤销/重做都会经 onChange：同步刷新顶栏按钮可用态
+              syncHistoryState();
             }}
           />
         )}

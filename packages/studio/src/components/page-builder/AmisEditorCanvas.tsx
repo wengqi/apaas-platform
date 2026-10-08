@@ -14,6 +14,19 @@
 import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
 import 'amis/lib/themes/antd.css';
+// 图标字体（2026-10-07 修复设计器图标空白）：
+// - iconfont：amis 组件内置字形（数字框上下箭头/编辑器工具图标等），
+//   @font-face 仅声明在 amis/sdk/iconfont.css（base64 woff2 自包含），
+//   lib/themes/antd.css 只引用不声明——不引入则缺字形；
+// - Font Awesome：物料面板/工具栏 fa 图标依赖 FA6 Free 字体与类定义，
+//   @fortawesome/fontawesome-free 为 amis sdk 显式引用的资产（webfonts 路径），
+//   按其引用补齐依赖（详见 package.json 依赖说明与提交说明）
+import 'amis/sdk/iconfont.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
+// FA6 改名了部分图标（如 fa-toggle-down→fa-circle-down），amis 物料面板用的是
+// v4/v5 老名字——引入 shims（老名→新名映射）与 FA5 字体声明补齐
+import '@fortawesome/fontawesome-free/css/v4-shims.min.css';
+import '@fortawesome/fontawesome-free/css/v5-font-face.min.css';
 import 'amis-ui/lib/themes/antd';
 import 'amis-ui/lib/locale/zh-CN';
 import 'amis-editor-core/lib/style.css';
@@ -29,6 +42,15 @@ const AmisEditorInner = lazy(() => import('./AmisEditorInner.js'));
 interface AmisEditorCanvasProps {
   value: Record<string, unknown>;
   onChange: (schema: Record<string, unknown>) => void;
+  onEditorReady?: (editor: {
+    undo(): void;
+    redo(): void;
+    store: { canUndo: boolean; canRedo: boolean };
+  }) => void;
+  /** 预览模式（受控）：画布切预览渲染，数据请求走真实平台 API */
+  preview?: boolean;
+  /** 编辑器内置预览切换回调——与宿主 state 同步 */
+  onPreview?: (next: boolean) => void;
 }
 
 /** amis-editor 懒加载兜底态。 */
@@ -40,11 +62,23 @@ function EditorFallback() {
   );
 }
 
-export default function AmisEditorCanvas({ value, onChange }: AmisEditorCanvasProps) {
+export default function AmisEditorCanvas({
+  value,
+  onChange,
+  onEditorReady,
+  preview,
+  onPreview,
+}: AmisEditorCanvasProps) {
   return (
     <Suspense fallback={<EditorFallback />}>
       <div style={{ height: '100%' }}>
-        <AmisEditorInner value={value} onChange={onChange} />
+        <AmisEditorInner
+          value={value}
+          onChange={onChange}
+          onEditorReady={onEditorReady}
+          preview={preview}
+          onPreview={onPreview}
+        />
       </div>
     </Suspense>
   );

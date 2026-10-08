@@ -34,6 +34,10 @@ interface AmisEditorCanvasProps {
     redo(): void;
     store: { canUndo: boolean; canRedo: boolean };
   }) => void;
+  /** 预览模式（受控）：画布切预览渲染，数据请求走真实平台 API */
+  preview?: boolean;
+  /** 编辑器内置预览切换回调——与宿主 state 同步 */
+  onPreview?: (next: boolean) => void;
 }
 
 /** amis-editor 懒加载兜底态。 */
@@ -49,11 +53,19 @@ export default function AmisEditorCanvas({
   value,
   onChange,
   onEditorReady,
+  preview,
+  onPreview,
 }: AmisEditorCanvasProps) {
   return (
     <Suspense fallback={<EditorFallback />}>
       <div style={{ height: '100%' }}>
-        <AmisEditorInner value={value} onChange={onChange} onEditorReady={onEditorReady} />
+        <AmisEditorInner
+          value={value}
+          onChange={onChange}
+          onEditorReady={onEditorReady}
+          preview={preview}
+          onPreview={onPreview}
+        />
       </div>
     </Suspense>
   );

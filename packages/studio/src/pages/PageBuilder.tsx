@@ -7,6 +7,8 @@ import {
   ThunderboltOutlined,
   UndoOutlined,
   RedoOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -83,6 +85,8 @@ export default function PageBuilder() {
   // 编辑器 store 的 canUndo/canRedo，无轮询）
   const editorRef = useRef<EditorHandle | null>(null);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  // 预览模式：画布切预览渲染（当前设计的所见即所得，数据走真实平台 API）
+  const [previewMode, setPreviewMode] = useState(false);
   const syncHistoryState = useCallback(() => {
     const store = editorRef.current?.store;
     if (store) setHistoryState({ canUndo: store.canUndo, canRedo: store.canRedo });
@@ -349,10 +353,27 @@ export default function PageBuilder() {
           )}
         </Space>
         <Space size={8}>
+          <Tooltip
+            title={
+              previewMode
+                ? '退出预览，返回编辑'
+                : '预览当前设计的页面效果（含未保存修改，数据走真实接口）'
+            }
+          >
+            <Button
+              size="small"
+              type={previewMode ? 'primary' : 'default'}
+              icon={previewMode ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+              onClick={() => setPreviewMode((v) => !v)}
+            >
+              {previewMode ? '退出预览' : '预览'}
+            </Button>
+          </Tooltip>
           <Tooltip title="从服务端重新加载（放弃本地修改）">
             <Button
               size="small"
               icon={<ReloadOutlined />}
+              disabled={previewMode}
               onClick={() => {
                 // 同步从缓存重置（refetch 结构共享返回同引用时 useEffect 不会触发）；
                 // 再后台刷新拉取服务端最新（引用变化时经 useEffect 覆盖）
@@ -377,7 +398,7 @@ export default function PageBuilder() {
             <Button
               size="small"
               icon={<UndoOutlined />}
-              disabled={!historyState.canUndo}
+              disabled={previewMode || !historyState.canUndo}
               onClick={handleUndo}
             />
           </Tooltip>
@@ -385,11 +406,11 @@ export default function PageBuilder() {
             <Button
               size="small"
               icon={<RedoOutlined />}
-              disabled={!historyState.canRedo}
+              disabled={previewMode || !historyState.canRedo}
               onClick={handleRedo}
             />
           </Tooltip>
-          <Button size="small" icon={<CodeOutlined />} onClick={openCode}>
+          <Button size="small" icon={<CodeOutlined />} onClick={openCode} disabled={previewMode}>
             代码
           </Button>
           {runtimePreviewUrl && (
@@ -401,7 +422,7 @@ export default function PageBuilder() {
             size="small"
             type="primary"
             icon={<SaveOutlined />}
-            disabled={!dirty || saveMutation.isPending}
+            disabled={previewMode || !dirty || saveMutation.isPending}
             loading={saveMutation.isPending}
             onClick={handleSave}
           >
@@ -415,6 +436,8 @@ export default function PageBuilder() {
         {schema && (
           <AmisEditorCanvas
             value={schema}
+            preview={previewMode}
+            onPreview={setPreviewMode}
             onEditorReady={onEditorReady}
             onChange={(next) => {
               setSchema(next);

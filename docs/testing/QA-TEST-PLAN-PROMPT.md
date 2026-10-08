@@ -75,7 +75,7 @@
 3) 深测组件：crud（分页/筛选/批量/新增/编辑/删除 API 契约）、form（校验/提交/resetAfterSubmit/成功失败提示）、chart 柱·折线·饼（取数非"未知"）、input-file、nested-select、grid/flex 布局、button 与动作组、static 族、mapping 标签渲染。
 4) fetcher 适配层：ok 契约错误必 toast（不静默）、列表摊平 count/data 摊平、/api 前缀去重（无 /api/api 404）。
 5) 表单生成器 12 映射逐项验证：text/long_text→textarea/number/currency（千分位+precision2）/percent/single_select（options value 回退 label 不回退 id）/multi_select（multiple）/date（YYYY-MM-DD）/date_time（含秒）/auto_number→static 只读/checkbox→switch/attachment→input-file；排除系统字段与流程回写字段。
-6) 顶栏功能：重置（弃本地修改）/撤销/重做按钮（2026-10-07 补齐，接编辑器内置 schemaHistory，与 Ctrl+Z/Ctrl+Y 等效，禁用态随历史事件驱动刷新）/代码 Tab（JSON 编辑+本地预检三规则：根 type=page、body 数组、无外链 URL+校验并应用）/runtime 预览/?env=dev/保存（非脏禁用）/未保存 Tag 真实性（外部改数据后重进不误标）。
+6) 顶栏功能：预览（2026-10-07 新增，画布内所见即所得预览——当前内存 schema 含未保存修改，预览态数据请求经预览 fetcher 走真实 API、提交落库，编辑类按钮禁用，退出恢复编辑态）/重置（弃本地修改）/撤销/重做按钮（2026-10-07 补齐，接编辑器内置 schemaHistory，与 Ctrl+Z/Ctrl+Y 等效，禁用态随历史事件驱动刷新）/代码 Tab（JSON 编辑+本地预检三规则：根 type=page、body 数组、无外链 URL+校验并应用）/runtime 预览/?env=dev/保存（非脏禁用）/未保存 Tag 真实性（外部改数据后重进不误标）。
 7) 疑点核实（先核实再定性）：存档点 API 存在但无 UI 入口；详情/仪表盘/自定义模板生成空白 scaffold 是否符合预期。
 8) 平台字段绑定（2026-10-07 专项，v2 原生接管）：禁用内置 FormPlugin、由平台子类（ApaasFormPlugin）接管 form 节点——原生「字段名」输入框的感叹号弹窗（ae-DataBindingControl）变为对象字段选择器：字段按所属对象分组（组头=对象字段（form 标题））、官方自带搜索、列表项=纯显示名，选中经「确认」写回 name 并联动控件标题；绑定对象按 form 解析（api.url 优先，页面级 data.objectId 兜底，同页多表各归各）；类型兼容专项（v3）：选择器按目标控件类型经 field-control-compat 矩阵软过滤——兼容组在前、不兼容字段折叠为「类型不兼容（控件 <type>）」组（矩阵锚=fieldToFormControl 生成映射的镜像，矩阵外控件不过滤）；保存时 collectFieldBindingIssues 区分两类告警（kind=unknown_field 未匹配字段 / kind=type_mismatch 类型不兼容，弹窗分类统计+「控件 X ↔ 字段 Y」标注，均非阻断可强制保存）。
 
@@ -159,3 +159,4 @@
 | 2026-10-07 | v1.0.4 | 字段绑定专项 v2：独立注入面板退役，原生字段名选择器接管（FormPlugin 子类提供数据源）；多表按 form 解析；矩阵 1 第 8 条改写 | feat/field-binding-picker |
 | 2026-10-07 | v1.0.5 | 类型兼容专项：矩阵 1 第 8 条补选择器软过滤与保存告警两类区分（兼容矩阵=生成映射镜像） | feat/field-binding-picker |
 | 2026-10-07 | v1.0.6 | 页面搭建器顶栏补撤销/重做按钮；矩阵 1 第 6 条同步 | 撤销重做入口 |
+| 2026-10-07 | v1.0.7 | 页面搭建器画布内预览功能；矩阵 1 第 6 条同步 | 预览功能 |

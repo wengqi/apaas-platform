@@ -684,20 +684,8 @@ export class ReviewService {
       throw new BadRequestException('改稿快照必须是非空对象');
     }
 
-    // 1) AI 草稿让位（SUPERSEDED = 被同资源新提交取代）
-    await prisma.resourceVersion.update({
-      where: { id: row.id },
-      data: {
-        status: 'SUPERSEDED',
-        reviewedBy: userId,
-        reviewedAt: new Date(),
-        reviewComment: opts?.comment?.trim()
-          ? `人工改稿收编：${opts.comment.trim()}`
-          : '人工改稿收编（编辑后由开发者落地为人工基线）',
-      },
-    });
-
-    // 2) 落活表（人工改稿即新真值，不走漂移保护；actor 标 adopt 便于审计溯源）
+    // 1) 先落活表（OCR F1 修复：落地可能被活表服务 G3 硬闸拒绝——此时草稿必须
+    //    仍留在待审队列可重试；若先置 SUPERSEDED 再落地，拒绝即丢草稿）
     const appliedEntityId = await this.snapshotService.applySnapshot(
       tenantId,
       appId,
@@ -718,6 +706,19 @@ export class ReviewService {
     } catch (err) {
       this.logger.warn(`收编基线归一化失败（不影响收编结果）: ${row.id} ${(err as Error).message}`);
     }
+
+    // 2) 落地成功后才让 AI 草稿让位（SUPERSEDED = 被同资源新提交取代）
+    await prisma.resourceVersion.update({
+      where: { id: row.id },
+      data: {
+        status: 'SUPERSEDED',
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewComment: opts?.comment?.trim()
+          ? `人工改稿收编：${opts.comment.trim()}`
+          : '人工改稿收编（编辑后由开发者落地为人工基线）',
+      },
+    });
 
     // 3) 人工 APPROVED 基线版本（createVersion 复算基线与链内版本号）
     const created = await this.createVersion(tenantId, appId, {

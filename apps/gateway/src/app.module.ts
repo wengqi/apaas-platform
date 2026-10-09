@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
+import { AppThrottlerGuard } from './common/app-throttler.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ApplicationModule } from './application/application.module.js';
 import { ObjectModule } from './object/object.module.js';
@@ -106,7 +107,9 @@ import { envValidation } from './config/env.validation.js';
   ],
   controllers: [HealthController],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // 限流维度：认证请求按用户/令牌分桶、匿名按 IP（默认 ThrottlerGuard 按 IP
+    // 使 localhost 多客户端共享单桶，R5.5 实测多账号并发触发 429 打断提交流程）
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
   ],
 })

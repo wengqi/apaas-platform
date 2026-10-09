@@ -130,19 +130,27 @@ export class ReviewService {
   private trackAiReview(
     tenantId: string,
     appId: string,
-    outcome: 'approved' | 'rejected',
+    outcome: 'approved' | 'rejected' | 'adopted',
     row: Pick<ResourceVersionRow, 'module' | 'apiName' | 'versionNumber' | 'batchId'>,
     comment: string | null,
   ): void {
+    const source =
+      outcome === 'approved'
+        ? 'review:approved'
+        : outcome === 'adopted'
+          ? 'review:adopted'
+          : 'review:rejected';
+    const verb =
+      outcome === 'approved' ? '已批准' : outcome === 'adopted' ? '被人工改稿收编' : '被驳回';
     void this.observability
       .record({
         tenantId,
         category: 'AI_GENERATION',
         level: outcome === 'rejected' ? 'WARN' : 'INFO',
-        source: outcome === 'approved' ? 'review:approved' : 'review:rejected',
+        source,
         appId,
         resourceId: row.batchId,
-        message: `AI 草稿${outcome === 'approved' ? '已批准' : '被驳回'}：${row.module} ${row.apiName} v${row.versionNumber}`,
+        message: `AI 草稿${verb}：${row.module} ${row.apiName} v${row.versionNumber}`,
         detail: {
           flow: 'review',
           outcome,
@@ -650,6 +658,112 @@ export class ReviewService {
       this.trackAiReview(tenantId, appId, 'rejected', row, comment);
     }
     return this.toDto(updated as ResourceVersionRow, null);
+  }
+
+  /**
+   * 草稿改稿收编（ADR-0004 决策 4）：人审前开发者在 studio 微调 AI 草稿后由人工
+   * 落地，免去"批准未审内容 / 整单驳回重提"的二选一。语义链：
+   *  1. AI 草稿置 SUPERSEDED（同资源新提交取代的既有语义，comment 记收编溯源）；
+   *  2. 编辑后快照经 applySnapshot 落活表——走活表服务既有 G3 硬闸与系统字段
+   *     注入；随后重提活表做基线归一化（同 applyApproved：快照必须等于落地形态）；
+   *  3. 以人工身份创建 APPROVED 基线版本（source=HUMAN 即时生效，reviewComment
+   *     记"收编自 AI 草稿 vN"保留谱系可追溯）。
+   * 批次拓扑兼容：@ref 令牌在批准时按 apiName 解析活表，收编条目以同 apiName
+   * 落活表后，同批其余条目照常解析。
+   */
+  async adoptDraftEdit(
+    tenantId: string,
+    appId: string,
+    submissionId: string,
+    userId: string,
+    editedSnapshot: ResourceSnapshot,
+    opts?: { comment?: string },
+  ): Promise<ResourceVersionDto> {
+    const row = await this.getPendingOrThrow(tenantId, appId, submissionId);
+    if (!editedSnapshot || typeof editedSnapshot !== 'object' || Array.isArray(editedSnapshot)) {
+      throw new BadRequestException('改稿快照必须是非空对象');
+    }
+
+    // 1) AI 草稿让位（SUPERSEDED = 被同资源新提交取代）
+    await prisma.resourceVersion.update({
+      where: { id: row.id },
+      data: {
+        status: 'SUPERSEDED',
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewComment: opts?.comment?.trim()
+          ? `人工改稿收编：${opts.comment.trim()}`
+          : '人工改稿收编（编辑后由开发者落地为人工基线）',
+      },
+    });
+
+    // 2) 落活表（人工改稿即新真值，不走漂移保护；actor 标 adopt 便于审计溯源）
+    const appliedEntityId = await this.snapshotService.applySnapshot(
+      tenantId,
+      appId,
+      row.module as ReviewModule,
+      editedSnapshot,
+      row.entityId,
+      `review:adopt:${userId}`,
+    );
+    let finalSnapshot = editedSnapshot;
+    try {
+      const applied = await this.snapshotService.extractLive(
+        tenantId,
+        appId,
+        row.module as ReviewModule,
+        appliedEntityId,
+      );
+      if (applied) finalSnapshot = applied.snapshot;
+    } catch (err) {
+      this.logger.warn(`收编基线归一化失败（不影响收编结果）: ${row.id} ${(err as Error).message}`);
+    }
+
+    // 3) 人工 APPROVED 基线版本（createVersion 复算基线与链内版本号）
+    const created = await this.createVersion(tenantId, appId, {
+      module: row.module as ReviewModule,
+      entityId: appliedEntityId,
+      apiName: row.apiName,
+      name: row.name,
+      snapshot: finalSnapshot,
+      source: 'HUMAN',
+      status: 'APPROVED',
+      submittedBy: userId,
+      submittedVia: 'studio',
+    });
+    const withProvenance = (await prisma.resourceVersion.update({
+      where: { id: created.id },
+      data: {
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewComment: `人工改稿收编自 AI 草稿 v${row.versionNumber}（submission ${row.id}）${
+          opts?.comment ? `：${opts.comment}` : ''
+        }`,
+      },
+    })) as ResourceVersionRow;
+
+    writeAudit({
+      tenantId,
+      userId,
+      action: 'REVIEW_SUBMIT',
+      resource: row.module,
+      resourceId: created.id,
+      appId,
+      detail: {
+        channel: 'studio',
+        adopt: true,
+        adoptedSubmissionId: row.id,
+        apiName: row.apiName,
+        aiVersionNumber: row.versionNumber,
+      },
+    });
+    if (row.source === 'AI_MCP') {
+      this.trackAiReview(tenantId, appId, 'adopted', row, opts?.comment ?? null);
+    }
+    this.logger.log(
+      `改稿收编: ${row.module} ${row.apiName} AI v${row.versionNumber} → 人工 v${created.versionNumber} by ${userId}`,
+    );
+    return this.toDto(withProvenance, null);
   }
 
   /** 撤销未提交：把最新 APPROVED 基线快照写回活表。 */

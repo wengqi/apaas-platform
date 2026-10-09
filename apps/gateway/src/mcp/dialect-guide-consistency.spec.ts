@@ -13,13 +13,13 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { DIALECT_GUIDES } from './mcp-server.factory.js';
 import { SCHEMA_ISSUE_CODES } from '@apaas/shared';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// gateway 构建目标为 CommonJS（import.meta 不可用）；vitest 以 apps/gateway 为 cwd 运行
+const HERE = join(process.cwd(), 'src', 'mcp');
 
 /** kind → 校验器源文件（相对本 spec）。新增方言时两侧同步登记。 */
 const VALIDATOR_FILES: Record<string, string> = {

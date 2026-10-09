@@ -738,3 +738,120 @@ describe('AI 生成遥测（审批结果）', () => {
     expect(events[0]!.detail.batchId).toBe('batch-9');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 草稿改稿收编（adoptDraftEdit，ADR-0004 决策 4）
+// ---------------------------------------------------------------------------
+
+describe('草稿改稿收编（adoptDraftEdit）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const editedSnapshot = { apiName: 'contract', name: '采购合同（改）', fields: [] };
+
+  function arrangeAdopt(prisma: ReturnType<typeof getMockPrisma>) {
+    prisma.resourceVersion.findFirst.mockResolvedValue(makeRow()); // PENDING AI_MCP
+    prisma.resourceVersion.update
+      .mockResolvedValueOnce(makeRow({ status: 'SUPERSEDED' }))
+      .mockResolvedValueOnce(
+        makeRow({ id: 'sub-new', status: 'APPROVED', source: 'HUMAN', versionNumber: 6 }),
+      );
+    prisma.resourceVersion.aggregate.mockResolvedValue({ _max: { versionNumber: 5 } });
+    prisma.resourceVersion.create.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => makeRow({ ...data, id: 'sub-new' }),
+    );
+  }
+
+  it('收编链路：原草稿 SUPERSEDED + 人工 APPROVED 基线（快照=落地形态）+ 谱系溯源 + 遥测 adopted', async () => {
+    const { svc, prisma, snapshotService, observability } = makeService();
+    arrangeAdopt(prisma);
+    snapshotService.applySnapshot.mockResolvedValue('obj-1');
+    snapshotService.extractLive.mockResolvedValue({
+      entityId: 'obj-1',
+      apiName: 'contract',
+      name: '采购合同（改）',
+      snapshot: { apiName: 'contract', name: '采购合同（改）', fields: [], 系统字段: '注入后' },
+    });
+
+    const dto = await svc.adoptDraftEdit(TENANT, APP, 'sub-1', 'dev-1', editedSnapshot as never, {
+      comment: '改标题',
+    });
+
+    expect(dto.status).toBe('APPROVED');
+    expect(dto.source).toBe('HUMAN');
+    // 1) 原 AI 草稿让位
+    expect(prisma.resourceVersion.update.mock.calls[0]![0]).toMatchObject({
+      where: { id: 'sub-1' },
+      data: expect.objectContaining({ status: 'SUPERSEDED' }),
+    });
+    // 2) 编辑快照落活表（actor 标 adopt）
+    expect(snapshotService.applySnapshot).toHaveBeenCalledWith(
+      TENANT,
+      APP,
+      'OBJECT',
+      editedSnapshot,
+      'obj-1',
+      'review:adopt:dev-1',
+    );
+    // 3) 人工基线版本：快照=归一化后形态，链内版本号自增
+    const createCall = prisma.resourceVersion.create.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createCall.data).toMatchObject({
+      status: 'APPROVED',
+      source: 'HUMAN',
+      submittedVia: 'studio',
+      entityId: 'obj-1',
+      versionNumber: 6,
+    });
+    expect(createCall.data.snapshot).toMatchObject({ 系统字段: '注入后' });
+    // 谱系溯源
+    expect(prisma.resourceVersion.update.mock.calls[1]![0]).toMatchObject({
+      where: { id: 'sub-new' },
+      data: { reviewComment: expect.stringContaining('收编自 AI 草稿 v2') },
+    });
+    // 遥测
+    const events = observability.record.mock.calls.filter(
+      (c) => (c[0] as { category: string }).category === 'AI_GENERATION',
+    );
+    expect(events).toHaveLength(1);
+    expect((events[0]![0] as { source: string }).source).toBe('review:adopted');
+  });
+
+  it('非 PENDING 提交单 → 拒绝（不能重复处置）', async () => {
+    const { svc, prisma } = makeService();
+    prisma.resourceVersion.findFirst.mockResolvedValue(makeRow({ status: 'APPROVED' }));
+    await expect(
+      svc.adoptDraftEdit(TENANT, APP, 'sub-1', 'dev-1', editedSnapshot as never),
+    ).rejects.toThrow('已处理');
+  });
+
+  it('快照形状非法（数组）→ 拒绝且不触碰任何行', async () => {
+    const { svc, prisma, snapshotService } = makeService();
+    arrangeAdopt(prisma);
+    await expect(
+      svc.adoptDraftEdit(TENANT, APP, 'sub-1', 'dev-1', [1, 2] as never),
+    ).rejects.toThrow('改稿快照');
+    expect(snapshotService.applySnapshot).not.toHaveBeenCalled();
+    expect(prisma.resourceVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('收编 HUMAN 来源提交（理论边界）→ 不发 AI_GENERATION 遥测', async () => {
+    const { svc, prisma, snapshotService, observability } = makeService();
+    prisma.resourceVersion.findFirst.mockResolvedValue(makeRow({ source: 'HUMAN' }));
+    prisma.resourceVersion.update.mockResolvedValue(makeRow());
+    snapshotService.applySnapshot.mockResolvedValue('obj-1');
+    snapshotService.extractLive.mockResolvedValue({
+      entityId: 'obj-1',
+      apiName: 'contract',
+      name: 'n',
+      snapshot: editedSnapshot,
+    });
+    prisma.resourceVersion.aggregate.mockResolvedValue({ _max: { versionNumber: 5 } });
+    prisma.resourceVersion.create.mockResolvedValue(makeRow({ id: 'sub-new' }));
+    await svc.adoptDraftEdit(TENANT, APP, 'sub-1', 'dev-1', editedSnapshot as never);
+    const events = observability.record.mock.calls.filter(
+      (c) => (c[0] as { category: string }).category === 'AI_GENERATION',
+    );
+    expect(events).toHaveLength(0);
+  });
+});

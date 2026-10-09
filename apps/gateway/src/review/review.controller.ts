@@ -9,6 +9,7 @@ import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nest
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type {
   DirtyResourceDto,
+  ResourceSnapshot,
   ResourceVersionDetailDto,
   ResourceVersionDto,
   ResourceVersionListItemDto,
@@ -19,6 +20,7 @@ import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ReviewService } from './review.service.js';
 import {
+  AdoptDraftEditDto,
   ApproveSubmissionDto,
   DiscardDraftDto,
   ListReviewsQueryDto,
@@ -202,6 +204,28 @@ export class ReviewController {
       submissionId,
       req.user.id,
       dto.comment,
+    );
+    return { ok: true as const, data: version };
+  }
+
+  @Post(':appId/reviews/:submissionId/adopt')
+  @RequirePermission('PAGE', 'MANAGE', 'appId')
+  @ApiOperation({
+    summary: '改稿收编：人工编辑后的 AI 草稿直接落地为人工基线（原草稿记为已取代）',
+  })
+  async adoptEdit(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('submissionId') submissionId: string,
+    @Body() dto: AdoptDraftEditDto,
+  ): Promise<{ ok: true; data: ResourceVersionDto }> {
+    const version = await this.reviewService.adoptDraftEdit(
+      requireTenantId(req),
+      appId,
+      submissionId,
+      req.user.id,
+      dto.snapshot as unknown as ResourceSnapshot,
+      { comment: dto.comment },
     );
     return { ok: true as const, data: version };
   }

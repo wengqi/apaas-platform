@@ -29,6 +29,7 @@ import type { ResourceVersionListItemDto } from '@apaas/shared';
 import { qk, reviewAffectedKeys } from '@apaas/shared/stores';
 import { reviewsApi } from '../api/reviews.js';
 import { displayName, formatDateTime, useUserNameMap } from '../utils/user-display.js';
+import AdoptEditModal from './review-center/AdoptEditModal.js';
 import DiffDrawer from './review-center/DiffDrawer.js';
 import DirtyResourcesTable from './review-center/DirtyResourcesTable.js';
 import VersionHistoryModal from './review-center/VersionHistoryModal.js';
@@ -156,12 +157,15 @@ function SubmissionTable({
   isLoading,
   onOpen,
   showReviewResult,
+  onAdopt,
 }: {
   appId: string;
   items: ResourceVersionListItemDto[];
   isLoading: boolean;
   onOpen: (item: ResourceVersionListItemDto) => void;
   showReviewResult: boolean;
+  /** 改稿收编入口（仅待审页签传入，ADR-0004 决策 4） */
+  onAdopt?: (item: ResourceVersionListItemDto) => void;
 }) {
   void appId;
   // 双视角评审（2026-10-04）R10：提交人显示姓名而非裸 cuid，时间为本地时区
@@ -232,11 +236,18 @@ function SubmissionTable({
     {
       title: '操作',
       key: 'actions',
-      width: 90,
+      width: onAdopt ? 150 : 90,
       render: (_, record) => (
-        <Button type="link" size="small" onClick={() => onOpen(record)}>
-          查看 diff
-        </Button>
+        <Space size={0}>
+          <Button type="link" size="small" onClick={() => onOpen(record)}>
+            查看 diff
+          </Button>
+          {onAdopt && (
+            <Button type="link" size="small" onClick={() => onAdopt(record)}>
+              改稿收编
+            </Button>
+          )}
+        </Space>
       ),
     },
   ];
@@ -259,6 +270,7 @@ export default function ReviewCenter() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabKey>('pending');
   const [selected, setSelected] = useState<ResourceVersionListItemDto | null>(null);
+  const [adoptTarget, setAdoptTarget] = useState<ResourceVersionListItemDto | null>(null);
   const [versionTarget, setVersionTarget] = useState<{ module: string; entityId: string } | null>(
     null,
   );
@@ -327,6 +339,7 @@ export default function ReviewCenter() {
             isLoading={pendingLoading}
             onOpen={setSelected}
             showReviewResult={false}
+            onAdopt={setAdoptTarget}
           />
         </>
       )}
@@ -347,6 +360,7 @@ export default function ReviewCenter() {
       )}
 
       <DiffDrawer appId={appId} submission={selected} onClose={() => setSelected(null)} />
+      <AdoptEditModal appId={appId} submission={adoptTarget} onClose={() => setAdoptTarget(null)} />
       <VersionHistoryModal
         appId={appId}
         target={versionTarget}

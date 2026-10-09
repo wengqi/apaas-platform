@@ -3,7 +3,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** 受审模块（R1.2 统一范围） */
 export const REVIEW_MODULES = ['OBJECT', 'DATASET', 'PAGE', 'PROCESS', 'PERMISSION'] as const;
@@ -45,6 +45,19 @@ export class RejectSubmissionDto {
   @IsString()
   @MaxLength(500)
   comment!: string;
+}
+
+/** 草稿改稿收编（ADR-0004 决策 4）：人工编辑后的快照直接落地为人工基线 */
+export class AdoptDraftEditDto {
+  @ApiProperty({ description: '人工编辑后的完整资源快照（原 AI 草稿记为已取代）' })
+  @IsObject()
+  snapshot!: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: '收编说明（记入版本谱系）' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  comment?: string;
 }
 
 /** 撤销未提交（把最新基线快照写回活表） */

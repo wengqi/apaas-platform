@@ -10,6 +10,7 @@
  *   POST /api/apps/:appId/reviews/discard     — 撤销未提交
  *   POST /api/apps/:appId/reviews/:id/approve — 批准
  *   POST /api/apps/:appId/reviews/:id/reject  — 驳回
+ *   POST /api/apps/:appId/reviews/:id/adopt   — 改稿收编（ADR-0004 决策 4）
  */
 
 import client from './client.js';
@@ -104,6 +105,19 @@ export const reviewsApi = {
         { comment },
       )
       .then((res) => res.data.data as { rejected: number }),
+
+  /** 改稿收编：人工编辑后的 AI 草稿直接落地为人工基线（原草稿记为已取代） */
+  adopt: (
+    appId: string,
+    submissionId: string,
+    params: { snapshot: Record<string, unknown>; comment?: string },
+  ) =>
+    client
+      .post<ApiResponse<ResourceVersionDto>>(
+        `/api/apps/${appId}/reviews/${submissionId}/adopt`,
+        params,
+      )
+      .then((res) => res.data.data as ResourceVersionDto),
 };
 
 /** 快照规范形态（供 DiffDrawer 展示原始 JSON） */

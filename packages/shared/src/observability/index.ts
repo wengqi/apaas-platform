@@ -15,6 +15,7 @@ export const EVENT_CATEGORIES = [
   'SLOW_QUERY', // 慢查询
   'PAGE_ERROR', // 页面报错（前端渲染异常上报）
   'OPEN_API_CALL', // 开放 API 调用
+  'AI_GENERATION', // AI 生成遥测（ADR-0004 决策 5：MCP 提交/G3 拦截/审批结果）
 ] as const;
 
 export type EventCategory = (typeof EVENT_CATEGORIES)[number];
@@ -30,6 +31,7 @@ export const EVENT_CATEGORY_LABELS: Record<EventCategory, string> = {
   SLOW_QUERY: '慢查询',
   PAGE_ERROR: '页面报错',
   OPEN_API_CALL: '开放 API 调用',
+  AI_GENERATION: 'AI 生成',
 };
 
 /** 事件级别中文名。 */

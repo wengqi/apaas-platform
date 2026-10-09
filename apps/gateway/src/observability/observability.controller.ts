@@ -24,6 +24,7 @@ import { JwtAuthGuard } from '../application/jwt-auth.guard.js';
 import { TenantAdminGuard } from '../auth/tenant-admin.guard.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { ObservabilityService } from './observability.service.js';
+import { AiAnalyticsService } from './ai-analytics.service.js';
 import { ReportPageErrorDto } from './observability.dto.js';
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -32,7 +33,10 @@ const DEFAULT_PAGE_SIZE = 20;
 @ApiBearerAuth()
 @Controller({ path: 'observability', version: '1' })
 export class ObservabilityController {
-  constructor(private readonly observabilityService: ObservabilityService) {}
+  constructor(
+    private readonly observabilityService: ObservabilityService,
+    private readonly aiAnalyticsService: AiAnalyticsService,
+  ) {}
 
   @Get('events')
   @UseGuards(TenantAdminGuard)
@@ -77,6 +81,29 @@ export class ObservabilityController {
   async summary(@Req() req: AuthenticatedRequest, @Query('appId') appId?: string) {
     const tenantId = this.requireTenantId(req);
     const data = await this.observabilityService.summary(tenantId, appId || undefined);
+    return { ok: true as const, data };
+  }
+
+  @Get('ai-analytics')
+  @UseGuards(TenantAdminGuard)
+  @ApiOperation({
+    summary: 'AI 生成质量聚合（ADR-0004 决策 5：G3 首拦率/一次人审通过率/返工轮次，租户管理员）',
+  })
+  @ApiQuery({ name: 'appId', required: false, type: String })
+  @ApiQuery({ name: 'since', required: false, type: String, description: 'ISO 时间下界' })
+  @ApiQuery({ name: 'until', required: false, type: String, description: 'ISO 时间上界' })
+  async aiAnalytics(
+    @Req() req: AuthenticatedRequest,
+    @Query('appId') appId?: string,
+    @Query('since') since?: string,
+    @Query('until') until?: string,
+  ) {
+    const tenantId = this.requireTenantId(req);
+    const data = await this.aiAnalyticsService.analytics(tenantId, {
+      appId: appId || undefined,
+      since: parseDate(since),
+      until: parseDate(until),
+    });
     return { ok: true as const, data };
   }
 

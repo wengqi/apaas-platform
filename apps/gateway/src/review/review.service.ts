@@ -25,6 +25,7 @@ import type {
 import { diffResource, stableStringifyEqual } from '@apaas/shared';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { writeAudit } from '../common/audit.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { LiveResource, ReviewSnapshotService } from './review-snapshot.service.js';
 import { ReviewCallbackService, type ReviewCallbackEvent } from './review-callback.service.js';
 
@@ -119,7 +120,42 @@ export class ReviewService {
     private readonly snapshotService: ReviewSnapshotService,
     private readonly inAppMessage: InAppMessageService,
     private readonly callbackService: ReviewCallbackService,
+    private readonly observability: ObservabilityService,
   ) {}
+
+  /**
+   * AI 生成遥测（ADR-0004 决策 5）：仅记录 AI_MCP 来源的审批结果
+   * （一次人审通过率的质量分母；人工提交不占 AI 质量口径）。非阻塞。
+   */
+  private trackAiReview(
+    tenantId: string,
+    appId: string,
+    outcome: 'approved' | 'rejected',
+    row: Pick<ResourceVersionRow, 'module' | 'apiName' | 'versionNumber' | 'batchId'>,
+    comment: string | null,
+  ): void {
+    void this.observability
+      .record({
+        tenantId,
+        category: 'AI_GENERATION',
+        level: outcome === 'rejected' ? 'WARN' : 'INFO',
+        source: outcome === 'approved' ? 'review:approved' : 'review:rejected',
+        appId,
+        resourceId: row.batchId,
+        message: `AI 草稿${outcome === 'approved' ? '已批准' : '被驳回'}：${row.module} ${row.apiName} v${row.versionNumber}`,
+        detail: {
+          flow: 'review',
+          outcome,
+          module: row.module,
+          apiName: row.apiName,
+          batchId: row.batchId,
+          versionNumber: row.versionNumber,
+          hasComment: Boolean(comment),
+          commentPreview: comment ? comment.slice(0, 200) : null,
+        },
+      })
+      .catch(() => undefined);
+  }
 
   // ===========================================================================
   // 提交
@@ -288,6 +324,9 @@ export class ReviewService {
       reviewComment: opts?.comment ?? null,
       reviewedBy: reviewerId,
     });
+    if (row.source === 'AI_MCP') {
+      this.trackAiReview(tenantId, appId, 'approved', row, opts?.comment ?? null);
+    }
     return updated;
   }
 
@@ -370,6 +409,11 @@ export class ReviewService {
       appId,
       detail: { batch: true, approvedCount: applied.length, apiNames: rows.map((r) => r.apiName) },
     });
+    for (const row of rows) {
+      if (row.source === 'AI_MCP') {
+        this.trackAiReview(tenantId, appId, 'approved', row, opts?.comment ?? null);
+      }
+    }
     const first = rows[0]!;
     await this.notifySubmitter(
       tenantId,
@@ -402,8 +446,26 @@ export class ReviewService {
   ): Promise<{ rejected: number }> {
     const rows = (await prisma.resourceVersion.findMany({
       where: { tenantId, appId, batchId, status: 'PENDING' },
-      select: { id: true, submittedBy: true, name: true },
-    })) as Array<{ id: string; submittedBy: string; name: string }>;
+      select: {
+        id: true,
+        submittedBy: true,
+        name: true,
+        module: true,
+        apiName: true,
+        versionNumber: true,
+        source: true,
+        batchId: true,
+      },
+    })) as Array<{
+      id: string;
+      submittedBy: string;
+      name: string;
+      module: string;
+      apiName: string;
+      versionNumber: number;
+      source: string;
+      batchId: string | null;
+    }>;
     if (rows.length === 0) throw new BadRequestException('批次不存在或已全部处理');
 
     const res = await prisma.resourceVersion.updateMany({
@@ -424,6 +486,11 @@ export class ReviewService {
       appId,
       detail: { batch: true, rejectedCount: res.count, comment },
     });
+    for (const row of rows) {
+      if (row.source === 'AI_MCP') {
+        this.trackAiReview(tenantId, appId, 'rejected', row, comment);
+      }
+    }
     const first = rows[0]!;
     await this.notifySubmitter(
       tenantId,
@@ -579,6 +646,9 @@ export class ReviewService {
       reviewComment: comment,
       reviewedBy: reviewerId,
     });
+    if (row.source === 'AI_MCP') {
+      this.trackAiReview(tenantId, appId, 'rejected', row, comment);
+    }
     return this.toDto(updated as ResourceVersionRow, null);
   }
 

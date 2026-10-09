@@ -16,6 +16,7 @@ import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { requireParams } from './mcp-server.factory.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
@@ -108,6 +109,7 @@ function makeService() {
       status: 'DRAFT',
     }),
   };
+  const observability = { record: vi.fn().mockResolvedValue(undefined) };
   const svc = new McpService(
     new SchemaContractService(),
     pageService as unknown as PageService,
@@ -115,8 +117,17 @@ function makeService() {
     objectService as unknown as ObjectService,
     reviewService as unknown as ReviewService,
     applicationService as unknown as ApplicationService,
+    observability as unknown as ObservabilityService,
   );
-  return { svc, reviewService, pageService, processService, objectService, applicationService };
+  return {
+    svc,
+    reviewService,
+    pageService,
+    processService,
+    objectService,
+    applicationService,
+    observability,
+  };
 }
 
 describe('MCP 校验闸（G3 前置）', () => {
@@ -515,5 +526,55 @@ describe('MCP 权限规则集提交（submit_permission_rule_draft → 待审）
     });
     expect(r.ok).toBe(false);
     expect(reviewService.submitAiDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe('AI 生成遥测（ADR-0004 决策 5）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** 取 observability.record 收到的 AI_GENERATION 事件参数。 */
+  function aiEvents(observability: { record: ReturnType<typeof vi.fn> }) {
+    return observability.record.mock.calls
+      .map((c) => c[0] as { category: string; source: string; detail: Record<string, unknown> })
+      .filter((a) => a.category === 'AI_GENERATION');
+  }
+
+  it('G3 拒绝 → mcp:submit-rejected 事件（kind/issueCodes 结构化）', async () => {
+    const { svc, observability } = makeService();
+    await svc.submitPageDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      apiName: 'bad_page',
+      name: '坏页面',
+      schema: invalidPageSchema,
+    });
+    const events = aiEvents(observability);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.source).toBe('mcp:submit-rejected');
+    expect(events[0]!.detail).toMatchObject({
+      flow: 'submit',
+      kind: 'PAGE',
+      apiName: 'bad_page',
+      mode: 'single',
+    });
+    expect(events[0]!.detail.issueCodes).toContain('TYPE_FORBIDDEN');
+  });
+
+  it('提交进待审 → mcp:submit-accepted 事件（resourceId=提交单）', async () => {
+    const { svc, observability } = makeService();
+    await svc.submitPageDraft('t1', 'ai-agent', {
+      appId: 'app-1',
+      apiName: 'contract_form_v2',
+      name: '合同提交页',
+      schema: validPageSchema,
+    });
+    const events = aiEvents(observability);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.source).toBe('mcp:submit-accepted');
+    expect(events[0]!.detail).toMatchObject({
+      flow: 'submit',
+      kind: 'PAGE',
+      apiName: 'contract_form_v2',
+      mode: 'single',
+    });
   });
 });

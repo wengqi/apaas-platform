@@ -14,6 +14,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ReviewService, collectRefTokens, replaceRefTokens } from './review.service.js';
 import { ReviewSnapshotService } from './review-snapshot.service.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 import type { ObjectResourceSnapshot } from '@apaas/shared';
 
@@ -63,12 +64,14 @@ function makeService(live: ReturnType<typeof makeRow>['snapshot'] | null = liveS
   };
   const inApp = { create: vi.fn().mockResolvedValue(1) };
   const callbackService = { notify: vi.fn().mockResolvedValue(undefined) };
+  const observability = { record: vi.fn().mockResolvedValue(undefined) };
   const svc = new ReviewService(
     snapshotService as unknown as ReviewSnapshotService,
     inApp as unknown as InAppMessageService,
     callbackService as never,
+    observability as unknown as ObservabilityService,
   );
-  return { svc, prisma, snapshotService, inApp, callbackService };
+  return { svc, prisma, snapshotService, inApp, callbackService, observability };
 }
 
 describe('人工提交（submitHuman）', () => {
@@ -615,6 +618,7 @@ describe('审批回调（ReviewCallbackService.emitCallback 链路）', () => {
       } as never,
       inApp as never,
       callbackService as never,
+      { record: vi.fn().mockResolvedValue(undefined) } as never,
     );
     prisma.resourceVersion.update.mockResolvedValue({ ...makeRow(), status: 'APPROVED' });
 
@@ -651,5 +655,86 @@ describe('审批回调（ReviewCallbackService.emitCallback 链路）', () => {
     expect(batchEvt['event']).toBe('review.rejected');
     expect(batchEvt['batchId']).toBe('batch-9');
     expect(batchEvt['submissionId']).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AI 生成遥测（ADR-0004 决策 5）：仅 AI_MCP 来源的审批结果入 AI_GENERATION
+// ---------------------------------------------------------------------------
+
+describe('AI 生成遥测（审批结果）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function arrangeHappyPath(prisma: ReturnType<typeof getMockPrisma>, source = 'AI_MCP') {
+    prisma.resourceVersion.findFirst.mockImplementation(
+      async ({ where }: { where: { id?: string } }) => {
+        if (where.id === 'base-1') return makeRow({ id: 'base-1', status: 'APPROVED' });
+        return makeRow({ source });
+      },
+    );
+    prisma.resourceVersion.update.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) =>
+        makeRow({ source, status: 'APPROVED', reviewedBy: data.reviewedBy ?? null }),
+    );
+  }
+
+  function aiEvents(observability: { record: ReturnType<typeof vi.fn> }) {
+    return observability.record.mock.calls
+      .map((c) => c[0] as { category: string; source: string; detail: Record<string, unknown> })
+      .filter((a) => a.category === 'AI_GENERATION');
+  }
+
+  it('批准 AI_MCP 提交 → review:approved 事件', async () => {
+    const { svc, prisma, observability } = makeService();
+    arrangeHappyPath(prisma);
+    await svc.approve(TENANT, APP, 'sub-1', 'reviewer-1', { comment: '通过' });
+    const events = aiEvents(observability);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.source).toBe('review:approved');
+    expect(events[0]!.detail).toMatchObject({
+      flow: 'review',
+      outcome: 'approved',
+      module: 'OBJECT',
+      apiName: 'contract',
+      versionNumber: 2,
+      hasComment: true,
+    });
+  });
+
+  it('批准 HUMAN 提交 → 不产生 AI_GENERATION 事件（人工提交不占 AI 质量口径）', async () => {
+    const { svc, prisma, observability } = makeService();
+    arrangeHappyPath(prisma, 'HUMAN');
+    await svc.approve(TENANT, APP, 'sub-1', 'reviewer-1');
+    expect(aiEvents(observability)).toHaveLength(0);
+  });
+
+  it('驳回 AI_MCP 提交 → review:rejected 事件（意见截断进 commentPreview）', async () => {
+    const { svc, prisma, observability } = makeService();
+    prisma.resourceVersion.findFirst.mockResolvedValue(makeRow());
+    prisma.resourceVersion.update.mockResolvedValue(makeRow({ status: 'REJECTED' }));
+    await svc.reject(TENANT, APP, 'sub-1', 'reviewer-1', '字段命名不合规范，请修正后重新提交');
+    const events = aiEvents(observability);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.source).toBe('review:rejected');
+    expect(events[0]!.detail).toMatchObject({
+      flow: 'review',
+      outcome: 'rejected',
+      hasComment: true,
+    });
+    expect(events[0]!.detail.commentPreview).toContain('字段命名');
+  });
+
+  it('批量驳回 → 每条 AI_MCP 行各一条 review:rejected 事件', async () => {
+    const { svc, prisma, observability } = makeService();
+    prisma.resourceVersion.findMany.mockResolvedValue([
+      makeRow({ id: 'sub-1', source: 'AI_MCP', name: 'a', batchId: 'batch-9' }),
+      makeRow({ id: 'sub-2', source: 'HUMAN', name: 'b', batchId: 'batch-9' }),
+    ]);
+    prisma.resourceVersion.updateMany.mockResolvedValue({ count: 2 });
+    await svc.rejectBatch(TENANT, APP, 'batch-9', 'reviewer-1', '整体驳回');
+    const events = aiEvents(observability);
+    expect(events).toHaveLength(1); // HUMAN 行不计入
+    expect(events[0]!.source).toBe('review:rejected');
+    expect(events[0]!.detail.batchId).toBe('batch-9');
   });
 });

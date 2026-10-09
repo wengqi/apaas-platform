@@ -128,6 +128,7 @@ describe('ObservabilityService.summary', () => {
       { category: 'SLOW_QUERY', total: 0, errors: 0 },
       { category: 'PAGE_ERROR', total: 5, errors: 3 },
       { category: 'OPEN_API_CALL', total: 0, errors: 0 },
+      { category: 'AI_GENERATION', total: 0, errors: 0 },
     ]);
     // appId 过滤进入 where
     const where = prisma.observabilityEvent.groupBy.mock.calls[0]![0].where as Record<

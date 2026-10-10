@@ -51,6 +51,10 @@ export default defineConfig({
       url: 'http://localhost:3000/api/v1/health',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
+      // 限流阈值与 ci.yml e2e job 注入同款（e2e 高频轮询/清场在 10/min auth 桶下必 429）。
+      // 本地常驻 gateway 若以 apps/gateway 为 cwd 启动，读不到根 .env 的 THROTTLE_*，
+      // Playwright 自启时在此显式注入；复用常驻进程的场景需在 apps/gateway/.env 补齐并重启。
+      env: { THROTTLE_AUTH_LIMIT: '10000', THROTTLE_DEFAULT_LIMIT: '10000' },
     },
     {
       command: 'pnpm --filter @apaas/studio exec vite preview --port 5173 --strictPort',

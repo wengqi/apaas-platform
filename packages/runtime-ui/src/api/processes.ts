@@ -2,8 +2,7 @@
  * 流程 API（runtime 侧最小面）——供应用门户"流程发起"入口消费。
  */
 
-import client from './client';
-import type { ApiResponse } from './client';
+import apiClient from './client';
 
 export interface ProcessDefSummary {
   id: string;
@@ -20,7 +19,5 @@ export interface ProcessDefSummary {
 export const processesApi = {
   /** 应用下流程定义列表（live 表；已发布应用与发布快照同构） */
   list: (appId: string) =>
-    client
-      .get<ApiResponse<ProcessDefSummary[]>>(`/apps/${appId}/processes`)
-      .then((res) => res.data.data as ProcessDefSummary[]),
+    apiClient.get(`/apps/${appId}/processes`).then((res) => res.data.data as ProcessDefSummary[]),
 };

@@ -206,6 +206,24 @@ export function validateWorkflow(
     if (n['type'] === 'user_task') {
       validateUserTask(data, `${nPath}/data`, nodeIds, ctx, issues);
     }
+    // 发起页面绑定（R6 方案一）：start.startPageId 与 user_task.pageId 对称，
+    // 提供 ctx 时校验页面存在（语义=该流程从此页面发起，纯导航/治理元数据）
+    if (n['type'] === 'start') {
+      const startPageId = data['startPageId'];
+      if (
+        typeof startPageId === 'string' &&
+        startPageId.length > 0 &&
+        ctx.pageIds &&
+        !ctx.pageIds.has(startPageId)
+      ) {
+        issues.push({
+          path: `${nPath}/data/startPageId`,
+          code: SCHEMA_ISSUE_CODES.REF_NOT_FOUND,
+          message: `发起页面 "${startPageId}" 不存在（startPageId 须为平台已创建页面的 ID）`,
+          severity: 'error',
+        });
+      }
+    }
   }
 
   // 不可达节点（从 start 出发）警告

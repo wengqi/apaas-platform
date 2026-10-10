@@ -2,8 +2,10 @@
  * 触发器节点配置表单 —— 对齐 DESIGN-process.md §6.1。
  */
 
-import { Divider, Form, Input, Radio, Select } from 'antd';
+import { Divider, Form, Input, Radio, Select, Typography } from 'antd';
 import { TRIGGER_OPTIONS } from '../../../constants/process.js';
+
+const { Text } = Typography;
 
 export interface TriggerConfigData {
   triggerType?: string;
@@ -12,6 +14,8 @@ export interface TriggerConfigData {
   cron?: string;
   condition?: string;
   title?: string;
+  /** 发起页面绑定（R6 方案一）——与 user_task.pageId 对称：该流程从此页面发起 */
+  startPageId?: string;
 }
 
 export interface TriggerConfigFormProps {
@@ -20,13 +24,15 @@ export interface TriggerConfigFormProps {
   disabled?: boolean;
   /** 对象候选(appId 下对象列表) */
   objectOptions?: { label: string; value: string }[];
+  /** 页面候选(appId 下页面列表，发起页面下拉) */
+  pageOptions?: { label: string; value: string }[];
 }
 
 const CRON_PRESETS = [
   { label: '每天 9 点', value: '0 0 9 * * ?' },
   { label: '每小时', value: '0 0 * * * ?' },
   { label: '每分钟', value: '0 * * * * ?' },
-  { label: '每周一 9 点', value: '0 0 9 ? * MON' },
+  { label: '每周一 9 点', value: '0 0 9 * * ? MON' },
 ];
 
 export default function TriggerConfigForm({
@@ -34,6 +40,7 @@ export default function TriggerConfigForm({
   onChange,
   disabled = false,
   objectOptions = [],
+  pageOptions = [],
 }: TriggerConfigFormProps) {
   const update = (patch: Partial<TriggerConfigData>) => onChange({ ...data, ...patch });
   const isRecordEvent =
@@ -41,6 +48,9 @@ export default function TriggerConfigForm({
     data.triggerType === 'RECORD_UPDATED' ||
     data.triggerType === 'RECORD_DELETED';
   const isSchedule = data.triggerType === 'SCHEDULED';
+  const isManual = data.triggerType === 'MANUAL';
+  // 发起页面对 RECORD_* 与 MANUAL 有意义（SCHEDULED/API 由系统触发，无人工发起页）
+  const showStartPage = isRecordEvent || isManual;
 
   return (
     <Form layout="vertical" size="small" disabled={disabled} component="div">
@@ -85,6 +95,25 @@ export default function TriggerConfigForm({
             />
           </Form.Item>
         </>
+      )}
+      {showStartPage && (
+        <Form.Item label="发起页面(可选)">
+          <Select
+            showSearch
+            value={data.startPageId || undefined}
+            onChange={(v) => update({ startPageId: v })}
+            options={pageOptions}
+            allowClear
+            placeholder="选择该流程的发起页面（与审批页绑定对称）"
+          />
+        </Form.Item>
+      )}
+      {isManual && (
+        <Form.Item label="手动发起">
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            发布后运行时应用页会出现「发起」按钮，打开发起页面填写并提交
+          </Text>
+        </Form.Item>
       )}
       {isSchedule && (
         <Form.Item label="Cron 表达式" required>

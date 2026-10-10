@@ -478,6 +478,7 @@ export const DIALECT_GUIDES: Record<string, string> = {
     '- 驳回跳转：data.rejectToNodeId 指向流程内节点',
     '- 边条件：condition 为 JsonLogic JSON 字符串，如 \'{"==":[{"var":"decision"},"APPROVED"]}\'；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',
     '- 默认通知：流程未配置任何通知节点时，引擎在审批定论后自动站内信通知发起人（零配置默认链路）；配置了通知节点则由配置全权驱动、引擎不再兜底——建议批准与驳回路径都配置通知节点',
+    '- 发起页面绑定（R6）：start 节点 data.startPageId 指向平台页面 ID（list_pages 获取，或 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析），与 user_task.pageId 对称——语义为"该流程从此页面发起"。两种发起模式：RECORD_* 触发的流程，发起页表单 api.url 写 /objects/<对象ID>/records（写记录触发流程）；MANUAL 触发的流程，发起页表单 api.url 写 /processes/<流程ID>/start（POST 启动实例），运行时应用页会出现「发起」按钮直达发起页',
     '- 最小骨架示例：{nodes:[{id:"start_1",type:"start",data:{title:"开始"}},{id:"t1",type:"user_task",data:{taskName:"审批",assigneeType:"ROLE",candidateGroups:["<角色ID>"]}},{id:"end_1",type:"end",data:{title:"结束"}}], edges:[{sourceNodeID:"start_1",targetNodeID:"t1"},{sourceNodeID:"t1",targetNodeID:"end_1"}]}',
     '- 记录状态回写：object_operation 节点 inputsValues 用四态 {type:"constant"/"ref",content:...}，recordId 用 {type:"ref",content:["recordId"]}',
     '- 流程出入参：start 节点 data.inputsValues 定义入参；end 节点 inputsValues 定义出参映射',

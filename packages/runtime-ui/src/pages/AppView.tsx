@@ -1,9 +1,10 @@
 /**
  * 应用视图 — 已发布页面门户（QA 交互评审 2026-10-03：
  * 从 slug 技术列表改为页面卡片，业务用户按名称与类型识别入口）。
+ * R6：新增"流程发起"区——MANUAL 流程绑定发起页面后，业务用户一键进入发起。
  */
 
-import { Card, Typography, Spin, Tag, Empty } from 'antd';
+import { Button, Card, Typography, Spin, Tag, Empty } from 'antd';
 import {
   FileTextOutlined,
   FormOutlined,
@@ -11,12 +12,14 @@ import {
   ProfileOutlined,
   BarChartOutlined,
   AppstoreOutlined,
+  RocketOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { useParams, useNavigate } from 'react-router-dom';
 import { appsApi } from '../api/apps';
 import { pagesApi } from '../api/pages';
+import { processesApi } from '../api/processes';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -44,6 +47,30 @@ export default function AppView() {
     queryFn: () => pagesApi.list(appId!),
     enabled: !!appId,
   });
+
+  // 流程发起（R6 方案一）：MANUAL 流程绑定发起页面后，提供一键进入发起的入口
+  const { data: processes } = useQuery({
+    queryKey: ['app-processes', appId!],
+    queryFn: () => processesApi.list(appId!),
+    enabled: !!appId,
+  });
+
+  /** 可发起流程：已发布 + MANUAL 触发 + start 节点绑定了发起页面 */
+  const launchableProcesses = (processes ?? []).filter((p) => {
+    if (p.triggerType !== 'MANUAL' || p.status !== 'PUBLISHED') return false;
+    const start = p.workflowSchema?.nodes?.find((n) => n.type === 'start');
+    return typeof start?.data?.['startPageId'] === 'string';
+  });
+
+  /** startPageId → 页面 slug（发起按钮跳转页面而非技术 ID） */
+  const launchTarget = (processId: string): { name: string; slug: string } | null => {
+    const proc = launchableProcesses.find((p) => p.id === processId);
+    if (!proc) return null;
+    const start = proc.workflowSchema?.nodes?.find((n) => n.type === 'start');
+    const startPageId = start?.data?.['startPageId'] as string | undefined;
+    const page = (pages ?? []).find((p) => p.id === startPageId);
+    return page ? { name: proc.name, slug: page.slug } : null;
+  };
 
   if (appLoading) {
     return (
@@ -79,6 +106,37 @@ export default function AppView() {
           </div>
         )}
       </Card>
+
+      {launchableProcesses.length > 0 && (
+        <Card
+          title={
+            <>
+              <RocketOutlined /> 流程发起
+            </>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {launchableProcesses.map((proc) => {
+              const target = launchTarget(proc.id);
+              return (
+                <Button
+                  key={proc.id}
+                  type="primary"
+                  icon={<RocketOutlined />}
+                  disabled={!target}
+                  onClick={() => {
+                    if (!target) return;
+                    navigate(`/app/${appId}/p/${target.slug}`);
+                  }}
+                >
+                  发起{proc.name}
+                </Button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <Card
         title={

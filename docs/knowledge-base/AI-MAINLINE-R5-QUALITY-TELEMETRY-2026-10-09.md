@@ -67,6 +67,21 @@ R5 首轮报告的"实测闭环"**名不副实**：闭环的是遥测/治理链�
 2. **完成报告对照打勾**：报告"完成"前逐项引用定义原文+贴证据（断言输出/截图/trace），证据与结论同提交落档；定义项遗漏视同《未执行清单》漏报，按记录不准确红线处理。
 3. **结构通过≠交付（机械规则）**：AI 生成应用必须过 TC-152 运行时闭环才算交付；G3 通过只是入场券。已立 TC-152 为 P0 正式用例。
 
+## R6：两项裁决落地（2026-10-10）
+
+**裁决 ①**：CREATE 种子通配规则**维持**——END_USER 的 `RECORD CREATE targetId='*'` 通配 ALLOW 是"终端用户可提交"的开箱语义；生产收紧走角色规则编辑（体系已可配），不改种子。
+
+**裁决 ②**：流程发起环节按**方案一（start 节点绑定发起页）**落地，当日实现：
+
+| 项 | 实现 |
+|---|---|
+| G3 校验合同 | workflow.validator 新增 start.startPageId 校验（pageIds 白名单外 → REF_NOT_FOUND，镜像 user_task.pageId；未配置可选）；单测 3 例 |
+| studio 画布 | TriggerConfigForm（start 节点配置面板）新增「发起页面」下拉（pageOptions=复用 formOptions 页面列表）；RECORD_*/MANUAL 触发类型可见；MANUAL 附手动发起说明 |
+| runtime 发起入口 | AppView 新增「流程发起」区：已发布 + MANUAL + startPageId 绑定的流程出「发起 XX」按钮，跳转发起页面 slug（经 pages 列表解析，不用技术 ID）；新增 runtime processes api（最小面） |
+| AI 指南 | workflow 方言指南同步 startPageId 契约与两种发起模式（RECORD_* 走 records api / MANUAL 走 /processes/:id/start），锚定测试覆盖不受影响 |
+
+**语义边界（指南同步声明）**：startPageId 是导航/治理元数据——发起机制仍由 triggerType 决定（RECORD_* = 发起页表单写 records 触发；MANUAL = 发起页表单调 /processes/:id/start 启动）；引擎路由不消费 startPageId。
+
 ## 遗留
 
 - ~~引擎 completeTask 决策注入的针对性单测~~ 已补（e8a825d 回归单测，28/28）

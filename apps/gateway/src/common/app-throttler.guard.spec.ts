@@ -8,7 +8,7 @@ import { AppThrottlerGuard } from './app-throttler.guard.js';
 // getTracker 为纯函数（仅读 req + crypto），绕过构造器直接取原型方法；
 // protected 经子类暴露
 class TestableGuard extends AppThrottlerGuard {
-  track(req: Record<string, any>) {
+  track(req: Record<string, unknown>) {
     return this.getTracker(req);
   }
 }

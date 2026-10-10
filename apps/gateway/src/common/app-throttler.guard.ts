@@ -15,17 +15,20 @@ import { createHash } from 'node:crypto';
 
 @Injectable()
 export class AppThrottlerGuard extends ThrottlerGuard {
-  // 签名与基类一致（Record<string, any>），此处仅按结构取字段不执行任意代码
-  protected override async getTracker(req: Record<string, any>): Promise<string> {
-    const userId = (req as { user?: { id?: string } }).user?.id;
+  // 参数类型与基类签名保持结构兼容（运行时仅按结构取字段，unknown 足够）
+  protected override async getTracker(req: Record<string, unknown>): Promise<string> {
+    const r = req as {
+      user?: { id?: string };
+      headers?: Record<string, string | undefined>;
+      ips?: string[];
+      ip?: string;
+    };
+    const userId = r.user?.id;
     if (userId) return `user:${userId}`;
-    const auth = (req as { headers?: Record<string, string | undefined> }).headers?.[
-      'authorization'
-    ];
+    const auth = r.headers?.['authorization'];
     if (auth?.startsWith('Bearer ')) {
       return `token:${createHash('sha256').update(auth).digest('hex').slice(0, 16)}`;
     }
-    const r = req as { ips?: string[]; ip?: string };
     return `ip:${r.ips?.[0] ?? r.ip ?? 'unknown'}`;
   }
 }

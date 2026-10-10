@@ -72,4 +72,4 @@ R5 首轮报告的"实测闭环"**名不副实**：闭环的是遥测/治理链�
 - ~~引擎 completeTask 决策注入的针对性单测~~ 已补（e8a825d 回归单测，28/28）
 - ~~OCR 全量评审 + 推送~~ 已完成（e44ef73 F1 修复；分支 8 提交已推 origin）
 - ~~runtime-ui 台账/任务中心 GUI 走查~~ 已完成（行级过滤/任务中心✓；P2：crud 列 map 中文未渲染，登记）
-- **用户实测新增（2026-10-09 晚）**：① runtime「我的应用」列表**无权限/发布态过滤**——GET /apps 返回租户全部应用（含未发布 DRAFT），终端用户应只见已发布且有权限的应用（产品级待办）；② 终端用户 RECORD **CREATE 未接权限规则检查**——EXPENSE_USER 仅配 VIEW 规则，default-deny 语义下 CREATE 应拒却成功（发起申请因此可用，但与 R4 default-deny 语义有出入，需裁决：补 CREATE 检查或明确 create 免权限）；③ 平台超管（登录租户留空）在 runtime 应用列表恒为空——无租户上下文的预期行为，runtime 登录页宜提示超管"请以租户账号登录"
+- **用户实测新增（2026-10-09 晚）**：① runtime「我的应用」列表**无权限/发布态过滤**——GET /apps 返回租户全部应用（含未发布 DRAFT），终端用户应只见已发布且有权限的应用（产品级待办）；② ~~终端用户 RECORD CREATE 未接权限规则检查~~ **更正（2026-10-10，权限调试端点实证）**：CREATE 强制链路完整——record.controller 挂 `@RequirePermission('RECORD','CREATE','objectId')` → PermissionGuard → permissionService.check **default-deny（NO_RULES→拒绝）**；终端用户能 CREATE 的真实原因是种子给 END_USER 内置角色配了 `RECORD CREATE targetId='*'` 通配 ALLOW 规则（seed.ts L232，设计意图=终端用户可提交），与我配的细粒度 VIEW 条件规则分属不同 action 互不冲突（故行级过滤生效而 CREATE 放行）。真实待裁决项=种子通配规则的产品语义（demo 开箱可用 vs 生产需人工收紧），非缺失强制；③ 平台超管（登录租户留空）在 runtime 应用列表恒为空——无租户上下文的预期行为，runtime 登录页宜提示超管"请以租户账号登录"

@@ -149,12 +149,12 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     const tenantAdminRoleId = roles.find((r) => r.code === 'TENANT_ADMIN')!.id;
     expect(tenantAdminRoleId).toBeTruthy();
 
-    const flows = await admin.get<Array<{ id: string; apiName: string }>>(
+    const flows = await admin.get<Array<{ id: string; apiName: string; status?: string }>>(
       `/apps/${appId}/processes`,
     );
     let flow = flows.find((p) => p.apiName === 'feedback_approval_v2');
     if (!flow) {
-      flow = await admin.post<{ id: string }>(`/apps/${appId}/processes`, {
+      flow = await admin.post<{ id: string; status?: string }>(`/apps/${appId}/processes`, {
         apiName: 'feedback_approval_v2',
         name: '反馈审批流',
         triggerType: 'RECORD_CREATED',
@@ -197,22 +197,21 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     }
 
     // 流程发布（关键：DRAFT 流程不进应用发布快照、记录触发不匹配——
-    // CI 全新库实测"任务永不出现"的根因）。重复发布 = 版本+1，幂等安全。
-    try {
+    // CI 全新库实测"任务永不出现"的根因）。
+    // 已发布则跳过（显式条件判断，不再吞错——非幂等原因的失败必须显式暴露）
+    if (flow!.status !== 'PUBLISHED') {
       await admin.post(`/processes/${flow!.id}/publish`, {});
-    } catch {
-      // 已发布流程重复发布同样版本冲突——忽略
     }
 
-    // 发布（幂等：已发布则跳过——版本冲突 400 视为已发布）
-    try {
-      await admin.post(`/apps/${appId}/publish`, {
-        version: `1.0.${Date.now() % 1000}`,
-        description: '反馈环 e2e 夹具',
-      });
-    } catch {
-      // 已发布过（版本号重复）——忽略
-    }
+    // 发布（防碰撞：基于现有版本最大 patch 取 next——原 Date.now()%1000 会撞
+    // @@unique([appId,versionNumber]) 且被吞错掩盖成"静默未发布"，2026-10-10 复盘）
+    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const patchNumbers = versions.map((v) => Number(v.versionNumber.split('.')[2] ?? 0));
+    const nextPatch = (patchNumbers.length > 0 ? Math.max(...patchNumbers) : 0) + 1;
+    await admin.post(`/apps/${appId}/publish`, {
+      version: `1.0.${nextPatch}`,
+      description: '反馈环 e2e 夹具',
+    });
     expect(formPageId).toBeTruthy();
     expect(listPageId).toBeTruthy();
 
@@ -278,6 +277,31 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     );
     const titles = JSON.stringify(notifications);
     expect(titles).toContain('反馈审批被驳回');
+  });
+
+  test('runtime 视图：?runtime=1 只含已发布应用，无参数保持全量（studio 兼容）', async () => {
+    // 服务端过滤断言（2026-10-10）：此前 GET /apps 仅按 tenantId 过滤，
+    // DRAFT 应用对终端用户可见（仅前端客户端过滤兜底）
+    const allApps =
+      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps');
+    const runtimeApps =
+      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps?runtime=1');
+    expect(
+      runtimeApps.every((a) => a.status === 'PUBLISHED'),
+      'runtime 视图不得包含未发布应用',
+    ).toBe(true);
+    expect(
+      runtimeApps.some((a) => a.id === appId),
+      '已发布夹具应用应出现在 runtime 视图',
+    ).toBe(true);
+    const publishedCount = allApps.filter((a) => a.status === 'PUBLISHED').length;
+    expect(runtimeApps.length, 'runtime 视图应等于/不多于全量列表的已发布子集').toBeLessThanOrEqual(
+      publishedCount,
+    );
+    // 环境中确实存在未发布应用时，全量列表仍须包含它们（studio 搭建流依赖不回归）
+    if (allApps.length > publishedCount) {
+      expect(allApps.length).toBeGreaterThan(runtimeApps.length);
+    }
   });
 
   test('运行时 UI：台账显示驳回中文标签', async ({ page }) => {

@@ -22,6 +22,8 @@ import { ChangeLogService } from './changelog.service.js';
 import { TriggerService } from '../process/trigger.service.js';
 import { writeAudit } from '../common/audit.js';
 import { EnvironmentService } from '../environment/environment.service.js';
+import { PermissionService } from '../permission/permission.service.js';
+import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 
 /**
  * 应用服务 — Application CRUD + 发布/回滚/版本管理。
@@ -35,6 +37,7 @@ export class ApplicationService {
     private readonly changeLogService: ChangeLogService,
     private readonly triggerService: TriggerService,
     private readonly environmentService: EnvironmentService,
+    private readonly permissionService: PermissionService,
   ) {}
 
   /** 评审整改：类内日志器（不作为 DI 依赖） */
@@ -54,7 +57,72 @@ export class ApplicationService {
       },
     });
 
-    return apps.map((app) => ({
+    return apps.map((app) => this.toSummary(app));
+  }
+
+  /**
+   * 运行时视图列应用（GET /apps?runtime=1）— 终端用户语义：
+   * 仅返回【已发布】且【当前用户有权限】的应用。
+   *
+   * 可见性判定（权限归纳，单次规则查询；不做逐应用 explain 的 N 次查询）：
+   * - 管理员短路（isSuperAdmin = 平台超管或 TENANT_ADMIN，与 PermissionService/jwt.strategy
+   *   同源）→ 全部已发布应用；
+   * - 用户有效角色集（直接+组织授权+扩散，复用 PermissionService.getUserRoleIds）名下存在
+   *   租户级 ALLOW 规则（appId=null，种子 END_USER/BUILDER 通配即此类）→ 全部已发布应用可见
+   *   （R5 裁决①：种子通配维持，终端用户开箱可见全部已发布应用）；
+   * - 否则仅 appId 命中角色 ALLOW 规则的应用可见（R4 应用级角色语义）；无角色 → 默认拒绝。
+   *
+   * "已发布"用 Application.status='PUBLISHED' 判定（与前端既有客户端过滤、e2e 断言一致），
+   * 不用 prod 环境指针——publish 事务后 deploy 失败可容忍（仅告警），指针判定会漏掉这部分应用。
+   */
+  async listVisibleForUser(tenantId: string, user: AuthenticatedUser): Promise<AppSummary[]> {
+    let where: Prisma.ApplicationWhereInput = { tenantId, status: 'PUBLISHED' };
+
+    if (!user.isSuperAdmin) {
+      const roleIds = await this.permissionService.getUserRoleIds(user.id, tenantId);
+      if (roleIds.length === 0) return [];
+
+      const rules = await prisma.permissionRule.findMany({
+        where: { tenantId, roleId: { in: roleIds }, effect: 'ALLOW' },
+        select: { appId: true },
+      });
+      const hasTenantWildcard = rules.some((r) => r.appId === null);
+      if (!hasTenantWildcard) {
+        const appIds = [
+          ...new Set(rules.map((r) => r.appId).filter((v): v is string => v !== null)),
+        ];
+        if (appIds.length === 0) return [];
+        where = { ...where, id: { in: appIds } };
+      }
+    }
+
+    const apps = await prisma.application.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        _count: {
+          select: { objects: true, pages: true, processes: true },
+        },
+      },
+    });
+    return apps.map((app) => this.toSummary(app));
+  }
+
+  /** Prisma 实体 → AppSummary（list / listVisibleForUser 共用投影）。 */
+  private toSummary(app: {
+    id: string;
+    apiName: string;
+    name: string;
+    description: string | null;
+    icon: string | null;
+    color: string | null;
+    status: string;
+    version: number;
+    createdAt: Date;
+    updatedAt: Date;
+    _count: { objects: number; pages: number; processes: number };
+  }): AppSummary {
+    return {
       id: asAppId(app.id),
       apiName: app.apiName,
       name: app.name,
@@ -70,7 +138,7 @@ export class ApplicationService {
       },
       createdAt: app.createdAt.toISOString(),
       updatedAt: app.updatedAt.toISOString(),
-    }));
+    };
   }
 
   /**

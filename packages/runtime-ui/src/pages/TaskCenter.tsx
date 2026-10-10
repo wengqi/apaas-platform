@@ -9,6 +9,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, type ProcessTask } from '../api/tasks.js';
 import { buildColumns } from './task-center/columns.js';
 import { normalizeItems } from './task-center/utils.js';
+import { ListErrorAlert } from './task-center/ListErrorAlert.js';
+import MyInitiated from './task-center/MyInitiated.js';
 import { TaskDetailTabs } from './task-center/TaskDetailTabs.js';
 import { TaskModalFooter } from './task-center/TaskModalFooter.js';
 import ApprovalPageRenderer from '../runtime/ApprovalPageRenderer.js';
@@ -22,14 +24,26 @@ export default function TaskCenter() {
   const [comment, setComment] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
 
-  // 待办列表
-  const { data: pendingData, isLoading: pendingLoading } = useQuery({
+  // 待办列表（错误显式化，2026-10-10：此前 403/网络错误被吞成空表）
+  const {
+    data: pendingData,
+    isLoading: pendingLoading,
+    isError: pendingFailed,
+    error: pendingError,
+    refetch: refetchPending,
+  } = useQuery({
     queryKey: ['tasks', 'pending'],
     queryFn: () => tasksApi.list({ status: 'pending', page: 1, pageSize: 50 }),
   });
 
   // 已办列表
-  const { data: completedData, isLoading: completedLoading } = useQuery({
+  const {
+    data: completedData,
+    isLoading: completedLoading,
+    isError: completedFailed,
+    error: completedError,
+    refetch: refetchCompleted,
+  } = useQuery({
     queryKey: ['tasks', 'completed'],
     queryFn: () => tasksApi.list({ status: 'completed', page: 1, pageSize: 50 }),
   });
@@ -114,7 +128,7 @@ export default function TaskCenter() {
         <Title level={4}>
           <CheckSquareOutlined /> 任务中心
         </Title>
-        <Paragraph type="secondary">流程待办任务 — 当前用户的待审批/已处理任务列表</Paragraph>
+        <Paragraph type="secondary">流程任务中心 — 待办/已办审批任务 + 我发起的申请进度</Paragraph>
       </Card>
 
       <Card>
@@ -126,29 +140,49 @@ export default function TaskCenter() {
               key: 'pending',
               label: `待办 (${pendingItems.length})`,
               children: (
-                <Table<ProcessTask>
-                  columns={columns}
-                  dataSource={currentData}
-                  rowKey="id"
-                  loading={currentLoading}
-                  pagination={false}
-                  locale={{ emptyText: '暂无待办任务' }}
-                />
+                <div>
+                  {pendingFailed ? (
+                    <ListErrorAlert error={pendingError} onRetry={() => void refetchPending()} />
+                  ) : (
+                    <Table<ProcessTask>
+                      columns={columns}
+                      dataSource={currentData}
+                      rowKey="id"
+                      loading={currentLoading}
+                      pagination={false}
+                      locale={{ emptyText: '暂无待办任务' }}
+                    />
+                  )}
+                </div>
               ),
             },
             {
               key: 'completed',
               label: `已办 (${completedItems.length})`,
               children: (
-                <Table<ProcessTask>
-                  columns={columns}
-                  dataSource={currentData}
-                  rowKey="id"
-                  loading={currentLoading}
-                  pagination={false}
-                  locale={{ emptyText: '暂无已办任务' }}
-                />
+                <div>
+                  {completedFailed ? (
+                    <ListErrorAlert
+                      error={completedError}
+                      onRetry={() => void refetchCompleted()}
+                    />
+                  ) : (
+                    <Table<ProcessTask>
+                      columns={columns}
+                      dataSource={currentData}
+                      rowKey="id"
+                      loading={currentLoading}
+                      pagination={false}
+                      locale={{ emptyText: '暂无已办任务' }}
+                    />
+                  )}
+                </div>
               ),
+            },
+            {
+              key: 'initiated',
+              label: '我发起的',
+              children: <MyInitiated />,
             },
           ]}
         />

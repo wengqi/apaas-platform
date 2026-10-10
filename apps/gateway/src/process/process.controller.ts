@@ -13,6 +13,7 @@
  *   流程实例：
  *     POST   /processes/:processId/start         — 启动流程实例
  *     GET    /processes/:processId/instances     — 列出实例
+ *     GET    /instances/mine                     — 列出我发起的实例（任务中心「我发起的」）
  *     GET    /instances/:instanceId              — 获取实例详情
  *     GET    /instances/:instanceId/trace        — 获取流程轨迹（节点状态+连线）
  *     POST   /instances/:instanceId/cancel       — 取消实例
@@ -199,6 +200,31 @@ export class ProcessController {
       pageSize ? parseInt(pageSize, 10) : undefined,
     );
     // 前端期望数组，直接返回 items
+    return { ok: true as const, data: result.items };
+  }
+
+  // 注意：instances/mine 字面量路由必须声明在 instances/:instanceId 之前，否则被参数路由吞掉
+  // （同 processes/analytics 先于 processes/:processId 的既有先例）
+  @Get('instances/mine')
+  @RequirePermission('PROCESS', 'VIEW')
+  @ApiOperation({ summary: '列出我发起的流程实例（任务中心「我发起的」视图）' })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: String })
+  @ApiQuery({ name: 'pageSize', required: false, type: String })
+  async listMyInstances(
+    @Req() req: AuthenticatedRequest,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const result = await this.processService.listMyInstances(
+      requireTenantId(req),
+      req.user.id,
+      status,
+      page ? parseInt(page, 10) : undefined,
+      pageSize ? parseInt(pageSize, 10) : undefined,
+    );
+    // 前端期望数组，直接返回 items（契约对齐 GET /tasks）
     return { ok: true as const, data: result.items };
   }
 

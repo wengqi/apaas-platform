@@ -20,6 +20,7 @@ import { ProcessService } from '../process/process.service.js';
 import { ObjectService } from '../object/object.service.js';
 import { ReviewService, collectRefTokens, type AiDraftInput } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { writeAudit } from '../common/audit.js';
 
 /** MCP 工具的结构化返回（JSON-RPC result.content 前的数据负载）。 */
@@ -41,6 +42,7 @@ export class McpService {
     private readonly objectService: ObjectService,
     private readonly reviewService: ReviewService,
     private readonly applicationService: ApplicationService,
+    private readonly observability: ObservabilityService,
   ) {}
 
   // ===========================================================================
@@ -142,7 +144,14 @@ export class McpService {
       name: role.name,
       rules: args.rules,
     });
-    if (!check.valid) return this.rejected(check);
+    if (!check.valid)
+      return this.rejected(check, {
+        tenantId,
+        appId: args.appId,
+        kind: 'PERMISSION',
+        apiName: role.code,
+        mode: 'single',
+      });
 
     // targetId 存在性校验：PAGE/DATA_MODEL/PROCESS/CONNECTOR 的目标须在活表
     const ruleList = args.rules;
@@ -212,6 +221,19 @@ export class McpService {
     void existingApproved;
 
     this.auditDraft(tenantId, userId, args.appId, 'PERMISSION', submission.id, 'update');
+    this.track(
+      tenantId,
+      'mcp:submit-accepted',
+      `AI 提交权限规则集草稿（${role.code}，${ruleList.length} 条）`,
+      {
+        flow: 'submit',
+        kind: 'PERMISSION',
+        apiName: role.code,
+        mode: 'single',
+        versionNumber: submission.versionNumber,
+      },
+      { appId: args.appId, resourceId: submission.id },
+    );
     this.logger.log(
       `MCP 权限规则集草稿待审: ${submission.id}（角色 ${role.code}，${ruleList.length} 条）by ${userId}`,
     );
@@ -266,7 +288,14 @@ export class McpService {
       name: args.name,
       config: args.config,
     });
-    if (!check.valid) return this.rejected(check);
+    if (!check.valid)
+      return this.rejected(check, {
+        tenantId,
+        appId: args.appId,
+        kind: 'DATASET',
+        apiName: args.apiName,
+        mode: 'single',
+      });
 
     const snapshot = {
       apiName: args.apiName,
@@ -294,6 +323,19 @@ export class McpService {
       'DATASET',
       submission.id,
       args.datasetId ? 'update' : 'create',
+    );
+    this.track(
+      tenantId,
+      'mcp:submit-accepted',
+      `AI 提交数据流草稿（${args.apiName}）`,
+      {
+        flow: 'submit',
+        kind: 'DATASET',
+        apiName: args.apiName,
+        mode: 'single',
+        versionNumber: submission.versionNumber,
+      },
+      { appId: args.appId, resourceId: submission.id },
     );
     this.logger.log(`MCP 数据流草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
     return {
@@ -441,7 +483,14 @@ export class McpService {
     },
   ): Promise<McpToolResult> {
     const check = this.schemaContract.validate('amis_page', args.schema);
-    if (!check.valid) return this.rejected(check);
+    if (!check.valid)
+      return this.rejected(check, {
+        tenantId,
+        appId: args.appId,
+        kind: 'PAGE',
+        apiName: args.apiName,
+        mode: 'single',
+      });
 
     // 提交快照为完整页面定义；批准前不触碰活表
     const snapshot = {
@@ -471,6 +520,19 @@ export class McpService {
       'PAGE',
       submission.id,
       args.pageId ? 'update' : 'create',
+    );
+    this.track(
+      tenantId,
+      'mcp:submit-accepted',
+      `AI 提交页面草稿（${args.apiName}）`,
+      {
+        flow: 'submit',
+        kind: 'PAGE',
+        apiName: args.apiName,
+        mode: 'single',
+        versionNumber: submission.versionNumber,
+      },
+      { appId: args.appId, resourceId: submission.id },
     );
     this.logger.log(`MCP 页面草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
     return {
@@ -502,7 +564,14 @@ export class McpService {
     const appPages = await this.pageService.list(tenantId, args.appId);
     const pageIds = new Set(appPages.map((p) => p.id));
     const check = this.schemaContract.validate('workflow', args.workflowSchema, { pageIds });
-    if (!check.valid) return this.rejected(check);
+    if (!check.valid)
+      return this.rejected(check, {
+        tenantId,
+        appId: args.appId,
+        kind: 'PROCESS',
+        apiName: args.apiName,
+        mode: 'single',
+      });
 
     const snapshot = {
       apiName: args.apiName,
@@ -532,6 +601,19 @@ export class McpService {
       submission.id,
       args.processId ? 'update' : 'create',
     );
+    this.track(
+      tenantId,
+      'mcp:submit-accepted',
+      `AI 提交流程草稿（${args.apiName}）`,
+      {
+        flow: 'submit',
+        kind: 'PROCESS',
+        apiName: args.apiName,
+        mode: 'single',
+        versionNumber: submission.versionNumber,
+      },
+      { appId: args.appId, resourceId: submission.id },
+    );
     this.logger.log(`MCP 流程草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
     return {
       ok: true,
@@ -559,7 +641,14 @@ export class McpService {
   ): Promise<McpToolResult> {
     const meta = { apiName: args.apiName, name: args.name, fields: args.fields };
     const check = this.schemaContract.validate('object_meta', meta);
-    if (!check.valid) return this.rejected(check);
+    if (!check.valid)
+      return this.rejected(check, {
+        tenantId,
+        appId: args.appId,
+        kind: 'OBJECT',
+        apiName: args.apiName,
+        mode: 'single',
+      });
 
     // 快照仅含业务字段（系统字段批准落地时注入，不参与 diff）
     const snapshot = {
@@ -589,6 +678,19 @@ export class McpService {
       'OBJECT',
       submission.id,
       args.objectId ? 'update' : 'create',
+    );
+    this.track(
+      tenantId,
+      'mcp:submit-accepted',
+      `AI 提交对象草稿（${args.apiName}）`,
+      {
+        flow: 'submit',
+        kind: 'OBJECT',
+        apiName: args.apiName,
+        mode: 'single',
+        versionNumber: submission.versionNumber,
+      },
+      { appId: args.appId, resourceId: submission.id },
     );
     this.logger.log(`MCP 对象草稿待审: ${submission.id}（${args.apiName}）by ${userId}`);
     return {
@@ -642,7 +744,14 @@ export class McpService {
         fields: (obj['fields'] as Array<Record<string, unknown>>) ?? [],
       };
       const check = this.schemaContract.validate('object_meta', meta);
-      if (!check.valid) return this.rejected(check);
+      if (!check.valid)
+        return this.rejected(check, {
+          tenantId,
+          appId,
+          kind: 'OBJECT',
+          apiName: meta.apiName,
+          mode: 'batch',
+        });
     }
 
     // 1.5) 数据流逐项 G3 校验（AI 主线第三轮）
@@ -652,7 +761,14 @@ export class McpService {
         name: String(ds['name'] ?? ''),
         config: ds['config'] ?? {},
       });
-      if (!check.valid) return this.rejected(check);
+      if (!check.valid)
+        return this.rejected(check, {
+          tenantId,
+          appId,
+          kind: 'DATASET',
+          apiName: String(ds['apiName'] ?? ''),
+          mode: 'batch',
+        });
     }
 
     // 2) 页面逐项 G3 校验 + objectApiName 引用解析（活表对象 → 真实 ID；本批对象 → 令牌）
@@ -660,7 +776,14 @@ export class McpService {
     const liveObjectIdsByApiName = new Map(liveObjects.map((o) => [o.apiName, o.id]));
     for (const page of pages) {
       const check = this.schemaContract.validate('amis_page', page['schema']);
-      if (!check.valid) return this.rejected(check);
+      if (!check.valid)
+        return this.rejected(check, {
+          tenantId,
+          appId,
+          kind: 'PAGE',
+          apiName: String(page['apiName'] ?? ''),
+          mode: 'batch',
+        });
     }
 
     // 3) 流程逐项 G3 校验 + @ref:page 令牌目标校验（pageIds 白名单 = 活表页面 ID ∪ 合法令牌）
@@ -672,6 +795,13 @@ export class McpService {
       for (const token of tokens) {
         const apiName = token.replace(/^@ref:page:/, '');
         if (!batchPageApiNames.has(apiName) && !livePageIdsByApiName.has(apiName)) {
+          this.trackRefRejected(
+            tenantId,
+            appId,
+            'PROCESS',
+            String(proc['apiName'] ?? ''),
+            `AI 批量提交被拒：流程「${String(proc['name'] ?? '')}」引用的页面令牌 ${token} 无效`,
+          );
           return {
             ok: false,
             hint: `流程「${String(proc['name'] ?? '')}」引用的页面令牌 ${token} 无效：既不在本批 pages 中，也不是应用的已有页面`,
@@ -682,7 +812,14 @@ export class McpService {
       const check = this.schemaContract.validate('workflow', proc['workflowSchema'], {
         pageIds: tokenWhitelist,
       });
-      if (!check.valid) return this.rejected(check);
+      if (!check.valid)
+        return this.rejected(check, {
+          tenantId,
+          appId,
+          kind: 'PROCESS',
+          apiName: String(proc['apiName'] ?? ''),
+          mode: 'batch',
+        });
     }
 
     // 4) 组装 AiDraftInput 批量载荷（引用令牌原样入快照，批准时拓扑解析）
@@ -726,6 +863,13 @@ export class McpService {
         if (live) objectId = live;
         else if (batchObjectApiNames.has(objectApiName)) objectId = `@ref:object:${objectApiName}`;
         else {
+          this.trackRefRejected(
+            tenantId,
+            appId,
+            'PAGE',
+            String(page['apiName'] ?? ''),
+            `AI 批量提交被拒：页面「${String(page['name'] ?? '')}」的 objectApiName "${objectApiName}" 无效`,
+          );
           return {
             ok: false,
             hint: `页面「${String(page['name'] ?? '')}」的 objectApiName "${objectApiName}" 无效：既不在本批 objects 中，也不是应用的已有对象`,
@@ -779,6 +923,20 @@ export class McpService {
         row.id,
         row.entityId ? 'update' : 'create',
       );
+      this.track(
+        tenantId,
+        'mcp:submit-accepted',
+        `AI 批量提交（${row.module} ${row.apiName}）`,
+        {
+          flow: 'submit',
+          kind: row.module,
+          apiName: row.apiName,
+          mode: 'batch',
+          batchId,
+          versionNumber: row.versionNumber,
+        },
+        { appId, resourceId: row.id },
+      );
     }
     this.logger.log(`MCP 批量草稿待审: batch=${batchId} ×${rows.length} by ${userId}`);
     return {
@@ -828,12 +986,80 @@ export class McpService {
   // 内部
   // ===========================================================================
 
-  private rejected(check: SchemaValidationResult): McpToolResult {
+  /**
+   * AI 生成遥测（ADR-0004 决策 5）：AI_GENERATION 事件统一出口。
+   * 非阻塞（record 内部已吞异常），失败不影响提交/审批主流程。
+   */
+  private track(
+    tenantId: string,
+    source: 'mcp:submit-accepted' | 'mcp:submit-rejected',
+    message: string,
+    detail: Record<string, unknown>,
+    opts?: { appId?: string | null; resourceId?: string | null; level?: 'INFO' | 'WARN' },
+  ): void {
+    void this.observability
+      .record({
+        tenantId,
+        category: 'AI_GENERATION',
+        level: opts?.level ?? 'INFO',
+        source,
+        appId: opts?.appId ?? null,
+        resourceId: opts?.resourceId ?? null,
+        message,
+        detail,
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * G3/引用校验拒绝：结构化 issues 返回（agent 自修正）+ 遥测埋点
+   * （G3 首拦率与拦截规则码分布的数据源——被拒提交不产生 ResourceVersion 行）。
+   */
+  private rejected(
+    check: SchemaValidationResult,
+    ctx: {
+      tenantId: string;
+      appId: string;
+      kind: string;
+      apiName?: string;
+      mode: 'single' | 'batch';
+    },
+  ): McpToolResult {
+    this.track(
+      ctx.tenantId,
+      'mcp:submit-rejected',
+      `AI 提交被 G3 拒绝（${ctx.kind} ${ctx.apiName ?? '-'}，${check.issues.length} 个问题）`,
+      {
+        flow: 'submit',
+        kind: ctx.kind,
+        apiName: ctx.apiName ?? null,
+        mode: ctx.mode,
+        issueCodes: check.issues.map((i) => i.code),
+      },
+      { appId: ctx.appId, level: 'WARN' },
+    );
     return {
       ok: false,
       issues: check.issues,
       hint: 'schema 未通过校验合同——按 issues 逐项修正（错误含路径与候选建议）后重新提交；草稿不会保留',
     };
+  }
+
+  /** 引用令牌/跨资源目标无效的批量拒绝（与 G3 拒绝同口径埋点）。 */
+  private trackRefRejected(
+    tenantId: string,
+    appId: string,
+    kind: string,
+    apiName: string,
+    message: string,
+  ): void {
+    this.track(
+      tenantId,
+      'mcp:submit-rejected',
+      message,
+      { flow: 'submit', kind, apiName, mode: 'batch', issueCodes: ['REF_INVALID'] },
+      { appId, level: 'WARN' },
+    );
   }
 
   private auditDraft(

@@ -171,7 +171,7 @@ export function translateJsonLogicToSql(
       op === '==' ||
       op === '===' ||
       op === '!=' ||
-      op === '!===' ||
+      op === '!==' ||
       op === '>' ||
       op === '>=' ||
       op === '<' ||

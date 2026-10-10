@@ -34,6 +34,13 @@ export default function Login() {
         tenantSlug: values.tenantSlug || undefined,
       });
       const { accessToken, user } = res.data.data;
+      // 平台超管不进运行时（运行时是业务用户入口，超管工作台在 Studio 管理端）。
+      // 不写入共享 auth store（apaas:auth 跨 studio/runtime 共享，避免覆盖同浏览器
+      // 的租户会话）；此前的静默空列表缺陷见 2026-10-10 修复。
+      if (user.isPlatformAdmin) {
+        message.warning('平台管理员请以租户账号登录运行时（管理操作请使用 Studio 管理端）');
+        return;
+      }
       login(accessToken, {
         id: user.id,
         name: user.name,

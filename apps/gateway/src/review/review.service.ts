@@ -25,6 +25,7 @@ import type {
 import { diffResource, stableStringifyEqual } from '@apaas/shared';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { writeAudit } from '../common/audit.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { LiveResource, ReviewSnapshotService } from './review-snapshot.service.js';
 import { ReviewCallbackService, type ReviewCallbackEvent } from './review-callback.service.js';
 
@@ -119,7 +120,50 @@ export class ReviewService {
     private readonly snapshotService: ReviewSnapshotService,
     private readonly inAppMessage: InAppMessageService,
     private readonly callbackService: ReviewCallbackService,
+    private readonly observability: ObservabilityService,
   ) {}
+
+  /**
+   * AI 生成遥测（ADR-0004 决策 5）：仅记录 AI_MCP 来源的审批结果
+   * （一次人审通过率的质量分母；人工提交不占 AI 质量口径）。非阻塞。
+   */
+  private trackAiReview(
+    tenantId: string,
+    appId: string,
+    outcome: 'approved' | 'rejected' | 'adopted',
+    row: Pick<ResourceVersionRow, 'module' | 'apiName' | 'versionNumber' | 'batchId'>,
+    comment: string | null,
+  ): void {
+    const source =
+      outcome === 'approved'
+        ? 'review:approved'
+        : outcome === 'adopted'
+          ? 'review:adopted'
+          : 'review:rejected';
+    const verb =
+      outcome === 'approved' ? '已批准' : outcome === 'adopted' ? '被人工改稿收编' : '被驳回';
+    void this.observability
+      .record({
+        tenantId,
+        category: 'AI_GENERATION',
+        level: outcome === 'rejected' ? 'WARN' : 'INFO',
+        source,
+        appId,
+        resourceId: row.batchId,
+        message: `AI 草稿${verb}：${row.module} ${row.apiName} v${row.versionNumber}`,
+        detail: {
+          flow: 'review',
+          outcome,
+          module: row.module,
+          apiName: row.apiName,
+          batchId: row.batchId,
+          versionNumber: row.versionNumber,
+          hasComment: Boolean(comment),
+          commentPreview: comment ? comment.slice(0, 200) : null,
+        },
+      })
+      .catch(() => undefined);
+  }
 
   // ===========================================================================
   // 提交
@@ -288,6 +332,9 @@ export class ReviewService {
       reviewComment: opts?.comment ?? null,
       reviewedBy: reviewerId,
     });
+    if (row.source === 'AI_MCP') {
+      this.trackAiReview(tenantId, appId, 'approved', row, opts?.comment ?? null);
+    }
     return updated;
   }
 
@@ -370,6 +417,11 @@ export class ReviewService {
       appId,
       detail: { batch: true, approvedCount: applied.length, apiNames: rows.map((r) => r.apiName) },
     });
+    for (const row of rows) {
+      if (row.source === 'AI_MCP') {
+        this.trackAiReview(tenantId, appId, 'approved', row, opts?.comment ?? null);
+      }
+    }
     const first = rows[0]!;
     await this.notifySubmitter(
       tenantId,
@@ -402,8 +454,26 @@ export class ReviewService {
   ): Promise<{ rejected: number }> {
     const rows = (await prisma.resourceVersion.findMany({
       where: { tenantId, appId, batchId, status: 'PENDING' },
-      select: { id: true, submittedBy: true, name: true },
-    })) as Array<{ id: string; submittedBy: string; name: string }>;
+      select: {
+        id: true,
+        submittedBy: true,
+        name: true,
+        module: true,
+        apiName: true,
+        versionNumber: true,
+        source: true,
+        batchId: true,
+      },
+    })) as Array<{
+      id: string;
+      submittedBy: string;
+      name: string;
+      module: string;
+      apiName: string;
+      versionNumber: number;
+      source: string;
+      batchId: string | null;
+    }>;
     if (rows.length === 0) throw new BadRequestException('批次不存在或已全部处理');
 
     const res = await prisma.resourceVersion.updateMany({
@@ -424,6 +494,11 @@ export class ReviewService {
       appId,
       detail: { batch: true, rejectedCount: res.count, comment },
     });
+    for (const row of rows) {
+      if (row.source === 'AI_MCP') {
+        this.trackAiReview(tenantId, appId, 'rejected', row, comment);
+      }
+    }
     const first = rows[0]!;
     await this.notifySubmitter(
       tenantId,
@@ -579,7 +654,117 @@ export class ReviewService {
       reviewComment: comment,
       reviewedBy: reviewerId,
     });
+    if (row.source === 'AI_MCP') {
+      this.trackAiReview(tenantId, appId, 'rejected', row, comment);
+    }
     return this.toDto(updated as ResourceVersionRow, null);
+  }
+
+  /**
+   * 草稿改稿收编（ADR-0004 决策 4）：人审前开发者在 studio 微调 AI 草稿后由人工
+   * 落地，免去"批准未审内容 / 整单驳回重提"的二选一。语义链：
+   *  1. AI 草稿置 SUPERSEDED（同资源新提交取代的既有语义，comment 记收编溯源）；
+   *  2. 编辑后快照经 applySnapshot 落活表——走活表服务既有 G3 硬闸与系统字段
+   *     注入；随后重提活表做基线归一化（同 applyApproved：快照必须等于落地形态）；
+   *  3. 以人工身份创建 APPROVED 基线版本（source=HUMAN 即时生效，reviewComment
+   *     记"收编自 AI 草稿 vN"保留谱系可追溯）。
+   * 批次拓扑兼容：@ref 令牌在批准时按 apiName 解析活表，收编条目以同 apiName
+   * 落活表后，同批其余条目照常解析。
+   */
+  async adoptDraftEdit(
+    tenantId: string,
+    appId: string,
+    submissionId: string,
+    userId: string,
+    editedSnapshot: ResourceSnapshot,
+    opts?: { comment?: string },
+  ): Promise<ResourceVersionDto> {
+    const row = await this.getPendingOrThrow(tenantId, appId, submissionId);
+    if (!editedSnapshot || typeof editedSnapshot !== 'object' || Array.isArray(editedSnapshot)) {
+      throw new BadRequestException('改稿快照必须是非空对象');
+    }
+
+    // 1) 先落活表（OCR F1 修复：落地可能被活表服务 G3 硬闸拒绝——此时草稿必须
+    //    仍留在待审队列可重试；若先置 SUPERSEDED 再落地，拒绝即丢草稿）
+    const appliedEntityId = await this.snapshotService.applySnapshot(
+      tenantId,
+      appId,
+      row.module as ReviewModule,
+      editedSnapshot,
+      row.entityId,
+      `review:adopt:${userId}`,
+    );
+    let finalSnapshot = editedSnapshot;
+    try {
+      const applied = await this.snapshotService.extractLive(
+        tenantId,
+        appId,
+        row.module as ReviewModule,
+        appliedEntityId,
+      );
+      if (applied) finalSnapshot = applied.snapshot;
+    } catch (err) {
+      this.logger.warn(`收编基线归一化失败（不影响收编结果）: ${row.id} ${(err as Error).message}`);
+    }
+
+    // 2) 落地成功后才让 AI 草稿让位（SUPERSEDED = 被同资源新提交取代）
+    await prisma.resourceVersion.update({
+      where: { id: row.id },
+      data: {
+        status: 'SUPERSEDED',
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewComment: opts?.comment?.trim()
+          ? `人工改稿收编：${opts.comment.trim()}`
+          : '人工改稿收编（编辑后由开发者落地为人工基线）',
+      },
+    });
+
+    // 3) 人工 APPROVED 基线版本（createVersion 复算基线与链内版本号）
+    const created = await this.createVersion(tenantId, appId, {
+      module: row.module as ReviewModule,
+      entityId: appliedEntityId,
+      apiName: row.apiName,
+      name: row.name,
+      snapshot: finalSnapshot,
+      source: 'HUMAN',
+      status: 'APPROVED',
+      submittedBy: userId,
+      submittedVia: 'studio',
+    });
+    const withProvenance = (await prisma.resourceVersion.update({
+      where: { id: created.id },
+      data: {
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewComment: `人工改稿收编自 AI 草稿 v${row.versionNumber}（submission ${row.id}）${
+          opts?.comment ? `：${opts.comment}` : ''
+        }`,
+      },
+    })) as ResourceVersionRow;
+
+    writeAudit({
+      tenantId,
+      userId,
+      action: 'REVIEW_SUBMIT',
+      resource: row.module,
+      resourceId: created.id,
+      appId,
+      detail: {
+        channel: 'studio',
+        adopt: true,
+        adoptedSubmissionId: row.id,
+        apiName: row.apiName,
+        aiVersionNumber: row.versionNumber,
+      },
+    });
+    if (row.source === 'AI_MCP') {
+      this.trackAiReview(tenantId, appId, 'adopted', row, opts?.comment ?? null);
+    }
+    this.logger.log(
+      `改稿收编: ${row.module} ${row.apiName} AI v${row.versionNumber} → 人工 v${created.versionNumber} by ${userId}`,
+    );
+    return this.toDto(withProvenance, null);
   }
 
   /** 撤销未提交：把最新 APPROVED 基线快照写回活表。 */

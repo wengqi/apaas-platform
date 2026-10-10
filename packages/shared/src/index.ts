@@ -33,6 +33,9 @@ export * from './open-api/index.js';
 // 观测域（P1 运维治理：事件分类 SSOT + 审计动作分类映射）
 export * from './observability/index.js';
 
+// JsonLogic 可译子集 SSOT（ADR-0004 决策 7：权限/数据流两翻译器的操作符合同）
+export * from './jsonlogic/index.js';
+
 // 权限（Phase 4 补充）
 export * from './permission/index.js';
 

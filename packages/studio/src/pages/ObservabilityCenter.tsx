@@ -19,12 +19,13 @@ import {
   type EventLevel,
 } from '@apaas/shared';
 import { observabilityApi, type ObservabilityEvent } from '../api/observability.js';
+import AiQualityPanel from '../components/observability/AiQualityPanel.js';
 
 const { Title, Text } = Typography;
 
 const DEFAULT_PAGE_SIZE = 20;
-/** 统计卡栅格跨度：24 栅格 / 6 = 每行 4 张卡。 */
-const SUMMARY_SPAN = 6;
+/** 统计卡栅格跨度：24 栅格 / 8 = 每行 3 张卡（5 分类 3+2 排布）。 */
+const SUMMARY_SPAN = 8;
 
 /** 级别 → Tag 颜色（INFO=blue/WARN=orange/ERROR=red）。 */
 const LEVEL_COLORS: Record<EventLevel, string> = {
@@ -39,6 +40,7 @@ const CATEGORY_COLORS: Record<EventCategory, string> = {
   SLOW_QUERY: 'gold',
   PAGE_ERROR: 'volcano',
   OPEN_API_CALL: 'cyan',
+  AI_GENERATION: 'purple',
 };
 
 /** 「全部」筛选项的空串哨兵值（接入查询参数时归一为 undefined）。 */
@@ -164,7 +166,7 @@ export default function ObservabilityCenter() {
           观测中心
         </Title>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          云函数执行 / 慢查询 / 页面报错 / 开放 API 调用（最近 24h）
+          云函数执行 / 慢查询 / 页面报错 / 开放 API 调用 / AI 生成（最近 24h）
         </Text>
       </div>
 
@@ -184,6 +186,8 @@ export default function ObservabilityCenter() {
             </Col>
           ))}
         </Row>
+
+        <AiQualityPanel />
 
         <Card style={{ marginBottom: 16 }}>
           <Space wrap size={12}>

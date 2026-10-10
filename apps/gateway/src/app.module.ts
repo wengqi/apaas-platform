@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
+import { AppThrottlerGuard } from './common/app-throttler.guard.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ApplicationModule } from './application/application.module.js';
 import { ObjectModule } from './object/object.module.js';
@@ -63,7 +64,10 @@ import { envValidation } from './config/env.validation.js';
       },
     }),
     // 限流阈值从环境变量读取（THROTTLE_TTL_MS / THROTTLE_DEFAULT_LIMIT / THROTTLE_AUTH_LIMIT），
-    // E2E 测试等高吞吐场景可调高避免 429 干扰
+    // E2E 测试等高吞吐场景可调高避免 429 干扰。
+    // ⚠️ v6 语义：forRoot 数组中每个命名桶对**所有**无 @Throttle 装饰器的路由生效——
+    // 因此 auth/open 两个严格桶必须带 skipIf（仅对各自路径生效），
+    // 否则 auth 的 10/min 会泄漏到全部路由（R5.5 用户实测：点几下就 429 的根因）。
     ThrottlerModule.forRoot([
       {
         name: 'default',
@@ -74,12 +78,22 @@ import { envValidation } from './config/env.validation.js';
         name: 'auth',
         ttl: Number(process.env.THROTTLE_TTL_MS) || 60_000,
         limit: Number(process.env.THROTTLE_AUTH_LIMIT) || 10,
+        // 防爆破桶仅对登录/刷新令牌生效
+        skipIf: (context) => {
+          const req = context.switchToHttp().getRequest();
+          const url = String(req?.url ?? '');
+          return !(url.includes('/auth/login') || url.includes('/auth/refresh'));
+        },
       },
       {
-        // G6 开放 API（/api/v1/open/*，X-API-Key 外部调用）
+        // G6 开放 API（/api/v1/open/*，X-API-Key 外部调用）——仅对 open 路径生效
         name: 'open',
         ttl: Number(process.env.THROTTLE_TTL_MS) || 60_000,
         limit: Number(process.env.THROTTLE_OPEN_LIMIT) || 120,
+        skipIf: (context) => {
+          const req = context.switchToHttp().getRequest();
+          return !String(req?.url ?? '').includes('/open/');
+        },
       },
     ]),
     AuthModule,
@@ -106,7 +120,9 @@ import { envValidation } from './config/env.validation.js';
   ],
   controllers: [HealthController],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // 限流维度：认证请求按用户/令牌分桶、匿名按 IP（默认 ThrottlerGuard 按 IP
+    // 使 localhost 多客户端共享单桶，R5.5 实测多账号并发触发 429 打断提交流程）
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
   ],
 })

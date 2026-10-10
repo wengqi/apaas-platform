@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
@@ -27,10 +38,17 @@ export class ApplicationController {
   // 应用 CRUD
   // ===========================================================================
 
+  /**
+   * 列出应用。runtime=1 时为运行时视图（已发布 + 按用户权限归纳过滤，终端用户语义）；
+   * 不带参数保持全量行为——studio 应用列表与既有调用方依赖全量（含 DRAFT）。
+   */
   @Get()
-  async list(@Req() req: AuthenticatedRequest) {
-    const apps = await this.appService.list(requireTenantId(req));
-    return { ok: true as const, data: apps };
+  async list(@Req() req: AuthenticatedRequest, @Query('runtime') runtime?: string) {
+    const data =
+      runtime === '1'
+        ? await this.appService.listVisibleForUser(requireTenantId(req), req.user)
+        : await this.appService.list(requireTenantId(req));
+    return { ok: true as const, data };
   }
 
   @Get(':appId')

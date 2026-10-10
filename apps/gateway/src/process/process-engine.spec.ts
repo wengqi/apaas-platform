@@ -529,6 +529,71 @@ describe('ProcessEngine', () => {
       }
     });
 
+    it('R5.5 回归：决策顶层规范别名 — {"var":"decision"} 条件边真实路由', async () => {
+      // 修复前双层断裂（实测 2026-10-09）：
+      // ① 决策仅存节点命名空间（<nodeId>.output.decision），顶层 {"var":"decision"}
+      //    恒 undefined → 条件边全不匹配；
+      // ② 注入原样大写串（传 approve → APPROVE），按方言指南写 APPROVED 的边恒 false。
+      // 两者叠加：任务完成 → nextNodeIds=[] → 令牌静默终结（实例 COMPLETED
+      // 零回写零通知）。修复后：顶层注入规范值 APPROVED/REJECTED，指南契约成真。
+      const schema = makeSimpleSchema({
+        nodes: [
+          makeNode('node-task', 'user_task'),
+          makeNode('node-small', 'notification'),
+          makeNode('node-big', 'user_task'),
+          makeNode('node-end', 'end'),
+        ],
+        edges: [
+          {
+            sourceNodeID: 'node-task',
+            targetNodeID: 'node-small',
+            condition: {
+              and: [
+                { '==': [{ var: 'decision' }, 'APPROVED'] },
+                { '<': [{ var: 'amount' }, 1000] },
+              ],
+            },
+          },
+          {
+            sourceNodeID: 'node-task',
+            targetNodeID: 'node-big',
+            condition: {
+              and: [
+                { '==': [{ var: 'decision' }, 'APPROVED'] },
+                { '>=': [{ var: 'amount' }, 1000] },
+              ],
+            },
+          },
+        ],
+      });
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-task'],
+        variables: { amount: 5000 },
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      const task = makeProcessTask({ nodeId: 'node-task', instance });
+      prisma.processTask.findFirst.mockResolvedValue(task);
+      prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+      // B2: 锁内重载实例
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      prisma.processInstance.update.mockResolvedValue(makeProcessInstance({ status: 'RUNNING' }));
+
+      const { engine } = createEngine();
+      // 调用方传非规范输入 approve——引擎应规范化后路由
+      await engine.completeTask('task-001', 'user-001', 'approve', '同意转复核', undefined);
+
+      const instUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'RUNNING',
+      );
+      expect(instUpdate).toBeDefined();
+      // 大额边真实匹配 → 复核节点激活（修复前：activeNodeIds 为空，实例终结）
+      expect(instUpdate![0]!.data.activeNodeIds).toContain('node-big');
+      // 顶层规范别名可被后续边条件消费
+      expect((instUpdate![0]!.data.variables as Record<string, unknown>)['decision']).toBe(
+        'APPROVED',
+      );
+    });
+
     it('B2: 并发双 completeTask 同实例不同任务 — 令牌不丢失', async () => {
       // 模拟并行分支：实例有两个活跃节点 node-a / node-b，
       // 两个任务分别完成这两个节点。

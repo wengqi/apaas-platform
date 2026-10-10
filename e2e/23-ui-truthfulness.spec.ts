@@ -76,8 +76,9 @@ test.describe('编辑器 UI 真实性不变量', () => {
   test('对照组：真不完整的流程仍会标红（检测器没有被一并禁掉）', async ({ page }) => {
     await injectAdminAuth(page);
     // 自建不完整流程草稿（user_task 缺审批人）
+    // apiName 用低碰撞后缀：上次运行清理失败时 %100000 会撞唯一约束（2026-10-10 复盘）
     const created = await admin.post<{ id: string }>(`/apps/${appId}/processes`, {
-      apiName: `incomplete_probe_${Date.now() % 100000}`,
+      apiName: `incomplete_probe_${Date.now().toString(36)}`,
       name: '真实性对照-缺审批人',
       triggerType: 'MANUAL',
       workflowSchema: {

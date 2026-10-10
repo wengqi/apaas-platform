@@ -15,7 +15,13 @@ export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        retry: 1,
+        retry: (failureCount, error) => {
+          // 4xx 客户端错误（含 429 限流）不重试——重试只会放大限流与无效请求
+          // （R5.5 用户实测：429 后默认重试呈请求风暴，页面定义连续 4 次 429）
+          const status = (error as { response?: { status?: number } } | null)?.response?.status;
+          if (status !== undefined && status >= 400 && status < 500) return false;
+          return failureCount < 1;
+        },
         refetchOnWindowFocus: false,
       },
     },

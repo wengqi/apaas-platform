@@ -39,11 +39,14 @@ const TOOLS: Array<{
   {
     name: 'get_dialect_guide',
     description:
-      '获取平台元数据方言指南（amis 页面 / WorkflowSchema / 对象元数据的惯例、示例与陷阱清单）。生成任何 schema 之前务必阅读对应指南。',
+      '获取平台元数据方言指南（amis 页面 / WorkflowSchema / 对象元数据 / 数据集 / 权限规则的惯例、示例与陷阱清单）。生成任何 schema 之前务必阅读对应指南。',
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['amis_page', 'workflow', 'object_meta'] },
+        kind: {
+          type: 'string',
+          enum: ['amis_page', 'workflow', 'object_meta', 'dataset', 'permission'],
+        },
       },
       required: ['kind'],
       additionalProperties: false,
@@ -440,7 +443,12 @@ const TOOLS: Array<{
 ];
 
 /** 方言指南正文（语料：spike 陷阱清单 + 种子示例要点）。 */
-const DIALECT_GUIDES: Record<string, string> = {
+/**
+ * 方言指南注册表（get_dialect_guide 数据源；导出供指南↔G3 一致性测试消费）。
+ * 一致性合同（dialect-guide-consistency.spec）：校验器每条拦截规则码必须在
+ * 对应指南中有说明，指南引用的规则码必须真实存在于该校验器——双向锚定。
+ */
+export const DIALECT_GUIDES: Record<string, string> = {
   amis_page: [
     '## amis 页面方言指南',
     '- 一切界面皆页面：根节点必须 {"type":"page","body":[...]}；表单是 body 里的 {"type":"form"} 组件',
@@ -458,6 +466,7 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 图表布局用 {"type":"grid","columns":[{"md":6,"body":{...chart 节点...}}]}（md 为 12 栅格列宽）',
     '- "@ref:object:<apiName>" 令牌可用于页面 schema 任意字符串值位置（api.url 子串、data.objectId、chart 的 api.data.sourceId 等），submit_app_drafts 落地时递归解析；单页提交（submit_page_draft）则用 list_objects 拿真实 ID',
     '- 示例可参考：list_pages 后 get_page 获取既有合法页面照猫画虎',
+    '- G3 拦截规则码（被拒时 issues[].code）：ROOT_INVALID=根节点必须是对象且 type="page"；UNKNOWN_TYPE=组件/动作类型不在白名单；TYPE_FORBIDDEN=类型被平台明确禁用（如 input-cascader、static-file）；INVALID_VALUE=属性值非法（如 api.url 必须是平台相对路径）；STRUCTURE_LIMIT=节点数/嵌套深度超限',
   ].join('\n'),
   workflow: [
     '## WorkflowSchema 方言指南',
@@ -469,10 +478,12 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 驳回跳转：data.rejectToNodeId 指向流程内节点',
     '- 边条件：condition 为 JsonLogic JSON 字符串，如 \'{"==":[{"var":"decision"},"APPROVED"]}\'；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',
     '- 默认通知：流程未配置任何通知节点时，引擎在审批定论后自动站内信通知发起人（零配置默认链路）；配置了通知节点则由配置全权驱动、引擎不再兜底——建议批准与驳回路径都配置通知节点',
+    '- 发起页面绑定（R6）：start 节点 data.startPageId 指向平台页面 ID（list_pages 获取，或 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析），与 user_task.pageId 对称——语义为"该流程从此页面发起"。两种发起模式：RECORD_* 触发的流程，发起页表单 api.url 写 /objects/<对象ID>/records（写记录触发流程）；MANUAL 触发的流程，发起页表单 api.url 写 /processes/<流程ID>/start（POST 启动实例），运行时应用页会出现「发起」按钮直达发起页',
     '- 最小骨架示例：{nodes:[{id:"start_1",type:"start",data:{title:"开始"}},{id:"t1",type:"user_task",data:{taskName:"审批",assigneeType:"ROLE",candidateGroups:["<角色ID>"]}},{id:"end_1",type:"end",data:{title:"结束"}}], edges:[{sourceNodeID:"start_1",targetNodeID:"t1"},{sourceNodeID:"t1",targetNodeID:"end_1"}]}',
     '- 记录状态回写：object_operation 节点 inputsValues 用四态 {type:"constant"/"ref",content:...}，recordId 用 {type:"ref",content:["recordId"]}',
     '- 流程出入参：start 节点 data.inputsValues 定义入参；end 节点 inputsValues 定义出参映射',
     '- triggerType=API 的流程发布后可经开放 API（X-API-Key）触发（G6）；user_task 仍走人工审批',
+    '- G3 拦截规则码：ROOT_INVALID=根必须是含 nodes 数组的对象且需含 start/end 节点；UNKNOWN_TYPE=未知节点类型；MISSING_REQUIRED=缺节点 id/start/end/user_task.taskName/对应审批模式的审批人配置；INVALID_VALUE=边条件非 JsonLogic 对象/approvalMode 非法/approveUsers 非法；DUPLICATE_KEY=节点 id 重复；ORPHAN_NODE=节点从 start 不可达（运行时永不执行）；REF_NOT_FOUND=边指向未定义节点或审批页面 pageId 不存在；STRUCTURE_LIMIT=节点/边数超限；JSON_PARSE=边条件 condition 不是合法 JSON 字符串',
   ].join('\n'),
   object_meta: [
     '## 对象元数据方言指南',
@@ -481,6 +492,7 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 选择类字段必须带 config.options：[{"value":"S","label":"战略"}]',
     '- 自动编号必须带 config.format：如 "PO-{seq:0000}"',
     '- 公式字段建议带 config.expression',
+    '- G3 拦截规则码：ROOT_INVALID=元数据/字段定义必须是对象；UNKNOWN_TYPE=字段类型不在 18 种内；MISSING_REQUIRED=缺 name/fields/选择类 options/自动编号 config.format/公式 config.expression；INVALID_VALUE=apiName 非小写开头 snake_case；DUPLICATE_KEY=字段 apiName 重复；STRUCTURE_LIMIT=字段数超限',
   ].join('\n'),
   dataset: [
     '## 数据流（数据集）方言指南',
@@ -494,6 +506,7 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- 典型用法（跨对象汇总报表）：主表 sources+[关联表]+join → aggregation 分组求和 → outputFields 输出分组列与指标列 → 仪表盘 chart 的 api.data 写 {sourceType:"dataset", sourceId:"@ref:dataset:<数据流apiName>", categoryField:"<分组输出列alias>", valueField:"<指标列alias>", aggregation:"sum"}',
     '- 依赖顺序（submit_app_drafts 单波自动拓扑）：对象 → 数据流 → 页面 → 流程；数据流批准落地时自动执行物化（行数据异步就绪，数据集状态 READY 后图表出数）',
     '- 提交前用 validate_schema kind="dataset" 自检；list_datasets 可查数据集 ID/列定义/物化状态',
+    '- G3 拦截规则码：ROOT_INVALID=草稿/数据源/join/aggregation/聚合指标必须是规定形状的对象；MISSING_REQUIRED=缺 name/config/objectId/别名/join 字段/groupBy/metrics；INVALID_VALUE=apiName/别名非 snake_case、join.type 非 left|inner、groupBy 带点路径等值域违规；DUPLICATE_KEY=数据源别名重复；REF_NOT_FOUND=join 引用的别名未在 sources 中定义；STRUCTURE_LIMIT=数据源数超上限',
   ].join('\n'),
   permission: [
     '## 权限规则方言指南',
@@ -505,6 +518,7 @@ const DIALECT_GUIDES: Record<string, string> = {
     '- effect：ALLOW/DENY；语义 deny-overrides + default-deny（未授权即拒绝）——只授最小必要权限',
     '- 角色管理用 list_roles（应用级角色 ID）；角色成员由人工在 studio 配置（AI 不改成员关系）',
     '- 提交前 validate_schema kind="permission" 自检；list_permission_rules 读现状',
+    '- G3 拦截规则码：ROOT_INVALID=草稿/规则必须是规定形状的对象；MISSING_REQUIRED=缺 apiName/name/rules/targetId 等；INVALID_VALUE=五维/动作/effect 枚举外、condition 非 JsonLogic 对象、fieldScope 非字符串数组或 null；STRUCTURE_LIMIT=规则数超上限',
   ].join('\n'),
 };
 

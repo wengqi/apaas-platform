@@ -38,11 +38,22 @@ export interface ObservabilityEventQueryParams {
   appId?: string;
 }
 
-/** 分类汇总行（固定 4 分类全量返回，最近 24h）。 */
+/** 分类汇总行（固定 5 分类全量返回，最近 24h）。 */
 export interface ObservabilityCategorySummary {
   category: EventCategory;
   total: number;
   errors: number;
+}
+
+/** AI 生成质量聚合（ADR-0004 决策 5：与 gateway AiGenerationAnalytics 对齐）。 */
+export interface AiGenerationAnalytics {
+  window: { appId: string | null; since: string | null; until: string | null };
+  attempts: { total: number; accepted: number; rejected: number; blockRate: number };
+  byKind: Array<{ kind: string; accepted: number; rejected: number; blockRate: number }>;
+  topIssueCodes: Array<{ code: string; count: number }>;
+  batches: { verdictTotal: number; approved: number; rejected: number; firstPassRate: number };
+  rework: { approvedVersions: number; reworkVersions: number; avgReworkPerApproved: number };
+  byModule: Array<{ module: string; approved: number; rework: number }>;
 }
 
 const unwrap = <T>(p: Promise<{ data: ApiResponse<T> }>) => p.then((res) => res.data.data as T);
@@ -55,4 +66,8 @@ export const observabilityApi = {
   /** 分页查询观测事件。 */
   events: (params: ObservabilityEventQueryParams = {}) =>
     unwrap<ObservabilityEventQueryResult>(client.get('/api/observability/events', { params })),
+
+  /** AI 生成质量聚合（G3 首拦率/一次人审通过率/返工轮次）。 */
+  aiAnalytics: (params: { appId?: string; since?: string; until?: string } = {}) =>
+    unwrap<AiGenerationAnalytics>(client.get('/api/observability/ai-analytics', { params })),
 };

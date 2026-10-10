@@ -560,6 +560,13 @@ export class ProcessEngine {
       throw new BadRequestException(`无效的审批决策: "${decision}"，仅支持 approve/reject`);
     }
 
+    // 决策规范值（R5.5 实测修复 2026-10-09）：引擎宽容接受 approve/APPROVE/
+    // APPROVED 等写法，但若变量注入原始大写串，边条件按方言指南写
+    // {"==":[{"var":"decision"},"APPROVED"]} 在调用方传 "approve" 时恒 false
+    // → 条件边全不匹配 → 令牌静默终结（实例 COMPLETED 零回写零通知）。
+    // 决策变量一律注入二值规范值，输入宽容、输出严格。
+    const canonicalDecision = isApproved ? 'APPROVED' : 'REJECTED';
+
     const taskStatus = isApproved ? 'APPROVED' : 'REJECTED';
 
     // #16：节点配置 allowReject=false 时禁止驳回决策（配置侧栏可设，此前从未强制）。
@@ -735,11 +742,16 @@ export class ProcessEngine {
       // 写入任务决策到节点输出变量，供下游节点引用
       const variables = (instance.variables as Record<string, unknown>) ?? {};
       writeNodeOutput(variables, task.nodeId, {
-        decision: decisionUpper,
+        decision: canonicalDecision,
         comment,
         formData,
         assignee: userId,
       });
+      // 决策顶层别名（R5.5 实测修复 2026-10-09）：决策仅存在于节点命名空间
+      // （<nodeId>.output.decision），方言指南/画布教的边条件 {"var":"decision"}
+      // 求值顶层恒 undefined → 条件边全不匹配 → 令牌静默终止（实例 COMPLETED
+      // 但零回写零通知）。注入顶层规范别名使指南契约成真；dotted 用法不受影响。
+      variables['decision'] = canonicalDecision;
 
       // R1.3 会签并发封窗：锁内重验同节点 PENDING——聚合判定在锁外读数存在
       // 竞态窗口（两个会签任务并发 complete 双推进），以锁内为准做最终裁决。

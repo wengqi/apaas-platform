@@ -58,6 +58,29 @@ const loginTokenCache = new Map<string, { token: string; expiresAt: number }>();
 const loginUserCache = new Map<string, unknown>();
 const TOKEN_TTL_MS = 10 * 60_000;
 
+interface LoginErrorBody {
+  ok?: boolean;
+  error?: { code?: number | string; message?: string };
+}
+
+/**
+ * 登录撞 429 限流时直接给出排查指引——R5.5 复盘：429 伪装成
+ * "登录失败/任务超时"（safeList 吞错后）极难定位，根因是本地常驻
+ * gateway 以 apps/gateway 为 cwd 启动读不到根 .env 的 THROTTLE_* 放开值。
+ */
+function assertNotThrottled(json: LoginErrorBody): void {
+  const code = json?.error?.code;
+  const message = json?.error?.message ?? '';
+  if (code === 429 || code === '429' || /429|throttler/i.test(message)) {
+    throw new Error(
+      '登录被限流（429 Throttler）：本地 gateway 未放开限流阈值。排查：' +
+        '① gateway 若以 apps/gateway 为 cwd 启动，读不到根 .env 的 THROTTLE_*，' +
+        '请在 apps/gateway/.env 补 THROTTLE_AUTH_LIMIT=10000 / THROTTLE_DEFAULT_LIMIT=10000；' +
+        '② 补齐后重启 gateway（playwright webServer 自启场景已在 playwright.config 注入同款 env）。',
+    );
+  }
+}
+
 /** 组合登录：token（走缓存）+ user（登录响应原文，供注入 zustand persist）。 */
 export async function loginViaApiWithUser(
   email = SUPERADMIN_EMAIL,
@@ -72,6 +95,7 @@ export async function loginViaApiWithUser(
       body: JSON.stringify({ email, password, tenantSlug: 'demo' }),
     });
     const json = await res.json();
+    if (!json.ok) assertNotThrottled(json);
     if (json.ok) loginUserCache.set(key, json.data.user);
   }
   return { token, user: loginUserCache.get(key) ?? null };
@@ -90,7 +114,10 @@ export async function loginViaApi(
     body: JSON.stringify({ email, password, tenantSlug: 'demo' }),
   });
   const json = await res.json();
-  if (!json.ok) throw new Error(`Login failed: ${JSON.stringify(json)}`);
+  if (!json.ok) {
+    assertNotThrottled(json);
+    throw new Error(`Login failed: ${JSON.stringify(json)}`);
+  }
   const token = json.data.accessToken as string;
   loginTokenCache.set(cacheKey, { token, expiresAt: Date.now() + TOKEN_TTL_MS });
   return token;

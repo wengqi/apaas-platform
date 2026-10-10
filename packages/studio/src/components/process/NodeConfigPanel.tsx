@@ -183,6 +183,7 @@ function renderConfigForm(
           onChange={onChange as never}
           disabled={readonly}
           objectOptions={options.objectOptions}
+          pageOptions={options.formOptions}
         />
       );
     case 'objectOperation':

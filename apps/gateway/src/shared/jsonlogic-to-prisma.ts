@@ -14,6 +14,7 @@
  */
 
 import { Prisma } from '@apaas/db';
+import { jsonlogicSupportedOperators } from '@apaas/shared';
 
 /** 动态变量映射（如 { currentUser: 'user_xxx' }）。 */
 export type VariableMap = Record<string, string>;
@@ -155,8 +156,11 @@ function translateNode(
     case 'relative_date':
       return translateRelativeDate(value, variables, strict);
 
-    default:
-      return untranslatable(`不支持的操作符 "${op}"`, strict);
+    default: {
+      // 可译子集提示取自 shared SSOT（ADR-0004 决策 7），与方言指南同源
+      const supported = [...jsonlogicSupportedOperators('prisma')].join(' / ');
+      return untranslatable(`不支持的操作符 "${op}"（权限条件可译子集：${supported}）`, strict);
+    }
   }
 }
 

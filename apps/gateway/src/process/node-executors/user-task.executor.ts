@@ -36,8 +36,22 @@ export class UserTaskExecutor implements NodeExecutor {
       (data['task_name'] as string) ??
       ctx.node.data.title ??
       '人工任务';
-    const assignee =
+    const assigneeType = String(data['assigneeType'] ?? '').toUpperCase();
+    // INITIATOR（发起人审批，专题 R1-A1）：受理人=实例发起人。发起人由启动路径注入
+    // triggerContext（A3：MANUAL 兜底 callerUserId；记录触发=创建人；定时/API 需显式传入），
+    // 缺失时报清晰错误而非静默创建无主任务（那会复现 #12 的流程挂起）。
+    let assignee: string | undefined =
       (data['assignee'] as string | undefined) ?? (ctx.inputs['assignee'] as string | undefined);
+    if (assigneeType === 'INITIATOR') {
+      const triggerCtx = (ctx.instance.triggerContext ?? {}) as Record<string, unknown>;
+      const initiator = triggerCtx['triggeredByUser'];
+      if (typeof initiator !== 'string' || initiator.length === 0) {
+        throw new Error(
+          `节点 ${ctx.node.id} 配置了发起人审批（INITIATOR），但实例无发起人（triggerContext.triggeredByUser 缺失）：定时/API 触发需显式传入发起人`,
+        );
+      }
+      assignee = initiator;
+    }
     const candidateGroups =
       (data['candidateGroups'] as string[] | undefined) ??
       (data['candidate_groups'] as string[] | undefined) ??

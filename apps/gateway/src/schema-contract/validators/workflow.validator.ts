@@ -285,9 +285,11 @@ function validateUserTask(
   const users = cfg.approveUsers ?? [];
   const hasAssignee = typeof cfg.assignee === 'string' && cfg.assignee.length > 0;
   const hasCandidates = Array.isArray(cfg.candidateGroups) && cfg.candidateGroups.length > 0;
+  // INITIATOR（发起人审批，专题 R1-A1）：受理人=实例发起人，免填 assignee/candidateGroups
+  const isInitiator = String(cfg.assigneeType ?? '').toUpperCase() === 'INITIATOR';
 
   if (mode === 'single') {
-    if (!hasAssignee && !hasCandidates) {
+    if (!hasAssignee && !hasCandidates && !isInitiator) {
       issues.push({
         path: `${path}/assignee`,
         code: SCHEMA_ISSUE_CODES.MISSING_REQUIRED,

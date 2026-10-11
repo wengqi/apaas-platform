@@ -76,3 +76,11 @@ describe('nodeIncompleteReason — 中文原因', () => {
     expect(nodeIncompleteReason('mystery')).toBe('配置不完整');
   });
 });
+
+describe('user_task INITIATOR（发起人审批，专题 R1-A1）', () => {
+  it('assigneeType=INITIATOR 免填审批人 → 完整', () => {
+    expect(
+      isNodeIncomplete('user_task', { assigneeType: 'INITIATOR', approvalMode: 'SINGLE' }),
+    ).toBe(false);
+  });
+});

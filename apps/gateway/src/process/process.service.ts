@@ -283,12 +283,19 @@ export class ProcessService {
   // 流程实例
   // ===========================================================================
 
-  /** 启动流程实例。 */
-  async startInstance(tenantId: string, processId: string, req: StartInstanceRequest) {
+  /** 启动流程实例。callerUserId=调用方用户身份（A3：显式传入优先，用户上下文兜底注入发起人）。 */
+  async startInstance(
+    tenantId: string,
+    processId: string,
+    req: StartInstanceRequest,
+    callerUserId?: string,
+  ) {
     const triggerContext: Record<string, unknown> = {
       triggerType: 'MANUAL',
       triggeredBy: 'MANUAL',
-      triggeredByUser: req.triggeredByUser ?? null,
+      // A3（专题 R1）：MANUAL 启动兜底注入发起人——studio 只传 {processKey, variables}，
+      // 此前 null 导致「我发起的」不可见 / 兜底通知无收件人 / INITIATOR 节点无发起人
+      triggeredByUser: req.triggeredByUser ?? callerUserId ?? null,
       inputs: req.variables ?? {},
     };
     const instanceId = await this.engine.startProcess(tenantId, processId, triggerContext);

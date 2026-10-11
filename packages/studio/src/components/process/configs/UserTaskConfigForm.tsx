@@ -67,8 +67,10 @@ export interface UserTaskConfigFormProps {
 }
 
 // 评审整改：导出枚举选项，供节点副标题(nodeMetadata)复用做中文标签映射，避免映射表两处维护
+// INITIATOR（发起人审批，专题 R1-A1）：受理人=实例发起人，免填审批人
 export const ASSIGNEE_TYPE_OPTIONS = [
   { label: '指定用户', value: 'USER' },
+  { label: '发起人', value: 'INITIATOR' },
   { label: '指定角色', value: 'ROLE' },
   { label: '指定组织', value: 'ORG' },
   { label: '上级主管', value: 'SUPERVISOR' },
@@ -150,7 +152,8 @@ export default function UserTaskConfigForm({
   const roleOptions = (roles ?? []).map((r) => ({ label: `${r.name} (${r.code})`, value: r.id }));
 
   const assigneeType = data.assigneeType || 'ROLE';
-  const showAssignee = assigneeType !== 'SUPERVISOR';
+  // 上级主管/发起人（INITIATOR）引擎端动态解析，无需手填审批人
+  const showAssignee = assigneeType !== 'SUPERVISOR' && assigneeType !== 'INITIATOR';
   // 会签/或签/依次 = 多人审批 → 引擎 approveUsers 数组路径；单人 → assignee 单值
   const isMultiApprover =
     assigneeType === 'USER' &&

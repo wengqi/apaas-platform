@@ -8,18 +8,6 @@
 
 ## A. 确认缺口（专题主体）
 
-### A1 「发起人」审批人类型缺失（INITIATOR）
-
-- **现象**：审批人类型仅五种——指定用户/指定角色/指定组织/上级主管/表单字段（`packages/studio/src/components/process/configs/UserTaskConfigForm.tsx:70-76`），**无"发起人"选项**；"发起人确认/申请人回签"类审批（如报销单提交后申请人签收确认）无法正确配置。
-- **证据**：
-  - 执行器只认三个配置：`data.assignee`（字面用户 ID）/`candidateGroups`/`approveUsers`，无动态发起人解析（`apps/gateway/src/process/node-executors/user-task.executor.ts:39-44`）；
-  - G3 硬闸：single 模式要求 assignee 或 candidateGroups 必有其一（`workflow.validator.ts:289-297`）——变通写 inputsValues 变量绑定也会被拦；
-  - 画布完整性预检同语义（`packages/shared/src/process/node-check.ts`，要求 assignee+approvalMode 双全）。
-- **底座现状（有利条件）**：发起人 ID 已是顶层流程变量——`initialVariables = { ...triggerContext, ...inputs }`（`process-engine.ts:217-219`），记录触发写入 `triggeredByUser`=记录创建人（`trigger.service.ts:310`）；执行器有 `ctx.inputs['assignee']` 兜底通道（executor:40，引擎对每节点 `resolveInputs`，engine:440）。
-- **影响**：飞书对齐差距（飞书审批有「发起人本人」节点）；审批回签类真实场景配不出来。
-- **建议方案**（四件套，缺一不可）：① UI 类型下拉加 INITIATOR（免填人）；② 执行器解析 `triggerContext.triggeredByUser` 创建任务（取不到报清晰错误，见 A3）；③ G3 校验器放行 INITIATOR 形态；④ node-check.ts 同步 + 方言指南 + 单测（记录触发/手动启动/发起人缺失三路）+ TC 入库。
-- **前置依赖**：A3。
-
 ### A2 ORG / SUPERVISOR / FORM_FIELD 三种审批人类型引擎端未接线
 
 - **现象**：UI 提供三种动态审批人类型，但 gateway 全代码（非测试）`FORM_FIELD|SUPERVISOR` 解析逻辑 **0 命中**。
@@ -27,15 +15,6 @@
 - **状态**：**待验证**——代码级确认，运行时症状未实测（需构造用例实测三种类型各一次）。
 - **对照**：抄送解析器 `resolveCcRecipients` 已实现 USER/ROLE/ORG 三态（`process-engine.ts:1566-1594`）——审批人侧未对齐。
 - **建议**：专题内二选一——**实现解析**（ORG→OrgMember 展开、SUPERVISOR→组织主管、FORM_FIELD→变量求值，参照抄送解析器）或**从 UI 摘除**（删旧优先，零兼容原则）；倾向先实测症状再裁决。
-
-### A3 MANUAL 启动不注入发起人
-
-- **现象**：手动启动的实例 `triggerContext.triggeredByUser` 依赖调用方显式传入，不传即 null（`process.service.ts:288-293` `req.triggeredByUser ?? null`）。
-- **证据**：
-  - studio 手动启动只传 `{ processKey, variables: {} }`（`packages/studio/src/pages/ProcessList.tsx:106`）→ **UI 启动的实例无发起人**；
-  - OpenAPI 同为调用方显式传（`open-api.controller.ts:130` `dto.triggeredByUser ?? null`，服务身份场景合理）。
-- **影响**：①「我发起的」视图（`GET /instances/mine` 按 triggeredByUser 过滤）对 UI 手动启动实例不可见；②审批定论兜底通知发起人 `notifyInitiatorDefault`（engine:1603+）无收件人静默跳过；③A1 INITIATOR 节点在此路径无发起人可用。
-- **建议**：服务端自动注入——`startInstance` 中 `triggeredByUser = req.triggeredByUser ?? callerUserId`（显式传入优先，内部调用兼容）；OpenAPI 保留显式语义。改动一处，三处受益。
 
 ---
 
@@ -64,6 +43,8 @@
 | C3 | **#12 仅角色审批无主任务行**：createMany 空数组 → 流程挂起但永无任务 | 零知识旅程 R2（2026-10-03） | 修为无主任务行（assignee=null）+ candidateGroups 匹配角色成员 |
 | C4 | **#10 对象操作契约断裂**：UI 写 fieldMapping、引擎读 inputsValues | 零知识旅程 R2（2026-10-03） | serializer 四态转换 + EventBridge extInfo 并入导出 |
 | C5 | **触发器 pattern 清理互踩**：多触发器 jobId 冲突 | R1.4（2026-10-01） | jobId=scheduled:<env>:<defId> 随环境隔离 |
+| C6 | **A3 MANUAL 启动不注入发起人**：startInstance 仅取显式传入（`req.triggeredByUser ?? null`），studio 只传 {processKey, variables} → 实例无发起人（「我发起的」不可见/兜底通知无收件人/INITIATOR 无发起人可用） | 专题 R1（2026-10-11） | 服务端 `triggeredByUser = req.triggeredByUser ?? callerUserId`（显式优先/用户身份兜底/内部调用 null 兼容，`process.service.ts` startInstance）；三路单测 process-start-instance.spec.ts；OpenAPI 直调 engine.startProcess 不经过此方法，保留服务身份显式语义；TC-159 |
+| C7 | **A1「发起人」审批人类型缺失（INITIATOR）**：UI 5 种无发起人选项、执行器无动态解析、G3 硬闸连变通也拦（原 A1 节四件套方案全项落地） | 专题 R1（2026-10-11） | shared 新增 `UserTaskAssigneeType` 契约（UserTaskConfig.assigneeType 显式化，为 A2 三类型接线铺路）+ executor 解析 `instance.triggerContext.triggeredByUser`（缺失报清晰错误，不静默创建无主任务复现 #12）+ G3 放行（isInitiator 短路）+ node-check 同步 + studio 下拉「发起人」免填审批人 + 方言指南补节 + 单测（executor 两路/validator 放行与回归对照/node-check）；TC-160；实现记录 docs/knowledge-base/PROCESS-ENGINE-TOPIC-R1-INITIATOR-2026-10-11.md |
 
 ---
 
@@ -108,9 +89,7 @@
 
 ## 专题建议排序
 
-1. **A3**（一处改动，解锁 A1 且让「我发起的」覆盖 MANUAL 实例）；
-2. **A1**（发起人类型四件套，真实场景+飞书对齐）；
-3. **A2**（先实测症状 E2，再裁决实现或摘除）；
-4. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账）；
-5. **B1/B2**（产品语义，用户裁决后动）；
-6. **D 系列**（水平扩展前置条件，非当前阻塞）。
+1. **A2**（先实测症状 E2，再裁决实现或摘除——原 A3/A1 已修，见 C6/C7）；
+2. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账）；
+3. **B1/B2**（产品语义，用户裁决后动）；
+4. **D 系列**（水平扩展前置条件，非当前阻塞）。

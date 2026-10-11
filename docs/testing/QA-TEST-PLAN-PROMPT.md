@@ -88,7 +88,7 @@
 - **object_operation**：operation（create/update/query/delete）×objectId×fieldMapping 键值行编辑器×filter×resultVariable（按 operation 联动显隐）。
 - **batch_operation**：operation×objectId（范围 inputs/filter，上限 500 行为）。
 - **condition/inclusive**：分支列表（label+RAQB 条件编辑器→JsonLogic）、优先级 Tag、至少 2 分支、默认分支不可删；inclusive 语义=全满足并行。
-- **user_task（审批）**：taskName 必填；assigneeType 5 种（USER/ROLE/ORG/SUPERVISOR/FORM_FIELD）；assignee 单人 vs approveUsers 多选 vs candidateGroups 角色；approvalMode 4 种（单人/会签全票/或签任一/依次——非 USER 类型仅单人）；pageId 表单绑定；dueDate+dueUnit；allowReject+rejectToNodeId 联动；writeback 三件套（field 过滤系统字段/approveValue 单选字段出选项下拉否则 Input/rejectValue 可空）；抄送四件套（ccEnabled/ccAssigneeType/ccRecipients/ccTrigger 三时机）。
+- **user_task（审批）**：taskName 必填；assigneeType 6 种（USER/INITIATOR/ROLE/ORG/SUPERVISOR/FORM_FIELD——INITIATOR 发起人审批免填审批人，2026-10-11 专题 R1 新增）；assignee 单人 vs approveUsers 多选 vs candidateGroups 角色；approvalMode 4 种（单人/会签全票/或签任一/依次——非 USER 类型仅单人）；pageId 表单绑定；dueDate+dueUnit；allowReject+rejectToNodeId 联动；writeback 三件套（field 过滤系统字段/approveValue 单选字段出选项下拉否则 Input/rejectValue 可空）；抄送四件套（ccEnabled/ccAssigneeType/ccRecipients/ccTrigger 三时机）。
 - **notification**：channel 3（EMAIL/IN_APP/WEBHOOK）×templateId 自动填充×recipients 逗号+${} 变量×title/content 必填+插值。
 - **http_request**：连接器模式（connectorId→operationId 或 method+path+BaseURL）vs 直连模式（method 5 种+url）；headers 映射；body（POST/PUT/PATCH 显隐）；responseMapping（JSONPath→变量）。
 - **assign**：variableName+四态值编辑器（常量/引用 TreeSelect/表达式/模板）；**delay**：duration+unit 4 种；**loop**：collection 路径+maxIterations 1..1000；**wait_for_condition**：JsonLogic+pollIntervalMs≥1000+timeoutMs；**sub_process**：subProcessKey（已发布流程 Select/手输 apiName）+defId+sync；**break/continue/parallel**：无配置（验证说明文案）。

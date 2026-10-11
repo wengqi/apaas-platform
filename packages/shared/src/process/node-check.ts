@@ -22,10 +22,12 @@ export function isNodeIncomplete(type: string, data: Record<string, unknown>): b
       return !data['triggerType'];
     case 'userTask':
     case 'user_task': {
-      // 审批人（单值/角色数组/多人数组任一）+ 审批模式都有值才算完成
+      // 审批人（单值/角色数组/多人数组任一）+ 审批模式都有值才算完成；
+      // INITIATOR（发起人审批，专题 R1-A1）免填审批人
       const hasAssignee =
         data['assignee'] ||
         data['assigneeId'] ||
+        data['assigneeType'] === 'INITIATOR' ||
         (Array.isArray(data['candidateGroups']) &&
           (data['candidateGroups'] as unknown[]).length > 0) ||
         (Array.isArray(data['approveUsers']) && (data['approveUsers'] as unknown[]).length > 0);

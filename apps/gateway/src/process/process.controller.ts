@@ -179,7 +179,12 @@ export class ProcessController {
     @Param('processId') processId: string,
     @Body() body: StartInstanceDto,
   ) {
-    const data = await this.processService.startInstance(requireTenantId(req), processId, body);
+    const data = await this.processService.startInstance(
+      requireTenantId(req),
+      processId,
+      body,
+      req.user.id,
+    );
     return { ok: true as const, data };
   }
 

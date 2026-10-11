@@ -632,3 +632,57 @@ describe('SubProcessExecutor', () => {
     await expect(executor.execute(ctx)).rejects.toThrow('未找到或未发布');
   });
 });
+
+// ---------------------------------------------------------------------------
+// user_task INITIATOR（发起人审批，流程引擎专题 R1-A1）
+// ---------------------------------------------------------------------------
+
+describe('UserTaskExecutor INITIATOR（发起人审批）', () => {
+  const executor = new UserTaskExecutor();
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.processTask.createMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('受理人=实例发起人（instance.triggerContext.triggeredByUser）', async () => {
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: { triggerType: 'MANUAL', triggeredByUser: 'user-7' },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-init',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '发起人确认', assigneeType: 'INITIATOR' },
+      } as ExecutionContext['node'],
+    });
+    const result = await executor.execute(ctx);
+
+    expect(result.wait).toBe(true);
+    expect(result.output).toMatchObject({ assignees: ['user-7'], approvalMode: 'single' });
+    const arg = prisma.processTask.createMany.mock.calls[0]?.[0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(arg.data[0]).toMatchObject({ assignee: 'user-7', status: 'PENDING' });
+  });
+
+  it('实例无发起人 → 报清晰错误（不静默创建无主任务）', async () => {
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: { triggerType: 'SCHEDULED' },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-init',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '发起人确认', assigneeType: 'INITIATOR' },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/发起人/);
+  });
+});

@@ -82,8 +82,38 @@
 
 ---
 
+## H. 开源引擎对比与 Temporal 借鉴裁决（2026-10-11，grilling 收官）
+
+> 来源：开源引擎对比 + Temporal 深度调研（全文与来源见 `docs/research/RESEARCH-process-engine-oss-comparison-2026-10-11.md`）；用户准绳="简单稳定可扩展、不造轮子、用好业界开源、少自研不健壮 bug"。本节只留执行摘要。
+
+### H1 新发现缺口（并入 S1/S2 轮执行）
+
+| # | 缺口 | 证据 | 最小修法 |
+|---|---|---|---|
+| H1-a | **边走向+条件求值未持久化**——C1 类静默终结事故无法事后回答"为什么走这条边"；condition 执行器"无匹配降级第一条出边"（C2 教训）无持久化痕迹 | 引擎推进令牌不落路由（process-engine.ts:378-380）；NodeExecution 表已有 input/output/retries 字段（schema.prisma:616-638） | advance 时把路由结果写进源节点 NodeExecution.output，十几行零迁移 |
+| H1-b | **确定性失败被重试 3 次**——全平台唯一重试消费点 attempts:3 一刀切，参数/校验类错误也三连重试 | process-engine.ts:43；HTTP 执行器无自带重试（仅 AbortSignal.timeout） | 执行器结果加 retryable 标志→attempts 分类（1 vs 3），几行 |
+
+### H2 Temporal 裁决
+
+- **不引入为运行组件**。量化依据：理论可替换的手写异步协调代码仅约 781 行（wait-for-condition 54+loop-utils 100+trigger.service 342+dataflow 租约 285），均经真实主线验证、无已知执行可靠性事故；新增 4 服务+DB 违反"简单稳定"准绳。
+- **引入触发条件**（命中任一才重评，白纸黑字防"原则性引入"）：① wait-for-condition 轮询撑不住真实规模；② AI 交付流水线常态化卡死无人管；③ 跨天跨人工闸门编排成为产品功能。
+- **健壮性归因**：C1-C4/A2 全部为契约漂移（编辑器↔引擎↔校验器），无一例执行丢失/等待不可靠——对症药=契约一致性测试，Temporal 类 durable 基建对本类 bug 无疗效。
+
+### H3 模式借鉴降级裁决（3 做 3 不做）
+
+- ✅ **做**：①H1-a 边走向落库（并入 S1/S2 轮）；②事故 schema fixture 契约测试（=方向探讨已列"四层契约一致性测试"候选，C1/C2/C4 事故 schema 固化为 fixture 断言全链路语义，每事故约半天，按原排期）；③H1-b retryable 分类（随手或并入契约轮）。
+- ❌ **不做（防重复提案）**：①重放式回归框架（引擎非确定性重放架构，需全套测试替身，收益被契约 fixture 覆盖）；②saga 自动补偿（逆操作+补偿幂等+不可逆排除=分布式事务级复杂度；主线"决策→回写"中途失败留 FAILED+审计可接受；**S2 维持轻量版=错误出口路由，补偿由搭建者显式画节点**）；③声明式重试 policy 框架（单消费点 YAGNI）。
+
+### H4 开源引擎选型速查（详表见研究文档 §4）
+
+- 可免费商用+可二开：Flowable OSS（Apache 2.0）/ Temporal（MIT）/ Cadence / Conductor OSS / Warm-Flow（Apache 2.0）/ jBPM·Kogito（Apache 2.0，活跃度未逐一核实）；
+- 不可用于生产或受限：Camunda 7 CE（2025-10 EOL）/ Camunda 8（生产自托管收费）/ n8n（Sustainable Use）/ Windmill·FlowLong（AGPL 传染）；
+- 结论：**自研+抄语义**（Flowable/Warm-Flow 当语义字典、Temporal 当范式参照），与 G 节 Q9 裁决一致不翻案；S1 设计参照 Temporal condition+timeout+escalate 范式；G6 major 冻结与 Temporal Workflow Pinning 概念同构（印证）。
+
+---
+
 ## 专题建议排序
 
-1. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账——A 系数据层缺口已全数清偿：A1/A3→C6/C7、A2→C8）；
+1. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账——A 系数据层缺口已全数清偿：A1/A3→C6/C7、A2→C8；**顺带 H1-a/H1-b 两个最小件**——边走向落库+retryable 分类，各十几行）；
 2. **B1/B2**（产品语义，用户裁决后动）；
 3. **D 系列**（水平扩展前置条件，非当前阻塞）。

@@ -16,7 +16,7 @@
 | Q3 | 存量数据对接 | **进**产品问题域，列长期 roadmap（本轮不立项） |
 | Q4 | 深挖范围 | 五域全深挖，定位=审视我们产品设计方向对标业界 |
 | Q5 | 页内数据流 | G3 扩展"页面依赖图静态校验"（引用闭合+循环检测）；**不**引入运行时 ViewModel 状态树 |
-| Q6 | JS 逃生舱 | 页内 JS 不做；代码逃生舱=云函数+自定义组件/节点（ADR-0003 既定） |
+| Q6 | JS 逃生舱 | 页内 JS 不做；逻辑逃生舱=云函数+自定义组件/节点（ADR-0003 既定）；**渲染级自定义组件按沙箱 iframe 桥接（路径 C）单选立项**（2026-10-11 侧聊裁决，见 §2.6） |
 | Q7 | Git 哲学 | 平台内快照保持 SSOT；"只读 mirror/导出到 git"列长期项；git-as-source 双向不做 |
 | Q8 | 主题/布局 | 维持 amis 令牌现状；应用级主题令牌仅远期备选；不投布局引擎 |
 | Q9 | BPMN 覆盖方式 | **语义子集对齐**为硬目标；WorkflowSchema 保持唯一方言；XML 互操作与建模符号对齐不做（ADR 待立） |
@@ -53,7 +53,7 @@
 
 - **业界事实**：Appsmith 把页面内 UI↔查询↔JS 逻辑表达成 `{{}}` 绑定的依赖 DAG——评估器维护实体属性间的 DependencyMap，绑定变化时拓扑排序重算受影响节点，循环依赖显式报错（Appsmith 工程博客 "Evaluating JS in the Browser for a Low Code Product"，https://www.appsmith.com/blog/evaluating-js-in-the-browser-for-a-low-code-product ；官方 troubleshooting 文档）。飞书 aPaaS 同样把页内数据流当一等公民：ViewModel 页面级状态树 + 表达式绑定 + JS 页面级扩展（`RESEARCH-feishu-apaas-full.md` §C.3–C.4）。
 - **对照**：我们的 amis 页面联动靠显式事件与表达式配置，"数据流"无一等结构；G3 目前只做结构白名单校验，**没有跨组件引用闭合/循环检测**——AI 生成的复杂页面里引用了不存在变量的错误只能靠运行时暴露。
-- **裁决**：借"依赖图"的**静态校验思想，不借运行时机制**——G3 扩展"页面依赖图校验"（表达式/事件引用闭合 + 循环检测），运行时仍由 amis 求值。引入 ViewModel 状态树是新方言面，违反单方言最小化。反向借鉴 Appsmith 的教训：它的循环依赖只在运行时报错，我们把同类问题前置到生成期（AI 提交即拦截）。
+- **裁决**：借"依赖图"的**静态校验思想，不借运行时机制**——G3 扩展"页面依赖图校验"（表达式/事件引用闭合 + 循环检测），运行时仍由 amis 求值。引入 ViewModel 状态树是新方言面，违反单方言最小化；且在 amis（维护放缓、锁版本+fork 预案）上叠页面级响应式 store 属 fork 级深水区。反向借鉴 Appsmith 的教训：它的循环依赖只在运行时报错，我们把同类问题前置到生成期（AI 提交即拦截）。
 
 ### 2.2 JS 逃生舱（Q6）——不借
 
@@ -76,6 +76,17 @@
 
 - **业界事实**：Appsmith 的 auto-layout 模式（2023-05 随 v1.9.20 引入）已转维护模式，机制被吸收进新统一 builder（社区博客 "Shifting Auto-Layout to Maintenance Mode"，https://community.appsmith.com/content/blog/shifting-auto-layout-maintenance-mode ）——维护两套布局范式不可持续。
 - **裁决**：反面教训与 amis 单方言决策同构；主题维持 amis 令牌层，应用级主题令牌仅远期备选，不投布局引擎。
+
+### 2.6 渲染级自定义组件（Q6 侧聊裁决补录）——沙箱 iframe 桥接单选立项
+
+- **需求**：页面区块级自定义渲染——用户/AI 粘贴 js+html+css 渲染到页面特定区块。与 Q6 不冲突：UI 渲染自定义属 ADR-0003"代码逃生舱=自定义组件"一席，Q6 拦的是**业务逻辑**进页面。
+- **三路径裁决（2026-10-11 侧聊，用户拍板 C 单选）**：
+  - A = amis `custom` 组件（已核实 G3 白名单放行：`amis-type-registry.ts:176`、`amis-page.validator.ts:45`，今天可用；但脚本跑主上下文**无隔离**）——不采纳；
+  - B = registerRenderer 注册制自定义渲染器（工程正道，但加组件须发版 runtime-ui，且 AmisRenderer 现为裸 render() 无注册点）——不采纳；
+  - **C = 沙箱 iframe 桥接（采纳，单选立项）**——`<iframe sandbox="allow-scripts" srcdoc>` + postMessage 双向桥（初始化注入 data / iframe 回写 onChange、上报错误、自适应高度）；Retool Custom Widget 与 Appsmith Custom Widget 为同款业界收敛形态。
+- **裁决理由**："任意脚本"场景下**隔离是硬约束**；A 败在无隔离，B 败在即用性（发版门槛）。
+- **实现要点（立项备忘）**：新增组件暂名 `sandbox_block`，schema 携带 `{html, css, js}`；G3 追加类型与脚本字段校验；桥只暴露数据读写、不暴露平台写 API 与凭证；iframe 不给 allow-same-origin；**脚本随页面 schema 走草稿→人审→发布**（AI 生成脚本同样过 submit_draft 闸门，治理不变量保持）。
+- **待核实（实现前）**：studio amis-editor 物料暴露形态、网关 CSP 头配置。
 
 ---
 
@@ -119,7 +130,7 @@
 - **S2 节点失败处理策略（做轻量版）**：节点级失败策略——终止（现状）/跳转到指定节点/忽略并留痕，失败进观测。不做 BPMN 全量 error/escalation/compensation/transaction（审批场景用不上、投资巨大）。
 - **S3 消息事件/事件型网关（缓）**："等外部回执"先用 wait_for_condition + 外部写变量变通（已可用）；观察项。
 - **S4 terminate 终止节点（不立）**：实例级 cancelProcess（`process-engine.ts:910-931`）已覆盖语义。
-- **S5 明确不做（落 ADR 待立）**：DMN、choreography/协作图、事件子流程、ad-hoc 子流程、复杂网关、receive/manual task、通用多实例（审批四模式已覆盖审批场景）。
+- **S5 明确不做（落 ADR 待立）**：DMN、choreography/协作图、事件子流程、ad-hoc 子流程、复杂网关、receive/manual task、通用多实例（审批四模式已覆盖审批场景）。叙事口径随之精确为"覆盖 BPMN 2.0 **审批流执行语义子集**"（S5 清单即措辞边界）。翻案触发条件（探讨中给定）：DMN——出现 ≥3 维规则矩阵或 ≥2 流程复用同一规则集时做 DMN-lite 而非 OMG 全标准；事件子流程——S2 若被推翻则其优先级上调（S2 覆盖其约 80% 审批诉求）；ad-hoc——唯一观察哨为"AI 自主编排"形态出现（Camunda 以 ad-hoc 子流程承载 AI Agent 执行，届时以 JSON DSL 形态回归）；复杂网关——join 基础设施（令牌计数+支配树）已就位，补齐成本最低。
 
 ### 3.4 AI 编排落地形态（Q10）
 
@@ -173,6 +184,7 @@ Budibase/ToolJet 健康度、NocoBase 插件架构细节、Mendix Maia、Power P
 | C6 | 节点失败处理策略轻量版（=S2） | §3.3 | S2 | 流程引擎专题 | 中（可与 C5 同批） |
 | C7 | 流程 dry-run 仿真 API（=Q10①） | §3.4 | Q10 | 流程引擎专题（仿真器）+ AI 主线（agent 消费） | **高** |
 | C8 | AI 节点（=Q10②） | §3.4 | Q10 | 流程引擎专题 | 中高（面向未来招牌） |
+| C9 | 渲染级自定义组件 `sandbox_block`（沙箱 iframe 桥接，路径 C 单选；A/B 不采纳） | §2.6 | Q6 侧聊裁决 | 平台轨（runtime-ui+studio+G3） | **已立项，待排期** |
 
 ---
 
@@ -213,4 +225,6 @@ Budibase/ToolJet 健康度、NocoBase 插件架构细节、Mendix Maia、Power P
 - 生成式全码失败面四域来自二手对比文，非一手实测；
 - CNCF Serverless Workflow 的 CNCF 项目正式级别（sandbox/incubating）未核实；
 - §4.5 全部条目；
-- 飞书组件联动细节是否含依赖图机制未实测（对标报告仅记 ViewModel+表达式绑定）。
+- 飞书组件联动细节是否含依赖图机制未实测（对标报告仅记 ViewModel+表达式绑定）；
+- studio amis-editor 物料暴露形态、网关 CSP 头配置（C9 实现前核实项）；
+- amis `custom` 钩子行级签名用前查官方文档（C9 关联项）。

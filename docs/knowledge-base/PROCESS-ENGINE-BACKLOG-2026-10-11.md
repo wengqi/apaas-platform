@@ -8,13 +8,7 @@
 
 ## A. 确认缺口（专题主体）
 
-### A2 ORG / SUPERVISOR / FORM_FIELD 三种审批人类型引擎端未接线
-
-- **现象**：UI 提供三种动态审批人类型，但 gateway 全代码（非测试）`FORM_FIELD|SUPERVISOR` 解析逻辑 **0 命中**。
-- **证据**：执行器无对应分支（`user-task.executor.ts` 全文只处理 assignee/candidateGroups/approveUsers）；配置表单把**组织编码/字段名**写入 `data.assignee`（`UserTaskConfigForm.tsx:254-260`），执行器将其当用户 ID 字面使用 → 创建出 assignee=非法 ID 的任务，流程挂起且无人可见。
-- **状态**：**待验证**——代码级确认，运行时症状未实测（需构造用例实测三种类型各一次）。
-- **对照**：抄送解析器 `resolveCcRecipients` 已实现 USER/ROLE/ORG 三态（`process-engine.ts:1566-1594`）——审批人侧未对齐。
-- **建议**：专题内二选一——**实现解析**（ORG→OrgMember 展开、SUPERVISOR→组织主管、FORM_FIELD→变量求值，参照抄送解析器）或**从 UI 摘除**（删旧优先，零兼容原则）；倾向先实测症状再裁决。
+> A 节已清偿：A1/A3 → C6/C7（R1）；A2 → C8（R2，裁决选 (a)：ORG/FORM_FIELD 实现、SUPERVISOR 摘除）。
 
 ---
 
@@ -45,6 +39,7 @@
 | C5 | **触发器 pattern 清理互踩**：多触发器 jobId 冲突 | R1.4（2026-10-01） | jobId=scheduled:<env>:<defId> 随环境隔离 |
 | C6 | **A3 MANUAL 启动不注入发起人**：startInstance 仅取显式传入（`req.triggeredByUser ?? null`），studio 只传 {processKey, variables} → 实例无发起人（「我发起的」不可见/兜底通知无收件人/INITIATOR 无发起人可用） | 专题 R1（2026-10-11） | 服务端 `triggeredByUser = req.triggeredByUser ?? callerUserId`（显式优先/用户身份兜底/内部调用 null 兼容，`process.service.ts` startInstance）；三路单测 process-start-instance.spec.ts；OpenAPI 直调 engine.startProcess 不经过此方法，保留服务身份显式语义；TC-159 |
 | C7 | **A1「发起人」审批人类型缺失（INITIATOR）**：UI 5 种无发起人选项、执行器无动态解析、G3 硬闸连变通也拦（原 A1 节四件套方案全项落地） | 专题 R1（2026-10-11） | shared 新增 `UserTaskAssigneeType` 契约（UserTaskConfig.assigneeType 显式化，为 A2 三类型接线铺路）+ executor 解析 `instance.triggerContext.triggeredByUser`（缺失报清晰错误，不静默创建无主任务复现 #12）+ G3 放行（isInitiator 短路）+ node-check 同步 + studio 下拉「发起人」免填审批人 + 方言指南补节 + 单测（executor 两路/validator 放行与回归对照/node-check）；TC-160；实现记录 docs/knowledge-base/PROCESS-ENGINE-TOPIC-R1-INITIATOR-2026-10-11.md |
+| C8 | **A2 ORG/SUPERVISOR/FORM_FIELD 三类型引擎端未接线**（E2 探针实测：ORG/FORM_FIELD 的编码/字段名被当用户 ID 字面消费→任务挂起无人可见且能过发布预检；SUPERVISOR 无输入→死在发布预检） | 专题 R2（2026-10-11，用户裁决选 (a)） | **ORG**：candidateGroups 语义扩展=角色 ID 或组织 ID（Flowable 同款）——executor 校验组织有成员（无成员报清晰错误防静默挂起）、listTasks/assertTaskMembership/assertInstanceVisible 按「角色∪组织」匹配（顺带清除 candidateUsers 不存在列的死代码读取）；**FORM_FIELD**：executor 从触发记录字段取审批人（仅记录触发；无上下文/字段无效报清晰错误）；**SUPERVISOR 摘除**：schema.prisma 无 manager/supervisor 字段（无数据源），shared 类型收窄 + UI 摘除，待身份层 User.managerId 后恢复；studio ORG 改组织下拉（orgsApi.getTree）；方言指南补 ORG/FORM_FIELD 两节；TC-161/162；实现记录 docs/knowledge-base/PROCESS-ENGINE-TOPIC-R2-DYNAMIC-ASSIGNEE-2026-10-11.md |
 
 ---
 
@@ -59,7 +54,7 @@
 ## E. 验证缺口
 
 - **E1** GUI 二级交互走查（台账部分）——任务中心主体已清（2026-10-11 三页签/错误态/进度弹窗 GUI 走查通过）。
-- **E2** A2 三种未接线类型的运行时症状实测（各构造一个用例）。
+- **E2** ~~A2 三种未接线类型的运行时症状实测~~ **已清偿**（R2 探针实测三类型各一用例，证据固于 C8 与实现记录）。
 
 ---
 
@@ -89,7 +84,6 @@
 
 ## 专题建议排序
 
-1. **A2**（先实测症状 E2，再裁决实现或摘除——原 A3/A1 已修，见 C6/C7）；
-2. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账）；
-3. **B1/B2**（产品语义，用户裁决后动）；
-4. **D 系列**（水平扩展前置条件，非当前阻塞）。
+1. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账——A 系数据层缺口已全数清偿：A1/A3→C6/C7、A2→C8）；
+2. **B1/B2**（产品语义，用户裁决后动）；
+3. **D 系列**（水平扩展前置条件，非当前阻塞）。

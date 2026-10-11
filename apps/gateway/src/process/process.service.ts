@@ -329,7 +329,7 @@ export class ProcessService {
     tenantId: string,
     instance: {
       triggerContext: unknown;
-      tasks?: Array<{ assignee?: string | null; candidateUsers?: string[] | null }>;
+      tasks?: Array<{ assignee?: string | null; candidateGroups?: string[] | null }>;
     },
     viewerId?: string,
   ): Promise<void> {
@@ -341,17 +341,27 @@ export class ProcessService {
     });
     if (viewer?.isPlatformAdmin) return;
 
-    const roleCodes = await prisma.userRole.findMany({
+    const roleRows = await prisma.userRole.findMany({
       where: { userId: viewerId, role: { tenantId } },
-      select: { role: { select: { code: true } } },
+      select: { role: { select: { id: true, code: true } } },
     });
-    if (roleCodes.some((r) => r.role.code === 'TENANT_ADMIN')) return;
+    if (roleRows.some((r) => r.role.code === 'TENANT_ADMIN')) return;
 
     const ctx = (instance.triggerContext ?? {}) as Record<string, unknown>;
     const starter = (ctx['triggeredByUser'] ?? ctx['startedBy'] ?? null) as string | null;
     const isStarter = starter === viewerId;
+    // R2-A2：任务参与人=受理人 或 候选组命中（角色 ID ∪ 组织 ID）——
+    // 原 candidateUsers 读取为不存在列的死代码，随候选组语义扩展一并修正
+    const orgMembers = await prisma.orgMember.findMany({
+      where: { userId: viewerId, org: { tenantId } },
+      select: { orgId: true },
+    });
+    const candidateIds = new Set([
+      ...roleRows.map((r) => r.role.id),
+      ...orgMembers.map((m) => m.orgId),
+    ]);
     const isParticipant = (instance.tasks ?? []).some(
-      (t) => t.assignee === viewerId || (t.candidateUsers ?? []).includes(viewerId),
+      (t) => t.assignee === viewerId || (t.candidateGroups ?? []).some((g) => candidateIds.has(g)),
     );
     if (!isStarter && !isParticipant) {
       throw new ForbiddenException('无权查看该流程实例（仅发起人或任务参与人可见）');
@@ -582,10 +592,17 @@ export class ProcessService {
       select: { email: true },
     });
 
+    // R2-A2：candidateGroups 语义扩展为「角色 ID 或组织 ID」（组织审批节点存组织 ID），
+    // 按「用户的角色 ∪ 用户直接所属组织」匹配（组织授权角色已在上方并入 roleIds）
+    const orgIds = orgMembers.map((m) => m.orgId);
+    const candidateGroupIds = [...new Set([...roleIds, ...orgIds])];
+
     where.OR = [
       { assignee: userId },
       ...(user?.email ? [{ assignee: user.email }] : []),
-      ...(roleIds.length > 0 ? [{ candidateGroups: { hasSome: roleIds } }] : []),
+      ...(candidateGroupIds.length > 0
+        ? [{ candidateGroups: { hasSome: candidateGroupIds } }]
+        : []),
     ];
 
     // 前端传入小写 status（pending/completed），需要映射为 Prisma 枚举值
@@ -973,7 +990,10 @@ export class ProcessService {
       });
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
     }
-    const isCandidate = roleIds.some((rid) => task.candidateGroups.includes(rid));
+    // R2-A2：candidateGroups 语义扩展为「角色 ID 或组织 ID」——候选组命中
+    // 「用户的角色（含组织授权）∪ 用户直接所属组织」
+    const candidateIds = [...new Set([...roleIds, ...orgMembers.map((m) => m.orgId)])];
+    const isCandidate = candidateIds.some((gid) => task.candidateGroups.includes(gid));
     if (!isAssignee && !isCandidate) {
       throw new BadRequestException({
         code: 'FORBIDDEN',

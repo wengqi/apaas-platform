@@ -16,7 +16,7 @@ import { Divider, Form, Input, InputNumber, Select, Switch, Typography } from 'a
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { optionStoredValue } from '@apaas/shared';
-import { rolesApi, usersApi } from '../../../api/permissions.js';
+import { rolesApi, usersApi, orgsApi, type OrgNode } from '../../../api/permissions.js';
 import { objectsApi } from '../../../api/objects.js';
 
 export interface UserTaskConfigData {
@@ -27,6 +27,8 @@ export interface UserTaskConfigData {
   candidateGroups?: string[];
   /** 展示用缓存：所选角色名（节点摘要显示名称而非 ID） */
   roleName?: string;
+  /** 展示用缓存：所选组织名（组织审批 ORG，节点摘要显示名称而非 ID） */
+  orgName?: string;
   /** 会签/或签/依次模式的审批人集合（引擎 approveUsers 数组） */
   approveUsers?: string[];
   /** 展示用缓存：所选审批人姓名（节点摘要显示姓名而非 ID） */
@@ -68,12 +70,13 @@ export interface UserTaskConfigFormProps {
 
 // 评审整改：导出枚举选项，供节点副标题(nodeMetadata)复用做中文标签映射，避免映射表两处维护
 // INITIATOR（发起人审批，专题 R1-A1）：受理人=实例发起人，免填审批人
+// SUPERVISOR 已摘除（专题 R2 裁决）：schema 无主管数据源，假入口比没有更糟；
+// 待身份层补 User.managerId 后恢复
 export const ASSIGNEE_TYPE_OPTIONS = [
   { label: '指定用户', value: 'USER' },
   { label: '发起人', value: 'INITIATOR' },
   { label: '指定角色', value: 'ROLE' },
   { label: '指定组织', value: 'ORG' },
-  { label: '上级主管', value: 'SUPERVISOR' },
   { label: '表单字段', value: 'FORM_FIELD' },
 ];
 
@@ -151,9 +154,21 @@ export default function UserTaskConfigForm({
   });
   const roleOptions = (roles ?? []).map((r) => ({ label: `${r.name} (${r.code})`, value: r.id }));
 
+  // 组织选择器数据源（组织审批 ORG：候选组存组织 ID，任务中心按「我的角色 ∪ 我的组织」匹配）
+  const { data: orgTree } = useQuery({
+    queryKey: ['permission-orgs'],
+    queryFn: () => orgsApi.getTree(),
+  });
+  const flattenOrgs = (nodes: OrgNode[], prefix = ''): { label: string; value: string }[] =>
+    (nodes ?? []).flatMap((n) => [
+      { label: `${prefix}${n.name}`, value: n.id },
+      ...flattenOrgs(n.children ?? [], `${prefix}${n.name} / `),
+    ]);
+  const orgOptions = flattenOrgs(orgTree ?? []);
+
   const assigneeType = data.assigneeType || 'ROLE';
-  // 上级主管/发起人（INITIATOR）引擎端动态解析，无需手填审批人
-  const showAssignee = assigneeType !== 'SUPERVISOR' && assigneeType !== 'INITIATOR';
+  // 发起人（INITIATOR）引擎端动态解析，无需手填审批人
+  const showAssignee = assigneeType !== 'INITIATOR';
   // 会签/或签/依次 = 多人审批 → 引擎 approveUsers 数组路径；单人 → assignee 单值
   const isMultiApprover =
     assigneeType === 'USER' &&
@@ -167,8 +182,8 @@ export default function UserTaskConfigForm({
       : assigneeType === 'ROLE'
         ? '审批角色'
         : assigneeType === 'ORG'
-          ? '组织编码'
-          : '表单字段名';
+          ? '审批组织'
+          : '审批人字段（触发记录字段名）';
 
   return (
     <Form layout="vertical" size="small" disabled={disabled} component="div">
@@ -204,6 +219,7 @@ export default function UserTaskConfigForm({
             patch.assigneeNames = undefined;
             patch.candidateGroups = undefined;
             patch.roleName = undefined;
+            patch.orgName = undefined;
             update(patch);
           }}
           options={ASSIGNEE_TYPE_OPTIONS}
@@ -254,11 +270,24 @@ export default function UserTaskConfigForm({
               placeholder="选择审批角色"
               allowClear
             />
+          ) : assigneeType === 'ORG' ? (
+            <Select
+              showSearch
+              optionFilterProp="label"
+              value={data.candidateGroups?.[0]}
+              onChange={(id: string) => {
+                const org = orgOptions.find((o) => o.value === id);
+                update({ candidateGroups: id ? [id] : [], orgName: org?.label });
+              }}
+              options={orgOptions}
+              placeholder="选择审批组织（组织成员均可办理）"
+              allowClear
+            />
           ) : (
             <Input
               value={data.assignee}
               onChange={(e) => update({ assignee: e.target.value })}
-              placeholder="输入编码"
+              placeholder="输入触发记录的字段 apiName（如 legal_reviewer）"
             />
           )}
         </Form.Item>

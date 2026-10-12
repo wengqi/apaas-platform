@@ -58,6 +58,8 @@ export interface CreateAppRequest {
   description?: string;
   icon?: string;
   color?: string;
+  /** 应用分组（自由文本，≤20 字符；可顺手新建分组） */
+  group?: string;
 }
 
 /** 更新应用请求。 */
@@ -66,6 +68,8 @@ export interface UpdateAppRequest {
   description?: string;
   icon?: string;
   color?: string;
+  /** 应用分组（自由文本，≤20 字符；空=未分组） */
+  group?: string;
 }
 
 /** 应用概要（列表页用，不含快照等重字段）。 */
@@ -76,6 +80,10 @@ export interface AppSummary {
   description?: string;
   icon?: string;
   color?: string;
+  /** 应用分组（空=未分组；runtime 视图仅返回有已发布应用的分组） */
+  group?: string;
+  /** 维护者姓名（runtime 视图返回创建人姓名；studio 列表不返回） */
+  ownerName?: string;
   status: AppStatus;
   version: number;
   /** 应用内资源统计 */

@@ -59,6 +59,7 @@ export class ApplicationController {
   }
 
   @Patch('groups')
+  @RequirePermission('PAGE', 'MANAGE')
   @ApiOperation({ summary: '分组管理：重命名（from→to）或删除分组（to 空 → 移入未分组）' })
   async updateGroup(
     @Req() req: AuthenticatedRequest,

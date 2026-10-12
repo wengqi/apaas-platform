@@ -2,6 +2,7 @@ import { Button, Card, Row, Col, Typography, Spin, Empty } from 'antd';
 import { AppstoreOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
+import { appTileBackground, appTileShadow, TOKENS as T } from '@apaas/shared/design';
 import { useNavigate } from 'react-router-dom';
 import { appsApi, type AppSummary } from '../api/apps';
 
@@ -66,19 +67,55 @@ export default function Home() {
           <Button onClick={() => void refetch()}>重试</Button>
         </Empty>
       ) : visibleApps.length === 0 ? (
-        <Empty description="暂无可用应用" />
+        <Empty description="暂无可用应用">
+          {/* 空态给动作（评审 P2）：提供刷新出口而非死胡同文本 */}
+          <Button onClick={() => void refetch()}>刷新</Button>
+        </Empty>
       ) : (
         <Row gutter={[16, 16]}>
           {visibleApps.map((app: AppSummary) => (
             <Col key={app.id} xs={24} sm={12} md={8} lg={6}>
-              <Card hoverable onClick={() => navigate(`/app/${app.id}`)} style={{ height: '100%' }}>
+              <Card
+                hoverable
+                onClick={() => navigate(`/app/${app.id}`)}
+                style={{ height: '100%' }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  // 键盘可达（a11y 2026-10-12 审计）：卡片承载整卡导航，Enter/Space 等效触发
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/app/${app.id}`);
+                  }
+                }}
+              >
                 <Card.Meta
-                  avatar={<span style={{ fontSize: 32 }}>{app.icon || '📦'}</span>}
+                  avatar={
+                    /* 渐变瓷片（评审 P1）：与 studio AppCard 同一图标语言，
+                       替换此前裸 emoji——双表面一致性 */
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 10,
+                        background: appTileBackground(app.color),
+                        color: T.colorWhite,
+                        fontSize: 22,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: appTileShadow(app.color),
+                      }}
+                      aria-hidden
+                    >
+                      {app.icon || '📦'}
+                    </div>
+                  }
                   title={app.name}
                   description={
                     <div>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {app.description || app.apiName}
+                        {app.description || '暂无描述'}
                       </Text>
                       <div style={{ marginTop: 8 }}>
                         <Text type="secondary" style={{ fontSize: 12 }}>

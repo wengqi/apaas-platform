@@ -4,6 +4,7 @@
  * R6：新增"流程发起"区——MANUAL 流程绑定发起页面后，业务用户一键进入发起。
  */
 
+import { useEffect } from 'react';
 import { Button, Card, Typography, Spin, Tag, Empty } from 'antd';
 import {
   FileTextOutlined,
@@ -16,21 +17,18 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
+import {
+  RUNTIME_PAGE_TYPE_META,
+  appTileBackground,
+  appTileShadow,
+  TOKENS as T,
+} from '@apaas/shared/design';
 import { useParams, useNavigate } from 'react-router-dom';
 import { appsApi } from '../api/apps';
 import { pagesApi } from '../api/pages';
 import { processesApi } from '../api/processes';
 
 const { Title, Paragraph, Text } = Typography;
-
-/** 页面类型 → 中文名与图标（门户卡片识别要素）。 */
-const PAGE_TYPE_META: Record<string, { label: string; color: string }> = {
-  form_page: { label: '表单页', color: 'blue' },
-  list_page: { label: '列表页', color: 'cyan' },
-  detail_page: { label: '详情页', color: 'geekblue' },
-  dashboard: { label: '仪表盘', color: 'purple' },
-  custom: { label: '自定义', color: 'default' },
-};
 
 export default function AppView() {
   const { appId } = useParams<{ appId: string }>();
@@ -72,6 +70,18 @@ export default function AppView() {
     return page ? { name: proc.name, slug: page.slug } : null;
   };
 
+  // 唯一已发布页面直落（评审 P2）：只有一个业务页时门户页是多余的一跳，
+  // 直接进入该页；多页时保留门户（此时门户有真实的选择价值）。
+  // 注意：hooks 必须在任何提前 return 之前调用
+  const publishedPages = (pages ?? []).filter((p) => p.published);
+  const isSinglePagePortal = !pagesLoading && publishedPages.length === 1;
+
+  useEffect(() => {
+    if (isSinglePagePortal) {
+      navigate(`/app/${appId}/p/${publishedPages[0]!.slug}`, { replace: true });
+    }
+  }, [isSinglePagePortal, publishedPages, appId, navigate]);
+
   if (appLoading) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
@@ -80,18 +90,40 @@ export default function AppView() {
     );
   }
 
-  const publishedPages = (pages ?? []).filter((p) => p.published);
+  if (isSinglePagePortal) {
+    return (
+      <div style={{ textAlign: 'center', padding: 48 }}>
+        <Spin />
+      </div>
+    );
+  }
 
   return (
     <div>
       <Card style={{ marginBottom: 16 }}>
-        <Title level={4}>
-          <span style={{ fontSize: 28, marginRight: 8 }}>{app?.icon || '📦'}</span>
+        <Title level={4} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* 渐变瓷片（评审 P1）：与 studio/Home 同一应用图标语言 */}
+          <span
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: appTileBackground(app?.color),
+              color: T.colorWhite,
+              fontSize: 20,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: appTileShadow(app?.color),
+              flexShrink: 0,
+            }}
+            aria-hidden
+          >
+            {app?.icon || '📦'}
+          </span>
           {app?.name ?? '应用视图'}
         </Title>
-        <Paragraph type="secondary">
-          {app?.description || app?.apiName || `应用 ID: ${appId ?? '未知'}`}
-        </Paragraph>
+        <Paragraph type="secondary">{app?.description || '暂无描述'}</Paragraph>
         {app && (
           <div style={{ marginBottom: 16 }}>
             <Tag color={app.status === 'PUBLISHED' ? 'green' : 'default'}>
@@ -101,7 +133,7 @@ export default function AppView() {
             <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
               {app.stats
                 ? `${app.stats.objects} 对象 · ${app.stats.pages} 页面 · ${app.stats.processes} 流程`
-                : app.apiName}
+                : ''}
             </Text>
           </div>
         )}
@@ -160,7 +192,10 @@ export default function AppView() {
             }}
           >
             {publishedPages.map((page) => {
-              const meta = PAGE_TYPE_META[page.type] ?? { label: page.type, color: 'default' };
+              const meta = RUNTIME_PAGE_TYPE_META[page.type] ?? {
+                label: page.type,
+                color: 'default',
+              };
               return (
                 <Card
                   key={page.id}

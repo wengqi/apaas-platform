@@ -11,6 +11,7 @@
  *   后端 → jsonLogic.apply → boolean
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Typography } from 'antd';
 import { Query, Builder } from '@react-awesome-query-builder/antd';
@@ -154,17 +155,17 @@ export default function QueryBuilderPanel({
         .group--drag-handler, .qb-drag-handler { display: none !important; }
         .group--conjunctions .ant-btn-group { display: flex; gap: 2px; }
         .group--conjunctions .ant-btn { font-size: 12px; height: 20px; line-height: 18px; padding: 0 8px; border-radius: 10px; border: none; }
-        .group--conjunctions .ant-btn-primary { background: #e8f3ff; color: #1677ff; }
-        .group--conjunctions .ant-btn-default { background: #f5f5f5; color: rgba(0,0,0,0.45); }
+        .group--conjunctions .ant-btn-primary { background: ${T.colorPrimaryBg}; color: ${T.colorPrimary}; }
+        .group--conjunctions .ant-btn-default { background: ${T.colorFillQuaternary}; color: rgba(0,0,0,0.45); }
         .group--actions { margin-left: auto; }
         .group--actions .ant-btn-group { display: flex; gap: 4px; }
         .group--actions .ant-btn { font-size: 12px; height: 20px; padding: 0 4px; border: none; background: transparent; box-shadow: none; color: rgba(0,0,0,0.45); }
-        .group--actions .ant-btn:hover { color: #1677ff; background: #f0f5ff; }
+        .group--actions .ant-btn:hover { color: ${T.colorPrimary}; background: ${T.colorPrimaryBg}; }
         .group--actions .ant-btn .anticon { font-size: 11px; margin-right: 2px; }
         .group-or-rule-container.group-container { margin-bottom: 6px; }
         .group-or-rule-container.group-container > .group {
           padding-left: 8px;
-          border-left: 2px solid #eef0f4;
+          border-left: 2px solid ${T.colorBorderSecondary};
         }
         .group-or-rule-container.group-container:last-child { margin-bottom: 0; }
         .custom-rule-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
@@ -176,14 +177,14 @@ export default function QueryBuilderPanel({
         .rule-cell .ant-input { width: 100% !important; font-size: 12px; border-radius: 4px !important; }
         .rule-cell .ant-input-sm { height: 24px; }
         .rule-field-empty .rule-cell:first-child .ant-select-selector {
-          border-color: #ff4d4f !important;
+          border-color: ${T.colorError} !important;
           box-shadow: 0 0 0 2px rgba(255,77,79,0.1);
         }
-        .rule-error { color: #ff4d4f; font-size: 11px; margin-bottom: 4px; }
+        .rule-error { color: ${T.colorError}; font-size: 11px; margin-bottom: 4px; }
         .rule-delete { flex-shrink: 0; }
         .rule-delete.ant-btn { font-size: 12px; height: 24px; width: 24px; min-width: 24px; padding: 0;
           border: none; background: transparent; box-shadow: none; }
-        .rule-delete.ant-btn:hover { background: #fff1f0; color: #ff4d4f; }
+        .rule-delete.ant-btn:hover { background: ${T.colorErrorBg}; color: ${T.colorError}; }
       `}</style>
     </>
   );

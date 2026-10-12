@@ -214,6 +214,10 @@
 | TC-132 | e2e 冒烟套件全绿 | P0 | 本地服务全部启动（gateway/db/redis/前端） | ① 执行 `pnpm test:e2e:smoke` | 17 用例全过（~20s；2026-10-10 实测口径） | 已自动化（`pnpm test:e2e:smoke`） | 429 限流互踩属环境性失败——静置后隔离重跑判定（见 TC-133） |
 | TC-133 | e2e 失败用例隔离复跑判定 | P2 | TC-132 出现失败时 | ① 静置（避开 10/min 限流窗口）后单独重跑失败用例 | 复跑全过→判环境性（非产品回归）；复跑仍败→按产品缺陷处理 | 未自动化（规程） | 限流根因实测三次（429 ThrottlerException）；**2026-10-10 定案**=本地 gateway 以 apps/gateway 为 cwd 读不到根 .env 的 THROTTLE_*（详见 R5 记录），playwright webServer 与 apps/gateway/.env 已注入放开值，登录 429 现在带排查指引报错 |
 | TC-155 | runtime 应用列表运行时视图过滤（已发布+权限） | P0 | `user@apaas.dev` 登录 runtime（5174）；租户内同时存在 DRAFT 与 PUBLISHED 应用 | ① 打开 /home 查看应用卡片 ② API 对照：`GET /apps?runtime=1` 与 `GET /apps` ③ 应用级角色场景：新建仅持某应用级规则的角色用户，登录 runtime | ① 卡片只含 PUBLISHED 应用（无 DRAFT/ARCHIVED）② runtime=1 返回全部为 PUBLISHED 且 ⊆ 全量列表已发布子集；无参数仍返回全量（studio 兼容）③ 应用级角色用户只见其规则命中的应用；无任何规则用户见空列表（默认拒绝） | 部分自动化（e2e/22 断言 ①②） | 2026-10-10 服务端过滤（listVisibleForUser：isSuperAdmin 短路/租户级通配 ALLOW=全部已发布/应用级规则按 appId 归纳）；种子通配维持（R5 裁决①）→ 终端用户可见集合不变，行为变化=服务端挡 DRAFT+应用级角色生效 |
+| TC-156 | iframe 嵌入干净页面与 hello-first 握手 | P0 | 已发布应用含页面（如采购合同 contract_list）；studio 应用内「嵌入集成」控制台（/app/:appId/embed）；浏览器已登录 studio | ① 打开控制台选择页面点「连接预览」② 检查 iframe 内容与外壳 ③ 等待握手 | ① iframe 内只渲染构建态 page 本体：无 RuntimeLayout 页头/无 AppNavMenu 页签/无内容边距 ② 协议消息流出现 ready（含 appId/slug/name/env/authenticated）③ iframe 内永不出现登录页 | 部分自动化（embedBridge.spec 7 例覆盖桥逻辑；跨域预览走查截图 studio-embed-console-cross-origin.png） | 2026-10-12 实测坑：src 同步设置时 iframe load 事件对应初始 about:blank 文档，hello 落入将死文档丢失→SDK 带 ack 重试（收任何回帧即停）；握手超时报错含排查指引。载体原为 /embed-demo（已退役，方案一迁 studio 控制台） |
+| TC-157 | embed 协议双向消息（query-data/navigate/context） | P0 | TC-156 握手已完成 | ① 点「拉取页面数据」② 经协议 navigate 切页（控制台切换页面选择后重连即协议路径）③ 注入 context 后再拉取 | ① query-data 回执带 source=page 的页面作用域快照（含 appId/objectId）② iframe 切页 + 宿主收到 route-change 与新页 ready ③ 二次 query-data 返回含注入字段（如 dept） | 走查通过（2026-10-12，同源+跨域双场景） | 实测坑：桥生命周期 effect 依赖含 navigate 身份→页内导航即重建桥丢握手态→依赖恒空 + ref 间接引用；切页后无回帧即此缺陷，回归时必查。控制台跨端口预览（5173→5174）即真实跨域验证 |
+| TC-158 | page-event 出站（embedEvent 动作）与 auth-expired | P1 | 应用内有含 embedEvent 动作的页面（走查夹具：采购合同应用 embed_event_demo「上报宿主」按钮）；可构造无效 token | ① 导航到 embed_event_demo 点页内「上报宿主」② 经 apaas:auth 注入无效 token 后协议切页触发 refetch | ① 宿主收到 page-event: host-ping（args 原样透传）② 401 全部转 auth-expired 出站（带触发路径）且 iframe 不跳登录页；宿主换发有效 token 后恢复 | 走查通过（2026-10-12） | embedEvent 为 G3 白名单动作（amis-page.validator KNOWN_ACTION_TYPES）；非 embed 模式无活跃桥静默；注意注入坏 token 会经 persist 覆盖共享登录态，走查后须恢复 |
+| TC-159 | 嵌入 SDK 产物与控制台获取/双形态片段 | P1 | `pnpm build` 已生成 `packages/shared/dist-embed-sdk/` 产物；studio 控制台已选页 | ① 控制台点「下载 IIFE」/「下载 ESM」② 检查直链行 `<script src="…/embed-sdk/embed-sdk.js">` ③ 片段形态切「SDK 直链」 | ① 两文件真实下载（IIFE ~9.8KB 全局 ApaasEmbed / ESM 含协议常量导出；单测含 node 装载探针）② 直链行随 runtimeBase 生成（非绝对时占位符）③ 直链形态片段用 window.ApaasEmbed 解构且无私有包 import | 部分自动化（shared 产物契约 3 例含装载探针；走查截图 studio-embed-sdk-download.png） | 产物 `pnpm build` 自动生成（gitignore 随部署分发）；nginx `/embed-sdk/` 直链部署时拷贝产物至 html/embed-sdk/；SDK banner 带协议版本，可落后于平台升级 |
 
 ### L. 纪律红线补测轮（TC-134~148，整批溯源）
 
@@ -237,6 +241,19 @@
 | TC-147 | AI 链 MCP 草稿→人审→发布全链 | P1 | 本地服务全启+MCP 工具面可达 | ① MCP 单波提交（对象+页面+流程+数据集+权限，含 @ref 令牌）② 审核中心批次一键批准（拓扑序）③ 发布 ④ runtime 使用 | G3 校验通过；拓扑序落地；发布后 runtime 渲染可用；驳回意见可回传 agent（list_review_submissions） | 未自动化 | 需 MCP 工具面；QA 会话无工具面时标「不可测-外部依赖」 |
 | TC-148 | 审核中心 PENDING 深度（批次/漂移） | P1 | TC-147 已产生 PENDING 草稿 | ① 批次一键批准 ② 造漂移后批准（预期 409+强制批准确认）③ 驳回一条看意见回传 | 批次拓扑序批准落地；漂移 409 保护生效；驳回意见经 list_review_submissions 回传 | 未自动化 | 治理语义=仅 AI 提交需人审；e2e/17 已覆盖主链，人工深度抽查仍需 AI 通道 |
 
+### M. 运行时门户与视觉统一轮（TC-160~164，2026-10-12）
+
+> 来源：impeccable critique 评审（21/40）修复轮。P0=业务门户信息架构错位与通知不可行动；
+> P1=双表面视觉世界分裂（@apaas/shared/design token 层）；P2=引导缺口。改动未提交前与代码同在工作区。
+
+| 编号 | 名称 | 优先级 | 前置 | 步骤 | 预期 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-160 | 运行时门户过滤内部应用（isInternal） | P0 | 存在 apiName 前缀 e2e_/qa_ 或名称含 E2E/测试/夹具/UI 路径的应用（seed 第 11 步自动标记） | ① pnpm db:seed 后查 applications.is_internal ② 业务用户（user@apaas.dev）登录 runtime 看 /home | ① 夹具应用 isInternal=true（首轮 14 个）② 首页仅见业务应用（首轮 16→8），E2E/QA/夹具全部不可见；studio /apps 不受影响（全量） | 未自动化 | gateway listVisibleForUser where 增 isInternal:false；新建应用默认业务可见；AI 生成应用不受影响 |
+| TC-161 | 通知深链跳转与筛选控件 | P0 | 存在 link 非空的站内信（新流程审批定论后自动产生；存量消息 link=null 仅标已读） | ① 点铃铛看筛选控件 ② 点击带 link 的消息 | ① 筛选为 Segmented「未读 (n)/全部」（非两个互斥主按钮）② 消息标已读+弹层关闭+跳转 link（/app/:id 或 /tasks）；无 link 消息仅标已读 | 未自动化 | 深链写入点=引擎默认通知/抄送通知/notification 节点 IN_APP 三处；实测截图 beautify-runtime-notification-deeplink.png |
+| TC-162 | 单页应用直落与空态动作 | P2 | ① 某 PUBLISHED 应用仅 1 个已发布页面 ② 业务用户 0 待办 | ① runtime 打开该应用 /app/:id ② 打开 /tasks | ① 不经门户页直接落到该页面（多页应用保留门户）② 空态带「去我的应用发起申请」按钮可跳 /home；「暂无可用应用」空态带刷新 | 未自动化 | hooks 须在早退前（rules-of-hooks）；页型标签为业务词（custom→工作页） |
+| TC-163 | studio 侧栏分组与继续搭建 | P2 | 进入任一应用工作台 | ① 看侧栏菜单结构 ② 看 dashboard「继续搭建」区 ③ 点最近页面卡 | ① 三组：搭建（工作台/对象/页面/数据集/流程/通知模板）、治理（审核中心/权限/环境管理）、扩展与运维（连接器/云函数/API 密钥/嵌入集成/审计日志）② 按更新时间倒序最多 3 张最近页面卡 ③ 点击直达该页搭建器 | 未自动化 | 快捷入口命名与落点一致（对象建模/页面搭建/流程编排，进列表页） |
+| TC-164 | 双表面视觉统一（token 层） | P2 | 两端均可登录 | ① 并排对比 studio 与 runtime 登录页 ② 对比两端应用图标 ③ 对比 runtime 头部与 studio 头部 | ① 同一浅色渐变背景+同一闪电 Logo 瓷片（studio 无紫渐变）② 同一渐变瓷片语言（runtime 非裸 emoji）③ runtime 头部为浅色（无 #001529 深顶栏），几何与 studio 一致 | 未自动化 | SSOT=@apaas/shared/design（BRAND/LAYOUT/LOGIN_BG/appTile*/APP_STATUS_META/TRACE_STATUS_META/RUNTIME_PAGE_TYPE_META）；改视觉先改 token 禁止双端本地复制 |
+
 ---
 
 ## 变更记录
@@ -252,3 +269,7 @@
 | 2026-10-07 | v1.3.3 | 新增 TC-151 页面搭建器画布内预览（所见即所得，预览 fetcher 走真实 API）；预览与 runtime 跳转链接互补 | 用户需求（预览当前设计而非已保存版本） |
 | 2026-10-09 | v1.4 | R5.5 运行时补全专项：新增 TC-152「AI 生成应用运行时闭环」（审批分支真实路由/回写/通知/行级过滤，AI 生成=可交付的验收定义）与 TC-153「改稿收编」（ADR-0004 决策 4）；TC-152 兼作引擎 decision 边条件静默终结缺陷的回归锚点 | R5.5 实测挖出引擎双层契约断裂（决策变量无顶层别名+决策值未规范化） |
 | 2026-10-10 | v1.4.1 | R5 遗留修复轮：新增 TC-154「超管登录 runtime 分流提示」（登录页分流+首页空态，回归静默空列表缺陷）与 TC-155「runtime 应用列表运行时视图过滤」（GET /apps?runtime=1 已发布+权限归纳，服务端语义变化）；TC-129 备注补台账 mapping 根因结论（存量 schema 缺配置，裁决暂不处理）；TC-133 备注补限流根因定案（gateway cwd 与根 .env 不一致，已注入放开值） | 用户裁决四问题修复（追加 R5 分支） |
+| 2026-10-12 | v1.5 | iframe 嵌入专项：新增 TC-156「干净页面与 hello-first 握手」/TC-157「协议双向消息」/TC-158「page-event 与 auth-expired」三条（embed 域）；G3 白名单新增 embedEvent 动作已随 TC-158 锚定 | feat/embed-iframe-integration（宿主系统集成第一轮，用户三裁决：去页签导航/只桥 dispatchEvent 自定义事件/JWT 直传） |
+| 2026-10-12 | v1.5.1 | 方案一转正：TC-156/157 载体从 /embed-demo（退役）改指 studio「嵌入集成」控制台（/app/:appId/embed）；TC-157 补跨域双场景结论（跨端口预览即真实跨域） | 用户裁决方案一（控制台迁 studio，模拟器退役） |
+| 2026-10-12 | v1.5.2 | SDK 交付专项：新增 TC-159「嵌入 SDK 产物与控制台获取/双形态片段」（IIFE/ESM 下载、平台直链、npm/script 片段切换） | 第三方对接断链补全（用户确认双格式都要） |
+| 2026-10-12 | v1.6 | 运行时门户与视觉统一轮：新增 TC-160 内部应用过滤（isInternal）/TC-161 通知深链+Segmented/TC-162 单页直落+空态动作/TC-163 侧栏分组+继续搭建/TC-164 双表面视觉统一（@apaas/shared/design token 层） | impeccable critique 评审修复轮（用户裁决：先修 P0 再美化、AntD 原味、全部问题） |

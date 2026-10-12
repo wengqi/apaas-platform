@@ -16,7 +16,8 @@ import {
   LoadingOutlined,
   MinusCircleOutlined,
 } from '@ant-design/icons';
-import type { ProcessTraceData, NodeTraceStatus } from '../../api/processes.js';
+import type { ProcessTraceData } from '../../api/processes.js';
+import { TRACE_STATUS_META, TOKENS as T } from '@apaas/shared/design';
 
 const { Text } = Typography;
 
@@ -25,56 +26,27 @@ interface ProcessTraceViewerProps {
   loading?: boolean;
 }
 
-/** 节点状态 → 样式配置。 */
-const STATUS_CONFIG: Record<NodeTraceStatus, {
+// 色彩/文案语义收敛到 @apaas/shared/design（评审 P1：此前与 runtime
+// TraceViewer 双端复制）；图标本地渲染
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  COMPLETED: <CheckCircleOutlined style={{ color: TRACE_STATUS_META.COMPLETED?.color }} />,
+  RUNNING: <LoadingOutlined spin style={{ color: TRACE_STATUS_META.RUNNING?.color }} />,
+  WAITING: <ClockCircleOutlined style={{ color: TRACE_STATUS_META.WAITING?.color }} />,
+  SKIPPED: <MinusCircleOutlined style={{ color: TRACE_STATUS_META.SKIPPED?.color }} />,
+  PENDING: <MinusCircleOutlined style={{ color: T.colorTextQuaternary }} />,
+};
+
+function statusConfig(status: string): {
   color: string;
   bg: string;
   border: string;
   icon: React.ReactNode;
   label: string;
   opacity: number;
-}> = {
-  COMPLETED: {
-    color: '#52c41a',
-    bg: '#f6ffed',
-    border: '#52c41a',
-    icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-    label: '已完成',
-    opacity: 1,
-  },
-  RUNNING: {
-    color: '#1677ff',
-    bg: '#e6f4ff',
-    border: '#1677ff',
-    icon: <LoadingOutlined spin style={{ color: '#1677ff' }} />,
-    label: '执行中',
-    opacity: 1,
-  },
-  WAITING: {
-    color: '#fa8c16',
-    bg: '#fff7e6',
-    border: '#fa8c16',
-    icon: <ClockCircleOutlined style={{ color: '#fa8c16' }} />,
-    label: '等待处理',
-    opacity: 1,
-  },
-  SKIPPED: {
-    color: '#d9d9d9',
-    bg: '#fafafa',
-    border: '#d9d9d9',
-    icon: <MinusCircleOutlined style={{ color: '#d9d9d9' }} />,
-    label: '已跳过',
-    opacity: 0.4,
-  },
-  PENDING: {
-    color: '#d9d9d9',
-    bg: '#fafafa',
-    border: '#e4e7ed',
-    icon: <MinusCircleOutlined style={{ color: '#bfbfbf' }} />,
-    label: '未到达',
-    opacity: 0.5,
-  },
-};
+} {
+  const meta = TRACE_STATUS_META[status] ?? TRACE_STATUS_META.PENDING!;
+  return { ...meta, icon: STATUS_ICONS[status] ?? STATUS_ICONS.PENDING! };
+}
 
 /** 节点类型 → 中文名。 */
 const NODE_TYPE_LABEL: Record<string, string> = {
@@ -128,9 +100,7 @@ export default function ProcessTraceViewer({ trace, loading }: ProcessTraceViewe
     }
 
     // 按 visited 顺序返回节点，未访问的追加到末尾
-    const ordered = [...visited]
-      .map((id) => nodes.find((n) => n.id === id))
-      .filter(Boolean);
+    const ordered = [...visited].map((id) => nodes.find((n) => n.id === id)).filter(Boolean);
     for (const n of nodes) {
       if (!visited.has(n.id)) ordered.push(n);
     }
@@ -152,26 +122,38 @@ export default function ProcessTraceViewer({ trace, loading }: ProcessTraceViewe
   const isEdgeActive = (sourceId: string, targetId: string): boolean => {
     const s = statusMap.get(sourceId);
     const t = statusMap.get(targetId);
-    return (s === 'COMPLETED' || s === 'RUNNING' || s === 'WAITING') &&
-           (t === 'COMPLETED' || t === 'RUNNING' || t === 'WAITING');
+    return (
+      (s === 'COMPLETED' || s === 'RUNNING' || s === 'WAITING') &&
+      (t === 'COMPLETED' || t === 'RUNNING' || t === 'WAITING')
+    );
   };
 
   return (
     <div style={{ padding: '16px 0' }}>
       {/* 实例状态概览 */}
       <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Tag color={
-          trace.instance.status === 'COMPLETED' ? 'green' :
-          trace.instance.status === 'RUNNING' ? 'blue' :
-          trace.instance.status === 'WAITING_USER_TASK' ? 'orange' :
-          'red'
-        }>
-          {trace.instance.status === 'COMPLETED' ? '已完成' :
-           trace.instance.status === 'RUNNING' ? '执行中' :
-           trace.instance.status === 'WAITING_USER_TASK' ? '等待审批' :
-           trace.instance.status === 'FAILED' ? '失败' :
-           trace.instance.status === 'TERMINATED' ? '已终止' :
-           trace.instance.status}
+        <Tag
+          color={
+            trace.instance.status === 'COMPLETED'
+              ? 'green'
+              : trace.instance.status === 'RUNNING'
+                ? 'blue'
+                : trace.instance.status === 'WAITING_USER_TASK'
+                  ? 'orange'
+                  : 'red'
+          }
+        >
+          {trace.instance.status === 'COMPLETED'
+            ? '已完成'
+            : trace.instance.status === 'RUNNING'
+              ? '执行中'
+              : trace.instance.status === 'WAITING_USER_TASK'
+                ? '等待审批'
+                : trace.instance.status === 'FAILED'
+                  ? '失败'
+                  : trace.instance.status === 'TERMINATED'
+                    ? '已终止'
+                    : trace.instance.status}
         </Tag>
         <Text type="secondary" style={{ fontSize: 12 }}>
           启动时间: {new Date(trace.instance.startedAt).toLocaleString('zh-CN')}
@@ -188,7 +170,7 @@ export default function ProcessTraceViewer({ trace, loading }: ProcessTraceViewe
         {orderedNodes.map((node, idx) => {
           if (!node) return null;
           const status = node.traceStatus;
-          const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.PENDING;
+          const cfg = statusConfig(status);
           const isActive = activeNodeIds.has(node.id);
           const isLast = idx === orderedNodes.length - 1;
           const title = (node.data?.title as string) || NODE_TYPE_LABEL[node.type] || node.type;
@@ -199,24 +181,29 @@ export default function ProcessTraceViewer({ trace, loading }: ProcessTraceViewe
           return (
             <div key={node.id}>
               {/* 节点卡片 */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: `2px solid ${cfg.border}`,
-                background: cfg.bg,
-                opacity: cfg.opacity,
-                transition: 'all 0.3s ease',
-                ...(isActive ? { boxShadow: `0 0 8px ${cfg.border}40` } : {}),
-              }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: `2px solid ${cfg.border}`,
+                  background: cfg.bg,
+                  opacity: cfg.opacity,
+                  transition: 'all 0.3s ease',
+                  ...(isActive ? { boxShadow: `0 0 8px ${cfg.border}40` } : {}),
+                }}
+              >
                 {cfg.icon}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <Text strong style={{ fontSize: 14 }}>{title}</Text>
+                  <Text strong style={{ fontSize: 14 }}>
+                    {title}
+                  </Text>
                   <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginTop: 2 }}>
                     {NODE_TYPE_LABEL[node.type] || node.type}
-                    {node.traceFinishedAt && ` · ${new Date(node.traceFinishedAt).toLocaleTimeString('zh-CN')}`}
+                    {node.traceFinishedAt &&
+                      ` · ${new Date(node.traceFinishedAt).toLocaleTimeString('zh-CN')}`}
                   </div>
                 </div>
                 <Tag style={{ margin: 0, fontSize: 11, borderColor: cfg.border, color: cfg.color }}>
@@ -226,7 +213,14 @@ export default function ProcessTraceViewer({ trace, loading }: ProcessTraceViewe
 
               {/* 连线 */}
               {!isLast && outgoingEdges.length > 0 && (
-                <div style={{ marginLeft: 20, padding: '4px 0', borderLeft: `2px ${isEdgeActive(node.id, outgoingEdges[0]!.targetNodeID) ? 'solid #52c41a' : 'dashed #d9d9d9'}`, height: 20 }} />
+                <div
+                  style={{
+                    marginLeft: 20,
+                    padding: '4px 0',
+                    borderLeft: `2px ${isEdgeActive(node.id, outgoingEdges[0]!.targetNodeID) ? `solid ${T.colorSuccess}` : `dashed ${T.colorBorder}`}`,
+                    height: 20,
+                  }}
+                />
               )}
             </div>
           );
@@ -236,24 +230,44 @@ export default function ProcessTraceViewer({ trace, loading }: ProcessTraceViewe
       {/* 任务列表 */}
       {trace.tasks.length > 0 && (
         <div style={{ marginTop: 24 }}>
-          <Typography.Title level={5} style={{ marginBottom: 12 }}>审批记录</Typography.Title>
+          <Typography.Title level={5} style={{ marginBottom: 12 }}>
+            审批记录
+          </Typography.Title>
           {trace.tasks.map((task) => (
-            <div key={task.id} style={{
-              padding: '8px 12px', marginBottom: 8, borderRadius: 6,
-              background: task.status === 'PENDING' ? '#fff7e6' : '#f6f8fa',
-              border: '1px solid #eef0f4',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text strong style={{ fontSize: 13 }}>{task.taskName}</Text>
-                <Tag color={
-                  task.status === 'APPROVED' ? 'green' :
-                  task.status === 'REJECTED' ? 'red' :
-                  task.status === 'PENDING' ? 'orange' : 'default'
-                }>
-                  {task.status === 'APPROVED' ? '通过' :
-                   task.status === 'REJECTED' ? '驳回' :
-                   task.status === 'PENDING' ? '待处理' :
-                   task.status}
+            <div
+              key={task.id}
+              style={{
+                padding: '8px 12px',
+                marginBottom: 8,
+                borderRadius: 6,
+                background: task.status === 'PENDING' ? T.colorWarningBg : T.colorFillQuaternary,
+                border: `1px solid ${T.colorBorderSecondary}`,
+              }}
+            >
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <Text strong style={{ fontSize: 13 }}>
+                  {task.taskName}
+                </Text>
+                <Tag
+                  color={
+                    task.status === 'APPROVED'
+                      ? 'green'
+                      : task.status === 'REJECTED'
+                        ? 'red'
+                        : task.status === 'PENDING'
+                          ? 'orange'
+                          : 'default'
+                  }
+                >
+                  {task.status === 'APPROVED'
+                    ? '通过'
+                    : task.status === 'REJECTED'
+                      ? '驳回'
+                      : task.status === 'PENDING'
+                        ? '待处理'
+                        : task.status}
                 </Tag>
               </div>
               {task.comment && (

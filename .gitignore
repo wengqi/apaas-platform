@@ -4,6 +4,7 @@ node_modules/
 
 # Build outputs
 dist/
+dist-embed-sdk/
 build/
 .next/
 .turbo/
@@ -53,3 +54,4 @@ coverage/
 .v2c/
 .video_agent/
 .zcodeignore
+.impeccable/

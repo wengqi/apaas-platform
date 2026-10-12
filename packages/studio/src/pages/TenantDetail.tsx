@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import {
   Card,
@@ -168,13 +169,13 @@ export default function TenantDetail() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       {/* ── 顶部导航栏 ── */}
       <div
         style={{
           height: 56,
-          background: '#fff',
-          borderBottom: '1px solid #eef0f4',
+          background: T.colorWhite,
+          borderBottom: `1px solid ${T.colorBorderSecondary}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -194,7 +195,7 @@ export default function TenantDetail() {
             返回租户列表
           </Button>
           <Space size={8}>
-            <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
+            <ThunderboltFilled style={{ fontSize: 20, color: T.colorPrimary }} />
             <Text strong style={{ fontSize: 16 }}>
               租户详情
             </Text>
@@ -338,7 +339,14 @@ export default function TenantDetail() {
             <Input.Password placeholder="至少 6 位" />
           </Form.Item>
         </Form>
-        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f6f8fa', borderRadius: 6 }}>
+        <div
+          style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            background: T.colorFillQuaternary,
+            borderRadius: 6,
+          }}
+        >
           <Text type="secondary" style={{ fontSize: 12 }}>
             创建的用户将自动分配 TENANT_ADMIN 角色，拥有该租户的管理权限。
           </Text>

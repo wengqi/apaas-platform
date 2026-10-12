@@ -3,7 +3,8 @@
  */
 
 import { useState } from 'react';
-import { Card, Typography, Table, Modal, Tabs, Spin, message } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Button, Card, Typography, Table, Modal, Tabs, Spin, message, Empty } from 'antd';
 import { CheckSquareOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, type ProcessTask } from '../api/tasks.js';
@@ -15,8 +16,12 @@ import ApprovalPageRenderer from '../runtime/ApprovalPageRenderer.js';
 
 const { Title, Paragraph } = Typography;
 
+/** 单页拉取条数（服务端列表上限）。达到该值说明可能有更老数据未加载，须显式提示。 */
+const TASK_PAGE_SIZE = 50;
+
 export default function TaskCenter() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
   const [selectedTask, setSelectedTask] = useState<ProcessTask | null>(null);
   const [comment, setComment] = useState('');
@@ -25,13 +30,13 @@ export default function TaskCenter() {
   // 待办列表
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
     queryKey: ['tasks', 'pending'],
-    queryFn: () => tasksApi.list({ status: 'pending', page: 1, pageSize: 50 }),
+    queryFn: () => tasksApi.list({ status: 'pending', page: 1, pageSize: TASK_PAGE_SIZE }),
   });
 
   // 已办列表
   const { data: completedData, isLoading: completedLoading } = useQuery({
     queryKey: ['tasks', 'completed'],
-    queryFn: () => tasksApi.list({ status: 'completed', page: 1, pageSize: 50 }),
+    queryFn: () => tasksApi.list({ status: 'completed', page: 1, pageSize: TASK_PAGE_SIZE }),
   });
 
   // 任务详情（审批时加载完整信息含流程变量）
@@ -108,6 +113,24 @@ export default function TaskCenter() {
   const currentData = activeTab === 'pending' ? pendingItems : completedItems;
   const currentLoading = activeTab === 'pending' ? pendingLoading : completedLoading;
 
+  /** 列表底部截断提示（完整性 2026-10-12 审计）：此前第 51 条起静默不可见。
+      文案说人话（评审 P2）：不把"网关按时间范围查询"这类 API 话术读给业务用户。 */
+  const renderTruncationHint = () =>
+    currentData.length >= TASK_PAGE_SIZE ? (
+      <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginTop: 8 }}>
+        为保证加载速度，仅显示最近 {TASK_PAGE_SIZE} 条任务
+      </Paragraph>
+    ) : null;
+
+  /** 空态（评审 P2）：给下一步动作，不再做死胡同文案。 */
+  const emptyWithAction = (text: string) => (
+    <Empty description={text} style={{ padding: '24px 0' }}>
+      <Button type="primary" onClick={() => navigate('/home')}>
+        去我的应用发起申请
+      </Button>
+    </Empty>
+  );
+
   return (
     <div>
       <Card style={{ marginBottom: 16 }}>
@@ -126,28 +149,34 @@ export default function TaskCenter() {
               key: 'pending',
               label: `待办 (${pendingItems.length})`,
               children: (
-                <Table<ProcessTask>
-                  columns={columns}
-                  dataSource={currentData}
-                  rowKey="id"
-                  loading={currentLoading}
-                  pagination={false}
-                  locale={{ emptyText: '暂无待办任务' }}
-                />
+                <>
+                  <Table<ProcessTask>
+                    columns={columns}
+                    dataSource={currentData}
+                    rowKey="id"
+                    loading={currentLoading}
+                    pagination={false}
+                    locale={{ emptyText: emptyWithAction('暂无待办任务') }}
+                  />
+                  {renderTruncationHint()}
+                </>
               ),
             },
             {
               key: 'completed',
               label: `已办 (${completedItems.length})`,
               children: (
-                <Table<ProcessTask>
-                  columns={columns}
-                  dataSource={currentData}
-                  rowKey="id"
-                  loading={currentLoading}
-                  pagination={false}
-                  locale={{ emptyText: '暂无已办任务' }}
-                />
+                <>
+                  <Table<ProcessTask>
+                    columns={columns}
+                    dataSource={currentData}
+                    rowKey="id"
+                    loading={currentLoading}
+                    pagination={false}
+                    locale={{ emptyText: emptyWithAction('暂无已办任务') }}
+                  />
+                  {renderTruncationHint()}
+                </>
               ),
             },
           ]}

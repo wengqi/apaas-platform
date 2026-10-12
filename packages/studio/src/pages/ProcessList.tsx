@@ -7,6 +7,7 @@
  * 卡片与新建弹窗已拆分至 ./process-list/（AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useState } from 'react';
 import { apiErrorMessage } from '../api/client.js';
 import {
@@ -181,7 +182,7 @@ export default function ProcessList() {
         </Row>
       ) : filtered.length === 0 ? (
         <Empty
-          image={<ApartmentOutlined style={{ fontSize: 64, color: '#1677ff' }} />}
+          image={<ApartmentOutlined style={{ fontSize: 64, color: T.colorPrimary }} />}
           description={keyword ? '未找到匹配的流程' : '还没有流程'}
           style={{ padding: '60px 0' }}
         >

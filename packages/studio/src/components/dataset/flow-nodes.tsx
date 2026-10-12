@@ -4,6 +4,7 @@
  * 每种节点显示图标 + 标题 + 配置摘要，点击触发配置面板。
  */
 
+import { TOKENS as T, PRESET as P } from '@apaas/shared/design';
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import {
@@ -45,7 +46,7 @@ function NodeShell({
     <div
       className="flow-node"
       style={{
-        borderColor: selected ? '#1677ff' : color,
+        borderColor: selected ? T.colorPrimary : color,
         boxShadow: selected ? '0 0 0 2px rgba(22,119,255,0.15)' : 'none',
       }}
     >
@@ -71,7 +72,7 @@ function DataSourceNodeComponent({ data, selected }: { data: FlowNodeData; selec
       icon={<DatabaseOutlined />}
       label={data.label}
       summary={data.summary}
-      color="#52c41a"
+      color={T.colorSuccess}
       selected={!!selected}
       showTarget={false}
     />
@@ -86,7 +87,7 @@ function JoinNodeComponent({ data, selected }: { data: FlowNodeData; selected?: 
       icon={<MergeCellsOutlined />}
       label="关联"
       summary={data.summary}
-      color="#722ed1"
+      color={P.purple6}
       selected={!!selected}
     />
   );
@@ -100,7 +101,7 @@ function FilterNodeComponent({ data, selected }: { data: FlowNodeData; selected?
       icon={<FilterOutlined />}
       label="筛选"
       summary={data.summary}
-      color="#fa8c16"
+      color={T.colorWarning}
       selected={!!selected}
     />
   );
@@ -114,7 +115,7 @@ function AggregationNodeComponent({ data, selected }: { data: FlowNodeData; sele
       icon={<BarChartOutlined />}
       label="分组汇总"
       summary={data.summary}
-      color="#1677ff"
+      color={T.colorPrimary}
       selected={!!selected}
     />
   );
@@ -128,7 +129,7 @@ function OutputNodeComponent({ data, selected }: { data: FlowNodeData; selected?
       icon={<ExportOutlined />}
       label="输出"
       summary={data.summary}
-      color="#13c2c2"
+      color={P.cyan6}
       selected={!!selected}
       showSource={false}
     />

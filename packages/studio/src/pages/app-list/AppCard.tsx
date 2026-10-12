@@ -14,6 +14,7 @@ import {
   MoreOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import { appTileBackground, appTileShadow, TOKENS as T } from '@apaas/shared/design';
 import type { AppSummary } from '../../api/apps.js';
 import { STATUS_COLOR, STATUS_LABEL } from './constants.js';
 
@@ -28,16 +29,27 @@ interface AppCardProps {
 
 /** 单张应用卡片。 */
 export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
+  /** 键盘可达（a11y 2026-10-12 审计）：卡片承载整卡点击导航，Enter/Space 等效触发。 */
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen();
+    }
+  };
+
   return (
     <Card
       hoverable
       onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
       style={{
         height: '100%',
         borderRadius: 12,
         overflow: 'hidden',
         transition: 'all 0.3s ease',
-        border: '1px solid #eef0f4',
+        border: `1px solid ${T.colorBorderSecondary}`,
       }}
       styles={{ body: { padding: 20 } }}
     >
@@ -48,15 +60,16 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
             width: 52,
             height: 52,
             borderRadius: 12,
-            background: `linear-gradient(135deg, ${app.color ?? '#1677ff'}, ${app.color ?? '#1677ff'}dd)`,
-            color: '#fff',
+            background: appTileBackground(app.color),
+            color: T.colorWhite,
             fontSize: 26,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            boxShadow: `0 4px 12px ${app.color ?? '#1677ff'}40`,
+            boxShadow: appTileShadow(app.color),
           }}
+          aria-hidden
         >
           {app.icon ?? '📦'}
         </div>
@@ -64,6 +77,8 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
           <Text strong style={{ fontSize: 16, display: 'block' }} ellipsis>
             {app.name}
           </Text>
+          {/* studio 是开发者界面：apiName 是有用的开发者标识，保留（runtime 侧才是
+              业务用户，评审 P0 的 apiName 去化只在 runtime Home/AppView 做） */}
           <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
             {app.apiName}
           </Text>
@@ -84,7 +99,8 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
             size="small"
             icon={<MoreOutlined />}
             onClick={(e) => e.stopPropagation()}
-            style={{ flexShrink: 0, color: '#8c8c8c' }}
+            aria-label={`应用「${app.name}」更多操作`}
+            style={{ flexShrink: 0, color: 'rgba(0,0,0,0.65)' }}
           />
         </Dropdown>
       </Space>
@@ -108,19 +124,19 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
         </Text>
       </Space>
 
-      {/* 资源统计 */}
-      <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f0f2f5' }}>
-        <Space size="middle" style={{ fontSize: 12, color: '#8c8c8c' }}>
+      {/* 资源统计（对比度治理：原三级灰 3.4:1 不达 AA，升为二级文字 7:1） */}
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.colorSplit}` }}>
+        <Space size="middle" style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)' }}>
           <Space size={4}>
-            <DatabaseOutlined style={{ color: '#1677ff' }} />
+            <DatabaseOutlined style={{ color: T.colorPrimary }} />
             <span>{app.stats.objects} 对象</span>
           </Space>
           <Space size={4}>
-            <LayoutOutlined style={{ color: '#52c41a' }} />
+            <LayoutOutlined style={{ color: T.colorSuccess }} />
             <span>{app.stats.pages} 页面</span>
           </Space>
           <Space size={4}>
-            <ApartmentOutlined style={{ color: '#fa8c16' }} />
+            <ApartmentOutlined style={{ color: T.colorWarning }} />
             <span>{app.stats.processes} 流程</span>
           </Space>
         </Space>
@@ -154,7 +170,13 @@ export default function AppGrid({ apps, isLoading, onCreate, renderCard }: AppGr
 
   if (!apps || apps.length === 0) {
     return (
-      <Card style={{ borderRadius: 12, border: '2px dashed #e0e4ea', background: '#fff' }}>
+      <Card
+        style={{
+          borderRadius: 12,
+          border: `2px dashed ${T.colorBorderSecondary}`,
+          background: T.colorWhite,
+        }}
+      >
         <Empty description="还没有应用" style={{ padding: '60px 0' }}>
           <Button type="primary" size="large" icon={<AppstoreAddOutlined />} onClick={onCreate}>
             创建第一个应用

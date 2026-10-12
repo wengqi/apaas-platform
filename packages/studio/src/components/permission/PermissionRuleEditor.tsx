@@ -7,6 +7,7 @@
  * - 通过 rolesApi.setRules() 全量替换角色的权限规则
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useMemo, useState } from 'react';
 import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -263,10 +264,10 @@ export default function PermissionRuleEditor({
             <div
               key={index}
               style={{
-                border: '1px solid #eef0f4',
+                border: `1px solid ${T.colorBorderSecondary}`,
                 borderRadius: 8,
                 padding: 12,
-                background: '#fafbfc',
+                background: T.colorFillQuaternary,
               }}
             >
               <div
@@ -319,7 +320,7 @@ export default function PermissionRuleEditor({
               </div>
 
               {isRecord && !isWildcard && (
-                <div style={{ borderTop: '1px dashed #eef0f4', paddingTop: 12 }}>
+                <div style={{ borderTop: `1px dashed ${T.colorBorderSecondary}`, paddingTop: 12 }}>
                   <Text
                     type="secondary"
                     style={{ fontSize: 12, display: 'block', marginBottom: 8 }}
@@ -336,7 +337,7 @@ export default function PermissionRuleEditor({
               )}
 
               {supportsFieldScope(rule) && (
-                <div style={{ borderTop: '1px dashed #eef0f4', paddingTop: 12 }}>
+                <div style={{ borderTop: `1px dashed ${T.colorBorderSecondary}`, paddingTop: 12 }}>
                   <Text
                     type="secondary"
                     style={{ fontSize: 12, display: 'block', marginBottom: 8 }}

@@ -2,6 +2,7 @@
  * 组织架构管理 — 左组织树 + 右节点详情(成员+角色授权)。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -75,9 +76,9 @@ export default function OrgManager() {
         style={{
           width: 320,
           flexShrink: 0,
-          background: '#fff',
+          background: T.colorWhite,
           borderRadius: 12,
-          border: '1px solid #eef0f4',
+          border: `1px solid ${T.colorBorderSecondary}`,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -86,7 +87,7 @@ export default function OrgManager() {
         <div
           style={{
             padding: '12px 16px',
-            borderBottom: '1px solid #eef0f4',
+            borderBottom: `1px solid ${T.colorBorderSecondary}`,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -252,7 +253,7 @@ function OrgNodeDetail({
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无成员" />
       )}
 
-      <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+      <div style={{ marginTop: 24, borderTop: `1px solid ${T.colorSplit}`, paddingTop: 16 }}>
         <div
           style={{
             display: 'flex',

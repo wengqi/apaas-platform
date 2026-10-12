@@ -2,6 +2,7 @@
  * 流程卡片 —— 从 pages/ProcessList.tsx 拆分（AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import {
   Button,
   Card,
@@ -89,7 +90,7 @@ export function ProcessCard({
       hoverable
       style={{
         borderRadius: 12,
-        border: '1px solid #eef0f4',
+        border: `1px solid ${T.colorBorderSecondary}`,
         transition: 'all 0.2s ease',
       }}
       styles={{ body: { padding: 20 } }}
@@ -109,7 +110,7 @@ export function ProcessCard({
               height: 40,
               borderRadius: 10,
               background: `linear-gradient(135deg, ${triggerMeta.color}, ${triggerMeta.color}dd)`,
-              color: '#fff',
+              color: T.colorWhite,
               fontSize: 20,
               display: 'flex',
               alignItems: 'center',
@@ -164,7 +165,7 @@ export function ProcessCard({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            borderTop: '1px solid #f0f2f5',
+            borderTop: `1px solid ${T.colorSplit}`,
             paddingTop: 8,
           }}
         >

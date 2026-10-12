@@ -76,7 +76,12 @@ export class ApplicationService {
    * 不用 prod 环境指针——publish 事务后 deploy 失败可容忍（仅告警），指针判定会漏掉这部分应用。
    */
   async listVisibleForUser(tenantId: string, user: AuthenticatedUser): Promise<AppSummary[]> {
-    let where: Prisma.ApplicationWhereInput = { tenantId, status: 'PUBLISHED' };
+    // isInternal=false（2026-10-12 评审 P0）：E2E/QA 夹具等内部应用不进业务用户运行时门户
+    let where: Prisma.ApplicationWhereInput = {
+      tenantId,
+      status: 'PUBLISHED',
+      isInternal: false,
+    };
 
     if (!user.isSuperAdmin) {
       const roleIds = await this.permissionService.getUserRoleIds(user.id, tenantId);

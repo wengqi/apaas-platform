@@ -3,6 +3,7 @@
  * AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Button, Select, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import type { Field, ViewSortConfig } from '../../../api/objects.js';
@@ -29,7 +30,7 @@ export function SortRow({
         display: 'flex',
         gap: 6,
         alignItems: 'center',
-        background: '#fafbfc',
+        background: T.colorFillQuaternary,
         borderRadius: 8,
         padding: '6px 8px',
       }}

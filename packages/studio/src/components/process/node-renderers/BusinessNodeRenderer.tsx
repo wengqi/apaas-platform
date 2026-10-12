@@ -2,6 +2,7 @@
  * 业务节点卡片渲染器（从 nodeRenderers.tsx 拆分，AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useState } from 'react';
 import { useNodeRender, useClientContext } from '@flowgram.ai/fixed-layout-editor';
 import { Typography } from 'antd';
@@ -77,7 +78,11 @@ export function BusinessNodeRenderer({
     if (flowNode) ctx.selection.selection = [flowNode];
   };
 
-  const borderColor = isSelected ? '#1677ff' : activated ? '#91caff' : '#e8eaed';
+  const borderColor = isSelected
+    ? T.colorPrimary
+    : activated
+      ? T.colorPrimaryBorder
+      : T.colorBorderSecondary;
   const isTerminal = type === 'start' || type === 'end';
   const nodeWidth = isTerminal ? 120 : 240;
 
@@ -95,7 +100,7 @@ export function BusinessNodeRenderer({
         display: 'flex',
         flexDirection: 'column',
         borderRadius: 10,
-        background: '#fff',
+        background: T.colorWhite,
         border: `2px solid ${borderColor}`,
         boxShadow: isSelected ? '0 2px 12px rgba(22,119,255,0.15)' : '0 1px 4px rgba(0,0,0,0.06)',
         cursor: 'grab',
@@ -123,7 +128,7 @@ export function BusinessNodeRenderer({
             height: 32,
             borderRadius: 8,
             background: `linear-gradient(135deg, ${meta.color}, ${meta.color}dd)`,
-            color: '#fff',
+            color: T.colorWhite,
             fontSize: 18,
             display: 'flex',
             alignItems: 'center',
@@ -137,19 +142,19 @@ export function BusinessNodeRenderer({
           style={{
             fontSize: 14,
             fontWeight: 500,
-            color: '#1a1a1a',
+            color: T.colorInk,
             flex: isTerminal ? undefined : 1,
           }}
         >
           {title}
         </span>
         {isIncomplete && !isTerminal && (
-          <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />
+          <ExclamationCircleOutlined style={{ color: T.colorError, fontSize: 14 }} />
         )}
         {isIncomplete && isTerminal && (
           <ExclamationCircleOutlined
             style={{
-              color: '#ff4d4f',
+              color: T.colorError,
               fontSize: 14,
               position: 'absolute',
               right: 12,
@@ -178,7 +183,7 @@ export function BusinessNodeRenderer({
 
       {isIncomplete && !isTerminal && (
         <div style={{ padding: '0 16px 8px 40px' }}>
-          <Text style={{ fontSize: 12, color: '#ff4d4f' }}>有未完成的配置</Text>
+          <Text style={{ fontSize: 12, color: T.colorError }}>有未完成的配置</Text>
         </div>
       )}
     </div>

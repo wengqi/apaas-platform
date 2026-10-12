@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { Button, Form, Modal, Space, Typography, message } from 'antd';
 import {
@@ -224,7 +225,7 @@ export default function AppList() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       <AppHeader
         isPlatformAdmin={Boolean(user?.isPlatformAdmin)}
         isTenantAdmin={Boolean(user?.roles?.some((r) => r.code === 'TENANT_ADMIN'))}

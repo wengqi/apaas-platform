@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { Col, Modal, Row, Tag, Typography } from 'antd';
 import {
   FIELD_TYPE_GROUPS,
@@ -43,7 +44,7 @@ export default function FieldTypePicker({ open, onSelect, onCancel }: FieldTypeP
                     <div
                       onClick={() => onSelect(type)}
                       style={{
-                        border: '1px solid #eef0f4',
+                        border: `1px solid ${T.colorBorderSecondary}`,
                         borderRadius: 10,
                         padding: '14px 12px',
                         cursor: 'pointer',
@@ -51,15 +52,15 @@ export default function FieldTypePicker({ open, onSelect, onCancel }: FieldTypeP
                         height: '100%',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#1677ff';
-                        e.currentTarget.style.background = '#e6f4ff';
+                        e.currentTarget.style.borderColor = T.colorPrimary;
+                        e.currentTarget.style.background = T.colorPrimaryBg;
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#eef0f4';
-                        e.currentTarget.style.background = '#fff';
+                        e.currentTarget.style.borderColor = T.colorBorderSecondary;
+                        e.currentTarget.style.background = T.colorWhite;
                       }}
                     >
-                      <Icon style={{ fontSize: 22, color: '#1677ff' }} />
+                      <Icon style={{ fontSize: 22, color: T.colorPrimary }} />
                       <div style={{ fontWeight: 600, fontSize: 14, marginTop: 8 }}>
                         {meta.label}
                       </div>

@@ -14,6 +14,7 @@
  * - styles.ts：RAQB 自定义样式
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useRef } from 'react';
 import { Button, Divider, Form, Input, Popconfirm, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
@@ -148,7 +149,7 @@ export default function ConditionConfigForm({
             <div
               key={branch.id ?? `branch-${index}`}
               style={{
-                border: '1px solid #eef0f4',
+                border: `1px solid ${T.colorBorderSecondary}`,
                 borderRadius: 8,
                 padding: 8,
                 transition: 'border-color 0.2s',

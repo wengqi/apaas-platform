@@ -5,6 +5,7 @@
  * API 名称（仅创建可填）/ 显示名称 / 描述 / 图标 / 主题色。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { ColorPicker, Form, Input, Modal } from 'antd';
 import type { AppSummary } from '../../api/apps.js';
 import type { CreateFormValues } from './constants.js';
@@ -43,7 +44,7 @@ export function CreateAppModal({
       <Form<CreateFormValues>
         form={form}
         layout="vertical"
-        initialValues={{ icon: '📦', color: '#1677ff' }}
+        initialValues={{ icon: '📦', color: T.colorPrimary }}
         preserve={false}
       >
         <Form.Item

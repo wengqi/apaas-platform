@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { Form, Input, Button, message, Typography } from 'antd';
+// message 走 AntApp.useApp()（2026-10-12 审计）：静态 message 脱离 ConfigProvider
+// 上下文（v5 控制台警告 + 主题 token 不生效），与 runtime-ui 登录页写法对齐
+import { App as AntApp, Form, Input, Button, Typography } from 'antd';
 import { LockOutlined, MailOutlined, ThunderboltFilled, GlobalOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import client, { type ApiResponse } from '../api/client.js';
 import { useAuthStore, type AuthUser } from '@apaas/shared/stores';
+import { BRAND, LOGIN_BG, TOKENS as T } from '@apaas/shared/design';
 
 const { Title, Text } = Typography;
 
@@ -34,6 +37,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
+  const { message } = AntApp.useApp();
   const { slug: routeSlug } = useParams<{ slug: string }>();
 
   const onFinish = async (values: LoginForm) => {
@@ -81,33 +85,35 @@ export default function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        // 登录共用背景 token（评审 P1）：替换此前的教程紫渐变，
+        // 与 runtime 登录页同一世界
+        background: LOGIN_BG,
       }}
     >
       <div
         style={{
           width: 400,
-          background: '#fff',
+          background: T.colorWhite,
           borderRadius: 16,
           padding: '40px 36px',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.08)',
         }}
       >
-        {/* Logo + 标题 */}
+        {/* Logo + 标题（品牌基元走 shared/design token） */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div
             style={{
               width: 56,
               height: 56,
               borderRadius: 14,
-              background: 'linear-gradient(135deg, #1677ff, #4096ff)',
-              color: '#fff',
+              background: BRAND.logoGradient,
+              color: T.colorWhite,
               fontSize: 28,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 16,
-              boxShadow: '0 8px 20px rgba(22,119,255,0.3)',
+              boxShadow: BRAND.logoShadow,
             }}
           >
             <ThunderboltFilled />
@@ -132,10 +138,11 @@ export default function Login() {
             tooltip="租户用户请填写租户标识（如 demo）；平台管理员可留空"
           >
             <Input
-              prefix={<GlobalOutlined style={{ color: '#bfbfbf' }} />}
-              placeholder="租户用户必填（如 demo）；平台管理员可留空"
+              prefix={<GlobalOutlined style={{ color: T.colorTextQuaternary }} />}
+              placeholder="如 demo（管理员可留空）"
               size="large"
               style={{ borderRadius: 8 }}
+              autoComplete="off"
             />
           </Form.Item>
           <Form.Item
@@ -147,10 +154,11 @@ export default function Login() {
             ]}
           >
             <Input
-              prefix={<MailOutlined style={{ color: '#bfbfbf' }} />}
+              prefix={<MailOutlined style={{ color: T.colorTextQuaternary }} />}
               placeholder="name@example.com"
               size="large"
               style={{ borderRadius: 8 }}
+              autoComplete="email"
             />
           </Form.Item>
           <Form.Item
@@ -159,10 +167,11 @@ export default function Login() {
             rules={[{ required: true, message: '请输入密码' }]}
           >
             <Input.Password
-              prefix={<LockOutlined style={{ color: '#bfbfbf' }} />}
+              prefix={<LockOutlined style={{ color: T.colorTextQuaternary }} />}
               placeholder="请输入密码"
               size="large"
               style={{ borderRadius: 8 }}
+              autoComplete="current-password"
             />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0, marginTop: 8 }}>

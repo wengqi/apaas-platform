@@ -3,6 +3,7 @@
  * AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Checkbox, Tag, Typography } from 'antd';
 import { HolderOutlined } from '@ant-design/icons';
 import { useSortable } from '@dnd-kit/sortable';
@@ -34,8 +35,8 @@ export function SortableFieldRow({
     alignItems: 'center',
     gap: 8,
     padding: '6px 10px',
-    background: '#fff',
-    border: '1px solid #eef0f4',
+    background: T.colorWhite,
+    border: `1px solid ${T.colorBorderSecondary}`,
     borderRadius: 8,
     transform: CSS.Transform.toString(transform),
     transition,

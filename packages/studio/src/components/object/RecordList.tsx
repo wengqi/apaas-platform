@@ -8,6 +8,7 @@
  * 单元格值渲染（RecordCellValue.tsx）、格式化与错误提示（utils.ts）已按职责抽出。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useState } from 'react';
 import {
   Button,
@@ -313,7 +314,7 @@ export default function RecordList({ object }: RecordListProps) {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                background: '#e6f4ff',
+                background: T.colorPrimaryBg,
                 padding: '8px 16px',
                 borderRadius: 8,
                 marginBottom: 12,

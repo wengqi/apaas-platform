@@ -9,6 +9,7 @@
  * 工具栏 / ErrorBoundary / 触发器配置弹窗已拆分至 ./process-editor/。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiErrorMessage } from '../api/client.js';
 import { Modal, Skeleton, Typography, message } from 'antd';
@@ -273,7 +274,7 @@ export default function ProcessEditor() {
         height: 'calc(100vh - 56px)',
         display: 'flex',
         flexDirection: 'column',
-        background: '#f5f7fa',
+        background: T.colorBgLayout,
       }}
     >
       {/* 工具栏 */}

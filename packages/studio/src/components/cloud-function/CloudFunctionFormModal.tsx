@@ -2,6 +2,7 @@
  * 云函数创建/编辑弹窗 — 基本信息 + Monaco 代码编辑器 + 测试面板。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useState } from 'react';
 import { Modal, Form, Input, Button, Space, Typography, Divider, Tag, message } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
@@ -191,7 +192,7 @@ export default function CloudFunctionFormModal({ open, editingFn, onClose, onSuc
               {testResult && (
                 <pre
                   style={{
-                    background: '#f5f5f5',
+                    background: T.colorFillQuaternary,
                     padding: 12,
                     borderRadius: 6,
                     fontSize: 12,

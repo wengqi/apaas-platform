@@ -10,6 +10,7 @@
  * （AGENTS.md 单文件 400 行规范）；导出名保持原路径 './nodeRenderers.js' 兼容。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useNodeRender, useClientContext } from '@flowgram.ai/fixed-layout-editor';
 import { isElseBlock } from './conditionBranchUtils.js';
 import { BlockOrderIconLabel } from './node-renderers/BlockOrderIconLabel.js';
@@ -85,8 +86,8 @@ export function ApaasNodeRenderer({
             width: 24,
             height: 24,
             transform: 'rotate(45deg)',
-            background: '#fff',
-            border: '2px solid #1677ff',
+            background: T.colorWhite,
+            border: `2px solid ${T.colorPrimary}`,
             borderRadius: 4,
           }}
         />

@@ -4,6 +4,7 @@
  * 支持按操作类型、资源类型、用户 ID 筛选，分页查询。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -142,12 +143,12 @@ export default function AuditLogs() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       <div
         style={{
-          background: '#fff',
+          background: T.colorWhite,
           padding: '16px 24px',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: `1px solid ${T.colorSplit}`,
           display: 'flex',
           alignItems: 'center',
           gap: 16,

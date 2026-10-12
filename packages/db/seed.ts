@@ -286,6 +286,25 @@ async function main() {
   console.log(`✅ 应用: ${procurementApp.name} (${procurementApp.id})`);
   await seedProcurementContent(tenant.id, procurementApp.id, admin.id);
 
+  // 11. 内部应用标记（2026-10-12 评审 P0，幂等）：E2E/QA 夹具等非业务应用
+  // 打 isInternal 标，运行时门户（GET /apps?runtime=1）过滤后不再出现在
+  // 业务用户首页——修复"业务用户打开的是工程师的工作台"
+  const internalMarked = await prisma.application.updateMany({
+    where: {
+      tenantId: tenant.id,
+      OR: [
+        { apiName: { startsWith: 'e2e_' } },
+        { apiName: { startsWith: 'qa_' } },
+        { name: { contains: 'E2E' } },
+        { name: { contains: '测试' } },
+        { name: { contains: '夹具' } },
+        { name: { contains: 'UI 路径' } },
+      ],
+    },
+    data: { isInternal: true },
+  });
+  console.log(`✅ 内部应用标记: ${internalMarked.count} 个 E2E/QA 夹具应用已设为业务门户不可见`);
+
   console.log('');
   console.log('📋 测试账号:');
   console.log('  平台超管:  superadmin@apaas.dev / superadmin123（无需租户标识）');

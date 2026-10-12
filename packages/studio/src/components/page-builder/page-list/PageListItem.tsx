@@ -4,6 +4,7 @@
  */
 
 import { Button, List, Popconfirm, Space, Tag, Typography } from 'antd';
+import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import {
   UnorderedListOutlined,
   ProfileOutlined,
@@ -53,10 +54,10 @@ export function PageListItem({
       style={{
         padding: '12px 0',
         cursor: 'pointer',
-        borderBottom: '1px solid #f0f2f5',
+        borderBottom: `1px solid ${T.colorSplit}`,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#fafbfc';
+        e.currentTarget.style.background = T.colorFillQuaternary;
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = 'transparent';
@@ -70,8 +71,8 @@ export function PageListItem({
             width: 36,
             height: 36,
             borderRadius: 8,
-            background: 'linear-gradient(135deg, #1677ff, #1677ffdd)',
-            color: '#fff',
+            background: appTileBackground(),
+            color: T.colorWhite,
             fontSize: 18,
             display: 'flex',
             alignItems: 'center',

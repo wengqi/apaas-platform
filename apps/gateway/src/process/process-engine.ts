@@ -1630,6 +1630,8 @@ export class ProcessEngine {
         userIds: [initiator],
         title,
         body,
+        // 深链（评审 P0）：发起人点击直达应用（驳回低谷时刻的行动出口）
+        link: `/app/${instance.processDef.appId}`,
       });
       this.logger.log(`默认通知已发送：流程「${instance.processDef.name}」审批${outcome} → 发起人`);
     } catch (err) {
@@ -1681,6 +1683,8 @@ export class ProcessEngine {
         userIds,
         title: '审批抄送通知',
         body: `流程「${processName}」的审批节点「${taskName}」已由审批人${decisionText}。${comment ? '备注：' + comment : ''}`,
+        // 深链（评审 P0）：抄送对象多为审批相关人，直达任务中心
+        link: '/tasks',
       });
 
       this.logger.log(`抄送通知已发送：实例节点 ${nodeId}，收件人 ${userIds.length} 人`);

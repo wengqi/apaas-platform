@@ -6,6 +6,7 @@
  * 数据驱动修方言指南的入口：拦截规则码分布即指南缺口靶子。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
 import { observabilityApi, type AiGenerationAnalytics } from '../../api/observability.js';
@@ -74,7 +75,7 @@ function StatCard(props: {
         }
         value={props.value}
         suffix={props.suffix}
-        valueStyle={props.danger ? { color: '#cf1322' } : undefined}
+        valueStyle={props.danger ? { color: T.colorErrorDeep } : undefined}
       />
     </Card>
   );

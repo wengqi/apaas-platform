@@ -5,6 +5,7 @@
  * 节点项通过 HTML5 drag 携带节点 type,中栏画布(flowgram)接收拖放创建节点。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useState } from 'react';
 import { Collapse, Empty, Input, Row, Col, Typography, Tooltip } from 'antd';
 import { NODE_GROUPS, NODE_COMING_SOON, getNodeMeta } from '../../constants/process.js';
@@ -49,8 +50,8 @@ export default function NodePanel({ readonly = false, onCreateNode }: NodePanelP
         width: 280,
         flexShrink: 0,
         height: '100%',
-        background: '#fff',
-        borderRight: '1px solid #eef0f4',
+        background: T.colorWhite,
+        borderRight: `1px solid ${T.colorBorderSecondary}`,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -126,9 +127,9 @@ export default function NodePanel({ readonly = false, onCreateNode }: NodePanelP
                           style={{
                             width: '100%',
                             height: 64,
-                            border: '1px dashed #eef0f4',
+                            border: `1px dashed ${T.colorBorderSecondary}`,
                             borderRadius: 8,
-                            background: '#fafbfc',
+                            background: T.colorFillQuaternary,
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
@@ -185,9 +186,9 @@ function NodeItem({ type, readonly, onCreateNode }: NodeItemProps) {
       style={{
         width: '100%',
         height: 64,
-        border: '1px solid #eef0f4',
+        border: `1px solid ${T.colorBorderSecondary}`,
         borderRadius: 8,
-        background: '#fff',
+        background: T.colorWhite,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -198,14 +199,14 @@ function NodeItem({ type, readonly, onCreateNode }: NodeItemProps) {
       }}
       onMouseEnter={(e) => {
         if (!readonly) {
-          e.currentTarget.style.borderColor = '#1677ff';
-          e.currentTarget.style.background = '#e6f4ff';
+          e.currentTarget.style.borderColor = T.colorPrimary;
+          e.currentTarget.style.background = T.colorPrimaryBg;
         }
       }}
       onMouseLeave={(e) => {
         if (!readonly) {
-          e.currentTarget.style.borderColor = '#eef0f4';
-          e.currentTarget.style.background = '#fff';
+          e.currentTarget.style.borderColor = T.colorBorderSecondary;
+          e.currentTarget.style.background = T.colorWhite;
         }
       }}
       title={meta.description}
@@ -216,7 +217,7 @@ function NodeItem({ type, readonly, onCreateNode }: NodeItemProps) {
           height: 28,
           borderRadius: 8,
           background: `linear-gradient(135deg, ${meta.color}, ${meta.color}dd)`,
-          color: '#fff',
+          color: T.colorWhite,
           fontSize: 16,
           display: 'flex',
           alignItems: 'center',

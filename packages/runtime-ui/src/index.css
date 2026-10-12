@@ -13,3 +13,25 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
+
+/* 顶栏用户菜单触发按钮（RuntimeLayout）：原生 button 承载菜单语义（键盘可达，
+   a11y 2026-10-12 审计）。头部已统一为浅色（评审 P1 双表面一致），hover/focus
+   走浅色变体，焦点环用产品主色 */
+.runtime-header-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.88);
+  border-radius: 6px;
+}
+.runtime-header-user-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.runtime-header-user-btn:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}

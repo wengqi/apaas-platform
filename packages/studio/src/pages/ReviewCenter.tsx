@@ -7,6 +7,7 @@
  * - 未提交变更：漂移/从未提交资源（提交基线 / 撤销未提交 / 版本历史）
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useState } from 'react';
 import {
   Button,
@@ -120,7 +121,7 @@ function BatchBar({ appId, pending }: { appId: string; pending: ResourceVersionL
             alignItems: 'center',
             gap: 12,
             padding: '8px 12px',
-            background: '#f6f8fa',
+            background: T.colorFillQuaternary,
             borderRadius: 8,
             marginBottom: 8,
           }}
@@ -226,7 +227,9 @@ function SubmissionTable({
               <span>
                 <StatusTag status={record.status} />
                 {record.reviewComment && (
-                  <span style={{ color: '#999', fontSize: 12 }}>{record.reviewComment}</span>
+                  <span style={{ color: T.colorTextTertiary, fontSize: 12 }}>
+                    {record.reviewComment}
+                  </span>
                 )}
               </span>
             ),

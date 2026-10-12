@@ -5,6 +5,7 @@
  * 逻辑（JsonLogic 生成、操作符推导）在同目录 filter-logic.ts。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Button, Select, Space, Typography } from 'antd';
 import { DeleteOutlined, FilterOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { Field, FilterOperator, ObjectWithFields } from '../../../api/objects.js';
@@ -39,7 +40,9 @@ export default function FilterBar({
   onReset,
 }: FilterBarProps) {
   return (
-    <div style={{ background: '#fafbfc', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+    <div
+      style={{ background: T.colorFillQuaternary, borderRadius: 8, padding: 12, marginBottom: 12 }}
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {rows.map((row, index) => {
           const field: Field | undefined = object.fields.find((f) => f.apiName === row.field);

@@ -8,6 +8,7 @@
  * 配置变更实时同步到 DataFlowConfig。
  */
 
+import { TOKENS as T, PRESET as P } from '@apaas/shared/design';
 import { useCallback, useMemo, useState } from 'react';
 import { apiErrorMessage } from '../../api/client.js';
 import ReactFlow, {
@@ -232,13 +233,13 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
   const handleSave = () => saveMutation.mutate(config);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#f5f7fa' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: T.colorBgLayout }}>
       {/* 顶部工具栏 */}
       <div
         style={{
           height: 48,
-          background: '#fff',
-          borderBottom: '1px solid #f0f0f0',
+          background: T.colorWhite,
+          borderBottom: `1px solid ${T.colorSplit}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -293,18 +294,18 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
           nodesConnectable={false}
           elementsSelectable
         >
-          <Background color="#aaa" gap={16} />
+          <Background color={T.colorTextQuaternary} gap={16} />
           <Controls />
           <MiniMap
             nodeColor={(node) => {
               const colors: Record<string, string> = {
-                dataSource: '#52c41a',
-                join: '#722ed1',
-                filter: '#fa8c16',
-                aggregation: '#1677ff',
-                output: '#13c2c2',
+                dataSource: T.colorSuccess,
+                join: `${P.purple6}`,
+                filter: T.colorWarning,
+                aggregation: T.colorPrimary,
+                output: `${P.cyan6}`,
               };
-              return colors[node.type ?? ''] ?? '#d9d9d9';
+              return colors[node.type ?? ''] ?? T.colorBorder;
             }}
           />
         </ReactFlow>

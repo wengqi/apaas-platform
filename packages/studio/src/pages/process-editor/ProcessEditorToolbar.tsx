@@ -4,6 +4,7 @@
  * 编辑器工具栏：返回/流程名/触发器标签/撤销重做/预览/保存/发布。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Button, Popconfirm, Space, Tag, Tooltip, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -63,8 +64,8 @@ export default function ProcessEditorToolbar({
       style={{
         height: 48,
         padding: '0 16px',
-        background: '#fff',
-        borderBottom: '1px solid #eef0f4',
+        background: T.colorWhite,
+        borderBottom: `1px solid ${T.colorBorderSecondary}`,
         boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
         display: 'flex',
         alignItems: 'center',
@@ -82,7 +83,7 @@ export default function ProcessEditorToolbar({
             height: 32,
             borderRadius: 8,
             background: `linear-gradient(135deg, ${triggerMeta.color}, ${triggerMeta.color}dd)`,
-            color: '#fff',
+            color: T.colorWhite,
             fontSize: 16,
             display: 'flex',
             alignItems: 'center',

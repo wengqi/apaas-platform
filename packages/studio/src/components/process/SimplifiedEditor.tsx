@@ -22,6 +22,7 @@
  *  - HistoryBridge.tsx: 撤销/重做桥接
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useMemo } from 'react';
 import { FixedLayoutEditorProvider } from '@flowgram.ai/fixed-layout-editor';
 import { FlowRendererKey } from '@flowgram.ai/renderer';
@@ -34,6 +35,13 @@ import {
 } from '../../../features/process/simplified/src/index.js';
 
 import '@flowgram.ai/fixed-layout-editor/index.css';
+// Semi UI 样式：flowgram fixed-semi-materials 的面板/下拉/按钮依赖 semi.min.css。
+// 此前经 index.html 以 /node_modules/... 直链引入——仅 dev 可伺服，生产构建该
+// 文件不在 dist，请求被 SPA fallback 以 text/html 兜底、浏览器按 MIME 拒绝应用，
+// 画布 Semi 组件全部裸奔（2026-10-12 impeccable 审计 P0）。改为 JS 导入：deep
+// import 会被 semi-ui 的 exports map 拦截（完整 css 不在表内），由 vite.config
+// alias 指到物理文件解决；样式随本 chunk（ProcessEditor 路由懒加载）打包。
+import '@douyinfe/semi-ui/dist/css/semi.min.css';
 import { ApaasNodeRenderer } from './nodeRenderers.js';
 import { ApaasAdder } from './ApaasAdder.js';
 import { HistoryBridge, type HistoryApi } from './HistoryBridge.js';
@@ -78,8 +86,8 @@ export default function SimplifiedEditor({
       dragdrop: { enable: true },
       nodeEngine: { enable: true },
       constants: {
-        BASE_COLOR: '#B8BCC1',
-        BASE_ACTIVATED_COLOR: '#82A7FC',
+        BASE_COLOR: T.colorLineBase,
+        BASE_ACTIVATED_COLOR: T.colorLineActive,
       },
       materials: {
         components: {
@@ -105,7 +113,7 @@ export default function SimplifiedEditor({
   }, [objectOptions, formOptions, templateOptions, processOptions]);
 
   return (
-    <div style={{ flex: 1, display: 'flex', minHeight: 0, background: '#f5f7fa' }}>
+    <div style={{ flex: 1, display: 'flex', minHeight: 0, background: T.colorBgLayout }}>
       <FixedLayoutEditorProvider {...editorProps}>
         <HistoryBridge onHistoryReady={onHistoryReady} />
         <CanvasColumn readonly={readonly} onSchemaChange={onSchemaChange} />

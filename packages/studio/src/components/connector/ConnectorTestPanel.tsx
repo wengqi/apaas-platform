@@ -4,6 +4,7 @@
  * 在连接器详情 Drawer 中展开，支持 HTTP 类型的连接器测试。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { Button, Select, Input, Space, Typography, message, Spin } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
@@ -137,7 +138,7 @@ export default function ConnectorTestPanel({ connector }: ConnectorTestPanelProp
           </Text>
           <pre
             style={{
-              background: '#f6f8fa',
+              background: T.colorFillQuaternary,
               padding: 12,
               borderRadius: 8,
               fontSize: 12,

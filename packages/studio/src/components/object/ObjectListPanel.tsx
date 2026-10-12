@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import {
   Button,
   Empty,
@@ -128,8 +129,8 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
       style={{
         width: 264,
         flexShrink: 0,
-        background: '#fff',
-        border: '1px solid #eef0f4',
+        background: T.colorWhite,
+        border: `1px solid ${T.colorBorderSecondary}`,
         borderRadius: 12,
         display: 'flex',
         flexDirection: 'column',
@@ -143,7 +144,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid #f0f2f5',
+          borderBottom: `1px solid ${T.colorSplit}`,
         }}
       >
         <Typography.Title level={5} style={{ margin: 0 }}>
@@ -288,13 +289,13 @@ function ObjectListItem({
       style={{
         padding: '12px 14px',
         cursor: 'pointer',
-        borderBottom: '1px solid #f5f6f8',
-        background: selected ? '#e6f4ff' : undefined,
-        borderLeft: selected ? '3px solid #1677ff' : '3px solid transparent',
+        borderBottom: `1px solid ${T.colorFillQuaternary}`,
+        background: selected ? T.colorPrimaryBg : undefined,
+        borderLeft: selected ? `3px solid ${T.colorPrimary}` : '3px solid transparent',
         transition: 'background 0.2s ease',
       }}
       onMouseEnter={(e) => {
-        if (!selected) e.currentTarget.style.background = '#fafbfc';
+        if (!selected) e.currentTarget.style.background = T.colorFillQuaternary;
       }}
       onMouseLeave={(e) => {
         if (!selected) e.currentTarget.style.background = 'transparent';
@@ -307,8 +308,8 @@ function ObjectListItem({
             width: 28,
             height: 28,
             borderRadius: 8,
-            background: 'linear-gradient(135deg, #1677ff, #1677ffdd)',
-            color: '#fff',
+            background: appTileBackground(),
+            color: T.colorWhite,
             fontSize: 15,
             display: 'flex',
             alignItems: 'center',

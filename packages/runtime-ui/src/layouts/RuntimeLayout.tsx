@@ -2,12 +2,12 @@ import { Avatar, Dropdown, Layout, Space, Typography, Button, Select, theme } fr
 import { LogoutOutlined, UserOutlined, HomeOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@apaas/shared/stores';
-import { LAYOUT, TOKENS as T } from '@apaas/shared/design';
+import { LAYOUT, TOKENS as T, brandLogoMarkSvg } from '@apaas/shared/design';
 import NotificationBell from '../components/NotificationBell';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Header, Content } = Layout;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 /**
  * 运行时布局 — 顶部导航栏(应用名 + 导航 + 用户菜单) + 内容区(Outlet)。
@@ -56,9 +56,19 @@ export default function RuntimeLayout() {
         }}
       >
         <Space size={isMobile ? 'small' : 'large'} align="center">
-          <Title level={isMobile ? 5 : 4} style={{ color: 'rgba(0,0,0,0.88)', margin: 0 }}>
-            aPaaS Runtime
-          </Title>
+          <Space size={10} align="center">
+            <span
+              aria-hidden
+              dangerouslySetInnerHTML={{ __html: brandLogoMarkSvg(28) }}
+              style={{ display: 'inline-flex' }}
+            />
+            <Title level={isMobile ? 5 : 4} style={{ color: 'rgba(0,0,0,0.88)', margin: 0 }}>
+              aPaaS{' '}
+              <Text type="secondary" style={{ fontWeight: 500 }}>
+                Runtime
+              </Text>
+            </Title>
+          </Space>
           <Space size="small">
             <Button
               type="text"

@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { App as AntApp, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { ANT_D_THEME } from '@apaas/shared/design';
 import { createQueryClient, initAuthFromHash } from '@apaas/shared/stores';
 import App from './App';
 import './index.css';
@@ -23,7 +24,7 @@ if (!rootEl) {
 // StrictMode 双挂载会撕毁其 RootStore（R1.7 页面层切 amis 后整页受影响，
 // 集成红线见 docs/knowledge-base/SPIKE-AMIS-ADOPTION-2026-09-30.md）
 createRoot(rootEl).render(
-  <ConfigProvider locale={zhCN}>
+  <ConfigProvider locale={zhCN} theme={ANT_D_THEME}>
     <AntApp>
       <GlobalErrorBoundary>
         <QueryClientProvider client={queryClient}>

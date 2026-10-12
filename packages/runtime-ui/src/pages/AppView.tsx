@@ -17,18 +17,13 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
-import {
-  RUNTIME_PAGE_TYPE_META,
-  appTileBackground,
-  appTileShadow,
-  TOKENS as T,
-} from '@apaas/shared/design';
+import { RUNTIME_PAGE_TYPE_META, appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import { useParams, useNavigate } from 'react-router-dom';
 import { appsApi } from '../api/apps';
 import { pagesApi } from '../api/pages';
 import { processesApi } from '../api/processes';
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 
 export default function AppView() {
   const { appId } = useParams<{ appId: string }>();
@@ -110,33 +105,20 @@ export default function AppView() {
               borderRadius: 10,
               background: appTileBackground(app?.color),
               color: T.colorWhite,
-              fontSize: 20,
+              fontSize: 17,
+              fontWeight: 600,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: appTileShadow(app?.color),
               flexShrink: 0,
             }}
             aria-hidden
           >
-            {app?.icon || '📦'}
+            {(app?.name || '应').slice(0, 1)}
           </span>
           {app?.name ?? '应用视图'}
         </Title>
         <Paragraph type="secondary">{app?.description || '暂无描述'}</Paragraph>
-        {app && (
-          <div style={{ marginBottom: 16 }}>
-            <Tag color={app.status === 'PUBLISHED' ? 'green' : 'default'}>
-              {app.status === 'PUBLISHED' ? '已发布' : '开发中'}
-            </Tag>
-            <Tag>v{app.version}</Tag>
-            <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-              {app.stats
-                ? `${app.stats.objects} 对象 · ${app.stats.pages} 页面 · ${app.stats.processes} 流程`
-                : ''}
-            </Text>
-          </div>
-        )}
       </Card>
 
       {launchableProcesses.length > 0 && (

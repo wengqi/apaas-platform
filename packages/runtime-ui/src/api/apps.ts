@@ -12,6 +12,10 @@ export interface AppSummary {
   description?: string;
   icon?: string;
   color?: string;
+  /** 应用分组（业务端只读；空=未分组） */
+  group?: string;
+  /** 维护者姓名（runtime 视图返回） */
+  ownerName?: string;
   status: string;
   version: number;
   /** 资源统计（仅列表接口返回，详情接口不返回） */

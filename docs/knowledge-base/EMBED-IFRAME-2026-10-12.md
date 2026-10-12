@@ -1,6 +1,7 @@
 # iframe 嵌入集成实现记录（2026-10-12）
 
 > 分支 feat/embed-iframe-integration。设计文档：`docs/design/DESIGN-embed-iframe-2026-10-12.md`（三项用户裁决同源）。本文件记实现与踩坑。
+> **二轮（同日，方案一转正）**：模拟器转正为 studio「嵌入集成」控制台（`/app/:appId/embed`，API 密钥旁）——选页生成 URL/宿主片段（纯函数 helper + 6 单测；runtimeBase 非绝对时用显式占位符，**绝不给宿主生成相对 URL**——宿主域上会解析错）+ 真实 SDK 跨端口预览（5173→5174 真跨域，握手/rpc 全通，补上首轮未实测的跨域场景）；runtime-ui `/embed-demo` 退役删除。走查截图 `gui-test-screenshots/studio-embed-console-cross-origin.png`。跨域前提：runtime 构建注入 `VITE_EMBED_ALLOWED_ORIGINS`（含 studio origin）；控制台运行时地址复用 `VITE_RUNTIME_BASE_URL`。
 
 ## 交付清单
 
@@ -12,7 +13,8 @@
 | runtime-ui | `src/embed/embedBridge.ts` | iframe 侧桥：hello-first 握手/origin 白名单/出站缓冲/活跃桥单例 |
 | runtime-ui | `src/embed/EmbedPage.tsx` | `/embed` 干净页面 + 桥装配（401 分流/ready/route-change/高度 RO/query-data） |
 | runtime-ui | `src/embed/embedActions.ts` | `registerAction('embedEvent')`——page-event 出站唯一通道（裁决②） |
-| runtime-ui | `src/embed/EmbedDemo.tsx` + 路由 `/embed-demo` | 宿主模拟器（走查/联调载体，用真实 SDK） |
+| studio | `src/pages/EmbedIntegration.tsx`（二轮） | 嵌入集成控制台：选页/URL/宿主片段/配置清单 + 真实 SDK 跨域预览（菜单在 API 密钥旁） |
+| studio | `src/utils/embedIntegration.ts`（二轮） | buildEmbedUrl/buildHostSnippet 纯函数（+6 单测；占位符语义防相对 URL 陷阱） |
 | runtime-ui | `src/api/client.ts` | embed 模式标记：401 广播事件不跳登录 |
 | runtime-ui | `src/runtime/AmisRenderer.tsx` | 新增 `scopeRef` 注入口（透传 render 第二参到 Scoped HOC） |
 | gateway | `schema-contract/validators/amis-page.validator.ts` | KNOWN_ACTION_TYPES + `embedEvent`（+新 spec 4 例） |

@@ -38,7 +38,8 @@
 
 - **协议 SSOT**：`packages/shared/src/embed/protocol.ts`（信封 + 类型常量 + 载荷契约 + 守卫），两端共享。
 - **宿主 SDK**：`packages/shared/src/embed/host-client.ts`（`createApaasEmbed`，零依赖 vanilla TS，任意框架可用），子路径导出 `@apaas/shared/embed`。
-- **iframe 侧**：`runtime-ui/src/embed/`——`embedBridge.ts`（协议桥）、`EmbedPage.tsx`（干净页面 + 桥装配）、`embedActions.ts`（embedEvent 动作注册）、`EmbedDemo.tsx`（宿主模拟器）。
+- **iframe 侧**：`runtime-ui/src/embed/`——`embedBridge.ts`（协议桥）、`EmbedPage.tsx`（干净页面 + 桥装配）、`embedActions.ts`（embedEvent 动作注册）。
+- **接入控制台**：studio 应用工作台「嵌入集成」页（`/app/:appId/embed`，2026-10-12 用户裁决方案一）——已发布页面选择 → Embed URL + 宿主接入代码片段生成 → 真实 SDK 实时预览（studio 与 runtime 跨端口部署时即真实跨域联调）。runtime-ui 最初的 `/embed-demo` 模拟器随之退役（双模拟器双维护）。
 
 ## 4. 干净页面：`/embed/app/:appId/p/:slug`
 
@@ -92,6 +93,7 @@
 
 ## 9. 已知边界与后续
 
-- **跨域场景**未实测（走查为同源 iframe；协议层设计即为跨域服务：origin 白名单/targetOrigin 显式——部署 nginx 白名单后即可用，建议集成时第一个宿主做一次跨域联调）。
+- **跨域场景已实测（2026-10-12 二轮）**：studio(5173) 控制台经真实 SDK 嵌入 runtime(5174)——跨端口即跨域，握手/rpc 全通（前提：runtime 构建注入 `VITE_EMBED_ALLOWED_ORIGINS=http://localhost:5173`）。
+- **接入控制台**（studio「嵌入集成」页）：选页 → Embed URL/宿主代码片段（runtimeBase 非绝对时用显式占位符，绝不给宿主生成相对 URL）→ 真实 SDK 预览 + rpc 交互 + 协议消息流 + 部署配置清单。复用 `VITE_RUNTIME_BASE_URL`（与「打开运行时」同源约定）。
 - 登录态用户信息（user 对象）在纯 hash/hello 场景为 null（只承诺 token 可用），页面内依赖 `user` 的展示（如创建人姓名解析）走服务端渲染路径不受影响。
 - 后续候选：token 交换端点（宿主后端→平台换用户短时 token）、外部系统直渲 amis（方案 B）、AmisRenderer 独立包（方案 C）。

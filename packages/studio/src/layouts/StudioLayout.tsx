@@ -34,6 +34,7 @@ import {
   FileDoneOutlined,
   CloudServerOutlined,
   KeyOutlined,
+  CodeOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -109,6 +110,7 @@ export default function StudioLayout() {
       { key: 'cloud-functions', icon: <CloudOutlined />, label: '云函数' },
       { key: 'environments', icon: <CloudServerOutlined />, label: '环境管理' },
       { key: 'api-keys', icon: <KeyOutlined />, label: 'API 密钥' },
+      { key: 'embed', icon: <CodeOutlined />, label: '嵌入集成' },
       { key: 'audit-logs', icon: <FileSearchOutlined />, label: '审计日志' },
     ],
     [pendingCount],

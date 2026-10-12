@@ -26,6 +26,7 @@ import PermissionDebug from './pages/PermissionDebug.js';
 import ReviewCenter from './pages/ReviewCenter.js';
 import Environments from './pages/Environments.js';
 import ApiKeys from './pages/ApiKeys.js';
+import EmbedIntegration from './pages/EmbedIntegration.js';
 import TenantManagement from './pages/TenantManagement.js';
 import TenantDetail from './pages/TenantDetail.js';
 import { useAuthStore } from '@apaas/shared/stores';
@@ -203,6 +204,7 @@ export function AppRoutes() {
         <Route path="versions" element={<VersionHistory />} />
         <Route path="environments" element={<Environments />} />
         <Route path="api-keys" element={<ApiKeys />} />
+        <Route path="embed" element={<EmbedIntegration />} />
       </Route>
 
       {/* 根路径与未匹配路由重定向 */}

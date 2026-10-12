@@ -10,14 +10,34 @@
  */
 
 import { useRef, useState } from 'react';
-import { Alert, Button, Card, Collapse, Select, Space, Tag, Typography } from 'antd';
-import { CopyOutlined, LinkOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import {
+  Alert,
+  Button,
+  Card,
+  Collapse,
+  Divider,
+  Radio,
+  Select,
+  Space,
+  Tag,
+  Typography,
+} from 'antd';
+import {
+  CopyOutlined,
+  DownloadOutlined,
+  LinkOutlined,
+  PlayCircleOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { createApaasEmbed, type ApaasEmbedClient } from '@apaas/shared/embed';
 import { useAuthStore } from '@apaas/shared/stores';
 import { pagesApi } from '../api/pages.js';
-import { buildEmbedUrl, buildHostSnippet } from '../utils/embedIntegration.js';
+import { buildEmbedUrl, buildHostSnippet, buildSdkScriptUrl } from '../utils/embedIntegration.js';
+// SDK 产物（shared 构建 pipeline 生成，已 gitignore）：构建期内联，供下载
+import sdkIife from '../../../shared/dist-embed-sdk/embed-sdk.js?raw';
+import sdkEsm from '../../../shared/dist-embed-sdk/embed-sdk.esm.js?raw';
 
 const { Text, Paragraph } = Typography;
 
@@ -49,14 +69,29 @@ export default function EmbedIntegration() {
   const clientRef = useRef<ApaasEmbedClient | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
+  const [snippetForm, setSnippetForm] = useState<'npm' | 'script'>('npm');
   const embedUrl = appId && slug ? buildEmbedUrl(RUNTIME_BASE, appId, slug, env) : '';
   const snippet =
-    appId && slug ? buildHostSnippet({ runtimeBase: RUNTIME_BASE, appId, slug, env }) : '';
+    appId && slug
+      ? buildHostSnippet({ runtimeBase: RUNTIME_BASE, appId, slug, env, module: snippetForm })
+      : '';
 
   const log = (kind: LogEntry['kind'], text: string): void => {
     setLogs((prev) =>
       [{ time: new Date().toLocaleTimeString(), kind, text }, ...prev].slice(0, 50),
     );
+  };
+
+  /** SDK 产物下载（构建期内联的零依赖单文件，Blob 触发浏览器下载）。 */
+  const downloadSdk = (filename: string, content: string): void => {
+    const blob = new Blob([content], { type: 'text/javascript;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    log('out', `下载 ${filename}（${(content.length / 1024).toFixed(1)} KB）`);
   };
 
   const connect = (): void => {
@@ -160,6 +195,16 @@ export default function EmbedIntegration() {
               <Paragraph>
                 <Space>
                   <Text type="secondary">宿主接入代码</Text>
+                  <Radio.Group
+                    size="small"
+                    value={snippetForm}
+                    onChange={(e) => setSnippetForm(e.target.value as 'npm' | 'script')}
+                    optionType="button"
+                    options={[
+                      { value: 'npm', label: 'npm 包' },
+                      { value: 'script', label: 'SDK 直链' },
+                    ]}
+                  />
                   <Text
                     copyable={{
                       text: snippet,
@@ -184,6 +229,37 @@ export default function EmbedIntegration() {
                 >
                   {snippet}
                 </pre>
+              </Paragraph>
+              <Divider style={{ margin: '8px 0' }} />
+              <Paragraph style={{ marginBottom: 4 }}>
+                <Space>
+                  <Text type="secondary">获取 SDK（零依赖单文件，协议 v1）</Text>
+                </Space>
+                <br />
+                <Space wrap style={{ marginTop: 6 }}>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() => downloadSdk('embed-sdk.js', sdkIife)}
+                  >
+                    下载 IIFE（script 直引用）
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={() => downloadSdk('embed-sdk.esm.js', sdkEsm)}
+                  >
+                    下载 ESM（构建工具 import）
+                  </Button>
+                </Space>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  或宿主直链（随平台部署生效）：
+                </Text>
+                <br />
+                <Text code copyable style={{ fontSize: 12, wordBreak: 'break-all' }}>
+                  {`<script src="${buildSdkScriptUrl(RUNTIME_BASE)}"></script>`}
+                </Text>
               </Paragraph>
             </>
           ) : (
@@ -210,6 +286,11 @@ export default function EmbedIntegration() {
                     <Paragraph>
                       ③ 本控制台的运行时地址取 <Text code>VITE_RUNTIME_BASE_URL</Text>
                       （与「打开运行时」一致；当前：{RUNTIME_BASE || '同源相对路径'}）。
+                    </Paragraph>
+                    <Paragraph>
+                      ④ SDK 直链（<Text code>/embed-sdk/</Text>
+                      ）：部署时把 <Text code>packages/shared/dist-embed-sdk/</Text> 产物拷贝至
+                      nginx 静态目录（<Text code>pnpm build</Text> 已自动生成）。
                     </Paragraph>
                     <Paragraph type="secondary" style={{ marginBottom: 0 }}>
                       页面修改后需应用级发布才会进入运行时 bundle（页面级发布不进 bundle）。

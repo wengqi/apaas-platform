@@ -2,6 +2,7 @@
 
 > 分支 feat/embed-iframe-integration。设计文档：`docs/design/DESIGN-embed-iframe-2026-10-12.md`（三项用户裁决同源）。本文件记实现与踩坑。
 > **二轮（同日，方案一转正）**：模拟器转正为 studio「嵌入集成」控制台（`/app/:appId/embed`，API 密钥旁）——选页生成 URL/宿主片段（纯函数 helper + 6 单测；runtimeBase 非绝对时用显式占位符，**绝不给宿主生成相对 URL**——宿主域上会解析错）+ 真实 SDK 跨端口预览（5173→5174 真跨域，握手/rpc 全通，补上首轮未实测的跨域场景）；runtime-ui `/embed-demo` 退役删除。走查截图 `gui-test-screenshots/studio-embed-console-cross-origin.png`。跨域前提：runtime 构建注入 `VITE_EMBED_ALLOWED_ORIGINS`（含 studio origin）；控制台运行时地址复用 `VITE_RUNTIME_BASE_URL`。
+> **三轮（同日，SDK 交付）**：控制台补「获取 SDK」——esbuild 双格式零依赖单文件（`embed-sdk.js` IIFE 全局 `ApaasEmbed` 9.8KB / `embed-sdk.esm.js` 7.9KB，banner 带协议版本），构建脚本 `packages/shared/scripts/build-embed-sdk.mjs`（`pnpm build` 自动生成，产物 gitignore 随部署分发；esbuild 显式声明为 shared devDependency——vite 传递已有，仅供构建脚本）；分发=控制台下载（产物 `?raw` 内联 studio bundle）+ nginx `/embed-sdk/` 直链（部署拷贝产物至 html/embed-sdk/）；片段生成器双形态（npm/SDK 直链，直链形态无私有包 import）。产物契约单测 3 例（含 node 装载探针）。坑：**.mjs 里不能写 TS 注解**（脚本首跑 SyntaxError）。走查截图 `gui-test-screenshots/studio-embed-sdk-download.png`。
 
 ## 交付清单
 

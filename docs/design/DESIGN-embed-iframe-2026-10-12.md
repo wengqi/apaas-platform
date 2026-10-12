@@ -79,6 +79,20 @@
 - **轮换**：`apaas:auth`。401 出站 `auth-expired`，宿主接管。
 - **边界（明确）**：iframe 内 token 是谁，行级权限就按谁在服务端结算——宿主传什么 token 就是谁的身份。宿主侧伪造他人 token 即绕过平台权限，v1 以管理信任为前提；生产化后续做 token 交换端点。
 
+## 6. SDK 交付（第三方对接，2026-10-12 三轮补充）
+
+宿主 SDK 零依赖 vanilla TS 的设计使其可打包为**单个自包含 JS 文件**，下载即用——没有这一步，控制台的接入片段对第三方是断链的（`@apaas/shared` 是私有包，外部拿不到）。
+
+- **产物**（`pnpm build` 自动生成，`packages/shared/dist-embed-sdk/`，gitignore，随部署分发）：
+  - `embed-sdk.js` —— IIFE，全局变量 `ApaasEmbed`，宿主 `<script>` 一行直引（~9.8KB）
+  - `embed-sdk.esm.js` —— ESM，宿主有构建工具时 import（~7.9KB）
+  - 文件头 banner 携带协议版本（v1）与构建时间；构建脚本 `scripts/build-embed-sdk.mjs`（esbuild，devDependency——已在依赖树中由 vite 传递引入，显式声明仅供构建脚本）。
+- **分发通道（两条）**：
+  1. **平台直链**（推荐）：nginx `/embed-sdk/` 静态 location（产物拷贝至 html/embed-sdk/），宿主 `<script src="https://平台域/embed-sdk/embed-sdk.js"></script>` 一行接入；`<script>` 接入无需 CORS。
+  2. **控制台下载**：「获取 SDK」区块两格式下载按钮（产物构建期内联 studio bundle）。
+- **片段双形态**：接入代码生成器提供「npm 包 / SDK 直链」切换——直链形态用 `window.ApaasEmbed` 解构，不出现第三方拿不到的私有包 import。
+- **版本承诺**：SDK 大版本与协议 `v` 绑定；协议既有向后兼容规则（未识别消息静默忽略）保证宿主 SDK 可落后于平台升级。不做 npm 公网发布（企业内网环境 + 版本治理成本，有真实需求再立项）。
+
 ## 7. 部署与配置
 
 - **nginx**（`infra/nginx/app.conf`）：新增 `/embed/` 专用 location，仅对嵌入路由放宽 `frame-ancestors`（部署时把 `'self'` 改为宿主 origin 白名单）；主应用路由维持 `'self'`。注意 nginx `add_header` 不跨层继承——该 location 内完整重复了其余安全头。

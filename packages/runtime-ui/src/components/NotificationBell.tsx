@@ -6,9 +6,11 @@
  * - "全部已读"一键标记
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
-import { Badge, Popover, List, Button, Empty, Spin, Typography, Tag } from 'antd';
-import { BellOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { Badge, Popover, List, Button, Empty, Spin, Typography, Tag, Segmented } from 'antd';
+import { BellOutlined, RightOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi, type InAppMessage } from '../api/notifications';
 
@@ -29,6 +31,7 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function NotificationBell() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
@@ -63,9 +66,18 @@ export default function NotificationBell() {
     },
   });
 
+  /**
+   * 点击消息：标已读 + 深链跳转（2026-10-12 评审 P0）。
+   * 此前点击仅标已读——驳回消息"请查看审批意见"却无任何行动出口；
+   * 现在携带 link（/app/:id、/tasks 等）的消息直达业务位置。
+   */
   const handleItemClick = (msg: InAppMessage) => {
     if (!msg.read) {
       markReadMutation.mutate(msg.id);
+    }
+    if (msg.link) {
+      setOpen(false);
+      navigate(msg.link);
     }
   };
 
@@ -80,7 +92,7 @@ export default function NotificationBell() {
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '4px 0 8px',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: `1px solid ${T.colorSplit}`,
         }}
       >
         <Text strong style={{ fontSize: 14 }}>
@@ -97,28 +109,18 @@ export default function NotificationBell() {
         </Button>
       </div>
 
-      <div
-        style={{
-          margin: '4px 0',
-          display: 'flex',
-          gap: 8,
-        }}
-      >
-        <Button
-          size="small"
-          type={unreadOnly ? 'primary' : 'default'}
-          onClick={() => setUnreadOnly(true)}
-        >
-          未读
-        </Button>
-        <Button
-          size="small"
-          type={!unreadOnly ? 'primary' : 'default'}
-          onClick={() => setUnreadOnly(false)}
-        >
-          全部
-        </Button>
-      </div>
+      {/* 未读/全部筛选（评审 P2）：Segmented 控件承载互斥选择——此前用两个
+          互斥 type=primary Button，主按钮蓝色被降格为选中态 */}
+      <Segmented
+        size="small"
+        value={unreadOnly ? 'unread' : 'all'}
+        onChange={(v) => setUnreadOnly(v === 'unread')}
+        options={[
+          { value: 'unread', label: `未读${unreadCount ? ` (${unreadCount})` : ''}` },
+          { value: 'all', label: '全部' },
+        ]}
+        style={{ marginBottom: 4 }}
+      />
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {messagesLoading ? (
@@ -138,9 +140,18 @@ export default function NotificationBell() {
                 style={{
                   cursor: 'pointer',
                   padding: '10px 4px',
-                  borderBottom: '1px solid #f5f5f5',
+                  borderBottom: `1px solid ${T.colorFillQuaternary}`,
                 }}
                 onClick={() => handleItemClick(msg)}
+                // 键盘可达（a11y 2026-10-12 审计）：列表项承载点击标记已读
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleItemClick(msg);
+                  }
+                }}
               >
                 <div style={{ width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -150,7 +161,7 @@ export default function NotificationBell() {
                           width: 6,
                           height: 6,
                           borderRadius: '50%',
-                          background: '#1677ff',
+                          background: T.colorPrimary,
                           flexShrink: 0,
                         }}
                       />
@@ -163,6 +174,12 @@ export default function NotificationBell() {
                       {msg.title}
                     </Text>
                     {msg.read && <Tag style={{ margin: 0, fontSize: 11 }}>已读</Tag>}
+                    {msg.link && (
+                      <RightOutlined
+                        style={{ fontSize: 10, color: T.colorTextQuaternary, flexShrink: 0 }}
+                        aria-label="可跳转"
+                      />
+                    )}
                   </div>
                   <Text
                     type="secondary"
@@ -182,7 +199,13 @@ export default function NotificationBell() {
       </div>
 
       {total > 20 && (
-        <div style={{ textAlign: 'center', padding: '8px 0 0', borderTop: '1px solid #f0f0f0' }}>
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '8px 0 0',
+            borderTop: `1px solid ${T.colorSplit}`,
+          }}
+        >
           <Text type="secondary" style={{ fontSize: 12 }}>
             共 {total} 条消息，仅显示最近 20 条
           </Text>
@@ -199,8 +222,15 @@ export default function NotificationBell() {
       open={open}
       onOpenChange={setOpen}
     >
+      {/* a11y（2026-10-12 审计）：铃铛改为原生 Button 触发——图标此前无可访问名称，
+          Popover 键盘无法打开；Badge 包 Button 保留未读角标。
+          头部翻白后图标用默认文字色（评审 P1 双表面一致） */}
       <Badge count={unreadCount ?? 0} overflowCount={99} offset={[-2, 2]}>
-        <BellOutlined style={{ color: '#fff', fontSize: 18, cursor: 'pointer' }} />
+        <Button
+          type="text"
+          aria-label={unreadCount ? `通知，${unreadCount} 条未读` : '通知'}
+          icon={<BellOutlined style={{ fontSize: 18 }} />}
+        />
       </Badge>
     </Popover>
   );

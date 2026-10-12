@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { LockOutlined, MailOutlined, GlobalOutlined } from '@ant-design/icons';
+import { ThunderboltFilled, LockOutlined, MailOutlined, GlobalOutlined } from '@ant-design/icons';
 import { App as AntApp, Button, Card, Form, Input, Typography } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../api/client';
 import { useAuthStore, type LoginResponse } from '@apaas/shared/stores';
+import { BRAND, LOGIN_BG, TOKENS as T } from '@apaas/shared/design';
 
 const { Title, Text } = Typography;
 
@@ -61,9 +62,29 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center" style={{ background: LOGIN_BG }}>
       <Card className="w-full max-w-md shadow-md">
         <div className="mb-6 text-center">
+          {/* Logo 瓷片（评审 P1）：与 studio 登录页同一品牌图形——此前 runtime
+              登录无任何图形 Logo，双表面第一触点即分裂 */}
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 14,
+              background: BRAND.logoGradient,
+              color: T.colorWhite,
+              fontSize: 28,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 16,
+              boxShadow: BRAND.logoShadow,
+            }}
+            aria-hidden
+          >
+            <ThunderboltFilled />
+          </div>
           <Title level={3} style={{ marginBottom: 4 }}>
             aPaaS Runtime
           </Title>
@@ -91,14 +112,18 @@ export default function Login() {
               { type: 'email', message: '邮箱格式不正确' },
             ]}
           >
-            <Input prefix={<MailOutlined />} placeholder="you@example.com" />
+            <Input prefix={<MailOutlined />} placeholder="you@example.com" autoComplete="email" />
           </Form.Item>
           <Form.Item
             label="密码"
             name="password"
             rules={[{ required: true, message: '请输入密码' }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="请输入密码" />
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="请输入密码"
+              autoComplete="current-password"
+            />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>

@@ -9,7 +9,7 @@
  * 同域部署天然放行）；握手超时时按配置清单排查。
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -137,6 +137,11 @@ export default function EmbedIntegration() {
     setConnected(false);
     setReadyInfo('');
   };
+
+  // OCR 评审修复（Medium）：离开页面必须销毁客户端——否则 SDK 的 window message
+  // 监听器/握手定时器/pending rpc 随导航泄漏
+
+  useEffect(() => () => clientRef.current?.destroy(), []);
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>

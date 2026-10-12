@@ -177,7 +177,8 @@ export function isEmbedFrame(value: unknown): value is EmbedFrame {
 export function parseEmbedFrame(data: unknown): EmbedFrame | null {
   if (typeof data === 'string') {
     try {
-      return isEmbedFrame(JSON.parse(data)) ? (JSON.parse(data) as EmbedFrame) : null;
+      const parsed: unknown = JSON.parse(data);
+      return isEmbedFrame(parsed) ? (parsed as EmbedFrame) : null;
     } catch {
       return null;
     }

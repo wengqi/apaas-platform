@@ -12,6 +12,8 @@ export interface AppSummary {
   description?: string;
   icon?: string;
   color?: string;
+  /** 应用分组（空=未分组） */
+  group?: string;
   status: string;
   version: number;
   stats: { objects: number; pages: number; processes: number };
@@ -26,6 +28,8 @@ export interface CreateAppRequest {
   description?: string;
   icon?: string;
   color?: string;
+  /** 应用分组（≤20 字符；可顺手新建） */
+  group?: string;
 }
 
 /**
@@ -36,9 +40,7 @@ export interface CreateAppRequest {
  */
 export const appsApi = {
   list: () =>
-    client
-      .get<ApiResponse<AppSummary[]>>('/api/apps')
-      .then((res) => res.data.data as AppSummary[]),
+    client.get<ApiResponse<AppSummary[]>>('/api/apps').then((res) => res.data.data as AppSummary[]),
   get: (appId: string) =>
     client
       .get<ApiResponse<AppSummary>>(`/api/apps/${appId}`)
@@ -55,6 +57,11 @@ export const appsApi = {
     client
       .delete<ApiResponse<{ deleted: boolean }>>(`/api/apps/${appId}`)
       .then((res) => res.data.data as { deleted: boolean }),
+  /** 分组管理：重命名（from→to）或删除分组（to 空 → 移入未分组）。 */
+  updateGroup: (from: string, to?: string) =>
+    client
+      .patch<ApiResponse<{ updated: number }>>('/api/apps/groups', { from, to })
+      .then((res) => res.data.data as { updated: number }),
   archive: (appId: string) =>
     client
       .post<ApiResponse<AppSummary>>(`/api/apps/${appId}/archive`)

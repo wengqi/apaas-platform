@@ -3,7 +3,7 @@ import { Spin } from 'antd';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import StudioLayout from './layouts/StudioLayout.js';
 import Login from './pages/Login.js';
-import AppList from './pages/AppList.js';
+import DevCenterHome from './pages/app-home/DevCenterHome.js';
 import AppDashboard from './pages/AppDashboard.js';
 import ObjectDesigner, { ObjectEmptyState } from './pages/ObjectDesigner.js';
 import ObjectDetail from './components/object/ObjectDetail.js';
@@ -131,7 +131,7 @@ export function AppRoutes() {
           path="/apps"
           element={
             <ProtectedRoute>
-              <AppList />
+              <DevCenterHome />
             </ProtectedRoute>
           }
         />

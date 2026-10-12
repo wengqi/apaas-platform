@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layout,
   Menu,
@@ -41,7 +41,7 @@ import {
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
-import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
+import { appTileBackground, LAYOUT, TOKENS as T } from '@apaas/shared/design';
 import { appsApi } from '../api/apps.js';
 import { reviewsApi } from '../api/reviews.js';
 import CheckPanel from '../components/publish/CheckPanel.js';
@@ -165,6 +165,21 @@ export default function StudioLayout() {
     );
   }, [location.pathname]);
 
+  // 素蓝（2026-10-13）：画布类页面（页面搭建器/流程编辑器）侧栏自动收起，
+  // 全宽让给画布；离开画布页恢复展开。用户手动收展仍自由。
+  const wasFullBleed = useRef(false);
+  useEffect(() => {
+    if (isFullBleed) {
+      if (!wasFullBleed.current) {
+        wasFullBleed.current = true;
+        setCollapsed(true);
+      }
+    } else if (wasFullBleed.current) {
+      wasFullBleed.current = false;
+      setCollapsed(false);
+    }
+  }, [isFullBleed]);
+
   const userMenuItems: MenuProps['items'] = [
     // 平台超管显示返回租户管理
     ...(user?.isPlatformAdmin
@@ -198,10 +213,9 @@ export default function StudioLayout() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          height: 56,
-          lineHeight: '56px',
+          height: LAYOUT.headerHeight,
+          lineHeight: `${LAYOUT.headerHeight}px`,
           borderBottom: `1px solid ${T.colorBorderSecondary}`,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
           position: 'sticky',
           top: 0,
           zIndex: 100,
@@ -228,7 +242,8 @@ export default function StudioLayout() {
                   borderRadius: 8,
                   background: appTileBackground(app?.color),
                   color: T.colorWhite,
-                  fontSize: 16,
+                  fontSize: 14,
+                  fontWeight: 600,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -236,7 +251,7 @@ export default function StudioLayout() {
                 }}
                 aria-hidden
               >
-                {app?.icon ?? '📦'}
+                {(app?.name || '应').slice(0, 1)}
               </div>
               <Text strong style={{ fontSize: 15 }}>
                 {app?.name ?? 'aPaaS Studio'}
@@ -278,11 +293,11 @@ export default function StudioLayout() {
       {/* 下部左右分栏：左侧菜单（宽度最小化）+ 右侧主内容 */}
       <Layout style={{ flex: 1, minHeight: 0 }}>
         <Sider
-          breakpoint="lg"
           collapsible
           collapsed={collapsed}
           onCollapse={setCollapsed}
-          width={150}
+          width={LAYOUT.siderWidth}
+          collapsedWidth={LAYOUT.siderCollapsedWidth}
           theme="light"
           trigger={null}
           style={{

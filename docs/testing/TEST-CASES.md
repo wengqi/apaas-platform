@@ -241,6 +241,19 @@
 | TC-147 | AI 链 MCP 草稿→人审→发布全链 | P1 | 本地服务全启+MCP 工具面可达 | ① MCP 单波提交（对象+页面+流程+数据集+权限，含 @ref 令牌）② 审核中心批次一键批准（拓扑序）③ 发布 ④ runtime 使用 | G3 校验通过；拓扑序落地；发布后 runtime 渲染可用；驳回意见可回传 agent（list_review_submissions） | 未自动化 | 需 MCP 工具面；QA 会话无工具面时标「不可测-外部依赖」 |
 | TC-148 | 审核中心 PENDING 深度（批次/漂移） | P1 | TC-147 已产生 PENDING 草稿 | ① 批次一键批准 ② 造漂移后批准（预期 409+强制批准确认）③ 驳回一条看意见回传 | 批次拓扑序批准落地；漂移 409 保护生效；驳回意见经 list_review_submissions 回传 | 未自动化 | 治理语义=仅 AI 提交需人审；e2e/17 已覆盖主链，人工深度抽查仍需 AI 通道 |
 
+### M. 运行时门户与视觉统一轮（TC-160~164，2026-10-12）
+
+> 来源：impeccable critique 评审（21/40）修复轮。P0=业务门户信息架构错位与通知不可行动；
+> P1=双表面视觉世界分裂（@apaas/shared/design token 层）；P2=引导缺口。改动未提交前与代码同在工作区。
+
+| 编号 | 名称 | 优先级 | 前置 | 步骤 | 预期 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-160 | 运行时门户过滤内部应用（isInternal） | P0 | 存在 apiName 前缀 e2e_/qa_ 或名称含 E2E/测试/夹具/UI 路径的应用（seed 第 11 步自动标记） | ① pnpm db:seed 后查 applications.is_internal ② 业务用户（user@apaas.dev）登录 runtime 看 /home | ① 夹具应用 isInternal=true（首轮 14 个）② 首页仅见业务应用（首轮 16→8），E2E/QA/夹具全部不可见；studio /apps 不受影响（全量） | 未自动化 | gateway listVisibleForUser where 增 isInternal:false；新建应用默认业务可见；AI 生成应用不受影响 |
+| TC-161 | 通知深链跳转与筛选控件 | P0 | 存在 link 非空的站内信（新流程审批定论后自动产生；存量消息 link=null 仅标已读） | ① 点铃铛看筛选控件 ② 点击带 link 的消息 | ① 筛选为 Segmented「未读 (n)/全部」（非两个互斥主按钮）② 消息标已读+弹层关闭+跳转 link（/app/:id 或 /tasks）；无 link 消息仅标已读 | 未自动化 | 深链写入点=引擎默认通知/抄送通知/notification 节点 IN_APP 三处；实测截图 beautify-runtime-notification-deeplink.png |
+| TC-162 | 单页应用直落与空态动作 | P2 | ① 某 PUBLISHED 应用仅 1 个已发布页面 ② 业务用户 0 待办 | ① runtime 打开该应用 /app/:id ② 打开 /tasks | ① 不经门户页直接落到该页面（多页应用保留门户）② 空态带「去我的应用发起申请」按钮可跳 /home；「暂无可用应用」空态带刷新 | 未自动化 | hooks 须在早退前（rules-of-hooks）；页型标签为业务词（custom→工作页） |
+| TC-163 | studio 侧栏分组与继续搭建 | P2 | 进入任一应用工作台 | ① 看侧栏菜单结构 ② 看 dashboard「继续搭建」区 ③ 点最近页面卡 | ① 三组：搭建（工作台/对象/页面/数据集/流程/通知模板）、治理（审核中心/权限/环境管理）、扩展与运维（连接器/云函数/API 密钥/嵌入集成/审计日志）② 按更新时间倒序最多 3 张最近页面卡 ③ 点击直达该页搭建器 | 未自动化 | 快捷入口命名与落点一致（对象建模/页面搭建/流程编排，进列表页） |
+| TC-164 | 双表面视觉统一（token 层） | P2 | 两端均可登录 | ① 并排对比 studio 与 runtime 登录页 ② 对比两端应用图标 ③ 对比 runtime 头部与 studio 头部 | ① 同一浅色渐变背景+同一闪电 Logo 瓷片（studio 无紫渐变）② 同一渐变瓷片语言（runtime 非裸 emoji）③ runtime 头部为浅色（无 #001529 深顶栏），几何与 studio 一致 | 未自动化 | SSOT=@apaas/shared/design（BRAND/LAYOUT/LOGIN_BG/appTile*/APP_STATUS_META/TRACE_STATUS_META/RUNTIME_PAGE_TYPE_META）；改视觉先改 token 禁止双端本地复制 |
+
 ---
 
 ## 变更记录
@@ -259,3 +272,4 @@
 | 2026-10-12 | v1.5 | iframe 嵌入专项：新增 TC-156「干净页面与 hello-first 握手」/TC-157「协议双向消息」/TC-158「page-event 与 auth-expired」三条（embed 域）；G3 白名单新增 embedEvent 动作已随 TC-158 锚定 | feat/embed-iframe-integration（宿主系统集成第一轮，用户三裁决：去页签导航/只桥 dispatchEvent 自定义事件/JWT 直传） |
 | 2026-10-12 | v1.5.1 | 方案一转正：TC-156/157 载体从 /embed-demo（退役）改指 studio「嵌入集成」控制台（/app/:appId/embed）；TC-157 补跨域双场景结论（跨端口预览即真实跨域） | 用户裁决方案一（控制台迁 studio，模拟器退役） |
 | 2026-10-12 | v1.5.2 | SDK 交付专项：新增 TC-159「嵌入 SDK 产物与控制台获取/双形态片段」（IIFE/ESM 下载、平台直链、npm/script 片段切换） | 第三方对接断链补全（用户确认双格式都要） |
+| 2026-10-12 | v1.6 | 运行时门户与视觉统一轮：新增 TC-160 内部应用过滤（isInternal）/TC-161 通知深链+Segmented/TC-162 单页直落+空态动作/TC-163 侧栏分组+继续搭建/TC-164 双表面视觉统一（@apaas/shared/design token 层） | impeccable critique 评审修复轮（用户裁决：先修 P0 再美化、AntD 原味、全部问题） |

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -10,12 +11,12 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApplicationService } from './application.service.js';
 import { ChangeLogService } from './changelog.service.js';
-import { CreateAppDto, UpdateAppDto, PublishAppDto } from './dto/app.dto.js';
+import { CreateAppDto, UpdateAppGroupDto, UpdateAppDto, PublishAppDto } from './dto/app.dto.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
@@ -55,6 +56,16 @@ export class ApplicationController {
   async get(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const app = await this.appService.get(requireTenantId(req), appId);
     return { ok: true as const, data: app };
+  }
+
+  @Patch('groups')
+  @ApiOperation({ summary: '分组管理：重命名（from→to）或删除分组（to 空 → 移入未分组）' })
+  async updateGroup(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateAppGroupDto,
+  ): Promise<{ ok: true; data: { updated: number } }> {
+    const data = await this.appService.updateGroup(requireTenantId(req), body.from, body.to);
+    return { ok: true as const, data };
   }
 
   @Post()

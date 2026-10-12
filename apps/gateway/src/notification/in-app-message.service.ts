@@ -11,6 +11,8 @@ import { prisma } from '@apaas/db';
 export class InAppMessageService {
   /**
    * 创建站内消息（支持批量收件人）。
+   * link（2026-10-12 评审 P0）：可选深链（如 /app/:id、/tasks），运行时通知中心
+   * 点击跳转——修复"驳回消息只能标已读不能行动"。
    */
   async create(params: {
     tenantId: string;
@@ -18,6 +20,7 @@ export class InAppMessageService {
     userIds: string[];
     title: string;
     body: string;
+    link?: string;
   }): Promise<number> {
     if (params.userIds.length === 0) return 0;
 
@@ -28,6 +31,7 @@ export class InAppMessageService {
         userId,
         title: params.title,
         body: params.body,
+        link: params.link ?? null,
       })),
     });
 
@@ -65,6 +69,7 @@ export class InAppMessageService {
         id: m.id,
         title: m.title,
         body: m.body,
+        link: m.link,
         read: m.read,
         createdAt: m.createdAt.toISOString(),
         readAt: m.readAt?.toISOString() ?? null,

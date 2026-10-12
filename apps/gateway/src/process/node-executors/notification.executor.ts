@@ -112,6 +112,8 @@ export class NotificationExecutor implements NodeExecutor {
             userIds: recipients,
             title,
             body,
+            // 深链（评审 P0）：收件人点击直达所属应用
+            link: `/app/${ctx.appId}`,
           });
           success = created > 0;
           break;

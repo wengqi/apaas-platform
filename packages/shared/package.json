@@ -70,6 +70,11 @@
       "types": "./dist/embed/index.d.ts",
       "import": "./dist/embed/index.js",
       "require": "./dist/embed/index.js"
+    },
+    "./design": {
+      "types": "./dist/design/index.d.ts",
+      "import": "./dist/design/index.js",
+      "require": "./dist/design/index.js"
     }
   },
   "scripts": {

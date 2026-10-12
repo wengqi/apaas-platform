@@ -253,6 +253,11 @@
 | TC-162 | 单页应用直落与空态动作 | P2 | ① 某 PUBLISHED 应用仅 1 个已发布页面 ② 业务用户 0 待办 | ① runtime 打开该应用 /app/:id ② 打开 /tasks | ① 不经门户页直接落到该页面（多页应用保留门户）② 空态带「去我的应用发起申请」按钮可跳 /home；「暂无可用应用」空态带刷新 | 未自动化 | hooks 须在早退前（rules-of-hooks）；页型标签为业务词（custom→工作页） |
 | TC-163 | studio 侧栏分组与继续搭建 | P2 | 进入任一应用工作台 | ① 看侧栏菜单结构 ② 看 dashboard「继续搭建」区 ③ 点最近页面卡 | ① 三组：搭建（工作台/对象/页面/数据集/流程/通知模板）、治理（审核中心/权限/环境管理）、扩展与运维（连接器/云函数/API 密钥/嵌入集成/审计日志）② 按更新时间倒序最多 3 张最近页面卡 ③ 点击直达该页搭建器 | 未自动化 | 快捷入口命名与落点一致（对象建模/页面搭建/流程编排，进列表页） |
 | TC-164 | 双表面视觉统一（token 层） | P2 | 两端均可登录 | ① 并排对比 studio 与 runtime 登录页 ② 对比两端应用图标 ③ 对比 runtime 头部与 studio 头部 | ① 同一浅色渐变背景+同一闪电 Logo 瓷片（studio 无紫渐变）② 同一渐变瓷片语言（runtime 非裸 emoji）③ runtime 头部为浅色（无 #001529 深顶栏），几何与 studio 一致 | 未自动化 | SSOT=@apaas/shared/design（BRAND/LAYOUT/LOGIN_BG/appTile*/APP_STATUS_META/TRACE_STATUS_META/RUNTIME_PAGE_TYPE_META）；改视觉先改 token 禁止双端本地复制 |
+| TC-165 | 应用分组归类与管理 | P1 | builder 登录开发中心（/apps） | ① 看分组分节与右轨计数 ② ⋯菜单「移动到分组」输入新组名 ③ 「管理分组」抽屉重命名/删空组 | ① 应用按 group 分节（名称字典序，未分组恒最后）+ 右轨计数右对齐 ② 移动后卡片落新组、输入新名即建组 ③ 重命名后所有应用随迁；删除仅空组可用，删组应用移入未分组；组序暂按字典序（拖拽排序需独立排序存储，登记后续） | 未自动化 | API：PATCH /api/apps/groups（from/to≤20）；DB applications.group（迁移 20261012165231）；seed 11.5 幂等回填 |
+| TC-166 | 开发中心首页信息架构（素蓝 v8） | P1 | builder 或 admin 登录 /apps | ① 看问候/搜索/待办条/指标行/应用库工具行 ② 点定位轨分组 ③ 搜索关键词 ④ admin 看「最近动态」 | ① 待办条仅有待审时出现并列真实提交（GET /apps/reviews/pending-summary）② 指标行=应用/在途实例/今日办结/超时/待审（processes/analytics 全租户）③ 点轨组锚点定位+滚动跟随 ④ 搜索按名称+描述过滤并收拢分组 ⑤ 动态区仅管理员可见（TenantAdminGuard，builder 隐藏不发 403 请求） | 未自动化 | 展示件拆于 pages/app-home/（home-bits/useAppCrud/GroupLocatorRail/GroupsDrawer/GroupSelect）；AppList.tsx 已删 |
+| TC-167 | runtime 门户分组只读与版本维护者卡片 | P1 | 业务用户（user@apaas.dev）登录 runtime /home | ① 看分组分节与右轨 ② 看卡片元数据行 ③ 看审批待办条与指标行 | ① 分组只读（无管理入口）、空组不显示、分组<2 隐藏右轨 ② 卡片=横排头（蓝瓷片+名称）+业务描述+「v版本 · 维护者 · 进入」（维护者=GET /apps?runtime=1 ownerName）③ 待办条列真实 PENDING 任务并直达任务中心；指标=待我审批/本月已办结 | 未自动化 | 卡片无状态标签/无对象页面流程计数；AppView 头部同步去版本与工程计数 |
+| TC-168 | 登录页素蓝融合版（分屏） | P2 | 访问 /login（studio 与 runtime 各一） | ① 看分屏结构与品牌栏 ② 表单校验与登录 ③ 窄屏（<960px） | ① 左 46% 淡蓝灰品牌栏（方孔a+主张+能力点+天光水印）右白表单 ② studio 租户可留空（超管直达租户管理）、runtime 租户必填且无 SSO 按钮（网关无 CAS 端点，不做死按钮）③ 窄屏隐藏品牌栏保表单 | 未自动化 | 品牌位=brandLogoMarkSvg（方孔a，E 案）；SSOT 常量 LOGIN_PANEL_*/brandLogoMonoSvg |
+| TC-169 | 素蓝主题一致性（AntD theme + 守卫） | P1 | 任意页面 | ① 检查主按钮/链接/聚焦环颜色 ② 看应用瓷片形态 ③ 跑 scripts/check-design-tokens.sh | ① 全站唯一蓝 #2563EB（ConfigProvider theme=ANT_D_THEME 派生自 shared TOKENS）② 瓷片=实底素蓝+名称首字（无 emoji/无逐应用色/无投影）③ 前端 src 零 hex 字面量 | 未自动化 | 违反最常见处=新增组件里手写 hex；豁免须 // design-token-allow + 理由 |
 
 ---
 
@@ -263,6 +268,7 @@
 | 2026-10-07 | v1.0 | 建立：148 条基线自 QA-FULL-REPORT-2026-10-06 §九/§10.10 逐条提炼；前置/步骤/预期按报告原文+QA-TEST-PLAN-PROMPT 底册与矩阵标准化展开；补入已修复缺陷的修复后语义（D-001/002/004/005/006/007/009/010/012/014/015）与已验证文案（§10.1/10.2/10.5 实测）；优先级按维护规约第 5 条规则标注 | 用户指令（用例库建设） |
 | 2026-10-07 | v1.1 | 字段绑定专项：分组 F 追加 TC-149（对象字段绑定下拉面板）/TC-150（保存错配告警）两条用例 | feat/field-binding-picker 功能轮 |
 | 2026-10-07 | v1.2 | 字段绑定专项 v2：TC-149 改写为原生感叹号选择器（分组+搜索+确认联动）；TC-150 保存错配告警升级为逐 form 按所属对象比对（多表） | feat/field-binding-picker |
+| 2026-10-13 | v1.3 | 素蓝设计轮：追加 TC-165 应用分组与管理 / TC-166 开发中心首页 IA / TC-167 runtime 门户分组与卡片 / TC-168 登录融合版 / TC-169 素蓝主题一致性；TC-164 语义更新指针（视觉世界已被素蓝替代，token SSOT 不变） | impeccable 素蓝设计轮（用户定稿） |
 | 2026-10-07 | v1.3 | 类型兼容专项：TC-149 补选择器软过滤断言；TC-150 升级两类告警（unknown_field/type_mismatch） | feat/field-binding-picker |
 | 2026-10-07 | v1.3.1 | 缺陷修复：绑定确认后立刻再开选择器弹窗为空（官方渲染包装卸载清 scope 的真空窗口+官方钩子 MST 死节点异常）——manager.getAvailableContextFields 包装兜底（store.activeId 活节点锚点） | feat/field-binding-picker 用户复现轮 |
 | 2026-10-07 | v1.3.2 | 页面搭建器顶栏补撤销/重做按钮（接 amis-editor 内置 schemaHistory，事件驱动禁用态）；TC-076 更新为六功能 | 用户需求（撤销重做入口） |

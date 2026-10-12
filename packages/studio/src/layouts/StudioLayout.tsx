@@ -41,6 +41,7 @@ import {
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
+import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import { appsApi } from '../api/apps.js';
 import { reviewsApi } from '../api/reviews.js';
 import CheckPanel from '../components/publish/CheckPanel.js';
@@ -80,38 +81,60 @@ export default function StudioLayout() {
   });
   const pendingCount = pendingReviews?.length ?? 0;
 
-  /** 应用内导航菜单项(链接含 appId)。 */
+  /**
+   * 应用内导航菜单项(链接含 appId)。
+   * 分组（评审 P1：14 项平铺无分组是认知负荷超载主因）——
+   * 搭建（高频）/ 治理（流程与安全）/ 扩展与运维（低频集成与审计）。
+   */
   const menuItems: MenuProps['items'] = useMemo(
     () => [
-      { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
-      { key: 'objects', icon: <DatabaseOutlined />, label: '对象' },
-      { key: 'pages', icon: <LayoutOutlined />, label: '页面' },
-      { key: 'datasets', icon: <FundProjectionScreenOutlined />, label: '数据集' },
-      { key: 'processes', icon: <ApartmentOutlined />, label: '流程' },
-      { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
       {
-        key: 'reviews',
-        icon: <FileDoneOutlined />,
-        // 用户实测（2026-10-03）：label 不能包在 Badge 里——span.ant-badge 不继承
-        // 暗色菜单字体色（该项显纯白，其他项 rgba(255,255,255,0.65)）。改为
-        // 纯文本 + 有待审时旁挂独立计数徽标（无子元素 Badge 不影响文字色）。
-        label:
-          pendingCount > 0 ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              审核中心
-              <Badge count={pendingCount} size="small" />
-            </span>
-          ) : (
-            '审核中心'
-          ),
+        type: 'group',
+        label: '搭建',
+        children: [
+          { key: 'dashboard', icon: <DashboardOutlined />, label: '工作台' },
+          { key: 'objects', icon: <DatabaseOutlined />, label: '对象' },
+          { key: 'pages', icon: <LayoutOutlined />, label: '页面' },
+          { key: 'datasets', icon: <FundProjectionScreenOutlined />, label: '数据集' },
+          { key: 'processes', icon: <ApartmentOutlined />, label: '流程' },
+          { key: 'processes/notifications', icon: <BellOutlined />, label: '通知模板' },
+        ],
       },
-      { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
-      { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },
-      { key: 'cloud-functions', icon: <CloudOutlined />, label: '云函数' },
-      { key: 'environments', icon: <CloudServerOutlined />, label: '环境管理' },
-      { key: 'api-keys', icon: <KeyOutlined />, label: 'API 密钥' },
-      { key: 'embed', icon: <CodeOutlined />, label: '嵌入集成' },
-      { key: 'audit-logs', icon: <FileSearchOutlined />, label: '审计日志' },
+      {
+        type: 'group',
+        label: '治理',
+        children: [
+          {
+            key: 'reviews',
+            icon: <FileDoneOutlined />,
+            // 用户实测（2026-10-03）：label 不能包在 Badge 里——span.ant-badge 不继承
+            // 暗色菜单字体色（该项显纯白，其他项 rgba(255,255,255,0.65)）。改为
+            // 纯文本 + 有待审时旁挂独立计数徽标（无子元素 Badge 不影响文字色）。
+            label:
+              pendingCount > 0 ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  审核中心
+                  <Badge count={pendingCount} size="small" />
+                </span>
+              ) : (
+                '审核中心'
+              ),
+          },
+          { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
+          { key: 'environments', icon: <CloudServerOutlined />, label: '环境管理' },
+        ],
+      },
+      {
+        type: 'group',
+        label: '扩展与运维',
+        children: [
+          { key: 'connectors', icon: <ApiOutlined />, label: '连接器' },
+          { key: 'cloud-functions', icon: <CloudOutlined />, label: '云函数' },
+          { key: 'api-keys', icon: <KeyOutlined />, label: 'API 密钥' },
+          { key: 'embed', icon: <CodeOutlined />, label: '嵌入集成' },
+          { key: 'audit-logs', icon: <FileSearchOutlined />, label: '审计日志' },
+        ],
+      },
     ],
     [pendingCount],
   );
@@ -177,7 +200,7 @@ export default function StudioLayout() {
           alignItems: 'center',
           height: 56,
           lineHeight: '56px',
-          borderBottom: '1px solid #eef0f4',
+          borderBottom: `1px solid ${T.colorBorderSecondary}`,
           boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
           position: 'sticky',
           top: 0,
@@ -193,9 +216,9 @@ export default function StudioLayout() {
               title={false}
             />
           ) : (
-            <Space
-              size={8}
-              style={{ cursor: 'pointer' }}
+            <button
+              type="button"
+              className="studio-header-app-btn"
               onClick={() => navigate(`/app/${appId}/dashboard`)}
             >
               <div
@@ -203,23 +226,24 @@ export default function StudioLayout() {
                   width: 30,
                   height: 30,
                   borderRadius: 8,
-                  background: `linear-gradient(135deg, ${app?.color ?? '#1677ff'}, ${app?.color ?? '#1677ff'}dd)`,
-                  color: '#fff',
+                  background: appTileBackground(app?.color),
+                  color: T.colorWhite,
                   fontSize: 16,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
+                aria-hidden
               >
                 {app?.icon ?? '📦'}
               </div>
               <Text strong style={{ fontSize: 15 }}>
                 {app?.name ?? 'aPaaS Studio'}
               </Text>
-            </Space>
+            </button>
           )}
-          <div style={{ width: 1, height: 22, background: '#e5e7eb' }} />
+          <div style={{ width: 1, height: 22, background: T.colorBorderSecondary }} />
           <Button
             type="text"
             icon={<ArrowLeftOutlined />}
@@ -244,10 +268,10 @@ export default function StudioLayout() {
             发布
           </Button>
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
+            <button type="button" className="studio-header-user-btn">
               <Avatar size="small" icon={<UserOutlined />} src={user?.avatar ?? undefined} />
               <Text style={{ fontSize: 14 }}>{user?.name ?? user?.email ?? '未登录'}</Text>
-            </Space>
+            </button>
           </Dropdown>
         </Space>
       </Header>
@@ -266,11 +290,12 @@ export default function StudioLayout() {
             flexDirection: 'column',
             overflow: 'hidden',
             // 浅色主题（QA 2026-10-06：与右侧主内容区协调，弃深色侧栏）
-            background: '#f7f9fc',
-            borderRight: '1px solid #ebedf0',
+            background: T.colorBgSider,
+            borderRight: `1px solid ${T.colorBorderSecondary}`,
           }}
         >
           <Menu
+            id="studio-sider-menu"
             theme="light"
             mode="inline"
             selectedKeys={[selectedKey]}
@@ -285,18 +310,23 @@ export default function StudioLayout() {
             }}
           />
           {/* 自绘折叠控制（QA 2026-10-06：替换默认 48px 白条 trigger——
-              贴靠页面底部固定（菜单滚动时按钮始终在底部可见），轻投影保持悬浮感） */}
+              贴靠页面底部固定（菜单滚动时按钮始终在底部可见），轻投影保持悬浮感。
+              a11y（2026-10-12 审计）：aria-expanded/aria-controls + hover/focus 态
+              走 CSS（.studio-sider-collapse-btn），替换原 onMouseEnter/Leave 内联 JS */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'center',
               padding: '10px 12px 8px',
-              borderTop: '1px solid #ebedf0',
+              borderTop: `1px solid ${T.colorBorderSecondary}`,
             }}
           >
             <button
               type="button"
+              className="studio-sider-collapse-btn"
               onClick={() => setCollapsed(!collapsed)}
+              aria-expanded={!collapsed}
+              aria-controls="studio-sider-menu"
               title={collapsed ? '展开菜单' : '收起菜单'}
               style={{
                 display: 'flex',
@@ -305,24 +335,14 @@ export default function StudioLayout() {
                 gap: 8,
                 width: collapsed ? 32 : 110,
                 height: 28,
-                border: '1px solid #e5e7eb',
+                border: `1px solid ${T.colorBorderSecondary}`,
                 borderRadius: 14,
-                background: '#fff',
+                background: T.colorWhite,
                 color: 'rgba(0,0,0,0.65)',
                 fontSize: 12,
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                 transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#e6f4ff';
-                e.currentTarget.style.borderColor = '#91caff';
-                e.currentTarget.style.color = '#1677ff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#fff';
-                e.currentTarget.style.borderColor = '#e5e7eb';
-                e.currentTarget.style.color = 'rgba(0,0,0,0.65)';
               }}
             >
               {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -334,7 +354,7 @@ export default function StudioLayout() {
           style={{
             margin: 0,
             padding: isFullBleed ? 0 : 24,
-            background: '#f5f7fa',
+            background: T.colorBgLayout,
             minHeight: 'calc(100vh - 56px)',
           }}
         >

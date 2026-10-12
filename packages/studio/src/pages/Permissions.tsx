@@ -8,6 +8,7 @@
  * 本页面仅保留角色管理 + 权限规则（应用级权限配置）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Card, Typography } from 'antd';
 import { SafetyOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
@@ -19,7 +20,12 @@ export default function Permissions() {
   const { appId } = useParams<{ appId: string }>();
   return (
     <div
-      style={{ height: 'calc(100vh - 56px)', overflow: 'auto', background: '#f5f7fa', padding: 24 }}
+      style={{
+        height: 'calc(100vh - 56px)',
+        overflow: 'auto',
+        background: T.colorBgLayout,
+        padding: 24,
+      }}
     >
       <Card style={{ marginBottom: 16 }}>
         <Title level={4}>

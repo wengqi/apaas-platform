@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { Typography } from 'antd';
 import { DatabaseOutlined } from '@ant-design/icons';
 import { Outlet, useParams } from 'react-router-dom';
@@ -29,8 +30,8 @@ export default function ObjectDesigner() {
         style={{
           flex: 1,
           minWidth: 0,
-          background: '#fff',
-          border: '1px solid #eef0f4',
+          background: T.colorWhite,
+          border: `1px solid ${T.colorBorderSecondary}`,
           borderRadius: 12,
           padding: 24,
           overflow: 'auto',
@@ -61,13 +62,13 @@ export function ObjectEmptyState() {
           width: 112,
           height: 112,
           borderRadius: 28,
-          background: '#e6f4ff',
+          background: T.colorPrimaryBg,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <DatabaseOutlined style={{ fontSize: 64, color: '#1677ff' }} />
+        <DatabaseOutlined style={{ fontSize: 64, color: T.colorPrimary }} />
       </div>
       <Typography.Title level={4} style={{ margin: 0 }}>
         选择一个对象开始

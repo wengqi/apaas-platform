@@ -4,6 +4,7 @@
  * 实例详情：节点执行状态。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Badge, Descriptions, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import type { ProcessInstanceReport } from '../../../api/processes.js';
@@ -62,7 +63,7 @@ export default function InstanceDetail({
                 border: `1px solid ${meta.color}`,
                 borderLeft: `4px solid ${meta.color}`,
                 borderRadius: 6,
-                background: exec.state === 'PENDING' ? '#fafbfc' : '#fff',
+                background: exec.state === 'PENDING' ? T.colorFillQuaternary : T.colorWhite,
               }}
             >
               <Badge status={meta.badgeStatus} />

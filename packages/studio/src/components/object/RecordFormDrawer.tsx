@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect } from 'react';
 import {
   Button,
@@ -164,9 +165,9 @@ function FieldFormItem({ field }: { field: Field }) {
 
   const label = (
     <Space size={6}>
-      <Icon style={{ fontSize: 14, color: '#1677ff' }} />
+      <Icon style={{ fontSize: 14, color: T.colorPrimary }} />
       <span>{field.label}</span>
-      {field.required && <span style={{ color: '#ff4d4f' }}>*</span>}
+      {field.required && <span style={{ color: T.colorError }}>*</span>}
       {readonly && (
         <Text type="secondary" style={{ fontSize: 11, fontWeight: 'normal' }}>
           (系统自动)

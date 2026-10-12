@@ -12,6 +12,7 @@
  *   开启时显示文本框：placeholder="输入筛选条件逻辑关系，例如「1 and (2 or 3)」"
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState, useEffect } from 'react';
 import { Input, Switch, Typography } from 'antd';
 import { validateCustomLogic, generateDefaultLogic } from './custom-logic-parser.js';
@@ -70,9 +71,9 @@ export default function CustomFilterLogic({
       style={{
         marginTop: 8,
         padding: '8px 10px',
-        background: '#fafbfc',
+        background: T.colorFillQuaternary,
         borderRadius: 6,
-        border: '1px solid #eef0f4',
+        border: `1px solid ${T.colorBorderSecondary}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

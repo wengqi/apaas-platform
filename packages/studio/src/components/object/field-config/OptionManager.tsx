@@ -4,20 +4,21 @@
  * 支持颜色、选项名称、存储值（value，可空回退 label）、默认项与排序增删。
  */
 
+import { TOKENS as T, PRESET as P } from '@apaas/shared/design';
 import { Button, Checkbox, ColorPicker, Form, Input, Tooltip } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { SelectOption } from '../../../api/objects.js';
 import { genId } from './utils.js';
 
 const PRESET_COLORS = [
-  '#1677ff',
-  '#52c41a',
-  '#fa8c16',
-  '#ff4d4f',
-  '#722ed1',
-  '#13c2c2',
-  '#eb2f96',
-  '#faad14',
+  T.colorPrimary,
+  T.colorSuccess,
+  T.colorWarning,
+  T.colorError,
+  `${P.purple6}`,
+  `${P.cyan6}`,
+  `${P.magenta6}`,
+  T.colorGold,
 ];
 
 export default function OptionManager({
@@ -75,7 +76,7 @@ export default function OptionManager({
               alignItems: 'center',
               gap: 8,
               padding: '6px 8px',
-              background: '#fafbfc',
+              background: T.colorFillQuaternary,
               borderRadius: 8,
             }}
           >

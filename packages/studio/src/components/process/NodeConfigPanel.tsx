@@ -5,6 +5,7 @@
  * 通用项:节点标题;类型专属项:按 type 渲染对应配置表单。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo } from 'react';
 import { Button, Divider, Empty, Popconfirm, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
@@ -132,7 +133,7 @@ export default function NodeConfigPanel({
         <div
           style={{
             padding: '4px 16px 8px',
-            borderTop: '1px solid #f0f2f5',
+            borderTop: `1px solid ${T.colorSplit}`,
             display: 'flex',
             justifyContent: 'flex-end',
           }}

@@ -7,6 +7,7 @@
  * - NodeConfigPanel 渲染
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useCallback, useMemo } from 'react';
 import { useClientContext } from '@flowgram.ai/fixed-layout-editor';
 import { Button, Typography } from 'antd';
@@ -330,8 +331,8 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
         right: 0,
         bottom: 0,
         width: 480,
-        background: '#fff',
-        borderLeft: '1px solid #eef0f4',
+        background: T.colorWhite,
+        borderLeft: `1px solid ${T.colorBorderSecondary}`,
         boxShadow: '-4px 0 12px rgba(0,0,0,0.06)',
         zIndex: 1000,
         display: 'flex',
@@ -342,7 +343,7 @@ export function ConfigSidebar({ readonly }: { readonly: boolean }) {
       <div
         style={{
           padding: '12px 16px',
-          borderBottom: '1px solid #eef0f4',
+          borderBottom: `1px solid ${T.colorBorderSecondary}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',

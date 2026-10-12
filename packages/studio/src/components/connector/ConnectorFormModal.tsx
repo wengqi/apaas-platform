@@ -6,6 +6,7 @@
  * Webhook 类型创建后自动生成入站 token。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useState } from 'react';
 import { Modal, Form, Input, Select, Space, Typography, message, Divider, Button } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -249,7 +250,14 @@ export default function ConnectorFormModal({
         )}
 
         {editingConnector?.webhookToken && (
-          <div style={{ background: '#f6f8fa', padding: 12, borderRadius: 8, marginTop: 8 }}>
+          <div
+            style={{
+              background: T.colorFillQuaternary,
+              padding: 12,
+              borderRadius: 8,
+              marginTop: 8,
+            }}
+          >
             <Text type="secondary" style={{ fontSize: 12 }}>
               Webhook URL：
             </Text>

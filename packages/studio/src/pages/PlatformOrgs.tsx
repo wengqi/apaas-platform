@@ -2,6 +2,7 @@
  * 平台级 — 组织架构管理（租户级，不属于某个应用）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Card, Typography, Button, Space } from 'antd';
 import { ApartmentOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -12,13 +13,13 @@ const { Title, Paragraph } = Typography;
 export default function PlatformOrgs() {
   const navigate = useNavigate();
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       {/* 顶部导航栏 */}
       <div
         style={{
           height: 56,
-          background: '#fff',
-          borderBottom: '1px solid #eef0f4',
+          background: T.colorWhite,
+          borderBottom: `1px solid ${T.colorBorderSecondary}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',

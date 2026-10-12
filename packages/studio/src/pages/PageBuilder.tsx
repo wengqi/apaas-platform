@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Drawer, Input, Modal, Space, Tooltip, Typography, message } from 'antd';
 import {
@@ -330,7 +331,7 @@ export default function PageBuilder() {
         height: 'calc(100vh - 56px)',
         display: 'flex',
         flexDirection: 'column',
-        background: '#eff1f3',
+        background: T.colorFillTertiary,
       }}
     >
       {/* 顶栏 */}
@@ -340,8 +341,8 @@ export default function PageBuilder() {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '6px 16px',
-          background: '#fff',
-          borderBottom: '1px solid #e5e7eb',
+          background: T.colorWhite,
+          borderBottom: `1px solid ${T.colorBorderSecondary}`,
         }}
       >
         <Space size={8}>
@@ -414,7 +415,13 @@ export default function PageBuilder() {
             代码
           </Button>
           {runtimePreviewUrl && (
-            <Button size="small" type="link" href={runtimePreviewUrl} target="_blank">
+            <Button
+              size="small"
+              type="link"
+              href={runtimePreviewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               runtime 预览 ↗
             </Button>
           )}

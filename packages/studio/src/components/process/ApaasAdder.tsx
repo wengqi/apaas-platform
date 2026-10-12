@@ -4,6 +4,7 @@
  * 从 SimplifiedEditor.tsx 提取。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { useClientContext } from '@flowgram.ai/fixed-layout-editor';
 import { Popover, Typography } from 'antd';
@@ -78,8 +79,8 @@ export function ApaasAdder(props: {
                     gap: 2,
                     padding: '6px 2px',
                     borderRadius: 6,
-                    border: '1px solid #eef0f4',
-                    background: '#fff',
+                    border: `1px solid ${T.colorBorderSecondary}`,
+                    background: T.colorWhite,
                     cursor: 'pointer',
                   }}
                 >
@@ -89,7 +90,7 @@ export function ApaasAdder(props: {
                       height: 20,
                       borderRadius: 4,
                       background: `linear-gradient(135deg, ${meta.color}, ${meta.color}dd)`,
-                      color: '#fff',
+                      color: T.colorWhite,
                       fontSize: 11,
                       display: 'flex',
                       alignItems: 'center',
@@ -124,8 +125,8 @@ export function ApaasAdder(props: {
           width: 20,
           height: 20,
           borderRadius: '50%',
-          background: '#fff',
-          border: '2px solid #1677ff',
+          background: T.colorWhite,
+          border: `2px solid ${T.colorPrimary}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -135,7 +136,7 @@ export function ApaasAdder(props: {
           opacity: props.hoverActivated || popoverOpen ? 1 : 0.45,
         }}
       >
-        <PlusOutlined style={{ fontSize: 10, color: '#1677ff' }} />
+        <PlusOutlined style={{ fontSize: 10, color: T.colorPrimary }} />
       </div>
     </Popover>
   );

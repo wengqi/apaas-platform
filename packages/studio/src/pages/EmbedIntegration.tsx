@@ -9,6 +9,7 @@
  * 同域部署天然放行）；握手超时时按配置清单排查。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -223,7 +224,7 @@ export default function EmbedIntegration() {
                 </Space>
                 <pre
                   style={{
-                    background: '#f6f8fa',
+                    background: T.colorFillQuaternary,
                     padding: 12,
                     borderRadius: 6,
                     fontSize: 12,
@@ -367,7 +368,7 @@ export default function EmbedIntegration() {
             ref={boxRef}
             style={{
               minHeight: 360,
-              border: '2px dashed #d9d9d9',
+              border: `2px dashed ${T.colorBorder}`,
               borderRadius: 8,
               marginBottom: 12,
             }}

@@ -2,6 +2,7 @@
  * 字段表格 — 拖拽排序行组件与手柄（从 FieldTable.tsx 拆分，AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { createContext, useContext } from 'react';
 import { Button } from 'antd';
 import { HolderOutlined } from '@ant-design/icons';
@@ -33,7 +34,7 @@ export function SortableRow(
     transform: CSS.Transform.toString(transform),
     transition,
     cursor: 'move',
-    ...(isDragging ? { position: 'relative', zIndex: 10, background: '#e6f4ff' } : {}),
+    ...(isDragging ? { position: 'relative', zIndex: 10, background: T.colorPrimaryBg } : {}),
   };
   return (
     <RowDragContext.Provider value={{ listeners, attributes, isDragging }}>

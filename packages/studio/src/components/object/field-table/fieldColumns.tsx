@@ -2,6 +2,7 @@
  * 字段表格 — 列定义（从 FieldTable.tsx 拆分，AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Button, Popconfirm, Space, Switch, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -45,7 +46,7 @@ export function buildFieldColumns({
         const Icon = meta.icon;
         return (
           <Space size={8}>
-            <Icon style={{ fontSize: 16, color: '#1677ff' }} />
+            <Icon style={{ fontSize: 16, color: T.colorPrimary }} />
             <Text strong>{record.label}</Text>
             {record.isSystem && (
               <Tag color="default" style={{ margin: 0, fontSize: 11, lineHeight: '18px' }}>

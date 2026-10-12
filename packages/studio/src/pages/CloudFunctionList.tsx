@@ -2,6 +2,7 @@
  * 云函数列表页 — 表格 + 状态标签 + 操作按钮（编辑/发布/删除/测试）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { Button, Card, Space, Table, Tag, Typography, message, Popconfirm } from 'antd';
 import {
@@ -75,7 +76,7 @@ export default function CloudFunctionList() {
       key: 'name',
       render: (name: string, record: CloudFunction) => (
         <Space size={6} style={{ whiteSpace: 'nowrap' }}>
-          <CloudOutlined style={{ color: '#1677ff', flexShrink: 0 }} />
+          <CloudOutlined style={{ color: T.colorPrimary, flexShrink: 0 }} />
           <span style={{ fontWeight: 500 }}>{name}</span>
           <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: 12, flexShrink: 0 }}>
             ({record.apiName})

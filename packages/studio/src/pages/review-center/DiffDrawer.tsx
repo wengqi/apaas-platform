@@ -5,6 +5,7 @@
  * 动作：批准（活表漂移 409 时提供 force 确认）/ 驳回（意见必填）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import {
   Alert,
@@ -133,7 +134,7 @@ export default function DiffDrawer({ appId, submission, onClose }: DiffDrawerPro
                       key={`${item.path}-${idx}`}
                       style={{
                         padding: '6px 8px',
-                        borderBottom: '1px solid #f0f0f0',
+                        borderBottom: `1px solid ${T.colorSplit}`,
                         display: 'flex',
                         gap: 8,
                         alignItems: 'baseline',
@@ -176,7 +177,7 @@ export default function DiffDrawer({ appId, submission, onClose }: DiffDrawerPro
             style={{
               maxHeight: 200,
               overflow: 'auto',
-              background: '#fafafa',
+              background: T.colorFillQuaternary,
               padding: 8,
               fontSize: 12,
               borderRadius: 4,

@@ -2,6 +2,7 @@
  * 字段配置 — 字段类型徽章（抽屉内只读展示，从 FieldConfigDrawer.tsx 抽出）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Space, Typography } from 'antd';
 import type { FieldType } from '../../../constants/fieldTypes.js';
 import { getFieldTypeMeta } from '../../../constants/fieldTypes.js';
@@ -13,7 +14,7 @@ export default function FieldTypeBadge({ type }: { type: FieldType }) {
   const Icon = meta.icon;
   return (
     <Space size={6}>
-      <Icon style={{ color: '#1677ff' }} />
+      <Icon style={{ color: T.colorPrimary }} />
       <Text strong>{meta.label}</Text>
     </Space>
   );

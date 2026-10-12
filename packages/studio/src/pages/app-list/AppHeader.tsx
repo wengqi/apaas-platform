@@ -4,6 +4,7 @@
  * 品牌区 +「平台管理」入口（仅平台超管/租户管理员可见）+ 用户下拉菜单。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Avatar, Button, Dropdown, Space, Typography } from 'antd';
 import {
   ApartmentOutlined,
@@ -144,8 +145,8 @@ export default function AppHeader({
     <div
       style={{
         height: 56,
-        background: '#fff',
-        borderBottom: '1px solid #eef0f4',
+        background: T.colorWhite,
+        borderBottom: `1px solid ${T.colorBorderSecondary}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -158,7 +159,7 @@ export default function AppHeader({
     >
       <Space size={16}>
         <Space size={8}>
-          <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
+          <ThunderboltFilled style={{ fontSize: 20, color: T.colorPrimary }} />
           <Text strong style={{ fontSize: 16 }}>
             aPaaS Studio
           </Text>

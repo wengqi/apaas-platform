@@ -4,6 +4,7 @@
  * 复用 DataFlowFormModal 中的表单字段逻辑，但以独立面板形式呈现。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect } from 'react';
 import { Form, Input, Select, Button, Divider, Space, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
@@ -169,7 +170,7 @@ export default function NodeConfigPanel({
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '12px 16px',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: `1px solid ${T.colorSplit}`,
         }}
       >
         <Text strong>{panelTitle}</Text>

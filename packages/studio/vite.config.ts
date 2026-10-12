@@ -14,6 +14,14 @@ export default defineConfig({
       // i18n-runtime（amis-editor 传递依赖）发布的 package.json 声明 module=es/index.js
       // 但包内只有 lib/ —— 别名指到真实存在的 CJS 构建
       'i18n-runtime': 'i18n-runtime/lib/index.js',
+      // Semi UI 完整样式包（流程画布 flowgram fixed-semi-materials 依赖，SimplifiedEditor
+      // 导入）：semi-ui 的 exports map 只暴露组件级 css 通配（./lib/es/*.css），完整包
+      // dist/css/semi.min.css 不在表内，deep import 会被 "Missing specifier" 拦截——
+      // 这正是此前 index.html 用 /node_modules 直链的根因（该写法生产构建 404，已删）。
+      // alias 直指物理文件绕过 exports。
+      '@douyinfe/semi-ui/dist/css/semi.min.css': fileURLToPath(
+        new URL('./node_modules/@douyinfe/semi-ui/dist/css/semi.min.css', import.meta.url),
+      ),
     },
     // 确保 @flowgram.ai/* 只加载一份实例(pnpm 隔离模式下可能出现多副本)
     dedupe: ['react', 'react-dom'],

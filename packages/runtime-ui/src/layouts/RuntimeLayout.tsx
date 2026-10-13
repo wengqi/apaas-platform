@@ -7,7 +7,7 @@ import NotificationBell from '../components/NotificationBell';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Header, Content } = Layout;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 /**
  * 运行时布局 — 顶部导航栏(应用名 + 导航 + 用户菜单) + 内容区(Outlet)。
@@ -47,7 +47,7 @@ export default function RuntimeLayout() {
           justifyContent: 'space-between',
           padding: isMobile ? '0 12px' : '0 24px',
           height: LAYOUT.headerHeight,
-          lineHeight: `${LAYOUT.headerHeight}px`,
+          lineHeight: 1,
           background: colorBgContainer,
           borderBottom: `1px solid ${colorBorderSecondary}`,
           position: 'sticky',
@@ -60,14 +60,26 @@ export default function RuntimeLayout() {
             <span
               aria-hidden
               dangerouslySetInnerHTML={{ __html: brandLogoMarkSvg(28) }}
-              style={{ display: 'inline-flex' }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                alignSelf: 'stretch',
+                flexShrink: 0,
+              }}
             />
-            <Title level={isMobile ? 5 : 4} style={{ color: 'rgba(0,0,0,0.88)', margin: 0 }}>
+            <Text
+              style={{
+                fontSize: isMobile ? 14.5 : 15.5,
+                fontWeight: 700,
+                letterSpacing: '-0.01em',
+                color: 'rgba(0,0,0,0.88)',
+              }}
+            >
               aPaaS{' '}
-              <Text type="secondary" style={{ fontWeight: 500 }}>
+              <Text type="secondary" style={{ fontWeight: 500, fontSize: isMobile ? 13.5 : 14.5 }}>
                 Runtime
               </Text>
-            </Title>
+            </Text>
           </Space>
           <Space size="small">
             <Button

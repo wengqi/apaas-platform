@@ -214,7 +214,7 @@ export default function StudioLayout() {
           justifyContent: 'space-between',
           alignItems: 'center',
           height: LAYOUT.headerHeight,
-          lineHeight: `${LAYOUT.headerHeight}px`,
+          lineHeight: 1,
           borderBottom: `1px solid ${T.colorBorderSecondary}`,
           position: 'sticky',
           top: 0,

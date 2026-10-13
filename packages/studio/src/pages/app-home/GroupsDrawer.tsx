@@ -10,15 +10,9 @@
 import { useState } from 'react';
 import { App as AntApp, Button, Drawer, Empty, Input, Space, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
-import type { AppSummary } from '../../api/apps.js';
 import { TOKENS as T } from '@apaas/shared/design';
 import { appsApi } from '../../api/apps.js';
-/** 分组归并条目（应用库页与抽屉共用）。 */
-export interface AppGroup {
-  key: string;
-  name: string | null;
-  apps: AppSummary[];
-}
+import type { AppGroup } from './GroupLocatorRail.js';
 
 const { Text } = Typography;
 

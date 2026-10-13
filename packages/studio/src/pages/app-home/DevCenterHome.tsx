@@ -32,9 +32,13 @@ import { type CreateFormValues } from '../app-list/constants.js';
 import AppHeader from '../app-list/AppHeader.js';
 import AppListView from './AppListView.js';
 import AppHomeDialogs from './AppHomeDialogs.js';
-import GroupsDrawer, { type AppGroup } from './GroupsDrawer.js';
-import { RAIL_ALL_KEY, UNGROUPED_KEY } from './groupKeys.js';
-import { ActivityFeed, GroupCardSections, GroupFilterChips, HomeTopBlocks } from './home-bits.js';
+import GroupLocatorRail, {
+  RAIL_ALL_KEY,
+  UNGROUPED_KEY,
+  type AppGroup,
+} from './GroupLocatorRail.js';
+import GroupsDrawer from './GroupsDrawer.js';
+import { ActivityFeed, GroupCardSections, HomeTopBlocks } from './home-bits.js';
 import { useAppCrud } from './useAppCrud.js';
 
 const { Text } = Typography;
@@ -112,23 +116,19 @@ export default function DevCenterHome() {
     });
   }, [apps, activeKey, keyword]);
 
-  /** 卡片视图分组节：activeKey（芯片）+ 关键字双过滤。 */
   const visibleGroups: AppGroup[] = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
+    if (!kw) return groups;
     return groups
-      .filter((g) => activeKey === RAIL_ALL_KEY || g.key === activeKey)
       .map((g) => ({
         ...g,
-        apps: kw
-          ? g.apps.filter(
-              (a) =>
-                a.name.toLowerCase().includes(kw) ||
-                (a.description ?? '').toLowerCase().includes(kw),
-            )
-          : g.apps,
+        apps: g.apps.filter(
+          (a) =>
+            a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw),
+        ),
       }))
-      .filter((g) => g.apps.length > 0 || (kw === '' && g.key === activeKey));
-  }, [groups, activeKey, keyword]);
+      .filter((g) => g.apps.length > 0);
+  }, [groups, keyword]);
 
   const totalVisible = visibleGroups.reduce((sum, g) => sum + g.apps.length, 0);
 
@@ -201,6 +201,13 @@ export default function DevCenterHome() {
     />
   );
 
+  const locateGroup = (key: string) => {
+    setActiveKey(key);
+    document
+      .getElementById(`group-anchor-${key}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       <AppHeader
@@ -216,12 +223,15 @@ export default function DevCenterHome() {
       />
       <div
         style={{
-          maxWidth: 1240,
+          maxWidth: 1340,
           margin: '0 auto',
           padding: '34px 44px 40px',
+          display: 'flex',
+          gap: 52,
+          alignItems: 'start',
         }}
       >
-        <div style={{ minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <HomeTopBlocks
             greeting={greeting}
             userName={user?.name ?? '搭建者'}
@@ -237,28 +247,7 @@ export default function DevCenterHome() {
             }}
             analytics={analytics}
           >
-            <GroupFilterChips
-              items={[
-                { key: RAIL_ALL_KEY, label: '全部应用', count: apps?.length ?? 0 },
-                ...groups.map((g) => ({
-                  key: g.key,
-                  label: g.name ?? '未分组',
-                  count: g.apps.length,
-                })),
-              ]}
-              activeKey={activeKey}
-              onChange={setActiveKey}
-              onCreateGroup={openCreate}
-            />
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                marginTop: 14,
-                paddingTop: 14,
-                borderTop: `1px solid ${T.colorSplit}`,
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
               <Text
                 style={{
                   fontSize: 11,
@@ -360,6 +349,15 @@ export default function DevCenterHome() {
             onViewAll={() => navigate('/platform/audit-logs')}
           />
         </div>
+
+        {viewMode === 'card' && (
+          <GroupLocatorRail
+            groups={visibleGroups}
+            activeKey={activeKey}
+            onSelect={locateGroup}
+            enableSpy
+          />
+        )}
       </div>
 
       <AppHomeDialogs

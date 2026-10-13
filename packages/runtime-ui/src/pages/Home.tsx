@@ -49,12 +49,12 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() =>
     localStorage.getItem('apaas:portal.view') === 'list' ? 'list' : 'card',
   );
+  const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
   const setView = (mode: 'card' | 'list') => {
     setViewMode(mode);
     localStorage.setItem('apaas:portal.view', mode);
     setActiveKey(RAIL_ALL_KEY);
   };
-  const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
 
   const {
     data: apps,
@@ -107,18 +107,20 @@ export default function Home() {
 
   const keywordTrim = keyword.trim().toLowerCase();
   const visibleGroups: AppGroup[] = useMemo(() => {
-    if (!keywordTrim) return groups;
     return groups
+      .filter((g) => activeKey === RAIL_ALL_KEY || g.key === activeKey)
       .map((g) => ({
         ...g,
-        apps: g.apps.filter(
-          (a) =>
-            a.name.toLowerCase().includes(keywordTrim) ||
-            (a.description ?? '').toLowerCase().includes(keywordTrim),
-        ),
+        apps: keywordTrim
+          ? g.apps.filter(
+              (a) =>
+                a.name.toLowerCase().includes(keywordTrim) ||
+                (a.description ?? '').toLowerCase().includes(keywordTrim),
+            )
+          : g.apps,
       }))
       .filter((g) => g.apps.length > 0);
-  }, [groups, keywordTrim]);
+  }, [groups, activeKey, keywordTrim]);
 
   const listApps = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -130,9 +132,6 @@ export default function Home() {
   }, [visibleApps, activeKey, keyword]);
 
   const totalVisible = visibleGroups.reduce((sum, g) => sum + g.apps.length, 0);
-  /** 只读定位轨：分组 ≥2 才出现；空组不显示（groups 本就只含有应用的组）。 */
-  const showRail = groups.length >= 2;
-
   const month = new Date().getMonth();
   const completedThisMonth = (completedTasks?.items ?? []).filter((t) => {
     if (!t.completedAt) return false;
@@ -282,6 +281,60 @@ export default function Home() {
           </div>
         </div>
 
+        {/* 分组筛选芯片行（双视图通用）：全部 + 各分组 + ＋新建分组（业务端隐藏） */}
+        <div
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 18 }}
+        >
+          {[
+            { key: RAIL_ALL_KEY, label: '全部应用', count: visibleApps.length },
+            ...groups.map((g) => ({
+              key: g.key,
+              label: g.name ?? '未分组',
+              count: g.apps.length,
+            })),
+          ].map((item) => {
+            const active = item.key === activeKey;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveKey(item.key)}
+                aria-pressed={active}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'baseline',
+                  gap: 7,
+                  height: 32,
+                  padding: '0 13px',
+                  fontSize: 13,
+                  fontWeight: active ? 600 : 500,
+                  color: active ? T.colorPrimary : T.colorTextSecondary,
+                  background: active ? T.colorPrimaryBg : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) e.currentTarget.style.background = T.colorFillQuaternary;
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                {item.label}
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: active ? T.colorPrimaryBorder : T.colorTextQuaternary,
+                    fontWeight: 400,
+                  }}
+                >
+                  {item.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* 分组只读分节 */}
         {isLoading ? (
           <div style={{ textAlign: 'center', padding: 80 }}>
@@ -355,136 +408,6 @@ export default function Home() {
           ))
         )}
       </div>
-
-      {/* 只读分组定位轨（分组 ≥2 才出现） */}
-      {showRail && !isLoading && !noTenantContext && !error && visibleApps.length > 0 && (
-        <aside
-          style={{
-            width: 220,
-            flexShrink: 0,
-            position: 'sticky',
-            top: 84,
-            alignSelf: 'start',
-            paddingTop: 6,
-          }}
-        >
-          <Text
-            style={{
-              display: 'block',
-              fontSize: 11.5,
-              letterSpacing: '0.14em',
-              color: T.colorTextQuaternary,
-              fontWeight: 600,
-              marginBottom: 12,
-            }}
-          >
-            分 组
-          </Text>
-          <RailRow
-            label="全部应用"
-            count={visibleApps.length}
-            indent={0}
-            active={activeKey === RAIL_ALL_KEY}
-            onLocate={() => {
-              setActiveKey(RAIL_ALL_KEY);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-          {groups.map((g) => (
-            <div key={g.key}>
-              <RailRow
-                label={g.name ?? '未分组'}
-                count={g.apps.length}
-                indent={14}
-                active={activeKey === g.key}
-                onLocate={() => {
-                  setActiveKey(g.key);
-                  document
-                    .querySelector(`[data-group-anchor="${g.key}"]`)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-              />
-              {g.apps.map((app) => (
-                <div
-                  key={app.id}
-                  style={{
-                    fontSize: 12.5,
-                    color: T.colorTextTertiary,
-                    padding: '3.5px 0 3.5px 32px',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {app.name}
-                </div>
-              ))}
-            </div>
-          ))}
-          <div style={{ fontSize: 11.5, color: T.colorTextQuaternary, paddingTop: 8 }}>
-            点击分组快速定位
-          </div>
-        </aside>
-      )}
-    </div>
-  );
-}
-
-function RailRow({
-  label,
-  count,
-  indent,
-  active,
-  onLocate,
-}: {
-  label: string;
-  count: number;
-  indent: number;
-  active: boolean;
-  onLocate: () => void;
-}) {
-  return (
-    <div
-      onClick={onLocate}
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        fontSize: label === '全部应用' ? 13.5 : 13,
-        fontWeight: active ? 600 : 500,
-        color: active ? T.colorText : T.colorTextSecondary,
-        background: active ? T.colorFillTertiary : 'transparent',
-        borderLeft: `2px solid ${active ? T.colorPrimary : 'transparent'}`,
-        borderRadius: 0,
-        paddingLeft: 10,
-        cursor: 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = T.colorFillQuaternary;
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      <span
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          paddingLeft: indent,
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          marginLeft: 'auto',
-          fontSize: 11,
-          color: active ? T.colorTextSecondary : T.colorTextQuaternary,
-          fontWeight: 400,
-        }}
-      >
-        {count}
-      </span>
     </div>
   );
 }

@@ -33,6 +33,8 @@ interface GroupLocatorRailProps {
   activeKey: string;
   /** 仅设状态（scrollspy 回调也走这里，禁止触发滚动） */
   onSelect: (key: string) => void;
+  /** scrollspy 开关：卡片视图开（定位+跟随），列表视图关（点击=筛选语义由父级接管） */
+  enableSpy?: boolean;
 }
 
 /** 分组键 → DOM 锚点（与正文分节 data-group-anchor 一致）。 */
@@ -40,11 +42,17 @@ export function groupAnchorId(key: string): string {
   return `group-anchor-${key}`;
 }
 
-export default function GroupLocatorRail({ groups, activeKey, onSelect }: GroupLocatorRailProps) {
+export default function GroupLocatorRail({
+  groups,
+  activeKey,
+  onSelect,
+  enableSpy = true,
+}: GroupLocatorRailProps) {
   const total = useMemo(() => groups.reduce((sum, g) => sum + g.apps.length, 0), [groups]);
 
   // scrollspy：滚动时把最接近视口顶部的分节设为当前（键位来自 data-group-anchor）
   useEffect(() => {
+    if (!enableSpy) return;
     const onScroll = () => {
       const sections = document.querySelectorAll<HTMLElement>('[data-group-anchor]');
       let current = RAIL_ALL_KEY;
@@ -57,7 +65,7 @@ export default function GroupLocatorRail({ groups, activeKey, onSelect }: GroupL
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [activeKey, onSelect]);
+  }, [activeKey, onSelect, enableSpy]);
 
   return (
     <div

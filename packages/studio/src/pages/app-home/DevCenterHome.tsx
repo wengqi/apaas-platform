@@ -1,12 +1,13 @@
 /**
- * 开发中心首页（/apps，素蓝 v8 定稿 2026-10-13）。
+ * 开发中心首页（/apps，素蓝 v8.1：卡片/列表双视图 + 定位轨 + 分组管理）。
  *
- * 结构：问候+搜索 → 待办条 → 指标行 → 应用库（分组平铺+定位轨）→ 最近动态。
- * 展示件与 CRUD 拆见 ./home-bits.tsx 与 ./useAppCrud.ts。
+ * 结构：问候+搜索 → 待办条 → 指标行 → 应用库工具行（创建/分组/视图切换）→
+ *       卡片视图（分组平铺+定位轨 scrollspy）| 列表视图（高密度行+分组筛选）→ 最近动态。
+ * 展示件与 CRUD 拆见 ./home-bits.tsx、./useAppCrud.ts、./AppListView.tsx、./AppHomeDialogs.tsx。
  */
 
 import { useMemo, useState } from 'react';
-import { Button, Empty, Form, Input, Modal, Space, Spin, Typography } from 'antd';
+import { Button, Empty, Form, Modal, Segmented, Space, Spin, Typography } from 'antd';
 import {
   AppstoreAddOutlined,
   ArrowRightOutlined,
@@ -14,7 +15,7 @@ import {
   EditOutlined,
   InboxOutlined,
   ReloadOutlined,
-  SearchOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useNavigate } from 'react-router-dom';
@@ -28,20 +29,22 @@ import { auditLogsApi } from '../../api/audit-logs.js';
 import { useUserNameMap } from '../../utils/user-display.js';
 import { AppCard } from '../app-list/AppCard.js';
 import { type CreateFormValues } from '../app-list/constants.js';
-import { CreateAppModal, EditAppModal } from '../app-list/AppFormModals.js';
 import AppHeader from '../app-list/AppHeader.js';
+import AppListView from './AppListView.js';
+import AppHomeDialogs from './AppHomeDialogs.js';
 import GroupLocatorRail, {
-  groupAnchorId,
   RAIL_ALL_KEY,
   UNGROUPED_KEY,
   type AppGroup,
 } from './GroupLocatorRail.js';
 import GroupsDrawer from './GroupsDrawer.js';
-import GroupSelect from './GroupSelect.js';
-import { ActivityFeed, KpiRow, TodoStrip } from './home-bits.js';
+import { ActivityFeed, GroupCardSections, HomeTopBlocks } from './home-bits.js';
 import { useAppCrud } from './useAppCrud.js';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
+
+/** 视图模式本地记忆键。 */
+const VIEW_KEY = 'apaas:devcenter.view';
 
 export default function DevCenterHome() {
   const navigate = useNavigate();
@@ -52,6 +55,9 @@ export default function DevCenterHome() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
+  const [viewMode, setViewMode] = useState<'card' | 'list'>(() =>
+    localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'card',
+  );
   const [form] = Form.useForm<CreateFormValues>();
   const [moveForm] = Form.useForm<{ group: string }>();
 
@@ -67,8 +73,7 @@ export default function DevCenterHome() {
     queryKey: ['processes', 'analytics', 'home'],
     queryFn: () => processesApi.analytics(),
   });
-  // 最近动态：全租户审计仅管理员可读（TenantAdminGuard）——builder 不发查询，
-  // 动态区对 builder 隐藏（builder 可读的搭建动态源登记为后续项）
+  // 最近动态：全租户审计仅管理员可读（TenantAdminGuard）——builder 不发查询
   const isTenantAdmin =
     Boolean(user?.isPlatformAdmin) || Boolean(user?.roles?.some((r) => r.code === 'TENANT_ADMIN'));
   const { data: activity } = useQuery({
@@ -81,7 +86,7 @@ export default function DevCenterHome() {
   const hour = new Date().getHours();
   const greeting = hour < 6 ? '夜深了' : hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好';
 
-  /** 分组归并（含未分组），名称字典序、未分组恒最后；key 供定位轨/锚点消歧。 */
+  /** 分组归并（含未分组），名称字典序、未分组恒最后。 */
   const groups: AppGroup[] = useMemo(() => {
     const map = new Map<string, AppSummary[]>();
     for (const app of apps ?? []) {
@@ -91,11 +96,7 @@ export default function DevCenterHome() {
     const named = [...map.entries()]
       .filter(([k]) => k !== UNGROUPED_KEY)
       .sort(([a], [b]) => a.localeCompare(b, 'zh'));
-    const all: AppGroup[] = named.map(([key, list]) => ({
-      key,
-      name: key,
-      apps: list,
-    }));
+    const all: AppGroup[] = named.map(([key, list]) => ({ key, name: key, apps: list }));
     const ungrouped = map.get(UNGROUPED_KEY);
     if (ungrouped && ungrouped.length > 0) {
       all.push({ key: UNGROUPED_KEY, name: null, apps: ungrouped });
@@ -103,7 +104,18 @@ export default function DevCenterHome() {
     return all;
   }, [apps]);
 
-  /** 搜索过滤（名称+描述），过滤后仍按组归并。 */
+  const groupNames = groups.filter((g) => g.name !== null).map((g) => g.name as string);
+
+  /** 统一过滤：分组（rail/切换联动）+ 关键字。 */
+  const filteredApps = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return (apps ?? []).filter((a) => {
+      if (activeKey !== RAIL_ALL_KEY && (a.group ?? UNGROUPED_KEY) !== activeKey) return false;
+      if (!kw) return true;
+      return a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw);
+    });
+  }, [apps, activeKey, keyword]);
+
   const visibleGroups: AppGroup[] = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     if (!kw) return groups;
@@ -179,17 +191,22 @@ export default function DevCenterHome() {
     form.resetFields();
     setCreateOpen(true);
   };
-  const groupNames = groups.filter((g) => g.name !== null).map((g) => g.name as string);
 
   const renderCard = (app: AppSummary) => (
     <AppCard
       app={app}
-      groupNames={groupNames}
       menuItems={cardMenuItems(app)}
       onMenuClick={(info) => handleCardMenu(app, info)}
       onOpen={() => navigate(`/app/${app.id}/dashboard`)}
     />
   );
+
+  const locateGroup = (key: string) => {
+    setActiveKey(key);
+    document
+      .getElementById(`group-anchor-${key}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
@@ -215,89 +232,89 @@ export default function DevCenterHome() {
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
-            <div>
-              <Title level={3} style={{ fontSize: 26, margin: 0 }}>
-                {greeting}，{user?.name ?? '搭建者'}
-              </Title>
-              <Text type="secondary" style={{ display: 'block', fontSize: 13.5, marginTop: 6 }}>
-                共 {apps?.length ?? 0} 个应用 · {groups.filter((g) => g.name !== null).length}{' '}
-                个分组
-                {pending && pending.total > 0 ? ` · 今天有 ${pending.total} 件提交等待审核` : ''}
-              </Text>
-            </div>
-            <Input
-              allowClear
-              prefix={<SearchOutlined style={{ color: T.colorTextQuaternary }} />}
-              placeholder="搜索应用名称、描述…"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              style={{ marginLeft: 'auto', width: 320, height: 38, flexShrink: 0 }}
-            />
-          </div>
-
-          <TodoStrip
-            total={pending?.total ?? 0}
-            items={pending?.items ?? []}
+          <HomeTopBlocks
+            greeting={greeting}
+            userName={user?.name ?? '搭建者'}
+            appCount={apps?.length ?? 0}
+            groupCount={groups.filter((g) => g.name !== null).length}
+            pendingTotal={pending?.total ?? 0}
+            pendingItems={pending?.items ?? []}
+            keyword={keyword}
+            onKeywordChange={setKeyword}
             onGoReview={() => {
               const first = pending?.items[0];
               if (first) navigate(`/app/${first.appId}/reviews`);
             }}
-          />
-
-          <KpiRow
-            appCount={apps?.length ?? 0}
-            running={analytics?.totals.running ?? 0}
-            completedToday={analytics?.totals.completed ?? 0}
-            timedOut={analytics?.totals.timedOut ?? 0}
-            pendingTotal={pending?.total ?? 0}
-          />
-
-          <div style={{ display: 'flex', alignItems: 'center', paddingTop: 26 }}>
-            <Text
-              style={{
-                fontSize: 11,
-                letterSpacing: '0.12em',
-                color: T.colorTextQuaternary,
-                fontWeight: 600,
-              }}
-            >
-              应 用 库
-            </Text>
-            <Space style={{ marginLeft: 'auto' }}>
-              <Button
-                type="primary"
-                icon={<AppstoreAddOutlined />}
-                onClick={() => {
-                  form.resetFields();
-                  setCreateOpen(true);
+            analytics={analytics}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  letterSpacing: '0.12em',
+                  color: T.colorTextQuaternary,
+                  fontWeight: 600,
                 }}
               >
-                创建应用
-              </Button>
-              <Button type="link" onClick={openCreate} style={{ fontWeight: 600, padding: 0 }}>
-                ＋ 新建分组
-              </Button>
-              <Button
-                type="text"
-                onClick={() => setDrawerOpen(true)}
-                style={{ color: T.colorTextSecondary }}
-              >
-                管理分组
-              </Button>
-              <Button
-                type="text"
-                icon={<ReloadOutlined />}
-                onClick={refreshApps}
-                aria-label="刷新应用列表"
-              />
-            </Space>
-          </div>
+                应 用 库
+              </Text>
+              <Space style={{ marginLeft: 'auto' }}>
+                <Button type="primary" icon={<AppstoreAddOutlined />} onClick={openCreate}>
+                  创建应用
+                </Button>
+                <Button type="link" onClick={openCreate} style={{ fontWeight: 600, padding: 0 }}>
+                  ＋ 新建分组
+                </Button>
+                <Button
+                  type="text"
+                  onClick={() => setDrawerOpen(true)}
+                  style={{ color: T.colorTextSecondary }}
+                >
+                  管理分组
+                </Button>
+                <Button
+                  type="text"
+                  icon={<ReloadOutlined />}
+                  onClick={refreshApps}
+                  aria-label="刷新应用列表"
+                />
+                <Segmented
+                  value={viewMode}
+                  onChange={(v) => {
+                    setViewMode(v as 'card' | 'list');
+                    localStorage.setItem(VIEW_KEY, v as string);
+                    setActiveKey(RAIL_ALL_KEY);
+                  }}
+                  aria-label="视图切换"
+                  options={[
+                    { value: 'card', title: '卡片视图', icon: <AppstoreAddOutlined /> },
+                    { value: 'list', title: '列表视图', icon: <UnorderedListOutlined /> },
+                  ]}
+                />
+              </Space>
+            </div>
+          </HomeTopBlocks>
 
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: 80 }}>
               <Spin size="large" />
             </div>
+          ) : viewMode === 'list' ? (
+            filteredApps.length === 0 ? (
+              <div style={{ marginTop: 20 }}>
+                <Empty
+                  description={keyword ? `没有匹配「${keyword}」的应用` : '该筛选下暂无应用'}
+                  style={{ padding: '40px 0' }}
+                />
+              </div>
+            ) : (
+              <AppListView
+                apps={filteredApps}
+                menuItemsFor={cardMenuItems}
+                onMenuClick={handleCardMenu}
+                onOpen={(app) => navigate(`/app/${app.id}/dashboard`)}
+              />
+            )
           ) : totalVisible === 0 ? (
             <div
               style={{
@@ -323,34 +340,7 @@ export default function DevCenterHome() {
               </Empty>
             </div>
           ) : (
-            visibleGroups.map((g) => (
-              <section
-                key={g.key}
-                data-group-anchor={g.key}
-                id={groupAnchorId(g.key)}
-                style={{ paddingTop: 26, scrollMarginTop: 76 }}
-              >
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 }}>
-                  <Title level={5} style={{ fontSize: 16, margin: 0 }}>
-                    {g.name ?? '未分组'}
-                  </Title>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {g.apps.length} 个应用
-                  </Text>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: 16,
-                  }}
-                >
-                  {g.apps.map((app) => (
-                    <div key={app.id}>{renderCard(app)}</div>
-                  ))}
-                </div>
-              </section>
-            ))
+            <GroupCardSections groups={visibleGroups} renderCard={renderCard} />
           )}
 
           <ActivityFeed
@@ -360,69 +350,49 @@ export default function DevCenterHome() {
           />
         </div>
 
-        <GroupLocatorRail groups={visibleGroups} activeKey={activeKey} onSelect={setActiveKey} />
+        {viewMode === 'card' && (
+          <GroupLocatorRail
+            groups={visibleGroups}
+            activeKey={activeKey}
+            onSelect={locateGroup}
+            enableSpy
+          />
+        )}
       </div>
 
-      <CreateAppModal
-        open={createOpen}
-        form={form}
+      <AppHomeDialogs
         groupNames={groupNames}
-        confirmLoading={createMutation.isPending}
-        onCancel={() => setCreateOpen(false)}
-        onOk={async () => {
-          const values = await form.validateFields();
+        createOpen={createOpen}
+        setCreateOpen={setCreateOpen}
+        editingApp={editingApp}
+        setEditingApp={setEditingApp}
+        movingApp={movingApp}
+        setMovingApp={setMovingApp}
+        form={form}
+        moveForm={moveForm}
+        createPending={createMutation.isPending}
+        updatePending={updateMutation.isPending}
+        movePending={moveMutation.isPending}
+        onCreate={(values) =>
           createMutation.mutate({
             apiName: values.apiName || undefined,
             name: values.name,
             description: values.description,
             group: values.group || undefined,
-          });
-        }}
-      />
-      <EditAppModal
-        app={editingApp}
-        form={form}
-        groupNames={groupNames}
-        confirmLoading={updateMutation.isPending}
-        onCancel={() => {
-          setEditingApp(null);
-          form.resetFields();
-        }}
-        onOk={async () => {
-          if (!editingApp) return;
-          const values = await form.validateFields();
+          })
+        }
+        onUpdate={(appId, values) =>
           updateMutation.mutate({
-            appId: editingApp.id,
+            appId,
             data: {
               name: values.name,
               description: values.description,
               group: values.group || undefined,
             },
-          });
-        }}
+          })
+        }
+        onMove={(appId, group) => moveMutation.mutate({ appId, group: group || undefined })}
       />
-
-      <Modal
-        title={`移动「${movingApp?.name ?? ''}」到分组`}
-        open={movingApp !== null}
-        confirmLoading={moveMutation.isPending}
-        onCancel={() => setMovingApp(null)}
-        onOk={async () => {
-          const values = await moveForm.validateFields();
-          moveMutation.mutate({ appId: movingApp!.id, group: values.group });
-        }}
-        okText="移动"
-        cancelText="取消"
-      >
-        <Form form={moveForm} layout="vertical">
-          <Form.Item label="目标分组" name="group">
-            <GroupSelect groupNames={groupNames} />
-          </Form.Item>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            输入现有分组名，或输入新分组名直接建组；清空则移入「未分组」。
-          </Text>
-        </Form>
-      </Modal>
 
       <GroupsDrawer
         open={drawerOpen}

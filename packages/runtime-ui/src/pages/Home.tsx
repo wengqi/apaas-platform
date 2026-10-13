@@ -8,14 +8,15 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Button, Empty, Input, Spin, Typography } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Button, Empty, Input, Segmented, Spin, Typography } from 'antd';
+import { SearchOutlined, UnorderedListOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
 import { TOKENS as T, appTileBackground } from '@apaas/shared/design';
 import { useNavigate } from 'react-router-dom';
 import { appsApi, type AppSummary } from '../api/apps';
 import { tasksApi } from '../api/tasks';
+import PortalListView from './PortalListView';
 
 const { Text, Title } = Typography;
 
@@ -44,6 +45,15 @@ export default function Home() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [keyword, setKeyword] = useState('');
+  // 视图模式：卡片/列表，localStorage 记忆
+  const [viewMode, setViewMode] = useState<'card' | 'list'>(() =>
+    localStorage.getItem('apaas:portal.view') === 'list' ? 'list' : 'card',
+  );
+  const setView = (mode: 'card' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('apaas:portal.view', mode);
+    setActiveKey(RAIL_ALL_KEY);
+  };
   const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
 
   const {
@@ -110,6 +120,15 @@ export default function Home() {
       .filter((g) => g.apps.length > 0);
   }, [groups, keywordTrim]);
 
+  const listApps = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    return visibleApps.filter((a) => {
+      if (activeKey !== RAIL_ALL_KEY && (a.group ?? '__ungrouped__') !== activeKey) return false;
+      if (!kw) return true;
+      return a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw);
+    });
+  }, [visibleApps, activeKey, keyword]);
+
   const totalVisible = visibleGroups.reduce((sum, g) => sum + g.apps.length, 0);
   /** 只读定位轨：分组 ≥2 才出现；空组不显示（groups 本就只含有应用的组）。 */
   const showRail = groups.length >= 2;
@@ -147,14 +166,33 @@ export default function Home() {
               {visibleApps.length} 个应用可用
             </Text>
           </div>
-          <Input
-            allowClear
-            prefix={<SearchOutlined style={{ color: T.colorTextQuaternary }} />}
-            placeholder="搜索应用名称、描述…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            style={{ marginLeft: 'auto', width: 300, height: 38, flexShrink: 0 }}
-          />
+          <div
+            style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexShrink: 0,
+            }}
+          >
+            <Segmented
+              value={viewMode}
+              onChange={(v) => setView(v as 'card' | 'list')}
+              aria-label="视图切换"
+              options={[
+                { value: 'card', title: '卡片视图', icon: <AppstoreOutlined /> },
+                { value: 'list', title: '列表视图', icon: <UnorderedListOutlined /> },
+              ]}
+            />
+            <Input
+              allowClear
+              prefix={<SearchOutlined style={{ color: T.colorTextQuaternary }} />}
+              placeholder="搜索应用名称、描述…"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              style={{ width: 280, height: 38 }}
+            />
+          </div>
         </div>
 
         {/* 审批待办条 */}
@@ -275,6 +313,14 @@ export default function Home() {
               <Button onClick={() => void refetch()}>刷新</Button>
             </Empty>
           </div>
+        ) : viewMode === 'list' ? (
+          listApps.length === 0 ? (
+            <div style={{ marginTop: 30 }}>
+              <Empty description={`没有匹配「${keyword.trim()}」的应用`} />
+            </div>
+          ) : (
+            <PortalListView apps={listApps} onOpen={(app) => navigate(`/app/${app.id}`)} />
+          )
         ) : totalVisible === 0 ? (
           <div style={{ marginTop: 30 }}>
             <Empty description={`没有匹配「${keyword.trim()}」的应用`} />

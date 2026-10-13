@@ -3,7 +3,8 @@
  * 纯展示组件——数据由 DevCenterHome 通过 props 注入。
  */
 
-import { Button, Typography } from 'antd';
+import { Button, Input, Typography } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import { TOKENS as T } from '@apaas/shared/design';
 
 const { Text, Title } = Typography;
@@ -226,4 +227,107 @@ export function errMsg(err: unknown, fallback: string): string {
     message?: string;
   };
   return e.response?.data?.message ?? e.response?.data?.error?.message ?? e.message ?? fallback;
+}
+
+/** 卡片视图分组平铺节（含未分组/空组锚点，scrollspy/定位轨共用 data-group-anchor）。 */
+export function GroupCardSections({
+  groups,
+  renderCard,
+}: {
+  groups: Array<{ key: string; name: string | null; apps: unknown[] }>;
+  renderCard: (app: never) => React.ReactNode;
+}) {
+  return (
+    <>
+      {groups.map((g) => (
+        <section
+          key={g.key}
+          data-group-anchor={g.key}
+          id={`group-anchor-${g.key}`}
+          style={{ paddingTop: 26, scrollMarginTop: 76 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 }}>
+            <Title level={5} style={{ fontSize: 16, margin: 0 }}>
+              {g.name ?? '未分组'}
+            </Title>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {g.apps.length} 个应用
+            </Text>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 16,
+            }}
+          >
+            {g.apps.map((app) => (
+              <div key={(app as { id: string }).id}>{renderCard(app as never)}</div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+/** 首页顶部块：问候+搜索 → 治理待办条 → 指标行（素蓝 v8.1）。 */
+export function HomeTopBlocks({
+  greeting,
+  userName,
+  appCount,
+  groupCount,
+  pendingTotal,
+  pendingItems,
+  keyword,
+  onKeywordChange,
+  onGoReview,
+  analytics,
+  children,
+}: {
+  greeting: string;
+  userName: string;
+  appCount: number;
+  groupCount: number;
+  pendingTotal: number;
+  pendingItems: PendingAppItem[];
+  keyword: string;
+  onKeywordChange: (v: string) => void;
+  onGoReview: () => void;
+  analytics: { totals: { running: number; completed: number; timedOut: number } } | undefined;
+  /** 应用库工具行（创建/分组管理/视图切换）由页面注入 */
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
+        <div>
+          <Title level={3} style={{ fontSize: 26, margin: 0 }}>
+            {greeting}，{userName}
+          </Title>
+          <Text type="secondary" style={{ display: 'block', fontSize: 13.5, marginTop: 6 }}>
+            共 {appCount} 个应用 · {groupCount} 个分组
+            {pendingTotal > 0 ? ` · 今天有 ${pendingTotal} 件提交等待审核` : ''}
+          </Text>
+        </div>
+        <Input
+          allowClear
+          prefix={<SearchOutlined style={{ color: T.colorTextQuaternary }} />}
+          placeholder="搜索应用名称、描述…"
+          value={keyword}
+          onChange={(e) => onKeywordChange(e.target.value)}
+          style={{ marginLeft: 'auto', width: 320, height: 38, flexShrink: 0 }}
+        />
+      </div>
+      <TodoStrip total={pendingTotal} items={pendingItems} onGoReview={onGoReview} />
+      <KpiRow
+        appCount={appCount}
+        running={analytics?.totals.running ?? 0}
+        completedToday={analytics?.totals.completed ?? 0}
+        timedOut={analytics?.totals.timedOut ?? 0}
+        pendingTotal={pendingTotal}
+      />
+      <div style={{ paddingTop: 26 }}>{children}</div>
+    </>
+  );
 }

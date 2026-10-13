@@ -1,65 +1,71 @@
 /**
- * 应用库右轨 — 分组定位器（素蓝首页 v8，2026-10-13 定稿）。
+ * 应用库右轨 — 分组定位器（素蓝首页 v8.1，2026-10-13）。
  *
- * 只服务应用：全部应用 + 各分组（计数右对齐）+ 组内应用叶子；
- * 点击定位到对应分节（scrollIntoView），滚动跟随高亮（scrollspy）。
- * 不承载任何非应用信息（待办/指标锚点已按用户裁决移除）。
+ * 只服务应用：全部应用 + 各分组（计数右对齐）+ 组内应用叶子。
+ * - 选中态 = 直角色带（无圆角）+ 2px 蓝色左指示线；键位用 key 消歧
+ *   （null 不再同时代表「全部」与「未分组」——修复双选中 bug）。
+ * - 点击 = 平滑滚动定位到对应分节 + 设为当前；滚动跟随高亮（scrollspy）。
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Typography } from 'antd';
 import { TOKENS as T } from '@apaas/shared/design';
 import type { AppSummary } from '../../api/apps.js';
 
 const { Text } = Typography;
 
-/** 右轨吸顶偏移（头部 60px + 间距）。 */
-const LAYOUT_TOP_OFFSET = 84;
+/** 全部应用的哨兵键（与分组键位空间隔离，修复 null 双选中）。 */
+export const RAIL_ALL_KEY = '__all__';
+/** 未分组哨兵键。 */
+export const UNGROUPED_KEY = '__ungrouped__';
 
 export interface AppGroup {
-  /** 分组名；null = 未分组 */
+  /** 分组键（未分组 = __ungrouped__） */
+  key: string;
+  /** 分组名；null = 未分组（展示为「未分组」） */
   name: string | null;
   apps: AppSummary[];
 }
 
 interface GroupLocatorRailProps {
   groups: AppGroup[];
-  /** 当前定位的分组（null = 全部） */
-  activeGroup: string | null;
-  onSelect: (group: string | null) => void;
+  /** 当前定位的分组键（__all__ = 全部） */
+  activeKey: string;
+  /** 仅设状态（scrollspy 回调也走这里，禁止触发滚动） */
+  onSelect: (key: string) => void;
 }
 
-/** 分组名 → DOM 锚点 id（与正文分节 data-group-anchor 一致）。 */
-export function groupAnchorId(name: string | null): string {
-  return name === null ? 'group-ungrouped' : `group-${name ?? ''}`;
+/** 分组键 → DOM 锚点（与正文分节 data-group-anchor 一致）。 */
+export function groupAnchorId(key: string): string {
+  return `group-anchor-${key}`;
 }
 
-export default function GroupLocatorRail({ groups, activeGroup, onSelect }: GroupLocatorRailProps) {
+export default function GroupLocatorRail({ groups, activeKey, onSelect }: GroupLocatorRailProps) {
   const total = useMemo(() => groups.reduce((sum, g) => sum + g.apps.length, 0), [groups]);
-  const listRef = useRef<HTMLDivElement>(null);
 
-  // scrollspy：滚动时把最接近视口顶部的分节标记为当前组
+  // scrollspy：滚动时把最接近视口顶部的分节设为当前（键位来自 data-group-anchor）
   useEffect(() => {
     const onScroll = () => {
       const sections = document.querySelectorAll<HTMLElement>('[data-group-anchor]');
-      let current: string | null = null;
+      let current = RAIL_ALL_KEY;
       sections.forEach((sec) => {
-        if (sec.getBoundingClientRect().top <= 160) current = sec.dataset.groupAnchor ?? null;
+        if (sec.getBoundingClientRect().top <= 160) {
+          current = sec.dataset.groupAnchor ?? RAIL_ALL_KEY;
+        }
       });
-      if (current !== activeGroup) onSelect(current);
+      if (current !== activeKey) onSelect(current);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [activeGroup, onSelect]);
+  }, [activeKey, onSelect]);
 
   return (
     <div
-      ref={listRef}
       style={{
         width: 248,
         flexShrink: 0,
         position: 'sticky',
-        top: LAYOUT_TOP_OFFSET,
+        top: 84,
         alignSelf: 'start',
         paddingTop: 6,
       }}
@@ -79,16 +85,26 @@ export default function GroupLocatorRail({ groups, activeGroup, onSelect }: Grou
       <RailRow
         label="全部应用"
         count={total}
-        active={activeGroup === null}
-        onSelect={() => onSelect(null)}
+        indent={0}
+        active={activeKey === RAIL_ALL_KEY}
+        onLocate={() => {
+          onSelect(RAIL_ALL_KEY);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
       />
       {groups.map((g) => (
-        <div key={g.name ?? '__ungrouped'}>
+        <div key={g.key}>
           <RailRow
             label={g.name ?? '未分组'}
             count={g.apps.length}
-            active={activeGroup === g.name}
-            onSelect={() => onSelect(g.name)}
+            indent={14}
+            active={activeKey === g.key}
+            onLocate={() => {
+              onSelect(g.key);
+              document
+                .querySelector(`[data-group-anchor="${g.key}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
           />
           {g.apps.map((app) => (
             <div
@@ -108,33 +124,30 @@ export default function GroupLocatorRail({ groups, activeGroup, onSelect }: Grou
           ))}
         </div>
       ))}
-      <div
-        style={{
-          fontSize: 11.5,
-          color: T.colorTextQuaternary,
-          paddingTop: 8,
-        }}
-      >
+      <div style={{ fontSize: 11.5, color: T.colorTextQuaternary, paddingTop: 8 }}>
         点击分组快速定位
       </div>
     </div>
   );
 }
 
+/** 直角色带行：无圆角；选中 = 色带铺满轨宽 + 2px 蓝色左指示线；悬停浅灰。 */
 function RailRow({
   label,
   count,
+  indent,
   active,
-  onSelect,
+  onLocate,
 }: {
   label: string;
   count: number;
+  indent: number;
   active: boolean;
-  onSelect: (group: string | null) => void;
+  onLocate: () => void;
 }) {
   return (
     <div
-      onClick={() => onSelect(label === '全部应用' ? null : label)}
+      onClick={onLocate}
       style={{
         display: 'flex',
         alignItems: 'baseline',
@@ -143,13 +156,24 @@ function RailRow({
         color: active ? T.colorText : T.colorTextSecondary,
         background: active ? T.colorFillTertiary : 'transparent',
         borderLeft: `2px solid ${active ? T.colorPrimary : 'transparent'}`,
-        margin: '2px 0 2px 2px',
-        padding: label === '全部应用' ? '4px 8px 4px 0' : '4px 8px 4px 14px',
+        borderRadius: 0,
         cursor: 'pointer',
-        borderRadius: active ? 6 : undefined,
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.background = T.colorFillQuaternary;
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.background = 'transparent';
       }}
     >
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          paddingLeft: indent,
+        }}
+      >
         {label}
       </span>
       <span

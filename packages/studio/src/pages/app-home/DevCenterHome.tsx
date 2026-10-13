@@ -30,7 +30,12 @@ import { AppCard } from '../app-list/AppCard.js';
 import { type CreateFormValues } from '../app-list/constants.js';
 import { CreateAppModal, EditAppModal } from '../app-list/AppFormModals.js';
 import AppHeader from '../app-list/AppHeader.js';
-import GroupLocatorRail, { groupAnchorId, type AppGroup } from './GroupLocatorRail.js';
+import GroupLocatorRail, {
+  groupAnchorId,
+  RAIL_ALL_KEY,
+  UNGROUPED_KEY,
+  type AppGroup,
+} from './GroupLocatorRail.js';
 import GroupsDrawer from './GroupsDrawer.js';
 import GroupSelect from './GroupSelect.js';
 import { ActivityFeed, KpiRow, TodoStrip } from './home-bits.js';
@@ -46,7 +51,7 @@ export default function DevCenterHome() {
   const [movingApp, setMovingApp] = useState<AppSummary | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
-  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
   const [form] = Form.useForm<CreateFormValues>();
   const [moveForm] = Form.useForm<{ group: string }>();
 
@@ -76,19 +81,25 @@ export default function DevCenterHome() {
   const hour = new Date().getHours();
   const greeting = hour < 6 ? '夜深了' : hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好';
 
-  /** 分组归并（含未分组），名称字典序、未分组恒最后。 */
+  /** 分组归并（含未分组），名称字典序、未分组恒最后；key 供定位轨/锚点消歧。 */
   const groups: AppGroup[] = useMemo(() => {
-    const map = new Map<string | null, AppSummary[]>();
+    const map = new Map<string, AppSummary[]>();
     for (const app of apps ?? []) {
-      const key = app.group ?? null;
+      const key = app.group ?? UNGROUPED_KEY;
       (map.get(key) ?? map.set(key, []).get(key)!).push(app);
     }
     const named = [...map.entries()]
-      .filter(([k]) => k !== null)
-      .sort(([a], [b]) => a!.localeCompare(b!, 'zh'));
-    const all: AppGroup[] = named.map(([name, list]) => ({ name, apps: list }));
-    const ungrouped = map.get(null);
-    if (ungrouped && ungrouped.length > 0) all.push({ name: null, apps: ungrouped });
+      .filter(([k]) => k !== UNGROUPED_KEY)
+      .sort(([a], [b]) => a.localeCompare(b, 'zh'));
+    const all: AppGroup[] = named.map(([key, list]) => ({
+      key,
+      name: key,
+      apps: list,
+    }));
+    const ungrouped = map.get(UNGROUPED_KEY);
+    if (ungrouped && ungrouped.length > 0) {
+      all.push({ key: UNGROUPED_KEY, name: null, apps: ungrouped });
+    }
     return all;
   }, [apps]);
 
@@ -314,10 +325,10 @@ export default function DevCenterHome() {
           ) : (
             visibleGroups.map((g) => (
               <section
-                key={g.name ?? '__ungrouped'}
-                data-group-anchor={g.name ?? undefined}
-                id={groupAnchorId(g.name)}
-                style={{ paddingTop: 26 }}
+                key={g.key}
+                data-group-anchor={g.key}
+                id={groupAnchorId(g.key)}
+                style={{ paddingTop: 26, scrollMarginTop: 76 }}
               >
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14 }}>
                   <Title level={5} style={{ fontSize: 16, margin: 0 }}>
@@ -349,11 +360,7 @@ export default function DevCenterHome() {
           />
         </div>
 
-        <GroupLocatorRail
-          groups={visibleGroups}
-          activeGroup={activeGroup}
-          onSelect={setActiveGroup}
-        />
+        <GroupLocatorRail groups={visibleGroups} activeKey={activeKey} onSelect={setActiveKey} />
       </div>
 
       <CreateAppModal

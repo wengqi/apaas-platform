@@ -29,16 +29,22 @@ interface AppsErrorShape {
 }
 
 interface AppGroup {
+  /** 分组键（未分组 = __ungrouped__） */
+  key: string;
   name: string | null;
   apps: AppSummary[];
 }
+
+/** 全部应用哨兵键。 */
+const RAIL_ALL_KEY = '__all__';
+const UNGROUPED_KEY = '__ungrouped__';
 
 export default function Home() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [keyword, setKeyword] = useState('');
-  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
 
   const {
     data: apps,
@@ -73,17 +79,19 @@ export default function Home() {
   );
 
   const groups: AppGroup[] = useMemo(() => {
-    const map = new Map<string | null, AppSummary[]>();
+    const map = new Map<string, AppSummary[]>();
     for (const app of visibleApps) {
-      const key = app.group ?? null;
+      const key = app.group ?? UNGROUPED_KEY;
       (map.get(key) ?? map.set(key, []).get(key)!).push(app);
     }
     const named = [...map.entries()]
-      .filter(([k]) => k !== null)
-      .sort(([a], [b]) => a!.localeCompare(b!, 'zh'));
-    const all: AppGroup[] = named.map(([name, list]) => ({ name, apps: list }));
-    const ungrouped = map.get(null);
-    if (ungrouped && ungrouped.length > 0) all.push({ name: null, apps: ungrouped });
+      .filter(([k]) => k !== UNGROUPED_KEY)
+      .sort(([a], [b]) => a.localeCompare(b, 'zh'));
+    const all: AppGroup[] = named.map(([key, list]) => ({ key, name: key, apps: list }));
+    const ungrouped = map.get(UNGROUPED_KEY);
+    if (ungrouped && ungrouped.length > 0) {
+      all.push({ key: UNGROUPED_KEY, name: null, apps: ungrouped });
+    }
     return all;
   }, [visibleApps]);
 
@@ -274,9 +282,9 @@ export default function Home() {
         ) : (
           visibleGroups.map((g) => (
             <section
-              key={g.name ?? '__ungrouped'}
-              data-group-anchor={g.name ?? undefined}
-              style={{ paddingTop: 30 }}
+              key={g.key}
+              data-group-anchor={g.key}
+              style={{ paddingTop: 30, scrollMarginTop: 76 }}
             >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 16 }}>
                 <Title level={5} style={{ fontSize: 16, margin: 0 }}>
@@ -329,17 +337,43 @@ export default function Home() {
           <RailRow
             label="全部应用"
             count={visibleApps.length}
-            active={activeGroup === null}
-            onSelect={() => setActiveGroup(null)}
+            indent={0}
+            active={activeKey === RAIL_ALL_KEY}
+            onLocate={() => {
+              setActiveKey(RAIL_ALL_KEY);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
           {groups.map((g) => (
-            <RailRow
-              key={g.name ?? '__ungrouped'}
-              label={g.name ?? '未分组'}
-              count={g.apps.length}
-              active={activeGroup === g.name}
-              onSelect={setActiveGroup}
-            />
+            <div key={g.key}>
+              <RailRow
+                label={g.name ?? '未分组'}
+                count={g.apps.length}
+                indent={14}
+                active={activeKey === g.key}
+                onLocate={() => {
+                  setActiveKey(g.key);
+                  document
+                    .querySelector(`[data-group-anchor="${g.key}"]`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              />
+              {g.apps.map((app) => (
+                <div
+                  key={app.id}
+                  style={{
+                    fontSize: 12.5,
+                    color: T.colorTextTertiary,
+                    padding: '3.5px 0 3.5px 32px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {app.name}
+                </div>
+              ))}
+            </div>
           ))}
           <div style={{ fontSize: 11.5, color: T.colorTextQuaternary, paddingTop: 8 }}>
             点击分组快速定位
@@ -353,17 +387,19 @@ export default function Home() {
 function RailRow({
   label,
   count,
+  indent,
   active,
-  onSelect,
+  onLocate,
 }: {
   label: string;
   count: number;
+  indent: number;
   active: boolean;
-  onSelect: (group: string | null) => void;
+  onLocate: () => void;
 }) {
   return (
     <div
-      onClick={() => onSelect(label === '全部应用' ? null : label)}
+      onClick={onLocate}
       style={{
         display: 'flex',
         alignItems: 'baseline',
@@ -372,13 +408,24 @@ function RailRow({
         color: active ? T.colorText : T.colorTextSecondary,
         background: active ? T.colorFillTertiary : 'transparent',
         borderLeft: `2px solid ${active ? T.colorPrimary : 'transparent'}`,
-        margin: '2px 0 2px 2px',
-        padding: '4px 8px 4px 14px',
+        borderRadius: 0,
         cursor: 'pointer',
-        borderRadius: active ? 6 : undefined,
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.background = T.colorFillQuaternary;
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.background = 'transparent';
       }}
     >
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span
+        style={{
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          paddingLeft: indent,
+        }}
+      >
         {label}
       </span>
       <span

@@ -12,6 +12,7 @@ import { App as AntApp, Button, Drawer, Empty, Input, Space, Typography } from '
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { TOKENS as T } from '@apaas/shared/design';
 import { appsApi } from '../../api/apps.js';
+import { apiErrorMessage } from '../../api/client.js';
 import type { AppGroup } from './GroupLocatorRail.js';
 
 const { Text } = Typography;
@@ -46,10 +47,15 @@ export default function GroupsDrawer({ open, groups, onClose, onChanged }: Group
         setRenaming(null);
         return;
       }
-      const { updated } = await appsApi.updateGroup(from, to);
-      message.success(`已重命名：${updated} 个应用归入「${to}」`);
-      setRenaming(null);
-      onChanged();
+      try {
+        const { updated } = await appsApi.updateGroup(from, to);
+        message.success(`已重命名：${updated} 个应用归入「${to}」`);
+        setRenaming(null);
+        onChanged();
+      } catch (err) {
+        // 失败必须显式化（无权限/校验/网络），静默 = 用户视角「点击没反应」
+        message.error(apiErrorMessage(err, '重命名失败'));
+      }
     });
 
   const remove = (name: string) =>
@@ -60,9 +66,13 @@ export default function GroupsDrawer({ open, groups, onClose, onChanged }: Group
         message.warning('仅空分组可删除');
         return;
       }
-      await appsApi.updateGroup(name, undefined);
-      message.success(`分组「${name}」已删除`);
-      onChanged();
+      try {
+        await appsApi.updateGroup(name, undefined);
+        message.success(`分组「${name}」已删除`);
+        onChanged();
+      } catch (err) {
+        message.error(apiErrorMessage(err, '删除分组失败'));
+      }
     });
 
   return (
@@ -96,7 +106,9 @@ export default function GroupsDrawer({ open, groups, onClose, onChanged }: Group
                 background: T.colorFillQuaternary,
               }}
             >
-              {renaming === g.name ? (
+              {/* 编辑态必须显式激活——未分组 g.name=null 会与 renaming 初始值 null
+                  相撞（null===null），导致未分组行默认渲染成空输入框+保存的假编辑器 */}
+              {renaming !== null && renaming === g.name ? (
                 <Space.Compact style={{ flex: 1 }}>
                   <Input
                     autoFocus

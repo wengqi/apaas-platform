@@ -4,7 +4,8 @@
  * 结构：问候 + 应用搜索 → 审批待办条（直达任务中心）→ 业务指标行
  *       （待我审批 / 本月已办结）→ 分组只读分节 + 右侧分组定位轨。
  * 业务面约束：卡片无版本工程计数以外的行话；分组只读（无管理入口）；
- * 分组 <2 时定位轨自动隐藏。
+ * 分组 <2 时定位轨自动隐藏；列表模式不显示定位轨（与 studio 交互一致）。
+ * 定位轨选中/跟随逻辑见 PortalGroupRail（与 studio GroupLocatorRail 同一修复）。
  */
 
 import { useMemo, useState } from 'react';
@@ -12,11 +13,13 @@ import { Button, Empty, Input, Segmented, Spin, Typography } from 'antd';
 import { SearchOutlined, UnorderedListOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
-import { TOKENS as T, appTileBackground } from '@apaas/shared/design';
+import { TOKENS as T } from '@apaas/shared/design';
 import { useNavigate } from 'react-router-dom';
 import { appsApi, type AppSummary } from '../api/apps';
 import { tasksApi } from '../api/tasks';
 import PortalListView from './PortalListView';
+import PortalGroupRail from './PortalGroupRail';
+import PortalAppCard from './PortalAppCard';
 
 const { Text, Title } = Typography;
 
@@ -36,8 +39,6 @@ interface AppGroup {
   apps: AppSummary[];
 }
 
-/** 全部应用哨兵键。 */
-const RAIL_ALL_KEY = '__all__';
 const UNGROUPED_KEY = '__ungrouped__';
 
 export default function Home() {
@@ -52,9 +53,7 @@ export default function Home() {
   const setView = (mode: 'card' | 'list') => {
     setViewMode(mode);
     localStorage.setItem('apaas:portal.view', mode);
-    setActiveKey(RAIL_ALL_KEY);
   };
-  const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
 
   const {
     data: apps,
@@ -122,12 +121,11 @@ export default function Home() {
 
   const listApps = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
-    return visibleApps.filter((a) => {
-      if (activeKey !== RAIL_ALL_KEY && (a.group ?? '__ungrouped__') !== activeKey) return false;
-      if (!kw) return true;
-      return a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw);
-    });
-  }, [visibleApps, activeKey, keyword]);
+    if (!kw) return visibleApps;
+    return visibleApps.filter(
+      (a) => a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw),
+    );
+  }, [visibleApps, keyword]);
 
   const totalVisible = visibleGroups.reduce((sum, g) => sum + g.apps.length, 0);
   /** 只读定位轨：分组 ≥2 才出现；空组不显示（groups 本就只含有应用的组）。 */
@@ -348,7 +346,7 @@ export default function Home() {
                 }}
               >
                 {g.apps.map((app) => (
-                  <AppPortalCard key={app.id} app={app} onOpen={() => navigate(`/app/${app.id}`)} />
+                  <PortalAppCard key={app.id} app={app} onOpen={() => navigate(`/app/${app.id}`)} />
                 ))}
               </div>
             </section>
@@ -356,238 +354,15 @@ export default function Home() {
         )}
       </div>
 
-      {/* 只读分组定位轨（分组 ≥2 才出现） */}
-      {showRail && !isLoading && !noTenantContext && !error && visibleApps.length > 0 && (
-        <aside
-          style={{
-            width: 220,
-            flexShrink: 0,
-            position: 'sticky',
-            top: 84,
-            alignSelf: 'start',
-            paddingTop: 6,
-          }}
-        >
-          <Text
-            style={{
-              display: 'block',
-              fontSize: 11.5,
-              letterSpacing: '0.14em',
-              color: T.colorTextQuaternary,
-              fontWeight: 600,
-              marginBottom: 12,
-            }}
-          >
-            分 组
-          </Text>
-          <RailRow
-            label="全部应用"
-            count={visibleApps.length}
-            indent={0}
-            active={activeKey === RAIL_ALL_KEY}
-            onLocate={() => {
-              setActiveKey(RAIL_ALL_KEY);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          />
-          {groups.map((g) => (
-            <div key={g.key}>
-              <RailRow
-                label={g.name ?? '未分组'}
-                count={g.apps.length}
-                indent={14}
-                active={activeKey === g.key}
-                onLocate={() => {
-                  setActiveKey(g.key);
-                  document
-                    .querySelector(`[data-group-anchor="${g.key}"]`)
-                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-              />
-              {g.apps.map((app) => (
-                <div
-                  key={app.id}
-                  style={{
-                    fontSize: 12.5,
-                    color: T.colorTextTertiary,
-                    padding: '3.5px 0 3.5px 32px',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {app.name}
-                </div>
-              ))}
-            </div>
-          ))}
-          <div style={{ fontSize: 11.5, color: T.colorTextQuaternary, paddingTop: 8 }}>
-            点击分组快速定位
-          </div>
-        </aside>
-      )}
-    </div>
-  );
-}
-
-function RailRow({
-  label,
-  count,
-  indent,
-  active,
-  onLocate,
-}: {
-  label: string;
-  count: number;
-  indent: number;
-  active: boolean;
-  onLocate: () => void;
-}) {
-  return (
-    <div
-      onClick={onLocate}
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        fontSize: label === '全部应用' ? 13.5 : 13,
-        fontWeight: active ? 600 : 500,
-        color: active ? T.colorText : T.colorTextSecondary,
-        background: active ? T.colorFillTertiary : 'transparent',
-        borderLeft: `2px solid ${active ? T.colorPrimary : 'transparent'}`,
-        borderRadius: 0,
-        paddingLeft: 10,
-        cursor: 'pointer',
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = T.colorFillQuaternary;
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      <span
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          paddingLeft: indent,
-        }}
-      >
-        {label}
-      </span>
-      <span
-        style={{
-          marginLeft: 'auto',
-          fontSize: 11,
-          color: active ? T.colorTextSecondary : T.colorTextQuaternary,
-          fontWeight: 400,
-        }}
-      >
-        {count}
-      </span>
-    </div>
-  );
-}
-
-/** 门户应用卡片（业务面：横排头 + 业务描述 + 版本·维护者；无工程计数/状态标签）。 */
-function AppPortalCard({ app, onOpen }: { app: AppSummary; onOpen: () => void }) {
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      style={{
-        background: T.colorBgContainer,
-        border: `1px solid ${T.colorBorderSecondary}`,
-        borderRadius: 12,
-        padding: 20,
-        height: '100%',
-        minHeight: 148,
-        display: 'flex',
-        flexDirection: 'column',
-        cursor: 'pointer',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div
-          aria-hidden
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            background: appTileBackground(app.color),
-            color: T.colorWhite,
-            fontSize: 15,
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          {(app.name || '应').slice(0, 1)}
-        </div>
-        <Text
-          strong
-          style={{
-            fontSize: 15,
-            flex: 1,
-            minWidth: 0,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-          title={app.name}
-        >
-          {app.name}
-        </Text>
-      </div>
-      <Text
-        type="secondary"
-        style={{
-          fontSize: 12.5,
-          lineHeight: 1.65,
-          marginTop: 12,
-          minHeight: 41,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}
-      >
-        {app.description || '暂无描述'}
-      </Text>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          marginTop: 'auto',
-          paddingTop: 12,
-          borderTop: `1px solid ${T.colorSplit}`,
-          fontSize: 12,
-          color: T.colorTextTertiary,
-        }}
-      >
-        <span>
-          {app.version ? `v${app.version}` : ''}
-          {app.ownerName ? ` · ${app.ownerName}` : ''}
-        </span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            color: T.colorPrimary,
-            fontWeight: 600,
-          }}
-        >
-          进入 →
-        </span>
-      </div>
+      {/* 只读分组定位轨：仅卡片视图显示（与 studio 一致），分组 ≥2 才出现 */}
+      {viewMode === 'card' &&
+        showRail &&
+        !isLoading &&
+        !noTenantContext &&
+        !error &&
+        visibleApps.length > 0 && (
+          <PortalGroupRail groups={visibleGroups} total={visibleApps.length} />
+        )}
     </div>
   );
 }

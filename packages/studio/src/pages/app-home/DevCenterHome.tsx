@@ -1,8 +1,10 @@
 /**
  * 开发中心首页（/apps，素蓝 v8.1：卡片/列表双视图 + 定位轨 + 分组管理）。
  *
- * 结构：问候+搜索 → 待办条 → 指标行 → 应用库工具行（创建/分组/视图切换）→
+ * 结构：问候+搜索 → 待办条 → 指标行 → 应用库工具行（创建/视图切换）→
  *       卡片视图（分组平铺+定位轨 scrollspy）| 列表视图（高密度行+分组筛选）→ 最近动态。
+ * 注：无独立「新建分组」入口——分组随应用产生（见 GroupsDrawer 头注释），
+ *     建组走 创建应用分组字段 / 移动到分组 / 管理分组抽屉。
  * 展示件与 CRUD 拆见 ./home-bits.tsx、./useAppCrud.ts、./AppListView.tsx、./AppHomeDialogs.tsx。
  */
 
@@ -32,11 +34,7 @@ import { type CreateFormValues } from '../app-list/constants.js';
 import AppHeader from '../app-list/AppHeader.js';
 import AppListView from './AppListView.js';
 import AppHomeDialogs from './AppHomeDialogs.js';
-import GroupLocatorRail, {
-  RAIL_ALL_KEY,
-  UNGROUPED_KEY,
-  type AppGroup,
-} from './GroupLocatorRail.js';
+import GroupLocatorRail, { UNGROUPED_KEY, type AppGroup } from './GroupLocatorRail.js';
 import GroupsDrawer from './GroupsDrawer.js';
 import { ActivityFeed, GroupCardSections, HomeTopBlocks } from './home-bits.js';
 import { useAppCrud } from './useAppCrud.js';
@@ -54,7 +52,6 @@ export default function DevCenterHome() {
   const [movingApp, setMovingApp] = useState<AppSummary | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
-  const [activeKey, setActiveKey] = useState(RAIL_ALL_KEY);
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() =>
     localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'card',
   );
@@ -106,15 +103,14 @@ export default function DevCenterHome() {
 
   const groupNames = groups.filter((g) => g.name !== null).map((g) => g.name as string);
 
-  /** 统一过滤：分组（rail/切换联动）+ 关键字。 */
+  /** 关键字过滤（列表视图数据源；分组高亮由定位轨内化管理）。 */
   const filteredApps = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
-    return (apps ?? []).filter((a) => {
-      if (activeKey !== RAIL_ALL_KEY && (a.group ?? UNGROUPED_KEY) !== activeKey) return false;
-      if (!kw) return true;
-      return a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw);
-    });
-  }, [apps, activeKey, keyword]);
+    if (!kw) return apps ?? [];
+    return (apps ?? []).filter(
+      (a) => a.name.toLowerCase().includes(kw) || (a.description ?? '').toLowerCase().includes(kw),
+    );
+  }, [apps, keyword]);
 
   const visibleGroups: AppGroup[] = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
@@ -201,13 +197,6 @@ export default function DevCenterHome() {
     />
   );
 
-  const locateGroup = (key: string) => {
-    setActiveKey(key);
-    document
-      .getElementById(`group-anchor-${key}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
   return (
     <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       <AppHeader
@@ -262,9 +251,6 @@ export default function DevCenterHome() {
                 <Button type="primary" icon={<AppstoreAddOutlined />} onClick={openCreate}>
                   创建应用
                 </Button>
-                <Button type="link" onClick={openCreate} style={{ fontWeight: 600, padding: 0 }}>
-                  ＋ 新建分组
-                </Button>
                 <Button
                   type="text"
                   onClick={() => setDrawerOpen(true)}
@@ -283,7 +269,6 @@ export default function DevCenterHome() {
                   onChange={(v) => {
                     setViewMode(v as 'card' | 'list');
                     localStorage.setItem(VIEW_KEY, v as string);
-                    setActiveKey(RAIL_ALL_KEY);
                   }}
                   aria-label="视图切换"
                   options={[
@@ -350,14 +335,7 @@ export default function DevCenterHome() {
           />
         </div>
 
-        {viewMode === 'card' && (
-          <GroupLocatorRail
-            groups={visibleGroups}
-            activeKey={activeKey}
-            onSelect={locateGroup}
-            enableSpy
-          />
-        )}
+        {viewMode === 'card' && <GroupLocatorRail groups={visibleGroups} enableSpy />}
       </div>
 
       <AppHomeDialogs

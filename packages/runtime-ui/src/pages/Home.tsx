@@ -409,6 +409,7 @@ function RailRow({
         background: active ? T.colorFillTertiary : 'transparent',
         borderLeft: `2px solid ${active ? T.colorPrimary : 'transparent'}`,
         borderRadius: 0,
+        paddingLeft: 10,
         cursor: 'pointer',
       }}
       onMouseEnter={(e) => {

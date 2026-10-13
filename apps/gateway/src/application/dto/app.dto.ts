@@ -5,7 +5,7 @@
  * Service 层继续使用 interface，Controller 层使用此 class-based DTO。
  */
 
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAppDto {
@@ -30,6 +30,12 @@ export class CreateAppDto {
   @IsOptional()
   @IsString()
   icon?: string;
+
+  @ApiPropertyOptional({ example: '采购业务', description: '应用分组（≤20 字符；空=未分组）' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '分组名不能超过 20 个字符' })
+  group?: string;
 
   @ApiPropertyOptional({ example: '#1890ff', description: '主题色' })
   @IsOptional()
@@ -57,6 +63,27 @@ export class UpdateAppDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  @ApiPropertyOptional({ example: '采购业务', description: '应用分组（≤20 字符；空=未分组）' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '分组名不能超过 20 个字符' })
+  group?: string;
+}
+
+export class UpdateAppGroupDto {
+  @ApiProperty({ example: '采购业务', description: '现分组名' })
+  @IsString()
+  from!: string;
+
+  @ApiPropertyOptional({
+    example: '供应链业务',
+    description: '新分组名；不传/空串=删除分组（应用移入未分组）',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '分组名不能超过 20 个字符' })
+  to?: string;
 }
 
 export class PublishAppDto {

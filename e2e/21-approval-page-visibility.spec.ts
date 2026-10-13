@@ -93,7 +93,7 @@ test.describe('审批页数据可见性（DOM 级）', () => {
     // ---- 真实用户路径：runtime 登录页 → 任务中心 → 打开审批弹窗 ----
     await page.goto(`${RUNTIME_BASE}/login`);
     await page.getByPlaceholder('如 demo').fill('demo');
-    await page.getByPlaceholder('you@example.com').fill(SUPERADMIN_EMAIL);
+    await page.getByPlaceholder('name@company.com').fill(SUPERADMIN_EMAIL);
     await page.locator('input[type="password"]').fill(SUPERADMIN_PASSWORD);
     await page.getByRole('button', { name: /登\s*录/ }).click();
     await page.waitForURL('**/home', { timeout: 15_000 });

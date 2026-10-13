@@ -8,7 +8,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
-import { appTileBackground, appTileShadow, TOKENS as T } from '@apaas/shared/design';
+import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import { appsApi } from '../api/apps.js';
 import { pagesApi } from '../api/pages.js';
 import { STATUS_COLOR, STATUS_LABEL } from './app-list/constants.js';
@@ -103,15 +103,15 @@ export default function AppDashboard() {
             borderRadius: 14,
             background: appTileBackground(app.color),
             color: T.colorWhite,
-            fontSize: 28,
+            fontSize: 26,
+            fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            boxShadow: appTileShadow(app.color),
           }}
         >
-          {app.icon ?? '📦'}
+          {(app.name || '应').slice(0, 1)}
         </div>
         <div>
           <Title level={3} style={{ margin: 0, lineHeight: 1.2 }}>

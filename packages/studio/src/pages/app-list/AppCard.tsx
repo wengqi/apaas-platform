@@ -1,33 +1,29 @@
 /**
- * 应用列表页 — 应用卡片与网格（从 AppList.tsx 拆分，AGENTS.md 单文件 400 行规范）。
+ * 应用列表页 — 应用卡片与网格（素蓝横排头版，2026-10-13）。
  *
- * AppCard：单张应用卡片（图标/名称/更多操作/描述/状态版本/资源统计）。
- * AppGrid：加载骨架、空状态与卡片网格布局。
+ * 卡片结构：头部行（素蓝字母瓷片 + 名称 + apiName + ⋯）→ 描述（两行钳制）→
+ * 元数据行（状态点 · 版本 · 资源统计）。AppGrid：加载骨架 / 空状态 / 网格。
  */
 
-import { Button, Card, Col, Dropdown, Empty, Row, Skeleton, Space, Tag, Typography } from 'antd';
-import {
-  ApartmentOutlined,
-  AppstoreAddOutlined,
-  DatabaseOutlined,
-  LayoutOutlined,
-  MoreOutlined,
-} from '@ant-design/icons';
+import { Button, Card, Col, Dropdown, Empty, Row, Skeleton, Typography } from 'antd';
+import { AppstoreAddOutlined, MoreOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
-import { appTileBackground, appTileShadow, TOKENS as T } from '@apaas/shared/design';
+import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import type { AppSummary } from '../../api/apps.js';
-import { STATUS_COLOR, STATUS_LABEL } from './constants.js';
+import { STATUS_LABEL } from './constants.js';
 
 const { Paragraph, Text } = Typography;
 
 interface AppCardProps {
   app: AppSummary;
+  /** 现有分组名（卡片 ⋯ 菜单「移动到分组」弹窗使用） */
+  groupNames?: string[];
   menuItems: MenuProps['items'];
   onMenuClick: (info: { key: string }) => void;
   onOpen: () => void;
 }
 
-/** 单张应用卡片。 */
+/** 单张应用卡片（横排头，同高由网格 stretch 保证）。 */
 export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
   /** 键盘可达（a11y 2026-10-12 审计）：卡片承载整卡点击导航，Enter/Space 等效触发。 */
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -48,37 +44,37 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
         height: '100%',
         borderRadius: 12,
         overflow: 'hidden',
-        transition: 'all 0.3s ease',
         border: `1px solid ${T.colorBorderSecondary}`,
+        boxShadow: 'none',
       }}
-      styles={{ body: { padding: 20 } }}
+      styles={{ body: { padding: 20, display: 'flex', flexDirection: 'column', height: '100%' } }}
     >
-      {/* 图标 + 名称 + 更多操作 */}
-      <Space align="start" style={{ width: '100%' }}>
+      {/* 头部行：瓷片 + 名称/apiName + ⋯ */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div
+          aria-hidden
           style={{
-            width: 52,
-            height: 52,
-            borderRadius: 12,
+            width: 40,
+            height: 40,
+            borderRadius: 10,
             background: appTileBackground(app.color),
             color: T.colorWhite,
-            fontSize: 26,
+            fontSize: 16,
+            fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            boxShadow: appTileShadow(app.color),
           }}
-          aria-hidden
         >
-          {app.icon ?? '📦'}
+          {(app.name || '应').slice(0, 1)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Text strong style={{ fontSize: 16, display: 'block' }} ellipsis>
+          <Text strong style={{ fontSize: 15, display: 'block' }} ellipsis>
             {app.name}
           </Text>
-          {/* studio 是开发者界面：apiName 是有用的开发者标识，保留（runtime 侧才是
-              业务用户，评审 P0 的 apiName 去化只在 runtime Home/AppView 做） */}
+          {/* studio 是开发者界面：apiName 是有用的开发者标识，保留（评审 P0 的
+              apiName 去化只在 runtime Home/AppView 做） */}
           <Text type="secondary" style={{ fontSize: 12 }} ellipsis>
             {app.apiName}
           </Text>
@@ -100,46 +96,56 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
             icon={<MoreOutlined />}
             onClick={(e) => e.stopPropagation()}
             aria-label={`应用「${app.name}」更多操作`}
-            style={{ flexShrink: 0, color: 'rgba(0,0,0,0.65)' }}
+            style={{ flexShrink: 0, color: T.colorTextTertiary }}
           />
         </Dropdown>
-      </Space>
+      </div>
 
       {/* 描述 */}
       <Paragraph
         type="secondary"
         ellipsis={{ rows: 2 }}
-        style={{ marginTop: 14, marginBottom: 14, minHeight: 44, fontSize: 13, lineHeight: 1.6 }}
+        style={{
+          marginTop: 12,
+          marginBottom: 0,
+          fontSize: 12.5,
+          lineHeight: 1.65,
+          minHeight: 41,
+        }}
       >
         {app.description || '暂无描述'}
       </Paragraph>
 
-      {/* 状态 + 版本 */}
-      <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-        <Tag color={STATUS_COLOR[app.status] ?? 'default'} style={{ margin: 0, fontSize: 12 }}>
+      {/* 元数据行：状态 · 版本 · 资源统计（钉底保证同排等高下缘对齐） */}
+      <div
+        style={{
+          marginTop: 'auto',
+          paddingTop: 12,
+          borderTop: `1px solid ${T.colorSplit}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 12,
+          color: T.colorTextTertiary,
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: app.status === 'PUBLISHED' ? T.colorPrimary : T.colorDotIdle,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ color: T.colorTextSecondary }}>
           {STATUS_LABEL[app.status] ?? app.status}
-        </Tag>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          v{app.version}
-        </Text>
-      </Space>
-
-      {/* 资源统计（对比度治理：原三级灰 3.4:1 不达 AA，升为二级文字 7:1） */}
-      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.colorSplit}` }}>
-        <Space size="middle" style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)' }}>
-          <Space size={4}>
-            <DatabaseOutlined style={{ color: T.colorPrimary }} />
-            <span>{app.stats.objects} 对象</span>
-          </Space>
-          <Space size={4}>
-            <LayoutOutlined style={{ color: T.colorSuccess }} />
-            <span>{app.stats.pages} 页面</span>
-          </Space>
-          <Space size={4}>
-            <ApartmentOutlined style={{ color: T.colorWarning }} />
-            <span>{app.stats.processes} 流程</span>
-          </Space>
-        </Space>
+        </span>
+        <span>v{app.version}</span>
+        <span style={{ marginLeft: 'auto' }}>
+          {app.stats.objects} 对象 · {app.stats.pages} 页面 · {app.stats.processes} 流程
+        </span>
       </div>
     </Card>
   );
@@ -156,11 +162,11 @@ interface AppGridProps {
 export default function AppGrid({ apps, isLoading, onCreate, renderCard }: AppGridProps) {
   if (isLoading) {
     return (
-      <Row gutter={[20, 20]}>
+      <Row gutter={[16, 16]}>
         {[1, 2, 3, 4].map((i) => (
-          <Col key={i} xs={24} sm={12} md={8} lg={6}>
+          <Col key={i} xs={24} md={12}>
             <Card style={{ borderRadius: 12 }}>
-              <Skeleton active avatar paragraph={{ rows: 3 }} />
+              <Skeleton active avatar paragraph={{ rows: 2 }} />
             </Card>
           </Col>
         ))}
@@ -187,9 +193,9 @@ export default function AppGrid({ apps, isLoading, onCreate, renderCard }: AppGr
   }
 
   return (
-    <Row gutter={[20, 20]}>
+    <Row gutter={[16, 16]}>
       {apps.map((app) => (
-        <Col key={app.id} xs={24} sm={12} md={8} lg={6}>
+        <Col key={app.id} xs={24} md={12}>
           {renderCard(app)}
         </Col>
       ))}

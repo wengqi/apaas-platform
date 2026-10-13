@@ -254,6 +254,16 @@ export default function DevCenterHome() {
               应 用 库
             </Text>
             <Space style={{ marginLeft: 'auto' }}>
+              <Button
+                type="primary"
+                icon={<AppstoreAddOutlined />}
+                onClick={() => {
+                  form.resetFields();
+                  setCreateOpen(true);
+                }}
+              >
+                创建应用
+              </Button>
               <Button type="link" onClick={openCreate} style={{ fontWeight: 600, padding: 0 }}>
                 ＋ 新建分组
               </Button>

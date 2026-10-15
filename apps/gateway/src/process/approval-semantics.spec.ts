@@ -896,7 +896,7 @@ describe('S1 审批超时边界 — handleTaskTimeout', () => {
     expect(claim.data.status).toBe('APPROVED');
     expect(claim.data.comment).toBe('超时自动通过');
     // 批次无剩余 → 取消超时 job
-    expect(delayQueue.getJob).toHaveBeenCalledWith('task-timeout:ne-001');
+    expect(delayQueue.getJob).toHaveBeenCalledWith('task-timeout-ne-001');
   });
 
   it('NOTIFY：给待处理任务受理人发催办站内信', async () => {

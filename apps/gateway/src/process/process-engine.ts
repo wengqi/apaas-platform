@@ -1229,7 +1229,8 @@ export class ProcessEngine {
   static readonly TIMEOUT_ACTOR = 'system';
 
   private static taskTimeoutJobId(nodeExecutionId: string): string {
-    return `task-timeout:${nodeExecutionId}`;
+    // BullMQ jobId 禁止冒号（Custom Id cannot contain :，实测踩坑）——用连字符分隔
+    return `task-timeout-${nodeExecutionId}`;
   }
 
   /**
@@ -1252,10 +1253,16 @@ export class ProcessEngine {
     );
   }
 
-  /** 取消任务批次超时 job（批次全部任务终态时调用；job 不存在/已完成时静默）。 */
+  /** 取消任务批次超时 job（批次全部任务终态时调用；尽力而为——job 不存在/已完成/
+   * 正在执行中[超时动作自身路径 remove 必然 locked]均静默跳过，不影响主流程）。 */
   async cancelTaskTimeout(nodeExecutionId: string): Promise<void> {
-    const job = await this.delayQueue.getJob(ProcessEngine.taskTimeoutJobId(nodeExecutionId));
-    if (job) await job.remove();
+    try {
+      const job = await this.delayQueue.getJob(ProcessEngine.taskTimeoutJobId(nodeExecutionId));
+      if (job) await job.remove();
+    } catch {
+      // 尽力而为：job 已完成/已锁定/队列不可达时跳过（delayed job 到点后由幂等的
+      // handleTaskTimeout 兜底，重复触发无害）
+    }
   }
 
   /**

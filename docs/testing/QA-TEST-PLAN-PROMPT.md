@@ -135,6 +135,8 @@
 
 **R5 遗留修复轮锚点（2026-10-10，用户裁决四问题）**：**runtime 应用列表运行时视图过滤（TC-155，服务端语义变化）**——`GET /apps?runtime=1` 仅返回已发布且有权限应用（isSuperAdmin 短路/租户级通配 ALLOW=全部已发布[种子 END_USER 语义，R5 裁决①维持]/仅应用级规则按 appId 归纳/无角色默认拒绝）；无参数仍全量（studio 兼容，e2e/22 已断言）；**超管登录 runtime 分流（TC-154）**——runtime 登录页超管提示不进 /home 不写共享 store；/home 对超管 token（含 hash token 注入路径）显式空态+返回登录，非静默"暂无可用应用"；**e2e 限流环境**——登录 429 必须带排查指引报错（不得伪装成"任务超时"），22/23 发布版本号与探针 apiName 防碰撞；**台账 mapping（TC-129 备注）**——老页面/AI 生成页 schema 无 mapping 显示裸值为已知边界（根因=存量 schema 缺配置，非生成器/渲染器缺陷；用户裁决暂不处理）。
 
+**流程引擎专题推送轮锚点（2026-10-15）**：①组织树读端点权限语义变化——GET /permissions/orgs、/orgs/:id 从租户管理员放开到登录用户（画布 ORG 审批人下拉基础数据，TC-175 走查实测 builder 403 静默空下拉后修复；写操作/成员/授权明细仍管理员）；②FORM_FIELD 审批人校验加严——字段值须命中本租户用户，否则实例报清晰错误（TC-176）；③矩阵 2 user_task 行 assigneeType 5 种（USER/ROLE/ORG/FORM_FIELD/INITIATOR，SUPERVISOR 已摘除）与组织下拉/字段输入交互已按走查用例覆盖。
+
 **任务中心修复轮锚点（2026-10-10；TC 改号 TC-170/157/158→TC-170/171/172，2026-10-15 合并轮避免与嵌入域撞号）
 
 PLACEHOLDER，用户报告"待办已办为空"调查）**：**终端用户任务中心可用（TC-156，权限语义变化）**——END_USER 种子角色补 `PROCESS VIEW`（修复前 GET /tasks 要求 PROCESS:VIEW 而 END_USER 只有 EXECUTE/APPROVE → 403 被前端吞成空表：被授权审批的角色打不开任务中心）；规约=**运行时角色（需用任务中心）必须含 PROCESS VIEW**（app 级自定义角色建角色时同样适用）；seed 权限规则改为先删后建幂等收敛（permission_rules 无唯一索引，createMany+skipDuplicates 实际不去重，历史已累积 END_USER ×3/BUILDER ×2 副本）；**列表加载失败错误态显式化（TC-157）**——任务中心三个列表查询失败渲染红色告警+原因+重试（ListErrorAlert），禁止吞成"暂无任务"假空态；**我发起的视图（TC-158）**——`GET /instances/mine` 按 triggerContext.triggeredByUser 过滤发起人本人（与撤回/M-2 实例可见性同语义），前端三 Tab+进度弹窗（TraceViewer 轨迹+审批记录），申请人提交后可查进度（对标飞书 aPaaS「我发起的」）。

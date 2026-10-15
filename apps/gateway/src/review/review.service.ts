@@ -811,6 +811,63 @@ export class ReviewService {
   // ===========================================================================
 
   /** 提交单列表；PENDING 单附 diff 摘要（快审列表口径），其余状态按需返回纯 DTO。 */
+  /**
+   * 租户级待审汇总（2026-10-13 素蓝首页）：按应用聚合 PENDING 提交单，
+   * 附各组最近一条单据摘要——开发中心首页"待我审核"条与指标行的数据源。
+   */
+  async pendingSummary(tenantId: string): Promise<{
+    total: number;
+    items: Array<{
+      appId: string;
+      appName: string;
+      count: number;
+      latest: { module: string; apiName: string; name: string; createdAt: Date } | null;
+    }>;
+  }> {
+    const rows = await prisma.resourceVersion.groupBy({
+      by: ['appId'],
+      where: { tenantId, status: 'PENDING' },
+      _count: { _all: true },
+    });
+    if (rows.length === 0) return { total: 0, items: [] };
+
+    const appIds = rows.map((r) => r.appId);
+    const [apps, latestRows] = await Promise.all([
+      prisma.application.findMany({
+        where: { id: { in: appIds }, tenantId },
+        select: { id: true, name: true },
+      }),
+      prisma.resourceVersion.findMany({
+        where: { tenantId, status: 'PENDING', appId: { in: appIds } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    const nameById = new Map(apps.map((a) => [a.id, a.name]));
+    const latestByApp = new Map<string, (typeof latestRows)[number]>();
+    for (const row of latestRows) {
+      if (!latestByApp.has(row.appId)) latestByApp.set(row.appId, row);
+    }
+    const items = rows
+      .map((r) => {
+        const latest = latestByApp.get(r.appId);
+        return {
+          appId: r.appId,
+          appName: nameById.get(r.appId) ?? r.appId,
+          count: r._count._all,
+          latest: latest
+            ? {
+                module: latest.module,
+                apiName: latest.apiName,
+                name: latest.name,
+                createdAt: latest.createdAt,
+              }
+            : null,
+        };
+      })
+      .sort((a, b) => b.count - a.count);
+    return { total: items.reduce((sum, i) => sum + i.count, 0), items };
+  }
+
   async listSubmissions(
     tenantId: string,
     appId: string,

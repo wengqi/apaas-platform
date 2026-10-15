@@ -1,4 +1,5 @@
 import { Skeleton, Space, Tabs, Tag, Tooltip, Typography, message } from 'antd';
+import { appTileBackground, TOKENS as T } from '@apaas/shared/design';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
 import { useParams } from 'react-router-dom';
@@ -69,8 +70,8 @@ export default function ObjectDetail() {
             width: 48,
             height: 48,
             borderRadius: 12,
-            background: 'linear-gradient(135deg, #1677ff, #1677ffdd)',
-            color: '#fff',
+            background: appTileBackground(),
+            color: T.colorWhite,
             fontSize: 24,
             display: 'flex',
             alignItems: 'center',

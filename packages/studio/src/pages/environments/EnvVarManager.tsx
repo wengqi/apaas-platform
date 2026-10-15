@@ -3,6 +3,7 @@
  * 敏感值写后不可读（仅"已配置"状态 + 重置入口）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -149,7 +150,7 @@ export default function EnvVarManager({ appId, env }: EnvVarManagerProps) {
   return (
     <>
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-        <span style={{ color: '#999', fontSize: 12 }}>
+        <span style={{ color: T.colorTextTertiary, fontSize: 12 }}>
           环境差异只收敛到「值」：schema 一套，dev/prod 各自设值（G2 三分类）；必填 Key
           未设值时发布会被拦截（G4）。
         </span>
@@ -241,7 +242,7 @@ function SetValueButton({
         okText="保存"
       >
         {row.sensitive && (
-          <p style={{ color: '#999', fontSize: 12 }}>
+          <p style={{ color: T.colorTextTertiary, fontSize: 12 }}>
             敏感值加密存储，保存后不可读取，仅可重新设置（G3）。
           </p>
         )}

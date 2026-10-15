@@ -40,6 +40,24 @@ export class ReviewController {
   // 查询（字面量段在前，避免被 :submissionId 吞掉）
   // ---------------------------------------------------------------------------
 
+  @Get('reviews/pending-summary')
+  @ApiOperation({ summary: '租户级待审汇总（按应用聚合 PENDING，素蓝首页数据源）' })
+  async pendingSummary(@Req() req: AuthenticatedRequest): Promise<{
+    ok: true;
+    data: {
+      total: number;
+      items: Array<{
+        appId: string;
+        appName: string;
+        count: number;
+        latest: { module: string; apiName: string; name: string; createdAt: Date } | null;
+      }>;
+    };
+  }> {
+    const data = await this.reviewService.pendingSummary(requireTenantId(req));
+    return { ok: true as const, data };
+  }
+
   @Get(':appId/reviews/dirty')
   @ApiOperation({ summary: '脏资源清单：活表 ≠ 最新基线快照（可撤销未提交）' })
   async listDirty(

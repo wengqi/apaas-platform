@@ -29,6 +29,9 @@ export interface AmisRendererProps {
   fetcher?: FetcherLike;
   /** 渲染完成通知（可选） */
   onReady?: () => void;
+  /** 页面作用域回调（embed 的 query-data 经它读取页面数据域；
+   *  透传给 amis Scoped HOC 的 scopeRef，挂载时收到 scoped、卸载时收到 null） */
+  scopeRef?: (scoped: unknown) => void;
 }
 
 export type FetcherLike = (api: Record<string, unknown>) => Promise<{
@@ -170,7 +173,13 @@ function createDefaultFetcher(): FetcherLike {
  *
  * 注意： amis 内部大量使用 findDOMNode 与 MST，父级不要包 React.StrictMode。
  */
-export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRendererProps) {
+export default function AmisRenderer({
+  schema,
+  data,
+  fetcher,
+  onReady,
+  scopeRef,
+}: AmisRendererProps) {
   const readyRef = useRef(false);
   const options = useMemo(
     () => ({
@@ -182,6 +191,13 @@ export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRen
   );
   const mergedSchema = useMemo(() => mergeSchemaData(schema, data), [schema, data]);
 
+  // RootRenderProps 透传链已核实：render() 第二参 → AMISRenderer → Root(HocScoped 包裹)
+  // → Scoped.js 在挂载/卸载时回调 scopeRef（amis-core Scoped.js:466-481）
+  const mergedProps = useMemo(
+    () => ({ ...(data ?? {}), ...(scopeRef ? { scopeRef } : {}) }),
+    [data, scopeRef],
+  );
+
   return (
     <div
       className="amis-renderer"
@@ -192,7 +208,11 @@ export default function AmisRenderer({ schema, data, fetcher, onReady }: AmisRen
         }
       }}
     >
-      {render(mergedSchema as { type: string } & Record<string, unknown>, data ?? {}, options)}
+      {render(
+        mergedSchema as { type: string } & Record<string, unknown>,
+        mergedProps as Record<string, unknown>,
+        options,
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
  * 角色管理 — 左角色列表 + 右角色详情(成员+权限规则)。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { apiErrorMessage } from '../../api/client.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -73,9 +74,9 @@ export default function RoleManager({ appId }: RoleManagerProps) {
         style={{
           width: 300,
           flexShrink: 0,
-          background: '#fff',
+          background: T.colorWhite,
           borderRadius: 12,
-          border: '1px solid #eef0f4',
+          border: `1px solid ${T.colorBorderSecondary}`,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -84,7 +85,7 @@ export default function RoleManager({ appId }: RoleManagerProps) {
         <div
           style={{
             padding: '12px 16px',
-            borderBottom: '1px solid #eef0f4',
+            borderBottom: `1px solid ${T.colorBorderSecondary}`,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -117,9 +118,11 @@ export default function RoleManager({ appId }: RoleManagerProps) {
                   style={{
                     padding: '10px 16px',
                     cursor: 'pointer',
-                    background: selectedRole?.id === role.id ? '#f0f5ff' : 'transparent',
+                    background: selectedRole?.id === role.id ? T.colorPrimaryBg : 'transparent',
                     borderLeft:
-                      selectedRole?.id === role.id ? '3px solid #1677ff' : '3px solid transparent',
+                      selectedRole?.id === role.id
+                        ? `3px solid ${T.colorPrimary}`
+                        : '3px solid transparent',
                   }}
                   onClick={() => setSelectedRoleId(role.id)}
                 >

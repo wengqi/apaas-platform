@@ -2,19 +2,21 @@
  * 应用列表页 — 创建 / 编辑应用弹窗（从 AppList.tsx 拆分，AGENTS.md 单文件 400 行规范）。
  *
  * 两个弹窗共用同一个 Form 实例（由调用方传入），字段集一致：
- * API 名称（仅创建可填）/ 显示名称 / 描述 / 图标 / 主题色。
+ * API 名称（仅创建可填）/ 显示名称 / 描述 / 分组。
+ * 素蓝（2026-10-13）：图标/主题色字段随统一瓷片退役；新增分组（可选新组名建组）。
  */
 
-import { ColorPicker, Form, Input, Modal } from 'antd';
+import { Form, Input, Modal } from 'antd';
 import type { AppSummary } from '../../api/apps.js';
 import type { CreateFormValues } from './constants.js';
-import EmojiIconPicker from '../../components/shared/EmojiIconPicker.js';
+import GroupSelect from '../app-home/GroupSelect.js';
 
 type AppForm = ReturnType<typeof Form.useForm<CreateFormValues>>[0];
 
 interface CreateAppModalProps {
   open: boolean;
   form: AppForm;
+  groupNames: string[];
   confirmLoading: boolean;
   onCancel: () => void;
   onOk: () => void;
@@ -24,6 +26,7 @@ interface CreateAppModalProps {
 export function CreateAppModal({
   open,
   form,
+  groupNames,
   confirmLoading,
   onCancel,
   onOk,
@@ -40,12 +43,7 @@ export function CreateAppModal({
       destroyOnClose
       modalRender={(node) => node}
     >
-      <Form<CreateFormValues>
-        form={form}
-        layout="vertical"
-        initialValues={{ icon: '📦', color: '#1677ff' }}
-        preserve={false}
-      >
+      <Form<CreateFormValues> form={form} layout="vertical" initialValues={{}} preserve={false}>
         <Form.Item
           label="API 名称"
           name="apiName"
@@ -62,23 +60,18 @@ export function CreateAppModal({
         <Form.Item
           label="显示名称"
           name="name"
-          rules={[{ required: true, message: '请输入显示名称' }]}
+          rules={[
+            { required: true, message: '请输入显示名称' },
+            { max: 30, message: '名称不能超过 30 个字符' },
+          ]}
         >
-          <Input placeholder="资产管理" />
+          <Input placeholder="资产管理" maxLength={30} showCount />
         </Form.Item>
         <Form.Item label="描述" name="description">
           <Input.TextArea rows={2} placeholder="应用简介（可选）" />
         </Form.Item>
-        <Form.Item label="图标" name="icon" tooltip="从图标库选择，或直接输入 emoji">
-          <EmojiIconPicker />
-        </Form.Item>
-        <Form.Item
-          label="主题色"
-          name="color"
-          getValueProps={(value) => ({ value: value ?? undefined })}
-          getValueFromEvent={(color) => color?.toHexString()}
-        >
-          <ColorPicker showText format="hex" />
+        <Form.Item label="分组" name="group" tooltip="输入现有分组名，或输入新分组名直接建组">
+          <GroupSelect groupNames={groupNames} placeholder="未分组" />
         </Form.Item>
       </Form>
     </Modal>
@@ -88,13 +81,21 @@ export function CreateAppModal({
 interface EditAppModalProps {
   app: AppSummary | null;
   form: AppForm;
+  groupNames: string[];
   confirmLoading: boolean;
   onCancel: () => void;
   onOk: () => void;
 }
 
 /** 编辑应用弹窗（API 名称只读）。 */
-export function EditAppModal({ app, form, confirmLoading, onCancel, onOk }: EditAppModalProps) {
+export function EditAppModal({
+  app,
+  form,
+  groupNames,
+  confirmLoading,
+  onCancel,
+  onOk,
+}: EditAppModalProps) {
   return (
     <Modal
       title="编辑应用"
@@ -114,23 +115,18 @@ export function EditAppModal({ app, form, confirmLoading, onCancel, onOk }: Edit
         <Form.Item
           label="显示名称"
           name="name"
-          rules={[{ required: true, message: '请输入显示名称' }]}
+          rules={[
+            { required: true, message: '请输入显示名称' },
+            { max: 30, message: '名称不能超过 30 个字符' },
+          ]}
         >
-          <Input placeholder="资产管理" />
+          <Input placeholder="资产管理" maxLength={30} showCount />
         </Form.Item>
         <Form.Item label="描述" name="description">
           <Input.TextArea rows={2} placeholder="应用简介（可选）" />
         </Form.Item>
-        <Form.Item label="图标" name="icon" tooltip="从图标库选择，或直接输入 emoji">
-          <EmojiIconPicker />
-        </Form.Item>
-        <Form.Item
-          label="主题色"
-          name="color"
-          getValueProps={(value) => ({ value: value ?? undefined })}
-          getValueFromEvent={(color) => color?.toHexString()}
-        >
-          <ColorPicker showText format="hex" />
+        <Form.Item label="分组" name="group" tooltip="输入现有分组名，或输入新分组名直接建组">
+          <GroupSelect groupNames={groupNames} placeholder="未分组" />
         </Form.Item>
       </Form>
     </Modal>

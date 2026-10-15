@@ -1,21 +1,17 @@
 /**
- * 应用列表页 — 顶部导航栏（从 AppList.tsx 拆分，AGENTS.md 单文件 400 行规范）。
+ * 应用列表页 — 顶部导航栏（素蓝顶栏导航版，2026-10-13）。
  *
- * 品牌区 +「平台管理」入口（仅平台超管/租户管理员可见）+ 用户下拉菜单。
+ * 布局：品牌（方孔a + aPaaS Studio）+ 租户级导航（开发中心恒显；
+ * 用户管理/组织架构/审计日志/观测中心/权限调试按管理员角色显隐；
+ * 租户管理仅平台超管）+ 右侧用户下拉。
+ * 原「平台管理」下拉退役——治理/运维入口升级为一级导航（用户裁决）。
  */
 
+import { TOKENS as T, brandLogoMarkSvg } from '@apaas/shared/design';
 import { Avatar, Button, Dropdown, Space, Typography } from 'antd';
-import {
-  ApartmentOutlined,
-  AuditOutlined,
-  ExperimentOutlined,
-  FundOutlined,
-  GlobalOutlined,
-  LogoutOutlined,
-  ThunderboltFilled,
-  UserOutlined,
-} from '@ant-design/icons';
+import { GlobalOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import { useLocation } from 'react-router-dom';
 
 const { Text } = Typography;
 
@@ -28,6 +24,24 @@ interface AppHeaderProps {
   onLogout: () => void;
 }
 
+/** 顶栏导航项（租户级）。 */
+interface NavItem {
+  key: string;
+  label: string;
+  /** 可见角色：默认全员 */
+  roles?: ('platform' | 'tenant')[];
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { key: '/apps', label: '开发中心' },
+  { key: '/platform/users', label: '用户管理', roles: ['platform', 'tenant'] },
+  { key: '/platform/orgs', label: '组织架构', roles: ['platform', 'tenant'] },
+  { key: '/platform/audit-logs', label: '审计日志', roles: ['platform', 'tenant'] },
+  { key: '/platform/observability', label: '观测中心', roles: ['platform', 'tenant'] },
+  { key: '/platform/permission-debug', label: '权限调试', roles: ['platform', 'tenant'] },
+  { key: '/platform/tenants', label: '租户管理', roles: ['platform'] },
+];
+
 /** 应用列表页顶部导航。 */
 export default function AppHeader({
   isPlatformAdmin,
@@ -37,55 +51,8 @@ export default function AppHeader({
   onNavigate,
   onLogout,
 }: AppHeaderProps) {
-  /** 平台管理入口菜单项 — 按角色显示。 */
-  const adminMenuItems: MenuProps['items'] = [
-    ...(isPlatformAdmin
-      ? [
-          {
-            key: 'tenants',
-            icon: <GlobalOutlined />,
-            label: '租户管理',
-            onClick: () => onNavigate('/platform/tenants'),
-          },
-        ]
-      : []),
-    ...(isTenantAdmin
-      ? [
-          {
-            key: 'users',
-            icon: <UserOutlined />,
-            label: '用户管理',
-            onClick: () => onNavigate('/platform/users'),
-          },
-          {
-            key: 'orgs',
-            icon: <ApartmentOutlined />,
-            label: '组织架构',
-            onClick: () => onNavigate('/platform/orgs'),
-          },
-          {
-            key: 'audit-logs',
-            icon: <AuditOutlined />,
-            label: '审计日志',
-            onClick: () => onNavigate('/platform/audit-logs'),
-          },
-          {
-            key: 'observability',
-            icon: <FundOutlined />,
-            label: '观测中心',
-            onClick: () => onNavigate('/platform/observability'),
-          },
-          {
-            key: 'permission-debug',
-            icon: <ExperimentOutlined />,
-            label: '权限调试',
-            onClick: () => onNavigate('/platform/permission-debug'),
-          },
-        ]
-      : []),
-  ];
+  const location = useLocation();
 
-  /** 用户下拉菜单项。 */
   const userMenuItems: MenuProps['items'] = [
     ...(isPlatformAdmin
       ? [
@@ -94,40 +61,6 @@ export default function AppHeader({
             icon: <GlobalOutlined />,
             label: '租户管理',
             onClick: () => onNavigate('/platform/tenants'),
-          },
-        ]
-      : []),
-    ...(isTenantAdmin
-      ? [
-          {
-            key: 'users',
-            icon: <UserOutlined />,
-            label: '用户管理',
-            onClick: () => onNavigate('/platform/users'),
-          },
-          {
-            key: 'orgs',
-            icon: <ApartmentOutlined />,
-            label: '组织架构',
-            onClick: () => onNavigate('/platform/orgs'),
-          },
-          {
-            key: 'audit-logs',
-            icon: <AuditOutlined />,
-            label: '审计日志',
-            onClick: () => onNavigate('/platform/audit-logs'),
-          },
-          {
-            key: 'observability',
-            icon: <FundOutlined />,
-            label: '观测中心',
-            onClick: () => onNavigate('/platform/observability'),
-          },
-          {
-            key: 'permission-debug',
-            icon: <ExperimentOutlined />,
-            label: '权限调试',
-            onClick: () => onNavigate('/platform/permission-debug'),
           },
         ]
       : []),
@@ -140,43 +73,67 @@ export default function AppHeader({
     },
   ];
 
+  const visibleNav = NAV_ITEMS.filter(
+    (item) =>
+      !item.roles ||
+      (isPlatformAdmin && item.roles.includes('platform')) ||
+      (isTenantAdmin && item.roles.includes('tenant')),
+  );
+
   return (
     <div
       style={{
-        height: 56,
-        background: '#fff',
-        borderBottom: '1px solid #eef0f4',
+        height: 60,
+        background: T.colorBgContainer,
+        borderBottom: `1px solid ${T.colorBorderSecondary}`,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 32px',
+        padding: '0 24px',
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
       }}
     >
-      <Space size={16}>
-        <Space size={8}>
-          <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
-          <Text strong style={{ fontSize: 16 }}>
-            aPaaS Studio
+      <Space size={12} style={{ cursor: 'pointer' }} onClick={() => onNavigate('/apps')}>
+        <span
+          aria-hidden
+          dangerouslySetInnerHTML={{ __html: brandLogoMarkSvg(28) }}
+          style={{ display: 'inline-flex' }}
+        />
+        <Text strong style={{ fontSize: 15.5, letterSpacing: '-0.01em' }}>
+          aPaaS{' '}
+          <Text type="secondary" style={{ fontWeight: 500 }}>
+            Studio
           </Text>
-        </Space>
-        {/* 管理入口 — 仅平台超管或租户管理员可见 */}
-        {(isPlatformAdmin || isTenantAdmin) && (
-          <Dropdown menu={{ items: adminMenuItems }} placement="bottomLeft">
-            <Button type="text" style={{ fontSize: 14 }}>
-              平台管理
-            </Button>
-          </Dropdown>
-        )}
+        </Text>
       </Space>
+      <nav style={{ display: 'flex', gap: 4, marginLeft: 22 }} aria-label="租户级导航">
+        {visibleNav.map((item) => {
+          const active = location.pathname === item.key;
+          return (
+            <Button
+              key={item.key}
+              type="text"
+              onClick={() => onNavigate(item.key)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: 13.5,
+                fontWeight: active ? 600 : 500,
+                color: active ? T.colorPrimary : T.colorTextSecondary,
+                background: active ? T.colorPrimaryBg : 'transparent',
+              }}
+            >
+              {item.label}
+            </Button>
+          );
+        })}
+      </nav>
       <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-        <Space style={{ cursor: 'pointer' }}>
+        <button type="button" className="studio-header-user-btn" style={{ marginLeft: 'auto' }}>
           <Avatar size="small" icon={<UserOutlined />} src={userAvatar} />
-          <Text style={{ fontSize: 14 }}>{userName}</Text>
-        </Space>
+          <Text style={{ fontSize: 13, color: T.colorTextSecondary }}>{userName}</Text>
+        </button>
       </Dropdown>
     </div>
   );

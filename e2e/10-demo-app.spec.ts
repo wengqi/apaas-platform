@@ -211,7 +211,10 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   test('Studio 中应用可见（UI 验证）', async ({ page }) => {
     // 使用已登录的 storageState，导航到应用列表
     await page.goto('/apps');
-    await expect(page.getByText('资产管理')).toBeVisible({ timeout: 10_000 });
+    // 素蓝改版后应用名同时出现在卡片与右轨定位轨叶子——定位收窄到卡片容器
+    await expect(page.locator('.ant-card').getByText('资产管理')).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test('Studio 对象设计器可见（UI 验证）', async ({ page }) => {

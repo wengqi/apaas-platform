@@ -7,6 +7,7 @@
  *  - 模版预览(填入示例值→渲染预览)
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useState } from 'react';
 import { apiErrorMessage } from '../../api/client.js';
 import {
@@ -197,7 +198,7 @@ export default function NotificationTemplateManager() {
   return (
     <div style={{ padding: 24 }}>
       <Card
-        style={{ borderRadius: 12, border: '1px solid #eef0f4' }}
+        style={{ borderRadius: 12, border: `1px solid ${T.colorBorderSecondary}` }}
         styles={{ body: { padding: 20 } }}
       >
         <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
@@ -390,7 +391,7 @@ function TemplateEditorForm({ form }: { form: ReturnType<typeof Form.useForm>[0]
       <Title level={5} style={{ marginTop: 16 }}>
         预览
       </Title>
-      <Card size="small" style={{ background: '#fafbfc' }}>
+      <Card size="small" style={{ background: T.colorFillQuaternary }}>
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Text strong>标题: {preview.title || '(空)'}</Text>
           <Paragraph style={{ margin: 0, whiteSpace: 'pre-wrap' }}>

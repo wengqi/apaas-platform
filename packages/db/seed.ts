@@ -270,6 +270,7 @@ async function main() {
       description: '企业资产登记、领用、归还与盘点',
       icon: '📋',
       color: '#1677ff',
+      group: '行政综合',
       status: 'DRAFT',
       version: 0,
       createdBy: admin.id,
@@ -291,6 +292,7 @@ async function main() {
       description: '供应商档案、采购合同台账与分级审批',
       icon: '📄',
       color: '#722ed1',
+      group: '采购业务',
       status: 'DRAFT',
       version: 0,
       createdBy: admin.id,
@@ -298,6 +300,47 @@ async function main() {
   });
   console.log(`✅ 应用: ${procurementApp.name} (${procurementApp.id})`);
   await seedProcurementContent(tenant.id, procurementApp.id, admin.id);
+
+  // 11. 内部应用标记（2026-10-12 评审 P0，幂等）：E2E/QA 夹具等非业务应用
+  // 打 isInternal 标，运行时门户（GET /apps?runtime=1）过滤后不再出现在
+  // 业务用户首页——修复"业务用户打开的是工程师的工作台"
+  // 11.5 应用分组回填（2026-10-13 素蓝设计轮，幂等）：按 apiName 归组，
+  // 首页与运行时门户按分组归类展示；不在表内的应用保持「未分组」
+  const appGroupSeed: Array<[string, string]> = [
+    ['procurement', '采购业务'],
+    ['procurement_analysis_app', '采购业务'],
+    ['expense_mgmt', '财务'],
+    ['sales_order_app', '销售业务'],
+    ['asset_management', '行政综合'],
+    ['meeting_booking_app', '行政综合'],
+    ['app_116372', '行政综合'],
+    ['app_d64e72', '行政综合'],
+  ];
+  for (const [apiName, group] of appGroupSeed) {
+    await prisma.application.updateMany({
+      where: { tenantId: tenant.id, apiName },
+      data: { group },
+    });
+  }
+  console.log(`✅ 应用分组回填: ${appGroupSeed.length} 条`);
+
+  // 内部应用标记（2026-10-12 评审 P0，幂等）：E2E/QA 夹具等非业务应用
+  // 不进运行时门户（GET /apps?runtime=1 过滤 isInternal）
+  const internalMarked = await prisma.application.updateMany({
+    where: {
+      tenantId: tenant.id,
+      OR: [
+        { apiName: { startsWith: 'e2e_' } },
+        { apiName: { startsWith: 'qa_' } },
+        { name: { contains: 'E2E' } },
+        { name: { contains: '测试' } },
+        { name: { contains: '夹具' } },
+        { name: { contains: 'UI 路径' } },
+      ],
+    },
+    data: { isInternal: true },
+  });
+  console.log(`✅ 内部应用标记: ${internalMarked.count} 个 E2E/QA 夹具应用已设为业务门户不可见`);
 
   console.log('');
   console.log('📋 测试账号:');

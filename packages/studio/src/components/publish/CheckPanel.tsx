@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { Button, Empty, List, Tag, Typography, Space, Spin } from 'antd';
 import {
@@ -45,8 +46,17 @@ export default function CheckPanel({ appId }: { appId: string }) {
 
   return (
     <div style={{ padding: '0 4px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={5} style={{ margin: 0 }}>问题</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={5} style={{ margin: 0 }}>
+          问题
+        </Title>
         {lastCheck && (
           <Text type="secondary" style={{ fontSize: 12 }}>
             最近检查 {new Date(lastCheck.checkedAt).toLocaleTimeString('zh-CN')}
@@ -83,7 +93,7 @@ export default function CheckPanel({ appId }: { appId: string }) {
         <>
           {lastCheck.issues.length === 0 ? (
             <Empty
-              image={<CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a' }} />}
+              image={<CheckCircleOutlined style={{ fontSize: 48, color: T.colorSuccess }} />}
               description="暂无问题"
             />
           ) : (
@@ -99,11 +109,13 @@ export default function CheckPanel({ appId }: { appId: string }) {
                     <List.Item.Meta
                       avatar={
                         issue.level === 'ERROR' ? (
-                          <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+                          <ExclamationCircleOutlined
+                            style={{ color: T.colorError, fontSize: 18 }}
+                          />
                         ) : issue.level === 'WARNING' ? (
-                          <WarningOutlined style={{ color: '#faad14', fontSize: 18 }} />
+                          <WarningOutlined style={{ color: T.colorGold, fontSize: 18 }} />
                         ) : (
-                          <CheckCircleOutlined style={{ color: '#1677ff', fontSize: 18 }} />
+                          <CheckCircleOutlined style={{ color: T.colorPrimary, fontSize: 18 }} />
                         )
                       }
                       title={

@@ -46,6 +46,9 @@ const KNOWN_ACTION_TYPES: ReadonlySet<string> = new Set([
   'pageNum',
   'preventable',
   'stopAutoRefresh',
+  // 平台自定义动作：iframe 嵌入场景 page-event 出站（runtime-ui embedActions 注册，
+  // 见 docs/design/DESIGN-embed-iframe-2026-10-12.md；非 embed 模式无活跃桥静默）
+  'embedEvent',
 ]);
 
 /** 容器属性中"每项是独立节点数组"的键 vs "选项类配置"键（选项项不是渲染器节点）。 */

@@ -5,6 +5,7 @@
  * 用户无需返回应用视图即可切换页面（此前只能经 AppView 页面列表中转）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Menu } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
@@ -30,7 +31,7 @@ export default function AppNavMenu() {
       selectedKeys={slug ? [slug] : []}
       items={publishedPages.map((p) => ({ key: p.slug, label: p.name }))}
       onClick={({ key }) => navigate(`/app/${appId}/p/${key}`)}
-      style={{ borderBottom: '1px solid #f0f0f0' }}
+      style={{ borderBottom: `1px solid ${T.colorSplit}` }}
     />
   );
 }

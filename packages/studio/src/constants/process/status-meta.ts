@@ -5,6 +5,7 @@
  * 对齐 DESIGN-process.md §9.3 / §9.4 / §8.2。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import type {
   NodeExecutionState,
   NotificationChannel,
@@ -25,9 +26,9 @@ export interface ProcessStatusMeta {
 }
 
 export const PROCESS_STATUS_META: Record<ProcessStatus, ProcessStatusMeta> = {
-  DRAFT: { label: '草稿', tagColor: 'orange', dotColor: '#fa8c16' },
-  PUBLISHED: { label: '已发布', tagColor: 'green', dotColor: '#52c41a' },
-  ARCHIVED: { label: '已归档', tagColor: 'default', dotColor: '#8c8c8c' },
+  DRAFT: { label: '草稿', tagColor: 'orange', dotColor: T.colorWarning },
+  PUBLISHED: { label: '已发布', tagColor: 'green', dotColor: T.colorSuccess },
+  ARCHIVED: { label: '已归档', tagColor: 'default', dotColor: T.colorTextTertiary },
 };
 
 export function getProcessStatusMeta(status: string): ProcessStatusMeta {
@@ -47,11 +48,11 @@ export interface InstanceStateMeta {
 }
 
 export const INSTANCE_STATE_META: Record<ProcessInstanceState, InstanceStateMeta> = {
-  RUNNING: { label: '运行中', badgeStatus: 'processing', color: '#1677ff' },
-  WAITING_USER_TASK: { label: '等待中', badgeStatus: 'warning', color: '#fa8c16' },
-  COMPLETED: { label: '已完成', badgeStatus: 'success', color: '#52c41a' },
-  FAILED: { label: '失败', badgeStatus: 'error', color: '#ff4d4f' },
-  TERMINATED: { label: '已终止', badgeStatus: 'default', color: '#8c8c8c' },
+  RUNNING: { label: '运行中', badgeStatus: 'processing', color: T.colorPrimary },
+  WAITING_USER_TASK: { label: '等待中', badgeStatus: 'warning', color: T.colorWarning },
+  COMPLETED: { label: '已完成', badgeStatus: 'success', color: T.colorSuccess },
+  FAILED: { label: '失败', badgeStatus: 'error', color: T.colorError },
+  TERMINATED: { label: '已终止', badgeStatus: 'default', color: T.colorTextTertiary },
 };
 
 export function getInstanceStateMeta(state: string): InstanceStateMeta {
@@ -67,12 +68,12 @@ export interface NodeStateMeta {
 }
 
 export const NODE_STATE_META: Record<NodeExecutionState, NodeStateMeta> = {
-  COMPLETED: { label: '已执行', color: '#52c41a', badgeStatus: 'success' },
-  RUNNING: { label: '执行中', color: '#1677ff', badgeStatus: 'processing' },
-  WAITING: { label: '等待中', color: '#fa8c16', badgeStatus: 'warning' },
-  PENDING: { label: '待执行', color: '#d9d9d9', badgeStatus: 'default' },
-  FAILED: { label: '失败', color: '#ff4d4f', badgeStatus: 'error' },
-  SKIPPED: { label: '跳过', color: '#bfbfbf', badgeStatus: 'default' },
+  COMPLETED: { label: '已执行', color: T.colorSuccess, badgeStatus: 'success' },
+  RUNNING: { label: '执行中', color: T.colorPrimary, badgeStatus: 'processing' },
+  WAITING: { label: '等待中', color: T.colorWarning, badgeStatus: 'warning' },
+  PENDING: { label: '待执行', color: T.colorBorder, badgeStatus: 'default' },
+  FAILED: { label: '失败', color: T.colorError, badgeStatus: 'error' },
+  SKIPPED: { label: '跳过', color: T.colorTextQuaternary, badgeStatus: 'default' },
 };
 
 export function getNodeStateMeta(state: string): NodeStateMeta {

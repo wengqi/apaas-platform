@@ -30,3 +30,55 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* 顶栏应用标题按钮（StudioLayout）：原生 button 承载导航语义（键盘可达，
+   a11y 2026-10-12 审计），hover/focus 态走 CSS 替代内联 JS */
+.studio-header-app-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.studio-header-app-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.studio-header-app-btn:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+/* 顶栏用户菜单触发按钮（StudioLayout）：同上，键盘可达 + 可见焦点态 */
+.studio-header-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.studio-header-user-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.studio-header-user-btn:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}
+
+/* 侧栏折叠按钮（StudioLayout）：hover/focus 态统一走 CSS，
+   替换原 onMouseEnter/Leave 内联 JS（焦点态此前缺失） */
+.studio-sider-collapse-btn:hover,
+.studio-sider-collapse-btn:focus-visible {
+  background: #e6f4ff;
+  border-color: #91caff;
+  color: #1677ff;
+}
+.studio-sider-collapse-btn:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+}

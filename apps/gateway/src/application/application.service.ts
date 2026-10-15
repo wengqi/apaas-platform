@@ -76,7 +76,12 @@ export class ApplicationService {
    * 不用 prod 环境指针——publish 事务后 deploy 失败可容忍（仅告警），指针判定会漏掉这部分应用。
    */
   async listVisibleForUser(tenantId: string, user: AuthenticatedUser): Promise<AppSummary[]> {
-    let where: Prisma.ApplicationWhereInput = { tenantId, status: 'PUBLISHED' };
+    // isInternal=false（2026-10-12 评审 P0）：E2E/QA 夹具等内部应用不进业务用户运行时门户
+    let where: Prisma.ApplicationWhereInput = {
+      tenantId,
+      status: 'PUBLISHED',
+      isInternal: false,
+    };
 
     if (!user.isSuperAdmin) {
       const roleIds = await this.permissionService.getUserRoleIds(user.id, tenantId);
@@ -105,23 +110,34 @@ export class ApplicationService {
         },
       },
     });
-    return apps.map((app) => this.toSummary(app));
+    // 维护者姓名（2026-10-13 素蓝设计轮）：业务端卡片展示 v版本 · 维护者
+    const creatorIds = [...new Set(apps.map((a) => a.createdBy))];
+    const creators = await prisma.user.findMany({
+      where: { id: { in: creatorIds } },
+      select: { id: true, name: true },
+    });
+    const nameById = new Map(creators.map((u) => [u.id, u.name]));
+    return apps.map((app) => this.toSummary(app, nameById.get(app.createdBy)));
   }
 
   /** Prisma 实体 → AppSummary（list / listVisibleForUser 共用投影）。 */
-  private toSummary(app: {
-    id: string;
-    apiName: string;
-    name: string;
-    description: string | null;
-    icon: string | null;
-    color: string | null;
-    status: string;
-    version: number;
-    createdAt: Date;
-    updatedAt: Date;
-    _count: { objects: number; pages: number; processes: number };
-  }): AppSummary {
+  private toSummary(
+    app: {
+      id: string;
+      apiName: string;
+      name: string;
+      description: string | null;
+      icon: string | null;
+      color: string | null;
+      group?: string | null;
+      status: string;
+      version: number;
+      createdAt: Date;
+      updatedAt: Date;
+      _count: { objects: number; pages: number; processes: number };
+    },
+    ownerName?: string,
+  ): AppSummary {
     return {
       id: asAppId(app.id),
       apiName: app.apiName,
@@ -129,6 +145,8 @@ export class ApplicationService {
       description: app.description ?? undefined,
       icon: app.icon ?? undefined,
       color: app.color ?? undefined,
+      group: app.group ?? undefined,
+      ownerName,
       status: app.status as AppStatus,
       version: app.version,
       stats: {
@@ -179,6 +197,22 @@ export class ApplicationService {
   /**
    * 创建应用 — apiName 自动生成（若未传入）。
    */
+  /**
+   * 分组管理（2026-10-13 素蓝首页）：重命名（from→to）或删除分组（to 空 → 移入未分组）。
+   * 分组是应用上的自由文本，无独立实体——管理即批量改写。
+   */
+  async updateGroup(tenantId: string, from: string, to?: string): Promise<{ updated: number }> {
+    const target = to?.trim();
+    if (!from.trim()) throw new BadRequestException('现分组名不能为空');
+    if (target && target === from) return { updated: 0 };
+    const result = await prisma.application.updateMany({
+      where: { tenantId, group: from },
+      data: { group: target || null },
+    });
+    this.logger.log(`分组「${from}」→「${target || '未分组'}」：更新 ${result.count} 个应用`);
+    return { updated: result.count };
+  }
+
   async create(tenantId: string, createdBy: string, req: CreateAppRequest): Promise<Application> {
     const apiName = req.apiName || this.generateApiName();
 
@@ -190,6 +224,7 @@ export class ApplicationService {
         description: req.description,
         icon: req.icon,
         color: req.color,
+        group: req.group,
         status: 'DRAFT',
         version: 0,
         createdBy,
@@ -234,6 +269,7 @@ export class ApplicationService {
         description: req.description,
         icon: req.icon,
         color: req.color,
+        group: req.group,
       },
     });
 

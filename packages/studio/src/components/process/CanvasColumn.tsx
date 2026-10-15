@@ -4,6 +4,7 @@
  * 从 SimplifiedEditor.tsx 提取。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { EditorRenderer, usePlaygroundTools } from '@flowgram.ai/fixed-layout-editor';
 import { Button, Space } from 'antd';
@@ -55,8 +56,8 @@ export function CanvasColumn({ readonly, onSchemaChange }: CanvasColumnProps) {
         flex: 1,
         position: 'relative',
         minHeight: 0,
-        background: isDragOver ? '#e6f4ff' : '#f5f7fa',
-        outline: isDragOver ? '2px dashed #1677ff' : 'none',
+        background: isDragOver ? T.colorPrimaryBg : T.colorBgLayout,
+        outline: isDragOver ? `2px dashed ${T.colorPrimary}` : 'none',
         outlineOffset: -2,
         overflow: 'hidden',
         transition: 'background 0.15s ease',
@@ -101,7 +102,7 @@ function ZoomToolbar() {
         top: 16,
         right: 16,
         zIndex: 10,
-        background: '#fff',
+        background: T.colorWhite,
         borderRadius: 8,
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
         padding: 4,

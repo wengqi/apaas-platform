@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import {
   Card,
@@ -214,13 +215,13 @@ export default function TenantManagement() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
       {/* ── 顶部导航栏 ── */}
       <div
         style={{
           height: 56,
-          background: '#fff',
-          borderBottom: '1px solid #eef0f4',
+          background: T.colorWhite,
+          borderBottom: `1px solid ${T.colorBorderSecondary}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -233,7 +234,7 @@ export default function TenantManagement() {
       >
         <Space size={16}>
           <Space size={8}>
-            <ThunderboltFilled style={{ fontSize: 20, color: '#1677ff' }} />
+            <ThunderboltFilled style={{ fontSize: 20, color: T.colorPrimary }} />
             <Text strong style={{ fontSize: 16 }}>
               aPaaS Studio
             </Text>
@@ -326,7 +327,14 @@ export default function TenantManagement() {
             <Input.TextArea rows={2} placeholder="可选，租户用途说明" />
           </Form.Item>
         </Form>
-        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f6f8fa', borderRadius: 6 }}>
+        <div
+          style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            background: T.colorFillQuaternary,
+            borderRadius: 6,
+          }}
+        >
           <Text type="secondary" style={{ fontSize: 12 }}>
             创建后将自动初始化 TENANT_ADMIN / BUILDER / END_USER 三个内置角色及 23 条权限规则。
             创建后请在租户详情中分配租户管理员。

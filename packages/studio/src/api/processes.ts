@@ -303,11 +303,11 @@ export const processesApi = {
       .then((res) => res.data.data as ProcessDef),
 
   // —— 流程实例 / 监控 ——
-  /** 效率分析（平均耗时/完成率/超时数，按流程拆分） */
-  analytics: (appId: string) =>
+  /** 效率分析（平均耗时/完成率/超时数；appId 不传=全租户汇总，素蓝首页指标用） */
+  analytics: (appId?: string) =>
     client
       .get<ApiResponse<ProcessAnalyticsResult>>(`/api/processes/analytics`, {
-        params: { appId },
+        params: appId ? { appId } : {},
       })
       .then((res) => res.data.data as ProcessAnalyticsResult),
 

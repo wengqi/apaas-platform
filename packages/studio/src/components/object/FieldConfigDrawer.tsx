@@ -1,3 +1,4 @@
+import { TOKENS as T, PRESET as P } from '@apaas/shared/design';
 import { useEffect, useState } from 'react';
 import { Button, Drawer, Form, Input, Space, Switch, Typography, message } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -25,14 +26,14 @@ const { Text } = Typography;
 
 /** 选项预设色板。 */
 const PRESET_COLORS = [
-  '#1677ff',
-  '#52c41a',
-  '#fa8c16',
-  '#ff4d4f',
-  '#722ed1',
-  '#13c2c2',
-  '#eb2f96',
-  '#faad14',
+  T.colorPrimary,
+  T.colorSuccess,
+  T.colorWarning,
+  T.colorError,
+  `${P.purple6}`,
+  `${P.cyan6}`,
+  `${P.magenta6}`,
+  T.colorGold,
 ];
 
 /** 生成临时 ID(前端选项管理用,后端会重新分配)。 */

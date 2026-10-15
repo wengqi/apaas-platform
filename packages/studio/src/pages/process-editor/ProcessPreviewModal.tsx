@@ -9,6 +9,7 @@
  * 供搭建者在不进配置面板的情况下快速核对整条链路。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Modal, Tag, Typography, Empty } from 'antd';
 import { getNodeMeta } from '../../constants/process.js';
 import { getNodeSummary, checkNodeIncomplete } from '../../components/process/nodeMetadata.js';
@@ -92,7 +93,7 @@ export default function ProcessPreviewModal({
                   gap: 8,
                   paddingLeft: row.depth * 24,
                   padding: '6px 10px',
-                  background: '#fafbfc',
+                  background: T.colorFillQuaternary,
                   borderRadius: 6,
                 }}
               >

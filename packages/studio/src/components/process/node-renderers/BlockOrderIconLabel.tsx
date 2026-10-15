@@ -2,6 +2,7 @@
  * 分支标签组件（从 nodeRenderers.tsx 拆分，AGENTS.md 单文件 400 行规范）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo } from 'react';
 import { useClientContext } from '@flowgram.ai/fixed-layout-editor';
 import { useListenEvents } from '@flowgram.ai/core';
@@ -103,8 +104,8 @@ export function BlockOrderIconLabel({
         gap: 4,
         padding: '6px 12px',
         borderRadius: 6,
-        background: '#fafbfc',
-        border: '1px solid #e8eaed',
+        background: T.colorFillQuaternary,
+        border: `1px solid ${T.colorBorderSecondary}`,
         minWidth: 120,
         maxWidth: 200,
         userSelect: 'none',
@@ -135,7 +136,7 @@ export function BlockOrderIconLabel({
           {label}
         </span>
         {!isElse && !conditionText && (
-          <Text style={{ fontSize: 11, color: '#ff4d4f', flexShrink: 0 }}>(未配置)</Text>
+          <Text style={{ fontSize: 11, color: T.colorError, flexShrink: 0 }}>(未配置)</Text>
         )}
         {!isElse && conditionText && (
           <Tooltip title={conditionText} placement="top">

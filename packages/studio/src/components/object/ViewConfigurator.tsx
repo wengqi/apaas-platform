@@ -1,3 +1,4 @@
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Checkbox, Divider, Drawer, Empty, Space, Tag, Typography, message } from 'antd';
 import {
@@ -274,7 +275,7 @@ export default function ViewConfigurator({ open, view, fields, onClose }: ViewCo
                       alignItems: 'center',
                       gap: 8,
                       padding: '6px 10px',
-                      background: '#fafbfc',
+                      background: T.colorFillQuaternary,
                       borderRadius: 8,
                       opacity: 0.7,
                     }}

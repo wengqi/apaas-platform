@@ -30,6 +30,33 @@ export interface ReviewListParams {
 }
 
 export const reviewsApi = {
+  /** 租户级待审汇总（按应用聚合 PENDING，素蓝首页数据源）。 */
+  pendingSummary: () =>
+    client
+      .get<
+        ApiResponse<{
+          total: number;
+          items: Array<{
+            appId: string;
+            appName: string;
+            count: number;
+            latest: { module: string; apiName: string; name: string; createdAt: string } | null;
+          }>;
+        }>
+      >('/api/apps/reviews/pending-summary')
+      .then(
+        (res) =>
+          res.data.data as {
+            total: number;
+            items: Array<{
+              appId: string;
+              appName: string;
+              count: number;
+              latest: { module: string; apiName: string; name: string; createdAt: string } | null;
+            }>;
+          },
+      ),
+
   /** 提交单列表 */
   list: (appId: string, params?: ReviewListParams) =>
     client

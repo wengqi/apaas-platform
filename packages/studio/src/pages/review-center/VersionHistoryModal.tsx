@@ -2,6 +2,7 @@
  * 资源版本链 Modal（历史提交：状态/来源/审批意见/对基线的变更摘要）。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { Modal, Table, Timeline } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
@@ -82,7 +83,7 @@ export default function VersionHistoryModal({ appId, target, onClose }: VersionH
                 ]}
               />
             ) : (
-              <span style={{ color: '#999' }}>无审批意见</span>
+              <span style={{ color: T.colorTextTertiary }}>无审批意见</span>
             ),
           rowExpandable: (record) => !!record.reviewComment,
         }}

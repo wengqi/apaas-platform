@@ -9,6 +9,7 @@
  * 表格列 / 实例列表 Tab / 实例详情 / 任务处理面板已拆分至 ./process-monitor/。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useMemo, useState } from 'react';
 import { apiErrorMessage } from '../../api/client.js';
 import { Empty, Modal, Skeleton, Table, Tabs, message } from 'antd';
@@ -147,13 +148,13 @@ export default function ProcessMonitor() {
         height: 'calc(100vh - 56px)',
         display: 'flex',
         flexDirection: 'column',
-        background: '#f5f7fa',
+        background: T.colorBgLayout,
       }}
     >
       <Tabs
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as 'instances' | 'tasks' | 'analytics')}
-        style={{ padding: '0 24px', background: '#fff' }}
+        style={{ padding: '0 24px', background: T.colorWhite }}
         items={[
           {
             key: 'instances',

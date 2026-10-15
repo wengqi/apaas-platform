@@ -145,8 +145,14 @@ model Application {
   description       String?
   icon              String?
   color             String? // 主题色
+  // 应用分组（2026-10-13 素蓝设计轮）：首页按分组归类展示，业务端只读；
+  // 空=「未分组」。命名自由文本，上限 20 字符（DTO 校验）
+  group             String?
   status            AppStatus @default(DRAFT)
   version           Int       @default(0) // 发布版本号，每次发布递增
+  // 内部应用标记（2026-10-12 评审 P0）：E2E/QA 夹具等非业务应用不进运行时门户
+  // （GET /apps?runtime=1 过滤 isInternal）；业务应用保持默认 false
+  isInternal        Boolean   @default(false) @map("is_internal")
   // 已发布的应用快照 JSON（含对象/页面/流程定义的完整副本）
   publishedAt       DateTime? @map("published_at")
   createdBy         String    @map("created_by")
@@ -716,6 +722,9 @@ model InAppMessage {
   userId    String    @map("user_id") // 收件人
   title     String
   body      String
+  // 深链（2026-10-12 评审 P0）：消息可直达的业务位置（如 /app/:id、/tasks），
+  // 运行时通知中心点击跳转——修复"驳回消息只能标已读不能行动"
+  link      String?
   read      Boolean   @default(false)
   createdAt DateTime  @default(now()) @map("created_at")
   readAt    DateTime? @map("read_at")

@@ -4,6 +4,7 @@
  * 支持 Basic Auth / API Key / Bearer Token 三种凭证类型。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useState } from 'react';
 import { Modal, Form, Input, Select, message } from 'antd';
 import {
@@ -174,7 +175,7 @@ export default function CredentialFormModal({
         )}
 
         {editingCredential && (
-          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>
+          <p style={{ color: T.colorTextTertiary, fontSize: 12, marginTop: 8 }}>
             编辑时需重新填写凭证数据（安全考虑，不回显敏感字段）。
           </p>
         )}

@@ -10,6 +10,8 @@ export interface InAppMessage {
   id: string;
   title: string;
   body: string;
+  /** 深链（2026-10-12 评审 P0）：消息可直达的业务位置（如 /app/:id、/tasks），可空 */
+  link?: string | null;
   read: boolean;
   createdAt: string;
   readAt: string | null;

@@ -5,6 +5,7 @@
  * + 按流程定义拆分的效率表格。数据来自 GET /processes/analytics。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Col, Row, Statistic, Table, Tooltip, Typography } from 'antd';
 import { processesApi, type ProcessDefAnalytics } from '../../api/processes.js';
@@ -80,7 +81,7 @@ export default function ProcessAnalytics({ appId }: { appId: string }) {
           <Statistic
             title="失败"
             value={totals?.failed ?? 0}
-            valueStyle={(totals?.failed ?? 0) > 0 ? { color: '#cf1322' } : undefined}
+            valueStyle={(totals?.failed ?? 0) > 0 ? { color: T.colorErrorDeep } : undefined}
           />
         </Col>
         <Col span={3}>

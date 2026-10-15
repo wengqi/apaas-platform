@@ -5,6 +5,7 @@
  * 触发器随环境重建。
  */
 
+import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import {
   Button,
@@ -230,7 +231,11 @@ export default function Environments() {
           环境管理
         </span>
       }
-      extra={<span style={{ color: '#999', fontSize: 12 }}>发布=切版本指针；版本快照不可变</span>}
+      extra={
+        <span style={{ color: T.colorTextTertiary, fontSize: 12 }}>
+          发布=切版本指针；版本快照不可变
+        </span>
+      }
     >
       {isLoading ? null : (
         <Tabs

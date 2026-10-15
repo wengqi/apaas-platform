@@ -55,6 +55,7 @@ function makeCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     schema: makeSchema([]),
     startSubProcess: vi.fn(),
     scheduleDelay: vi.fn(),
+    scheduleTaskTimeout: vi.fn(),
     ...overrides,
   };
 }

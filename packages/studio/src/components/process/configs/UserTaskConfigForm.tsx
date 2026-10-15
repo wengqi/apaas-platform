@@ -41,6 +41,8 @@ export interface UserTaskConfigData {
   pageId?: string;
   dueDate?: number;
   dueUnit?: string;
+  /** 超时动作（S1）：NOTIFY 催办 / AUTO_APPROVE 自动通过 / AUTO_REJECT 自动驳回 */
+  timeoutAction?: string;
   title?: string;
   allowReject?: boolean;
   rejectToNodeId?: string;
@@ -94,6 +96,13 @@ const DUE_UNIT_OPTIONS = [
   { label: '分钟', value: 'MINUTES' },
   { label: '小时', value: 'HOURS' },
   { label: '天', value: 'DAYS' },
+];
+
+// S1 审批超时边界：到点动作（截止时间到点且任务仍 PENDING 时由引擎执行）
+const TIMEOUT_ACTION_OPTIONS = [
+  { label: '催办（发站内信提醒受理人）', value: 'NOTIFY' },
+  { label: '自动通过（以系统身份批准）', value: 'AUTO_APPROVE' },
+  { label: '自动驳回（需已配置驳回跳转）', value: 'AUTO_REJECT' },
 ];
 
 const CC_ASSIGNEE_TYPE_OPTIONS = [
@@ -351,6 +360,15 @@ export default function UserTaskConfigForm({
             style={{ width: '40%' }}
           />
         </Input.Group>
+      </Form.Item>
+      <Form.Item label="超时动作(可选)">
+        <Select
+          allowClear
+          value={data.timeoutAction}
+          onChange={(v) => update({ timeoutAction: v })}
+          options={TIMEOUT_ACTION_OPTIONS}
+          placeholder="截止时间到点且任务仍待处理时执行"
+        />
       </Form.Item>
       <Divider orientation="left" plain>
         驳回配置

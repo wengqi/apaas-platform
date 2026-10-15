@@ -59,7 +59,7 @@ function createEngine(executors: NodeExecutor[] = []) {
     delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
     recordService as unknown as ConstructorParameters<typeof ProcessEngine>[6],
   );
-  return { engine, registry, processQueue, recordService, inAppMessageService };
+  return { engine, registry, processQueue, delayQueue, recordService, inAppMessageService };
 }
 
 function makeNode(id: string, type: string, data: Record<string, unknown> = {}): WorkflowNode {
@@ -831,5 +831,106 @@ describe('审批结果自动回写 — writeback', () => {
 
     expect(recordService.update).toHaveBeenCalled();
     expect(processQueue.add).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S1 审批超时边界 — handleTaskTimeout
+// ---------------------------------------------------------------------------
+
+describe('S1 审批超时边界 — handleTaskTimeout', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.processInstance.update.mockResolvedValue({});
+    prisma.nodeExecution.update.mockResolvedValue({});
+    prisma.nodeExecution.create.mockResolvedValue({});
+    prisma.inAppMessage.createMany.mockResolvedValue({ count: 1 });
+  });
+
+  function setupTimeoutInstance(action: string) {
+    const schema = makeUserTaskSchema({
+      approvalMode: 'single',
+      assignee: 'u1',
+      timeoutAction: action,
+      dueDate: 1,
+    });
+    const instance = makeProcessInstance({
+      id: 'pi-1',
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    return instance;
+  }
+
+  it('AUTO_APPROVE：系统身份批准待处理任务（意见=超时自动通过）', async () => {
+    setupTimeoutInstance('AUTO_APPROVE');
+    const pendingTask = makeProcessTask({
+      id: 't1',
+      nodeId: 'n1',
+      nodeExecutionId: 'ne-001',
+      assignee: 'u1',
+      instance: makeProcessInstance({ id: 'pi-1' }),
+    });
+    // 处理器的待处理查询 → [t1]（第二次调用返回空，循环终止）；
+    // completeTask 内的 findFirst → 第一次 t1 之后 null
+    prisma.processTask.findMany.mockResolvedValueOnce([pendingTask]).mockResolvedValue([]);
+    prisma.processTask.findFirst
+      .mockResolvedValueOnce(pendingTask) // 循环取待处理任务
+      .mockResolvedValueOnce(pendingTask) // completeTask 内按 id 重读
+      .mockResolvedValue(null); // 后续迭代无待处理，循环终止
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.count.mockResolvedValue(0);
+    const { engine, delayQueue } = createEngine();
+
+    await engine.handleTaskTimeout('pi-1', 'n1', 'ne-001');
+
+    const claim = prisma.processTask.updateMany.mock.calls[0]?.[0] as {
+      where: { status: string };
+      data: { status: string; comment: string };
+    };
+    expect(claim.where.status).toBe('PENDING');
+    expect(claim.data.status).toBe('APPROVED');
+    expect(claim.data.comment).toBe('超时自动通过');
+    // 批次无剩余 → 取消超时 job
+    expect(delayQueue.getJob).toHaveBeenCalledWith('task-timeout:ne-001');
+  });
+
+  it('NOTIFY：给待处理任务受理人发催办站内信', async () => {
+    setupTimeoutInstance('NOTIFY');
+    prisma.processTask.findMany.mockResolvedValue([
+      {
+        id: 't1',
+        nodeId: 'n1',
+        nodeExecutionId: 'ne-001',
+        assignee: 'u9',
+        status: 'PENDING',
+        taskName: '审批',
+        createdAt: new Date(),
+      },
+    ]);
+    const { engine } = createEngine();
+
+    await engine.handleTaskTimeout('pi-1', 'n1', 'ne-001');
+
+    const msg = prisma.inAppMessage.createMany.mock.calls[0]?.[0] as {
+      data: Array<{ userId: string; title: string }>;
+    };
+    expect(msg.data[0]!.userId).toBe('u9');
+    expect(msg.data[0]!.title).toContain('催办');
+  });
+
+  it('批次任务已全部终态 → 幂等返回（不发消息不决策）', async () => {
+    setupTimeoutInstance('AUTO_APPROVE');
+    prisma.processTask.findMany.mockResolvedValue([]);
+    const { engine } = createEngine();
+
+    await engine.handleTaskTimeout('pi-1', 'n1', 'ne-001');
+
+    expect(prisma.processTask.updateMany).not.toHaveBeenCalled();
+    expect(prisma.inAppMessage.createMany).not.toHaveBeenCalled();
   });
 });

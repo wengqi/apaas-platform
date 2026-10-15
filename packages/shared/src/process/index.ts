@@ -303,6 +303,12 @@ export interface UserTaskConfig {
   assignee?: string;
   /** 审批人类型（显式契约：引擎按类型解析受理人；缺省时按 assignee/candidateGroups 字面消费） */
   assigneeType?: UserTaskAssigneeType;
+  /**
+   * 超时动作（S1 审批超时边界，2026-10-15）：dueDate×dueUnit 到期且任务仍 PENDING 时执行。
+   * NOTIFY=催办站内信；AUTO_APPROVE=系统身份自动通过；AUTO_REJECT=系统身份自动驳回
+   * （要求节点配置 rejectToNodeId，发布预检校验）。缺省=无动作（dueDate 仅展示）。
+   */
+  timeoutAction?: 'NOTIFY' | 'AUTO_APPROVE' | 'AUTO_REJECT';
   candidateGroups?: string[];
   formKey?: string;
   taskName: string;

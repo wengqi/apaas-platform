@@ -66,7 +66,7 @@
 
 **底册 C+ · studio 应用内嵌入集成控制台（2026-10-12，/app/:appId/embed，菜单在 API 密钥旁）**：已发布页面选择器（仅 published）/环境切换（prod/dev）/Embed URL 生成与复制/宿主接入代码片段（createApaasEmbed 最小示例；**双形态切换：npm 包 / SDK 直链**[window.ApaasEmbed 解构，无私有包 import]；runtimeBase 非绝对时 src/allowedOrigin 用显式占位符）/**获取 SDK**（IIFE/ESM 零依赖单文件下载按钮 + 平台直链行 `<script src="…/embed-sdk/embed-sdk.js">`；产物 shared 构建生成 gitignore 随部署分发）/部署配置清单折叠面板（frame-ancestors/VITE_EMBED_ALLOWED_ORIGINS/VITE_RUNTIME_BASE_URL/SDK 产物部署/应用级发布语义）/实时预览（真实 SDK：连接预览/断开/拉取页面数据 rpc/ready 绿标/协议消息流；跨端口部署即真实跨域联调）。
 
-**底册 D · runtime-ui（2026-10-13 素蓝改版）**：登录（分屏融合版同壳：租户必填/无 SSO/联系企业管理员出口；超管登录分流提示不进 /home）；首页（问候+搜索 → 审批待办条[GET /tasks pending，直达任务中心，0 待办隐藏] → 业务指标行[待我审批/本月已办结] → **分组只读分节**[group 归组，无管理入口] + **只读分组定位轨**[分组≥2 才出现，空组不显示] → 卡片=横排头[蓝瓷片+名称]+业务描述+**v版本 · 维护者**+进入；无状态标签/无对象页面流程计数；仅已发布应用卡[runtime=1 过滤+客户端兜底]/超管显式空态+返回登录/加载失败重试态）；应用查看（信息卡+已发布页面网格+类型 Tag）；页面渲染（常驻页面页签导航/高亮/?env= 切换/404 区分 dev-prod 未发布语义/空 schema 提示）；任务中心（待办/已办 Tab/状态 Tag 待处理·已批准·已拒绝·已转办·已取消/已办含审批结果+意见/处理·查看）；任务 Modal（任务详情+申请内容[inputs 摊平+label 映射+创建人姓名]+流程变量折叠区[含任务 ID]/流程轨迹 TraceViewer/绑定页只读渲染/审批意见/批准/拒绝二次确认+未配驳回跳转时禁用并 Tooltip 原因）；站内信铃铛（未读 Badge/全部已读/未读·全部切换/点击已读/相对时间/>20 条提示）；环境切换（prod 默认/dev）；**iframe 嵌入域（2026-10-12，控制台在 studio 底册 B）**：/embed 干净页面（只渲染 page 本体：无页头/无页签/无边距/无登录重定向；404 与 401「等待宿主凭据」分语义）；协议九消息（hello 重试握手/ready/route-change/query-data 带 msgId 回执/navigate/context 全量替换/auth/height-change 自适应/page-event 仅 embedEvent 动作出站/auth-expired 不跳登录）；origin 白名单（VITE_EMBED_ALLOWED_ORIGINS+同源；白名单外静默丢弃）。原 /embed-demo 宿主模拟器已退役（方案一，控制台迁 studio）。
+**底册 D · runtime-ui（2026-10-13 素蓝改版）**：登录（分屏融合版同壳：租户必填/无 SSO/联系企业管理员出口；超管登录分流提示不进 /home）；首页（问候+搜索 → 审批待办条[GET /tasks pending，直达任务中心，0 待办隐藏] → 业务指标行[待我审批/本月已办结] → **分组只读分节**[group 归组，无管理入口] + **只读分组定位轨**[分组≥2 才出现，空组不显示] → 卡片=横排头[蓝瓷片+名称]+业务描述+**v版本 · 维护者**+进入；无状态标签/无对象页面流程计数；仅已发布应用卡[runtime=1 过滤+客户端兜底]/超管显式空态+返回登录/加载失败重试态）；应用查看（信息卡+已发布页面网格+类型 Tag）；页面渲染（常驻页面页签导航/高亮/?env= 切换/404 区分 dev-prod 未发布语义/空 schema 提示）；任务中心（待办/已办/我发起的三 Tab/状态 Tag 待处理·已批准·已拒绝·已转办·已取消/已办含审批结果+意见/处理·查看/我发起的=申请内容摘要+实例状态中文标签 运行中·审批中·已完成·失败·已终止+进度弹窗含流程轨迹与审批记录/列表加载失败错误态告警+重试）；任务 Modal（任务详情+申请内容[inputs 摊平+label 映射+创建人姓名]+流程变量折叠区[含任务 ID]/流程轨迹 TraceViewer/绑定页只读渲染/审批意见/批准/拒绝二次确认+未配驳回跳转时禁用并 Tooltip 原因）；站内信铃铛（未读 Badge/全部已读/未读·全部切换/点击已读/相对时间/>20 条提示）；环境切换（prod 默认/dev）；**iframe 嵌入域（2026-10-12，控制台在 studio 底册 B）**：/embed 干净页面（只渲染 page 本体：无页头/无页签/无边距/无登录重定向；404 与 401「等待宿主凭据」分语义）；协议九消息（hello 重试握手/ready/route-change/query-data 带 msgId 回执/navigate/context 全量替换/auth/height-change 自适应/page-event 仅 embedEvent 动作出站/auth-expired 不跳登录）；origin 白名单（VITE_EMBED_ALLOWED_ORIGINS+同源；白名单外静默丢弃）。原 /embed-demo 宿主模拟器已退役（方案一，控制台迁 studio）。
 
 ## 四、阶段 2：组件级全覆盖矩阵（本计划核心，逐格给结论）
 
@@ -135,6 +135,10 @@
 
 **R5 遗留修复轮锚点（2026-10-10，用户裁决四问题）**：**runtime 应用列表运行时视图过滤（TC-155，服务端语义变化）**——`GET /apps?runtime=1` 仅返回已发布且有权限应用（isSuperAdmin 短路/租户级通配 ALLOW=全部已发布[种子 END_USER 语义，R5 裁决①维持]/仅应用级规则按 appId 归纳/无角色默认拒绝）；无参数仍全量（studio 兼容，e2e/22 已断言）；**超管登录 runtime 分流（TC-154）**——runtime 登录页超管提示不进 /home 不写共享 store；/home 对超管 token（含 hash token 注入路径）显式空态+返回登录，非静默"暂无可用应用"；**e2e 限流环境**——登录 429 必须带排查指引报错（不得伪装成"任务超时"），22/23 发布版本号与探针 apiName 防碰撞；**台账 mapping（TC-129 备注）**——老页面/AI 生成页 schema 无 mapping 显示裸值为已知边界（根因=存量 schema 缺配置，非生成器/渲染器缺陷；用户裁决暂不处理）。
 
+**任务中心修复轮锚点（2026-10-10；TC 改号 TC-170/157/158→TC-170/171/172，2026-10-15 合并轮避免与嵌入域撞号）
+
+PLACEHOLDER，用户报告"待办已办为空"调查）**：**终端用户任务中心可用（TC-156，权限语义变化）**——END_USER 种子角色补 `PROCESS VIEW`（修复前 GET /tasks 要求 PROCESS:VIEW 而 END_USER 只有 EXECUTE/APPROVE → 403 被前端吞成空表：被授权审批的角色打不开任务中心）；规约=**运行时角色（需用任务中心）必须含 PROCESS VIEW**（app 级自定义角色建角色时同样适用）；seed 权限规则改为先删后建幂等收敛（permission_rules 无唯一索引，createMany+skipDuplicates 实际不去重，历史已累积 END_USER ×3/BUILDER ×2 副本）；**列表加载失败错误态显式化（TC-157）**——任务中心三个列表查询失败渲染红色告警+原因+重试（ListErrorAlert），禁止吞成"暂无任务"假空态；**我发起的视图（TC-158）**——`GET /instances/mine` 按 triggerContext.triggeredByUser 过滤发起人本人（与撤回/M-2 实例可见性同语义），前端三 Tab+进度弹窗（TraceViewer 轨迹+审批记录），申请人提交后可查进度（对标飞书 aPaaS「我发起的」）。
+
 ## 八、缺陷记录标准
 
 每条含：编号/标题/模块页面/精确复现步骤（含输入内容）/预期 vs 实际/截图/严重级别/是否有替代路径/关联 API 请求响应与 traceId/影响矩阵格位。判级：**P0** 阻断（核心流程走不通·数据丢失错误·页面崩溃·越权）；**P1** 严重（主要功能结果错误·校验缺失致脏数据·审批误路由）；**P2** 一般（次要功能异常·有替代路径的体验问题·静默失败）；**P3** 轻微（文案·样式·提示）。链路中途失败须定位上游数据问题还是本环节缺陷并注明影响范围。
@@ -171,3 +175,4 @@
 | 2026-10-12 | v1.0.9 | iframe 嵌入专项：底册 D 追加嵌入域（/embed 干净页面 //embed-demo 宿主模拟器/协议九消息/origin 白名单），对应用例库 TC-156~158 | feat/embed-iframe-integration（G3 白名单新增 embedEvent） |
 | 2026-10-12 | v1.0.10 | 方案一转正：底册 C+ 新增 studio 嵌入集成控制台（/app/:appId/embed）；底册 D 的 /embed-demo 标注退役；TC-156/157 载体改指控制台 | 用户裁决方案一（控制台迁 studio，跨端口真跨域预览） |
 | 2026-10-12 | v1.0.11 | SDK 交付：底册 C+ 控制台补「获取 SDK」（IIFE/ESM 下载+平台直链）与片段双形态（npm/SDK 直链）；TC-159 入库 | 第三方对接断链补全（私有包不可达→零依赖单文件分发） |
+| 2026-10-10 | v1.0.12 | 任务中心修复轮：底册 D 任务中心更新为三 Tab（我发起的+进度弹窗+错误态）；第七节追加「任务中心修复轮锚点」（TC-170 END_USER 补 PROCESS VIEW + seed 幂等收敛 / TC-171 错误态显式化 / TC-172 我发起的视图） | 用户报告"待办已办为空"调查修复轮 |

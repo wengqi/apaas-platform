@@ -499,6 +499,45 @@ export class ProcessService {
     return this.listInstances(tenantId, processId, status, page, pageSize);
   }
 
+  /**
+   * 列出我发起的实例（任务中心「我发起的」视图，2026-10-10）。
+   *
+   * 发起人归属 = triggerContext.triggeredByUser：记录触发写入记录创建人
+   * （trigger.service），手动/API 启动写入 StartInstanceRequest.triggeredByUser。
+   * 查询范围天然限定发起人本人，与 getInstance 的 M-2 实例级可见性同语义。
+   */
+  async listMyInstances(
+    tenantId: string,
+    userId: string,
+    status?: string,
+    page = 1,
+    pageSize = 20,
+  ) {
+    const where: Prisma.ProcessInstanceWhereInput = {
+      tenantId,
+      triggerContext: { path: ['triggeredByUser'], equals: userId },
+    };
+    if (status) where.status = status as ProcessInstanceStatus;
+
+    const [items, total] = await Promise.all([
+      prisma.processInstance.findMany({
+        where,
+        include: { processDef: { select: { name: true, apiName: true, version: true } } },
+        orderBy: { startedAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.processInstance.count({ where }),
+    ]);
+
+    return {
+      items: items.map((i) => this.toInstanceDto(i)),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   /** 取消实例。 */
   async cancelInstance(tenantId: string, instanceId: string) {
     const instance = await prisma.processInstance.findFirst({

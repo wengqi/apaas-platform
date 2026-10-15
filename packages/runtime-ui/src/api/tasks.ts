@@ -55,10 +55,25 @@ export interface PaginatedTasks {
   pageSize: number;
 }
 
+/** 我发起的流程实例（GET /instances/mine，后端 toInstanceDto 投影的 UI 子集）。 */
+export interface MyInstance {
+  id: string;
+  status: string;
+  startedAt: string;
+  finishedAt?: string;
+  triggeredByUser?: string;
+  processDef?: { name: string; apiName: string; version?: number };
+  triggerContext?: Record<string, unknown> | null;
+}
+
 export const tasksApi = {
   /** 列出我的待办任务 */
   list: (params: { status?: string; page?: number; pageSize?: number }) =>
     apiClient.get('/tasks', { params }).then((res) => res.data.data as PaginatedTasks),
+
+  /** 列出我发起的流程实例（任务中心「我发起的」视图） */
+  listMyInstances: (params: { status?: string; page?: number; pageSize?: number }) =>
+    apiClient.get('/instances/mine', { params }).then((res) => res.data.data as MyInstance[]),
 
   /** 获取任务详情 */
   get: (taskId: string) =>

@@ -212,6 +212,13 @@ async function main() {
     { type: 'CONNECTOR', action: 'VIEW', targetId: '*' },
     { type: 'CONNECTOR', action: 'EXECUTE', targetId: '*' },
   ];
+  // 幂等收敛（2026-10-10）：permission_rules 无唯一索引，createMany+skipDuplicates 实际不去重，
+  // 每次重跑 seed 都会追加一份副本（实测 BUILDER ×2 / END_USER ×3）。
+  // seed 管辖的规则形态固定为通配 targetId + ALLOW——先删后建，收敛为恰好一份；
+  // 用户/AI 后加的应用级规则（targetId 非通配）不受影响。
+  await prisma.permissionRule.deleteMany({
+    where: { roleId: builderRole.id, targetId: '*', effect: 'ALLOW' },
+  });
   await prisma.permissionRule.createMany({
     data: builderRules.map((rule) => ({
       tenantId: tenant.id,
@@ -221,18 +228,25 @@ async function main() {
       targetId: rule.targetId,
       effect: 'ALLOW',
     })),
-    skipDuplicates: true,
   });
   console.log(`✅ BUILDER 权限规则: ${builderRules.length} 条`);
 
-  // 7. 为 END_USER 角色创建权限规则（查看页面 + 提交记录 + 查看记录 + 执行流程 + 审批）
+  // 7. 为 END_USER 角色创建权限规则（查看页面 + 提交记录 + 查看记录 + 任务中心 + 审批）
   const endUserRules = [
     { type: 'PAGE', action: 'VIEW', targetId: '*' },
     { type: 'RECORD', action: 'CREATE', targetId: '*' },
     { type: 'RECORD', action: 'VIEW', targetId: '*' },
+    // 任务中心修复（2026-10-10）：GET /tasks 与 GET /instances/mine 要求 PROCESS:VIEW，
+    // 此前 END_USER 只有 EXECUTE/APPROVE——被授权审批的角色反而打不开任务中心（403 被前端渲染成空表）。
+    // 规约：运行时角色（需使用任务中心）必须包含 PROCESS VIEW。
+    { type: 'PROCESS', action: 'VIEW', targetId: '*' },
     { type: 'PROCESS', action: 'EXECUTE', targetId: '*' },
     { type: 'PROCESS', action: 'APPROVE', targetId: '*' },
   ];
+  // 幂等收敛（同上：先删 seed 管辖的通配规则再建，不再累积副本）
+  await prisma.permissionRule.deleteMany({
+    where: { roleId: endUserRole.id, targetId: '*', effect: 'ALLOW' },
+  });
   await prisma.permissionRule.createMany({
     data: endUserRules.map((rule) => ({
       tenantId: tenant.id,
@@ -242,7 +256,6 @@ async function main() {
       targetId: rule.targetId,
       effect: 'ALLOW',
     })),
-    skipDuplicates: true,
   });
   console.log(`✅ END_USER 权限规则: ${endUserRules.length} 条`);
 

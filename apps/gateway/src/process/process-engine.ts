@@ -521,6 +521,10 @@ export class ProcessEngine {
             status: 'FAILED',
             error: errorMsg,
             finishedAt: new Date(),
+            // 错误路由同样留痕（✅1）：FAILED 行正是"为什么走这条边"的典型现场
+            output: {
+              _routing: { nextNodeIds: [errorEdge.targetNodeID], at: new Date().toISOString() },
+            } as Prisma.InputJsonValue,
           },
         });
         // 显式 nextNodeIds 交由调用方循环推进（移除当前令牌 + 添加 error 目标）

@@ -453,6 +453,7 @@ describe('ProcessEngine 节点失败处理（S2 错误出口路由）', () => {
   const prisma = getMockPrisma();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     prisma.nodeExecution.count.mockResolvedValue(0);
     prisma.nodeExecution.create.mockImplementation(
       async (args: { data: Record<string, unknown> }) => ({
@@ -507,6 +508,11 @@ describe('ProcessEngine 节点失败处理（S2 错误出口路由）', () => {
     );
     expect(failedUpdate).toBeTruthy();
     expect((failedUpdate![0] as { data: { error: string } }).data.error).toContain('下游系统 500');
+    // 错误路由同样留痕（FAILED 行的 _routing 指向 error 分支）
+    const routedOutput = (
+      failedUpdate![0] as { data: { output: { _routing: { nextNodeIds: string[] } } } }
+    ).data.output._routing;
+    expect(routedOutput.nextNodeIds).toEqual(['recover']);
   });
 
   it('中文 label「失败」同样识别为错误出口', async () => {

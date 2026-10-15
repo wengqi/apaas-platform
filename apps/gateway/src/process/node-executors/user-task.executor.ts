@@ -92,6 +92,17 @@ export class UserTaskExecutor implements NodeExecutor {
           `节点 ${ctx.node.id} 记录字段审批人：触发记录中字段 ${field} 不存在或不是有效用户 ID`,
         );
       }
+      // OCR 评审补强（2026-10-15）：值须为本租户真实用户——否则任务建给不存在的用户，
+      // 复现「任务挂起无人可见」（#12 同教训，与 ORG 分支的成员数校验对称）
+      const reviewer = await prisma.user.findFirst({
+        where: { id: value, tenantId: ctx.tenantId },
+        select: { id: true },
+      });
+      if (!reviewer) {
+        throw new Error(
+          `节点 ${ctx.node.id} 记录字段审批人：字段 ${field} 的值（${value}）不是本租户内的有效用户，请检查触发记录数据`,
+        );
+      }
       assignee = value;
     }
     // QA 实测（2026-10-03）：面板写大写枚举、seed/引擎写小写——归一化统一

@@ -745,6 +745,7 @@ describe('UserTaskExecutor FORM_FIELD（记录字段动态审批人）', () => {
   });
 
   it('从触发记录字段取受理人', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-5' });
     const ctx = makeCtx({
       instance: {
         id: 'pi-1',
@@ -769,6 +770,9 @@ describe('UserTaskExecutor FORM_FIELD（记录字段动态审批人）', () => {
       data: Array<Record<string, unknown>>;
     };
     expect(arg.data[0]).toMatchObject({ assignee: 'user-5' });
+    // OCR 补强：值须为本租户真实用户（租户隔离条件一并断言）
+    const userArg = prisma.user.findFirst.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(userArg.where).toEqual({ id: 'user-5', tenantId: 't-1' });
   });
 
   it('非记录触发（无 record 上下文）→ 报清晰错误', async () => {
@@ -806,5 +810,26 @@ describe('UserTaskExecutor FORM_FIELD（记录字段动态审批人）', () => {
       } as ExecutionContext['node'],
     });
     await expect(executor.execute(ctx)).rejects.toThrow(/legal_reviewer/);
+  });
+
+  it('字段值非本租户真实用户 → 报清晰错误（OCR 补强：防任务建给不存在的用户静默挂起）', async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: {
+          triggerType: 'RECORD_CREATED',
+          record: { id: 'rec-1', legal_reviewer: 'ghost-user' },
+        },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-ff',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '法务审批', assigneeType: 'FORM_FIELD', assignee: 'legal_reviewer' },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/不是本租户内的有效用户/);
   });
 });

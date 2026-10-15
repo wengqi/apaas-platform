@@ -30,13 +30,13 @@
   收敛为恰好一份；用户/AI 后加的应用级规则（非通配）不受影响。实测收敛后
   BUILDER 48→24、END_USER 16→6，权限评估正常。
 
-### 修复② 列表加载失败错误态显式化（TC-157）
+### 修复② 列表加载失败错误态显式化（TC-171，原编 TC-157）
 
 - 新增 `task-center/ListErrorAlert.tsx`：红色告警（"列表加载失败"+具体原因+重试按钮）。
 - `TaskCenter.tsx` 待办/已办两个查询、`MyInitiated.tsx` 我发起的查询失败时均渲染告警，
   不再吞成空表。
 
-### 修复③ 「我发起的」视图（TC-158）
+### 修复③ 「我发起的」视图（TC-172，原编 TC-158）
 
 - **后端** `GET /instances/mine`（`process.service.listMyInstances`）：
   - 发起人归属 = `triggerContext.triggeredByUser`——记录触发写入记录创建人
@@ -83,7 +83,7 @@
 - `packages/runtime-ui/src/api/tasks.ts` — `listMyInstances` + `MyInstance` 类型
 - `packages/runtime-ui/src/pages/task-center/ListErrorAlert.tsx` / `MyInitiated.tsx` — 新增
 - `packages/runtime-ui/src/pages/task-center/{TaskCenter.tsx,constants.ts,utils.ts,utils.spec.ts}` — 接线+常量+纯函数+单测
-- 文档：TEST-CASES v1.5（TC-156/157/158）、QA-TEST-PLAN-PROMPT v1.0.9（底册 D+锚点）、本记录、AGENTS.md 当前阶段
+- 文档：TEST-CASES v1.5（TC-156/157/158，2026-10-15 合并轮改号 TC-170/171/172——与嵌入域撞号，编号只增不复用）、QA-TEST-PLAN-PROMPT v1.0.9（底册 D+锚点）、本记录、AGENTS.md 当前阶段
 
 ## 六、遗留
 

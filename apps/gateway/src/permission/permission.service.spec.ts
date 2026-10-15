@@ -463,4 +463,72 @@ describe('PermissionService', () => {
       expect(result.reason).toBe('NO_RULES');
     });
   });
+
+  // =========================================================================
+  // explain — rule.appId 应用域过滤（R5 遗留缝隙：app 级规则只命中所属应用）
+  // =========================================================================
+
+  describe('explain — rule.appId 应用域过滤', () => {
+    it('RECORD 目标：按对象所属应用过滤规则（租户级通配 + 本应用级命中，他应用排除在 where 层）', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.objectMeta.findUnique.mockResolvedValue({ appId: 'app-A' });
+      prisma.permissionRule.findMany.mockResolvedValue([
+        makePermissionRule({ effect: 'ALLOW', targetId: '*' }),
+      ]);
+
+      await service.explain(makeUser(), 'RECORD', 'VIEW', 'obj-001');
+
+      const where = prisma.permissionRule.findMany.mock.calls[0]![0]!.where;
+      expect(where.OR).toEqual([{ appId: null }, { appId: 'app-A' }]);
+    });
+
+    it('PAGE 目标：按页面所属应用过滤', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.pageMeta.findUnique.mockResolvedValue({ appId: 'app-B' });
+      prisma.permissionRule.findMany.mockResolvedValue([]);
+
+      await service.explain(makeUser(), 'PAGE', 'VIEW', 'page-001');
+
+      const where = prisma.permissionRule.findMany.mock.calls[0]![0]!.where;
+      expect(where.OR).toEqual([{ appId: null }, { appId: 'app-B' }]);
+    });
+
+    it('PROCESS 目标：按流程定义所属应用过滤', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.processDef.findUnique.mockResolvedValue({ appId: 'app-C' });
+      prisma.permissionRule.findMany.mockResolvedValue([]);
+
+      await service.explain(makeUser(), 'PROCESS', 'VIEW', 'proc-001');
+
+      const where = prisma.permissionRule.findMany.mock.calls[0]![0]!.where;
+      expect(where.OR).toEqual([{ appId: null }, { appId: 'app-C' }]);
+    });
+
+    it('APPLICATION 目标：targetId 即 appId，不查资源表', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.permissionRule.findMany.mockResolvedValue([]);
+
+      await service.explain(makeUser(), 'APPLICATION', 'VIEW', 'app-Z');
+
+      const where = prisma.permissionRule.findMany.mock.calls[0]![0]!.where;
+      expect(where.OR).toEqual([{ appId: null }, { appId: 'app-Z' }]);
+      expect(prisma.pageMeta.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('资源查不到或租户级类型（CONNECTOR）：不过滤，行为与历史一致', async () => {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      prisma.objectMeta.findUnique.mockResolvedValue(null);
+      prisma.permissionRule.findMany.mockResolvedValue([]);
+
+      await service.explain(makeUser(), 'RECORD', 'VIEW', 'ghost-obj');
+
+      const where = prisma.permissionRule.findMany.mock.calls[0]![0]!.where;
+      expect(where.OR).toBeUndefined();
+    });
+  });
 });

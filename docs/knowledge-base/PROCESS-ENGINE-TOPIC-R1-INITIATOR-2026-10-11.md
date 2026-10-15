@@ -25,7 +25,7 @@
 
 ## 活文档同步（同提交）
 
-- `docs/testing/TEST-CASES.md`：TC-159（A3）/ TC-160（A1）入库，变更记录 v1.6；
+- `docs/testing/TEST-CASES.md`：TC-173（A3）/ TC-174（A1）入库，变更记录 v1.6（2026-10-15 rebase 轮改号：原编 TC-159/160 与 main 嵌入/impeccable 轮撞号）；
 - `docs/testing/QA-TEST-PLAN-PROMPT.md`：矩阵 2 user_task 行 assigneeType 5→6 种；
 - `PROCESS-ENGINE-BACKLOG-2026-10-11.md`：A1/A3 移入 C6/C7，排序更新为 A2→S1/S2→B→D；
 - `AGENTS.md` 当前阶段：专题状态 📋→🔄，新增 R1 收官条目。

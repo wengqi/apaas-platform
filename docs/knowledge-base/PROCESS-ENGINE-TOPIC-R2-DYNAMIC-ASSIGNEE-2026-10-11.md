@@ -45,7 +45,7 @@ workflow 指南补 ORG（候选组=角色或组织、须有成员）与 FORM_FIE
 
 ## 活文档同步（同提交）
 
-- TEST-CASES：TC-161（ORG）/ TC-162（FORM_FIELD）入库，变更记录 v1.7；
+- TEST-CASES：TC-175（ORG）/ TC-176（FORM_FIELD）入库（2026-10-15 rebase 轮改号：原编 TC-161/162 与 impeccable 轮撞号），变更记录 v1.7；
 - QA-TEST-PLAN：矩阵 2 user_task 行 assigneeType 6→5 种（SUPERVISOR 摘除备注）；
 - 台账：A2→C8、A 节清空、E2 关闭、排序更新（下一轮 S1/S2）；
 - AGENTS.md：R2 收官条目 + 专题状态更新。
@@ -54,4 +54,4 @@ workflow 指南补 ORG（候选组=角色或组织、须有成员）与 FORM_FIE
 
 - 红绿证据：6 failed（ORG 无成员报错/FORM_FIELD 三路/listTasks 匹配/getInstance 可见性）→ 40/40 全绿；回归对照（仅角色匹配/ORG 契约固定）全程绿。
 - `pnpm test` 11 包全绿、`pnpm typecheck` 11/11、smoke 17/17。
-- **遗留**：TC-161/162 的 GUI 黑盒二级交互（组织下拉选择→发布→组织成员任务中心可见）待推送前 QA 走查；组织审批的"组织授权角色"（orgRoleGrant）与直接组织成员两条匹配腿并存，语义已注释说明。
+- **遗留**：TC-175/176 的 GUI 黑盒二级交互（组织下拉选择→发布→组织成员任务中心可见）待推送前 QA 走查；组织审批的"组织授权角色"（orgRoleGrant）与直接组织成员两条匹配腿并存，语义已注释说明。

@@ -35,8 +35,15 @@ export function getMockQueryRawUnsafe(): ReturnType<typeof vi.fn> {
  * 创建一个 mock BullMQ Queue（用于 process-engine 测试）。
  * 返回 { add: vi.fn() }，模拟 BullMQ Queue 的 add 方法。
  */
-export function createMockQueue(): { add: ReturnType<typeof vi.fn> } {
-  return { add: vi.fn().mockResolvedValue(undefined) };
+export function createMockQueue(): {
+  add: ReturnType<typeof vi.fn>;
+  getJob: ReturnType<typeof vi.fn>;
+} {
+  return {
+    add: vi.fn().mockResolvedValue(undefined),
+    // S1 超时取消：真实 BullMQ Queue.getJob（job 不存在返回 undefined）
+    getJob: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 /**

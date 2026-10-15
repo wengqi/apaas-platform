@@ -53,6 +53,16 @@ export interface ExecutionContext {
     delayMs: number,
     kind?: 'delay' | 'wait_condition',
   ) => Promise<void>;
+  /**
+   * S1 审批超时边界：为本次任务批次调度超时动作 job（jobId 幂等，任务终态可取消）。
+   * 到点由 Worker 调 ProcessEngine.handleTaskTimeout(instanceId, nodeId, nodeExecutionId)。
+   */
+  scheduleTaskTimeout: (
+    instanceId: string,
+    nodeId: string,
+    nodeExecutionId: string,
+    delayMs: number,
+  ) => Promise<void>;
 }
 
 /** 节点执行结果。 */
@@ -81,3 +91,15 @@ export interface NodeExecutor {
 
 /** 重新导出四态值类型，便于执行器引用。 */
 export type { IFlowValue };
+
+/**
+ * 确定性节点失败（✅3 retryable 分类，Temporal 借鉴 §8.1）：
+ * 配置/参数/校验类错误重试也不会成功——BullMQ 消费端捕获后不再重试
+ * （默认 attempts:3 仅服务瞬时失败，如 HTTP 抖动）。
+ */
+export class NonRetryableNodeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableNodeError';
+  }
+}

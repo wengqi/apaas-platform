@@ -376,6 +376,17 @@ export class ProcessEngine {
 
       // 计算下一节点
       const nextNodeIds = this.resolveNextNodes(node, result, schema, variables);
+      // ✅1 边走向留痕（Temporal 借鉴 §8.1）：路由决策落 NodeExecution.output，
+      // C1 类"静默终结/为什么走这条边"事故可事后归因；条件求值快照已在实例 variables
+      await prisma.nodeExecution.updateMany({
+        where: { instanceId: instance.id, nodeId, status: 'COMPLETED' },
+        data: {
+          output: {
+            ...(result.output ?? {}),
+            _routing: { nextNodeIds, at: new Date().toISOString() },
+          } as Prisma.InputJsonValue,
+        },
+      });
       // 移除当前令牌，添加下游令牌
       instance = await this.advanceTokens(instance, nodeId, nextNodeIds, variables);
     }
@@ -452,6 +463,8 @@ export class ProcessEngine {
       startSubProcess: (defId, trigCtx) => this.startProcess(instance.tenantId, defId, trigCtx),
       scheduleDelay: (instanceId, nodeId, delayMs, kind) =>
         this.scheduleDelay(instanceId, nodeId, delayMs, kind),
+      scheduleTaskTimeout: (instanceId, nodeId, nodeExecutionId, delayMs) =>
+        this.scheduleTaskTimeout(instanceId, nodeId, nodeExecutionId, delayMs),
     };
 
     try {
@@ -488,9 +501,38 @@ export class ProcessEngine {
 
       return { result, completed: true };
     } catch (err) {
-      // 节点执行失败，标记 FAILED
+      // 节点执行失败
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`实例 ${instance.id} 节点 ${node.id} 执行失败: ${errorMsg}`);
+
+      // S2 失败处理（错误出口路由）：节点有 label 为 error/失败 的出边时，
+      // 令牌路由到该分支（补偿/通知/回写由搭建者显式画节点），实例不失败；
+      // NodeExecution 仍留痕 FAILED（错误信息不因路由掩盖）。无 error 出边时维持实例 FAILED。
+      const errorEdge = schema.edges.find(
+        (e) => e.sourceNodeID === node.id && (e.label === 'error' || e.label === '失败'),
+      );
+      if (errorEdge) {
+        this.logger.warn(
+          `实例 ${instance.id} 节点 ${node.id} 失败已路由到 error 分支 ${errorEdge.targetNodeID}`,
+        );
+        await prisma.nodeExecution.update({
+          where: { id: nodeExecution.id },
+          data: {
+            status: 'FAILED',
+            error: errorMsg,
+            finishedAt: new Date(),
+          },
+        });
+        // 显式 nextNodeIds 交由调用方循环推进（移除当前令牌 + 添加 error 目标）
+        return {
+          result: {
+            nextNodeIds: [errorEdge.targetNodeID],
+            output: { _errorRouted: errorMsg },
+          },
+          completed: true,
+        };
+      }
+
       await prisma.$transaction([
         prisma.nodeExecution.update({
           where: { id: nodeExecution.id },
@@ -608,6 +650,19 @@ export class ProcessEngine {
         code: 'CONFLICT',
         message: '任务已完成或已取消',
       });
+    }
+
+    // S1：批次内已无 PENDING 任务时取消超时 job（部分终态时保留，剩余任务到点仍可动作）
+    const remainingPending = await prisma.processTask.count({
+      where: {
+        instanceId: task.instanceId,
+        nodeId: task.nodeId,
+        nodeExecutionId: task.nodeExecutionId,
+        status: 'PENDING',
+      },
+    });
+    if (remainingPending === 0 && task.nodeExecutionId) {
+      await this.cancelTaskTimeout(task.nodeExecutionId);
     }
 
     // R1.3 多人审批聚合：同节点同批次还有其他 PENDING 任务时不立即推进令牌。
@@ -1164,6 +1219,136 @@ export class ProcessEngine {
     this.logger.log(
       `实例 ${instanceId} 节点 ${nodeId} 延时 ${delayMs}ms（kind=${kind}），已调度 BullMQ delayed job`,
     );
+  }
+
+  // ===========================================================================
+  // S1 审批超时边界（2026-10-15）：dueDate 到点动作（催办/自动通过/自动驳回）
+  // ===========================================================================
+
+  /** 超时动作的系统操作者（审批意见已写明"超时自动…"，前端用户名映射未命中时显示原值可接受） */
+  static readonly TIMEOUT_ACTOR = 'system';
+
+  private static taskTimeoutJobId(nodeExecutionId: string): string {
+    return `task-timeout:${nodeExecutionId}`;
+  }
+
+  /**
+   * 调度任务批次超时 job（user-task 执行器在 dueDate>0 且配置 timeoutAction 时调用）。
+   * jobId 按批次（nodeExecutionId）幂等，任务终态后由 cancelTaskTimeout 移除。
+   */
+  async scheduleTaskTimeout(
+    instanceId: string,
+    nodeId: string,
+    nodeExecutionId: string,
+    delayMs: number,
+  ): Promise<void> {
+    await this.delayQueue.add(
+      'task_timeout',
+      { kind: 'task_timeout', instanceId, nodeId, nodeExecutionId },
+      { delay: delayMs, jobId: ProcessEngine.taskTimeoutJobId(nodeExecutionId) },
+    );
+    this.logger.log(
+      `实例 ${instanceId} 节点 ${nodeId} 任务批次 ${nodeExecutionId} 超时动作已调度（${Math.round(delayMs / 1000)}s）`,
+    );
+  }
+
+  /** 取消任务批次超时 job（批次全部任务终态时调用；job 不存在/已完成时静默）。 */
+  async cancelTaskTimeout(nodeExecutionId: string): Promise<void> {
+    const job = await this.delayQueue.getJob(ProcessEngine.taskTimeoutJobId(nodeExecutionId));
+    if (job) await job.remove();
+  }
+
+  /**
+   * 超时到点处理（delay Worker kind='task_timeout' 调用）。
+   * 幂等：批次任务已全部终态时直接返回。动作语义：
+   * - AUTO_APPROVE / AUTO_REJECT：对仍 PENDING 的任务逐个以系统身份 completeTask
+   *   （复用单人/会签/或签/依次聚合与推进语义；驳回走 rejectToNodeId 既有路径）；
+   * - NOTIFY：对仍 PENDING 任务的受理人发催办站内信。
+   */
+  async handleTaskTimeout(
+    instanceId: string,
+    nodeId: string,
+    nodeExecutionId: string,
+  ): Promise<void> {
+    const instance = await prisma.processInstance.findFirst({
+      where: { id: instanceId },
+      include: { processDef: true },
+    });
+    if (!instance || (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK')) {
+      return;
+    }
+    const schema = (instance.frozenWorkflowSchema ?? instance.processDef.workflowSchema) as {
+      nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
+    } | null;
+    const cfgNode = schema?.nodes?.find((n) => n.id === nodeId);
+    // 与 approvalMode 同口径：面板写大写枚举、指南/seed 可写小写——归一化统一
+    const action = String(cfgNode?.data?.['timeoutAction'] ?? '').toUpperCase() || undefined;
+    if (!action) return;
+
+    const pending = await prisma.processTask.findMany({
+      where: { instanceId, nodeId, nodeExecutionId, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (pending.length === 0) return;
+
+    if (action === 'NOTIFY') {
+      const assignees = pending
+        .map((t) => t.assignee)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0);
+      if (assignees.length > 0) {
+        // 与 InAppMessageService.create 同形态（避免为一条站内信引入引擎新依赖）
+        await prisma.inAppMessage.createMany({
+          data: assignees.map((userId) => ({
+            tenantId: instance.tenantId,
+            appId: instance.processDef.appId,
+            userId,
+            title: `审批任务超时催办：${pending[0]!.taskName}`,
+            body: '您有一条审批任务已超过处理时限，请尽快处理。',
+            link: `/tasks`,
+          })),
+        });
+        this.logger.log(`实例 ${instanceId} 节点 ${nodeId} 超时催办已发送 ×${assignees.length}`);
+      }
+      return;
+    }
+
+    if (action === 'AUTO_APPROVE' || action === 'AUTO_REJECT') {
+      const decision = action === 'AUTO_APPROVE' ? 'approve' : 'reject';
+      const comment = action === 'AUTO_APPROVE' ? '超时自动通过' : '超时自动驳回';
+      // 逐个决策：单人一次推进；会签逐个批准到齐后推进；或签首个决策即终结。
+      // 按初始待处理数封顶（或签取消兄弟后 findFirst 提前返回 null 自然终止）
+      let processed = 0;
+      for (let i = 0; i < pending.length; i++) {
+        const next = await prisma.processTask.findFirst({
+          where: { instanceId, nodeId, nodeExecutionId, status: 'PENDING' },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (!next) break;
+        try {
+          await this.completeTask(
+            next.id,
+            ProcessEngine.TIMEOUT_ACTOR,
+            decision,
+            comment,
+            undefined,
+            instance.tenantId,
+          );
+          processed += 1;
+        } catch (err) {
+          // 典型：AUTO_REJECT 但节点无 rejectToNodeId——发布预检已拦，此处兜底留痕不中断
+          this.logger.error(
+            `实例 ${instanceId} 节点 ${nodeId} 超时动作 ${action} 失败（任务 ${next.id}）：${err instanceof Error ? err.message : String(err)}`,
+          );
+          break;
+        }
+      }
+      if (processed > 0) {
+        this.logger.log(`实例 ${instanceId} 节点 ${nodeId} 超时动作 ${action} 完成 ×${processed}`);
+      }
+      return;
+    }
+
+    this.logger.warn(`实例 ${instanceId} 节点 ${nodeId} 未知超时动作：${action}`);
   }
 
   // ===========================================================================

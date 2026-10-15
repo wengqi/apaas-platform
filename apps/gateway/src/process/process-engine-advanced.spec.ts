@@ -444,3 +444,142 @@ describe('ProcessEngine 等待条件节点恢复', () => {
     expect(delayQueue.add).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// S2 失败处理：错误出口路由（error 标签出边）
+// ---------------------------------------------------------------------------
+
+describe('ProcessEngine 节点失败处理（S2 错误出口路由）', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.nodeExecution.count.mockResolvedValue(0);
+    prisma.nodeExecution.create.mockImplementation(
+      async (args: { data: Record<string, unknown> }) => ({
+        id: `ne-${Math.random().toString(36).slice(2, 8)}`,
+        ...args.data,
+      }),
+    );
+    prisma.nodeExecution.update.mockResolvedValue({});
+    prisma.nodeExecution.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  function makeFailEngineSchema(errorLabel?: string) {
+    // fail_node 失败；errorLabel 配置时连一条 error 出边到 recover；recover → end
+    const edges: WorkflowEdge[] = [];
+    if (errorLabel) edges.push(makeEdge('fail_node', 'recover', { label: errorLabel }));
+    return {
+      nodes: [
+        makeNode('fail_node', 'boom'),
+        makeNode('recover', 'fixer'),
+        makeNode('end_0', 'end'),
+      ],
+      edges,
+    } as unknown as WorkflowSchema;
+  }
+
+  it('节点失败且有 error 出边：实例不失败，令牌路由到 error 分支并走完，NodeExecution 留痕 FAILED', async () => {
+    const schema = makeFailEngineSchema('error');
+    const failExec = createMockExecutor('boom', async () => {
+      throw new Error('下游系统 500');
+    });
+    const recoverExec = createMockExecutor('fixer');
+    const endExec = createMockExecutor('end', async () => ({ output: {} }));
+    const { engine } = createEngine([failExec, recoverExec, endExec]);
+
+    const instance = makeProcessInstance({
+      id: 'pi-err-route',
+      activeNodeIds: ['fail_node'],
+      processDef: { id: 'pd-1', tenantId: 'tenant-001', appId: 'app-001', workflowSchema: schema },
+    });
+    const store = setupInstanceStore([instance]);
+
+    await engine.executeNextNode('pi-err-route');
+
+    const final = getStoredInstance(store, 'pi-err-route');
+    expect(final?.['status']).toBe('COMPLETED');
+    // 失败节点令牌已被移除，恢复分支执行过
+    expect(recoverExec.execute).toHaveBeenCalledTimes(1);
+    expect(final?.['activeNodeIds']).toEqual([]);
+    // 失败留痕：NodeExecution FAILED 且带错误信息（不被路由掩盖）
+    const failedUpdate = prisma.nodeExecution.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'FAILED',
+    );
+    expect(failedUpdate).toBeTruthy();
+    expect((failedUpdate![0] as { data: { error: string } }).data.error).toContain('下游系统 500');
+  });
+
+  it('中文 label「失败」同样识别为错误出口', async () => {
+    const schema = makeFailEngineSchema('失败');
+    const failExec = createMockExecutor('boom', async () => {
+      throw new Error('校验不通过');
+    });
+    const recoverExec = createMockExecutor('fixer');
+    const endExec = createMockExecutor('end', async () => ({ output: {} }));
+    const { engine } = createEngine([failExec, recoverExec, endExec]);
+
+    const instance = makeProcessInstance({
+      id: 'pi-err-cn',
+      activeNodeIds: ['fail_node'],
+      processDef: { id: 'pd-1', tenantId: 'tenant-001', appId: 'app-001', workflowSchema: schema },
+    });
+    const store = setupInstanceStore([instance]);
+
+    await engine.executeNextNode('pi-err-cn');
+    expect(getStoredInstance(store, 'pi-err-cn')?.['status']).toBe('COMPLETED');
+  });
+
+  it('节点失败且无 error 出边：实例置 FAILED（既有行为不变）', async () => {
+    const schema = makeFailEngineSchema();
+    const failExec = createMockExecutor('boom', async () => {
+      throw new Error('无法恢复的失败');
+    });
+    const { engine } = createEngine([failExec]);
+
+    const instance = makeProcessInstance({
+      id: 'pi-err-fail',
+      activeNodeIds: ['fail_node'],
+      processDef: { id: 'pd-1', tenantId: 'tenant-001', appId: 'app-001', workflowSchema: schema },
+    });
+    const store = setupInstanceStore([instance]);
+
+    // 既有契约：无 error 出边时失败向上抛（BullMQ 消费端记失败日志）
+    await expect(engine.executeNextNode('pi-err-fail')).rejects.toThrow('无法恢复的失败');
+
+    const final = getStoredInstance(store, 'pi-err-fail');
+    expect(final?.['status']).toBe('FAILED');
+    expect(final?.['error']).toContain('无法恢复的失败');
+  });
+
+  it('✅1 边走向留痕：路由决策写入 NodeExecution.output._routing（事故可事后归因）', async () => {
+    const schema = {
+      nodes: [makeNode('a', 'pass_a'), makeNode('b', 'pass_b'), makeNode('end_0', 'end')],
+      edges: [makeEdge('a', 'b'), makeEdge('b', 'end_0')],
+    } as unknown as WorkflowSchema;
+    const aExec = createMockExecutor('pass_a');
+    const bExec = createMockExecutor('pass_b');
+    const endExec = createMockExecutor('end', async () => ({ output: {} }));
+    const { engine } = createEngine([aExec, bExec, endExec]);
+
+    const instance = makeProcessInstance({
+      id: 'pi-route-log',
+      activeNodeIds: ['a'],
+      processDef: { id: 'pd-1', tenantId: 'tenant-001', appId: 'app-001', workflowSchema: schema },
+    });
+    const store = setupInstanceStore([instance]);
+
+    await engine.executeNextNode('pi-route-log');
+    expect(getStoredInstance(store, 'pi-route-log')?.['status']).toBe('COMPLETED');
+
+    // 每个完成节点都有 _routing 留痕（含下一跳）
+    const routingCalls = prisma.nodeExecution.updateMany.mock.calls.filter((c: unknown[]) => {
+      const data = (c[0] as { data: { output?: Record<string, unknown> } }).data;
+      return data.output && typeof data.output === 'object' && '_routing' in data.output;
+    });
+    expect(routingCalls.length).toBeGreaterThanOrEqual(2); // a→b 与 b→end 两次路由
+    const firstRouting = (
+      routingCalls[0]![0] as { data: { output: { _routing: { nextNodeIds: string[] } } } }
+    ).data.output._routing;
+    expect(firstRouting.nextNodeIds).toEqual(['b']);
+  });
+});

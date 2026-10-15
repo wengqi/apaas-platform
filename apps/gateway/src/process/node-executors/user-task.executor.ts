@@ -19,6 +19,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { prisma } from '@apaas/db';
+import { NonRetryableNodeError } from '../types.js';
 import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../types.js';
 
 /** 会签/或签/依次模式下允许的最大并行审批人数（防误配超大审批组）。 */
@@ -46,7 +47,7 @@ export class UserTaskExecutor implements NodeExecutor {
       const triggerCtx = (ctx.instance.triggerContext ?? {}) as Record<string, unknown>;
       const initiator = triggerCtx['triggeredByUser'];
       if (typeof initiator !== 'string' || initiator.length === 0) {
-        throw new Error(
+        throw new NonRetryableNodeError(
           `节点 ${ctx.node.id} 配置了发起人审批（INITIATOR），但实例无发起人（triggerContext.triggeredByUser 缺失）：定时/API 触发需显式传入发起人`,
         );
       }
@@ -61,13 +62,13 @@ export class UserTaskExecutor implements NodeExecutor {
     if (assigneeType === 'ORG') {
       const orgId = candidateGroups[0] ?? assignee;
       if (!orgId) {
-        throw new Error(`节点 ${ctx.node.id} 配置了组织审批（ORG），但未选择组织`);
+        throw new NonRetryableNodeError(`节点 ${ctx.node.id} 配置了组织审批（ORG），但未选择组织`);
       }
       const memberCount = await prisma.orgMember.count({
         where: { orgId, org: { tenantId: ctx.tenantId } },
       });
       if (memberCount === 0) {
-        throw new Error(
+        throw new NonRetryableNodeError(
           `节点 ${ctx.node.id} 组织审批的组织（${orgId}）不存在或无成员，请到权限管理检查组织与成员配置`,
         );
       }
@@ -77,18 +78,20 @@ export class UserTaskExecutor implements NodeExecutor {
     if (assigneeType === 'FORM_FIELD') {
       const field = assignee;
       if (!field) {
-        throw new Error(`节点 ${ctx.node.id} 配置了记录字段审批人（FORM_FIELD），但未填写字段名`);
+        throw new NonRetryableNodeError(
+          `节点 ${ctx.node.id} 配置了记录字段审批人（FORM_FIELD），但未填写字段名`,
+        );
       }
       const triggerCtx = (ctx.instance.triggerContext ?? {}) as Record<string, unknown>;
       const record = triggerCtx['record'] as Record<string, unknown> | undefined;
       if (!record) {
-        throw new Error(
+        throw new NonRetryableNodeError(
           `节点 ${ctx.node.id} 配置了记录字段审批人（FORM_FIELD），但实例无记录触发上下文：仅记录触发（创建/更新）可用，定时/API/手动启动不支持`,
         );
       }
       const value = record[field];
       if (typeof value !== 'string' || value.length === 0) {
-        throw new Error(
+        throw new NonRetryableNodeError(
           `节点 ${ctx.node.id} 记录字段审批人：触发记录中字段 ${field} 不存在或不是有效用户 ID`,
         );
       }
@@ -99,7 +102,7 @@ export class UserTaskExecutor implements NodeExecutor {
         select: { id: true },
       });
       if (!reviewer) {
-        throw new Error(
+        throw new NonRetryableNodeError(
           `节点 ${ctx.node.id} 记录字段审批人：字段 ${field} 的值（${value}）不是本租户内的有效用户，请检查触发记录数据`,
         );
       }
@@ -118,7 +121,9 @@ export class UserTaskExecutor implements NodeExecutor {
         approvalMode === 'sequential') &&
       resolvedUsers.length === 0
     ) {
-      throw new Error(`节点 ${ctx.node.id} 配置了审批模式 ${approvalMode}，但 approveUsers 为空`);
+      throw new NonRetryableNodeError(
+        `节点 ${ctx.node.id} 配置了审批模式 ${approvalMode}，但 approveUsers 为空`,
+      );
     }
     if (resolvedUsers.length > MAX_MULTI_APPROVERS) {
       throw new Error(
@@ -132,7 +137,7 @@ export class UserTaskExecutor implements NodeExecutor {
       const idx = this.readSequentialIndex(ctx.variables, ctx.node.id);
       if (idx >= resolvedUsers.length) {
         // 进度越界（理论上 completeTask 会在最后一人后直接推进，不会走到这）
-        throw new Error(`节点 ${ctx.node.id} 依次审批进度越界：index=${idx}`);
+        throw new NonRetryableNodeError(`节点 ${ctx.node.id} 依次审批进度越界：index=${idx}`);
       }
       targetUsers = [resolvedUsers[idx]!];
     } else if (approvalMode === 'countersign' || approvalMode === 'or_sign') {
@@ -180,6 +185,27 @@ export class UserTaskExecutor implements NodeExecutor {
     this.logger.log(
       `创建人工任务 ×${taskRows.length}（节点 ${ctx.node.id}，模式=${approvalMode}，角色数=${candidateGroups.length}），流程实例 ${ctx.instance.id}`,
     );
+
+    // S1 审批超时边界：dueDate>0 且配置超时动作时调度到点 job
+    //（仅配 dueDate 不配动作 = 无运行时语义，不调度）。
+    // dueDate 数值 + dueUnit 单位（对齐搭建面板四档：秒/分钟/小时/天；缺省小时）
+    const dueAmount = Number(data['dueDate'] ?? 0);
+    const dueUnit = String(data['dueUnit'] ?? 'HOURS').toUpperCase();
+    const unitMs: Record<string, number> = {
+      SECONDS: 1_000,
+      MINUTES: 60_000,
+      HOURS: 3_600_000,
+      DAYS: 86_400_000,
+    };
+    const timeoutAction = data['timeoutAction'];
+    if (Number.isFinite(dueAmount) && dueAmount > 0 && timeoutAction) {
+      await ctx.scheduleTaskTimeout(
+        ctx.instance.id,
+        ctx.node.id,
+        ctx.nodeExecutionId,
+        dueAmount * (unitMs[dueUnit] ?? 3_600_000),
+      );
+    }
 
     // R1.3：pageId 等节点配置在 getTask 时从 WorkflowSchema 读取（无需落到任务行）
     void pageId;

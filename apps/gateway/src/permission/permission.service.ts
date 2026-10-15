@@ -30,6 +30,45 @@ export class PermissionService {
    * 实现：租户内组织树一次载入（组织节点数量有界），BFS 收集用户组织的全部后代；
    * 访问集防环，树深/环异常时安全终止。
    */
+  /**
+   * 应用域解析（explain 的规则过滤边界，R5 遗留缝隙 2026-10-15）。
+   * app 级规则（appId 非空）只应命中所属应用的资源；按目标资源反查所属应用：
+   * APPLICATION 的 targetId 即 appId，PAGE/RECORD(对象)/PROCESS 查资源表，
+   * 其余类型（CONNECTOR/DATA_MODEL 等租户级）与查不到的资源返回 null=不过滤
+   * （行为与历史一致，向后兼容）。
+   */
+  async resolveAppScope(type: string, targetId: string): Promise<string | null> {
+    switch (type) {
+      case 'APPLICATION':
+        return targetId;
+      case 'PAGE':
+        return (
+          (await prisma.pageMeta.findUnique({ where: { id: targetId }, select: { appId: true } }))
+            ?.appId ?? null
+        );
+      case 'RECORD':
+        return (
+          (
+            await prisma.objectMeta.findUnique({
+              where: { id: targetId },
+              select: { appId: true },
+            })
+          )?.appId ?? null
+        );
+      case 'PROCESS':
+        return (
+          (
+            await prisma.processDef.findUnique({
+              where: { id: targetId },
+              select: { appId: true },
+            })
+          )?.appId ?? null
+        );
+      default:
+        return null;
+    }
+  }
+
   async getUserRoleIds(userId: string, tenantId: string): Promise<string[]> {
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({
@@ -163,6 +202,10 @@ export class PermissionService {
     }
 
     // 查询匹配的权限规则（包括通配符 '*' 规则和具体 targetId 规则）
+    // R5 遗留缝隙修复（2026-10-15）：app 级规则（appId 非空）只命中所属应用的资源——
+    // 此前不过滤 appId，B 应用配置的「应用级通配规则」会被判到所有应用的资源上；
+    // 租户级规则（appId 空）不受影响。资源查不到/租户级类型不过滤（行为与历史一致）。
+    const appScope = await this.resolveAppScope(type, targetId);
     const rules = await prisma.permissionRule.findMany({
       where: {
         tenantId: tenantId,
@@ -171,6 +214,7 @@ export class PermissionService {
         action,
         targetId: { in: [targetId, '*'] },
         ...(targetNodeId ? { targetNodeId } : {}),
+        ...(appScope ? { OR: [{ appId: null }, { appId: appScope }] } : {}),
       },
     });
 

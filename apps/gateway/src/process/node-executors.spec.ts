@@ -51,6 +51,7 @@ function makeCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     schema: EMPTY_SCHEMA,
     startSubProcess: vi.fn(),
     scheduleDelay: vi.fn(),
+    scheduleTaskTimeout: vi.fn(),
     ...overrides,
   };
 }
@@ -733,6 +734,54 @@ describe('UserTaskExecutor ORG（组织审批）', () => {
       } as ExecutionContext['node'],
     });
     await expect(executor.execute(ctx)).rejects.toThrow(/组织/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S1 审批超时边界：dueDate × dueUnit × timeoutAction 调度
+// ---------------------------------------------------------------------------
+
+describe('UserTaskExecutor 超时调度（S1）', () => {
+  const executor = new UserTaskExecutor();
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.processTask.createMany.mockResolvedValue({ count: 1 });
+    prisma.user.findFirst.mockResolvedValue(null);
+  });
+
+  function makeUserTaskCtx(nodeData: Record<string, unknown>) {
+    return makeCtx({
+      node: {
+        id: 'ut-timeout',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '审批', approvalMode: 'single', assignee: 'u1', ...nodeData },
+      } as ExecutionContext['node'],
+    });
+  }
+
+  it('dueDate×dueUnit+timeoutAction → 按单位换算毫秒调度', async () => {
+    const ctx = makeUserTaskCtx({ dueDate: 2, dueUnit: 'DAYS', timeoutAction: 'NOTIFY' });
+    await executor.execute(ctx);
+    expect(ctx.scheduleTaskTimeout).toHaveBeenCalledWith(
+      'pi-1',
+      'ut-timeout',
+      'ne-1',
+      2 * 86_400_000,
+    );
+  });
+
+  it('缺省单位为小时', async () => {
+    const ctx = makeUserTaskCtx({ dueDate: 2, timeoutAction: 'AUTO_APPROVE' });
+    await executor.execute(ctx);
+    expect(ctx.scheduleTaskTimeout).toHaveBeenCalledWith('pi-1', 'ut-timeout', 'ne-1', 7_200_000);
+  });
+
+  it('仅配 dueDate 未配 timeoutAction → 不调度（无运行时语义）', async () => {
+    const ctx = makeUserTaskCtx({ dueDate: 2 });
+    await executor.execute(ctx);
+    expect(ctx.scheduleTaskTimeout).not.toHaveBeenCalled();
   });
 });
 

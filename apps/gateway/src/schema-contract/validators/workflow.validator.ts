@@ -288,6 +288,36 @@ function validateUserTask(
   // INITIATOR（发起人审批，专题 R1-A1）：受理人=实例发起人，免填 assignee/candidateGroups
   const isInitiator = String(cfg.assigneeType ?? '').toUpperCase() === 'INITIATOR';
 
+  // S1 审批超时边界（2026-10-15）：超时自动驳回要求节点可驳回（有 rejectToNodeId），
+  // 否则到点动作必然失败（引擎兜底留痕不中断，但不让坏配置过发布闸）
+  const timeoutAction = String(cfg.timeoutAction ?? '').toUpperCase();
+  if (timeoutAction === 'AUTO_REJECT') {
+    const rejectToNodeId = cfg.rejectToNodeId;
+    if (typeof rejectToNodeId !== 'string' || rejectToNodeId.trim() === '') {
+      issues.push({
+        path: `${path}/timeoutAction`,
+        code: SCHEMA_ISSUE_CODES.MISSING_REQUIRED,
+        message: '超时动作配置为自动驳回，但节点未配置驳回跳转（rejectToNodeId）',
+        severity: 'error',
+      });
+    } else if (!nodeIds.has(rejectToNodeId)) {
+      issues.push({
+        path: `${path}/rejectToNodeId`,
+        code: SCHEMA_ISSUE_CODES.INVALID_VALUE,
+        message: `timeoutAction=auto_reject 的 rejectToNodeId "${rejectToNodeId}" 不存在于流程节点`,
+        severity: 'error',
+      });
+    }
+  }
+  if (timeoutAction && !['NOTIFY', 'AUTO_APPROVE', 'AUTO_REJECT'].includes(timeoutAction)) {
+    issues.push({
+      path: `${path}/timeoutAction`,
+      code: SCHEMA_ISSUE_CODES.INVALID_VALUE,
+      message: `timeoutAction "${cfg.timeoutAction}" 非法，允许值：notify/auto_approve/auto_reject`,
+      severity: 'error',
+    });
+  }
+
   if (mode === 'single') {
     if (!hasAssignee && !hasCandidates && !isInitiator) {
       issues.push({

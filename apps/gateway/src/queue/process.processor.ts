@@ -27,6 +27,7 @@ import { ConfigService } from '@nestjs/config';
 import { prisma, runWithTenant } from '@apaas/db';
 import { PROCESS_QUEUE, DELAY_QUEUE } from './queue.constants.js';
 import { ProcessEngine } from '../process/process-engine.js';
+import { NonRetryableNodeError } from '../process/types.js';
 
 @Injectable()
 export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
@@ -86,9 +87,22 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
             throw new Error(`流程实例 ${instanceId} 不存在`);
           }
           // 在租户上下文中执行后续所有 DB 操作
-          await runWithTenant(instance.tenantId, () =>
-            this.processEngine.executeNextNode(instanceId),
-          );
+          await runWithTenant(instance.tenantId, async () => {
+            try {
+              await this.processEngine.executeNextNode(instanceId);
+            } catch (err) {
+              // ✅3 retryable 分类（Temporal 借鉴 §8.1）：确定性失败（配置/校验类，
+              // NonRetryableNodeError）重试不会成功——实例已由引擎置 FAILED 并留痕，
+              // 吞掉异常避免 BullMQ attempts:3 空转；瞬时失败照常重试
+              if (err instanceof NonRetryableNodeError) {
+                this.logger.warn(
+                  `process job 确定性失败（不重试）: instanceId=${instanceId}, ${err.message}`,
+                );
+                return;
+              }
+              throw err;
+            }
+          });
         }
       },
       { connection: this.connection.duplicate(), concurrency: 5 },
@@ -97,19 +111,32 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`process job 失败: ${err.message}`);
     });
     this.workers.push(processWorker);
-
     // 延时恢复 Worker（kind 决定恢复语义：delay=推进令牌 / wait_condition=重新求值等待条件）
     const delayWorker = new Worker(
       DELAY_QUEUE,
       async (job: Job) => {
-        const { instanceId, nodeId, kind } = job.data as {
+        const { instanceId, nodeId, kind, nodeExecutionId } = job.data as {
           instanceId: string;
           nodeId: string;
           kind?: string;
+          nodeExecutionId?: string;
         };
         this.logger.debug(
           `消费 delay job: instanceId=${instanceId}, nodeId=${nodeId}, kind=${kind ?? 'delay'}`,
         );
+        // S1 任务超时：从任务行恢复 tenantId（批次维度处理，无 instanceId 前置查询）
+        if (kind === 'task_timeout') {
+          if (!nodeExecutionId) throw new Error('task_timeout job 缺少 nodeExecutionId');
+          const anyTask = await prisma.processTask.findFirst({
+            where: { nodeExecutionId },
+            select: { tenantId: true },
+          });
+          if (!anyTask) return; // 批次任务已不存在（实例被删），幂等返回
+          await runWithTenant(anyTask.tenantId, () =>
+            this.processEngine.handleTaskTimeout(instanceId, nodeId, nodeExecutionId),
+          );
+          return;
+        }
         // 从实例恢复 tenantId（此查询在 ALS 上下文外 — 安全，instanceId 全局唯一）
         const instance = await prisma.processInstance.findFirst({
           where: { id: instanceId },

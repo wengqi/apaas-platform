@@ -36,12 +36,75 @@ export class UserTaskExecutor implements NodeExecutor {
       (data['task_name'] as string) ??
       ctx.node.data.title ??
       '人工任务';
-    const assignee =
+    const assigneeType = String(data['assigneeType'] ?? '').toUpperCase();
+    // INITIATOR（发起人审批，专题 R1-A1）：受理人=实例发起人。发起人由启动路径注入
+    // triggerContext（A3：MANUAL 兜底 callerUserId；记录触发=创建人；定时/API 需显式传入），
+    // 缺失时报清晰错误而非静默创建无主任务（那会复现 #12 的流程挂起）。
+    let assignee: string | undefined =
       (data['assignee'] as string | undefined) ?? (ctx.inputs['assignee'] as string | undefined);
+    if (assigneeType === 'INITIATOR') {
+      const triggerCtx = (ctx.instance.triggerContext ?? {}) as Record<string, unknown>;
+      const initiator = triggerCtx['triggeredByUser'];
+      if (typeof initiator !== 'string' || initiator.length === 0) {
+        throw new Error(
+          `节点 ${ctx.node.id} 配置了发起人审批（INITIATOR），但实例无发起人（triggerContext.triggeredByUser 缺失）：定时/API 触发需显式传入发起人`,
+        );
+      }
+      assignee = initiator;
+    }
     const candidateGroups =
       (data['candidateGroups'] as string[] | undefined) ??
       (data['candidate_groups'] as string[] | undefined) ??
       [];
+    // ORG（组织审批，专题 R2-A2）：候选组=组织 ID（任务中心按「我的角色 ∪ 我的组织」匹配），
+    // 执行器校验组织存在且有成员——防"无主任务无人可见"的静默挂起（#12 同教训）。
+    if (assigneeType === 'ORG') {
+      const orgId = candidateGroups[0] ?? assignee;
+      if (!orgId) {
+        throw new Error(`节点 ${ctx.node.id} 配置了组织审批（ORG），但未选择组织`);
+      }
+      const memberCount = await prisma.orgMember.count({
+        where: { orgId, org: { tenantId: ctx.tenantId } },
+      });
+      if (memberCount === 0) {
+        throw new Error(
+          `节点 ${ctx.node.id} 组织审批的组织（${orgId}）不存在或无成员，请到权限管理检查组织与成员配置`,
+        );
+      }
+    }
+    // FORM_FIELD（记录字段动态审批人，专题 R2-A2）：assignee=触发记录字段 apiName，
+    // 运行时取该字段值（须为用户 ID 字符串）作为受理人；仅记录触发可用。
+    if (assigneeType === 'FORM_FIELD') {
+      const field = assignee;
+      if (!field) {
+        throw new Error(`节点 ${ctx.node.id} 配置了记录字段审批人（FORM_FIELD），但未填写字段名`);
+      }
+      const triggerCtx = (ctx.instance.triggerContext ?? {}) as Record<string, unknown>;
+      const record = triggerCtx['record'] as Record<string, unknown> | undefined;
+      if (!record) {
+        throw new Error(
+          `节点 ${ctx.node.id} 配置了记录字段审批人（FORM_FIELD），但实例无记录触发上下文：仅记录触发（创建/更新）可用，定时/API/手动启动不支持`,
+        );
+      }
+      const value = record[field];
+      if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(
+          `节点 ${ctx.node.id} 记录字段审批人：触发记录中字段 ${field} 不存在或不是有效用户 ID`,
+        );
+      }
+      // OCR 评审补强（2026-10-15）：值须为本租户真实用户——否则任务建给不存在的用户，
+      // 复现「任务挂起无人可见」（#12 同教训，与 ORG 分支的成员数校验对称）
+      const reviewer = await prisma.user.findFirst({
+        where: { id: value, tenantId: ctx.tenantId },
+        select: { id: true },
+      });
+      if (!reviewer) {
+        throw new Error(
+          `节点 ${ctx.node.id} 记录字段审批人：字段 ${field} 的值（${value}）不是本租户内的有效用户，请检查触发记录数据`,
+        );
+      }
+      assignee = value;
+    }
     // QA 实测（2026-10-03）：面板写大写枚举、seed/引擎写小写——归一化统一
     const approvalMode = ((data['approvalMode'] as string | undefined) ?? 'single').toLowerCase();
     const approveUsers = (data['approveUsers'] as string[] | undefined) ?? [];

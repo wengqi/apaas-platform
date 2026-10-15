@@ -45,3 +45,36 @@ describe('start.startPageId 发起页面绑定校验（R6 方案一）', () => {
     expect(r.issues.some((i) => i.code === 'REF_NOT_FOUND')).toBe(false);
   });
 });
+
+describe('user_task assigneeType=INITIATOR（发起人审批，专题 R1-A1）', () => {
+  const initiatorSchema = (assigneeType?: string) => ({
+    nodes: [
+      { id: 'start_1', type: 'start', data: { title: '开始' } },
+      {
+        id: 'ut_1',
+        type: 'user_task',
+        data: {
+          taskName: '发起人确认',
+          ...(assigneeType ? { assigneeType } : {}),
+          approvalMode: 'single',
+        },
+      },
+      { id: 'end_1', type: 'end', data: { title: '结束' } },
+    ],
+    edges: [
+      { sourceNodeID: 'start_1', targetNodeID: 'ut_1' },
+      { sourceNodeID: 'ut_1', targetNodeID: 'end_1' },
+    ],
+  });
+
+  it('INITIATOR 无 assignee/candidateGroups → 通过', () => {
+    const r = validate(initiatorSchema('INITIATOR'));
+    expect(r.valid).toBe(true);
+  });
+
+  it('无审批人且非 INITIATOR → 仍报错（回归对照）', () => {
+    const r = validate(initiatorSchema('USER'));
+    expect(r.valid).toBe(false);
+    expect(r.issues.some((i) => i.path.endsWith('/assignee'))).toBe(true);
+  });
+});

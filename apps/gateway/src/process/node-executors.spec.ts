@@ -632,3 +632,204 @@ describe('SubProcessExecutor', () => {
     await expect(executor.execute(ctx)).rejects.toThrow('未找到或未发布');
   });
 });
+
+// ---------------------------------------------------------------------------
+// user_task INITIATOR（发起人审批，流程引擎专题 R1-A1）
+// ---------------------------------------------------------------------------
+
+describe('UserTaskExecutor INITIATOR（发起人审批）', () => {
+  const executor = new UserTaskExecutor();
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.processTask.createMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('受理人=实例发起人（instance.triggerContext.triggeredByUser）', async () => {
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: { triggerType: 'MANUAL', triggeredByUser: 'user-7' },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-init',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '发起人确认', assigneeType: 'INITIATOR' },
+      } as ExecutionContext['node'],
+    });
+    const result = await executor.execute(ctx);
+
+    expect(result.wait).toBe(true);
+    expect(result.output).toMatchObject({ assignees: ['user-7'], approvalMode: 'single' });
+    const arg = prisma.processTask.createMany.mock.calls[0]?.[0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(arg.data[0]).toMatchObject({ assignee: 'user-7', status: 'PENDING' });
+  });
+
+  it('实例无发起人 → 报清晰错误（不静默创建无主任务）', async () => {
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: { triggerType: 'SCHEDULED' },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-init',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '发起人确认', assigneeType: 'INITIATOR' },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/发起人/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// user_task ORG / FORM_FIELD（动态审批人，流程引擎专题 R2-A2）
+// ---------------------------------------------------------------------------
+
+describe('UserTaskExecutor ORG（组织审批）', () => {
+  const executor = new UserTaskExecutor();
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.processTask.createMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('候选组=组织 ID：创建无主任务行（任务中心按「我的组织」匹配）', async () => {
+    prisma.orgMember.count.mockResolvedValue(3);
+    const ctx = makeCtx({
+      node: {
+        id: 'ut-org',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '组织审批', assigneeType: 'ORG', candidateGroups: ['org-1'] },
+      } as ExecutionContext['node'],
+    });
+    const result = await executor.execute(ctx);
+
+    expect(result.wait).toBe(true);
+    const arg = prisma.processTask.createMany.mock.calls[0]?.[0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(arg.data[0]).toMatchObject({
+      assignee: null,
+      candidateGroups: ['org-1'],
+      status: 'PENDING',
+    });
+  });
+
+  it('组织不存在或无成员 → 报清晰错误（不静默挂起）', async () => {
+    prisma.orgMember.count.mockResolvedValue(0);
+    const ctx = makeCtx({
+      node: {
+        id: 'ut-org',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '组织审批', assigneeType: 'ORG', candidateGroups: ['org-x'] },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/组织/);
+  });
+});
+
+describe('UserTaskExecutor FORM_FIELD（记录字段动态审批人）', () => {
+  const executor = new UserTaskExecutor();
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.processTask.createMany.mockResolvedValue({ count: 1 });
+  });
+
+  it('从触发记录字段取受理人', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'user-5' });
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: {
+          triggerType: 'RECORD_CREATED',
+          record: { id: 'rec-1', legal_reviewer: 'user-5' },
+        },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-ff',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '法务审批', assigneeType: 'FORM_FIELD', assignee: 'legal_reviewer' },
+      } as ExecutionContext['node'],
+    });
+    const result = await executor.execute(ctx);
+
+    expect(result.wait).toBe(true);
+    expect(result.output).toMatchObject({ assignees: ['user-5'] });
+    const arg = prisma.processTask.createMany.mock.calls[0]?.[0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(arg.data[0]).toMatchObject({ assignee: 'user-5' });
+    // OCR 补强：值须为本租户真实用户（租户隔离条件一并断言）
+    const userArg = prisma.user.findFirst.mock.calls[0]?.[0] as { where: Record<string, unknown> };
+    expect(userArg.where).toEqual({ id: 'user-5', tenantId: 't-1' });
+  });
+
+  it('非记录触发（无 record 上下文）→ 报清晰错误', async () => {
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: { triggerType: 'SCHEDULED' },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-ff',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '法务审批', assigneeType: 'FORM_FIELD', assignee: 'legal_reviewer' },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/记录触发/);
+  });
+
+  it('字段不存在或为空 → 报清晰错误', async () => {
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: {
+          triggerType: 'RECORD_CREATED',
+          record: { id: 'rec-1' },
+        },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-ff',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '法务审批', assigneeType: 'FORM_FIELD', assignee: 'legal_reviewer' },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/legal_reviewer/);
+  });
+
+  it('字段值非本租户真实用户 → 报清晰错误（OCR 补强：防任务建给不存在的用户静默挂起）', async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
+    const ctx = makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: {
+          triggerType: 'RECORD_CREATED',
+          record: { id: 'rec-1', legal_reviewer: 'ghost-user' },
+        },
+      } as unknown as ExecutionContext['instance'],
+      node: {
+        id: 'ut-ff',
+        type: 'user_task',
+        meta: {},
+        data: { taskName: '法务审批', assigneeType: 'FORM_FIELD', assignee: 'legal_reviewer' },
+      } as ExecutionContext['node'],
+    });
+    await expect(executor.execute(ctx)).rejects.toThrow(/不是本租户内的有效用户/);
+  });
+});

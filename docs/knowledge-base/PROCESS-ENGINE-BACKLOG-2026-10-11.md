@@ -8,34 +8,7 @@
 
 ## A. 确认缺口（专题主体）
 
-### A1 「发起人」审批人类型缺失（INITIATOR）
-
-- **现象**：审批人类型仅五种——指定用户/指定角色/指定组织/上级主管/表单字段（`packages/studio/src/components/process/configs/UserTaskConfigForm.tsx:70-76`），**无"发起人"选项**；"发起人确认/申请人回签"类审批（如报销单提交后申请人签收确认）无法正确配置。
-- **证据**：
-  - 执行器只认三个配置：`data.assignee`（字面用户 ID）/`candidateGroups`/`approveUsers`，无动态发起人解析（`apps/gateway/src/process/node-executors/user-task.executor.ts:39-44`）；
-  - G3 硬闸：single 模式要求 assignee 或 candidateGroups 必有其一（`workflow.validator.ts:289-297`）——变通写 inputsValues 变量绑定也会被拦；
-  - 画布完整性预检同语义（`packages/shared/src/process/node-check.ts`，要求 assignee+approvalMode 双全）。
-- **底座现状（有利条件）**：发起人 ID 已是顶层流程变量——`initialVariables = { ...triggerContext, ...inputs }`（`process-engine.ts:217-219`），记录触发写入 `triggeredByUser`=记录创建人（`trigger.service.ts:310`）；执行器有 `ctx.inputs['assignee']` 兜底通道（executor:40，引擎对每节点 `resolveInputs`，engine:440）。
-- **影响**：飞书对齐差距（飞书审批有「发起人本人」节点）；审批回签类真实场景配不出来。
-- **建议方案**（四件套，缺一不可）：① UI 类型下拉加 INITIATOR（免填人）；② 执行器解析 `triggerContext.triggeredByUser` 创建任务（取不到报清晰错误，见 A3）；③ G3 校验器放行 INITIATOR 形态；④ node-check.ts 同步 + 方言指南 + 单测（记录触发/手动启动/发起人缺失三路）+ TC 入库。
-- **前置依赖**：A3。
-
-### A2 ORG / SUPERVISOR / FORM_FIELD 三种审批人类型引擎端未接线
-
-- **现象**：UI 提供三种动态审批人类型，但 gateway 全代码（非测试）`FORM_FIELD|SUPERVISOR` 解析逻辑 **0 命中**。
-- **证据**：执行器无对应分支（`user-task.executor.ts` 全文只处理 assignee/candidateGroups/approveUsers）；配置表单把**组织编码/字段名**写入 `data.assignee`（`UserTaskConfigForm.tsx:254-260`），执行器将其当用户 ID 字面使用 → 创建出 assignee=非法 ID 的任务，流程挂起且无人可见。
-- **状态**：**待验证**——代码级确认，运行时症状未实测（需构造用例实测三种类型各一次）。
-- **对照**：抄送解析器 `resolveCcRecipients` 已实现 USER/ROLE/ORG 三态（`process-engine.ts:1566-1594`）——审批人侧未对齐。
-- **建议**：专题内二选一——**实现解析**（ORG→OrgMember 展开、SUPERVISOR→组织主管、FORM_FIELD→变量求值，参照抄送解析器）或**从 UI 摘除**（删旧优先，零兼容原则）；倾向先实测症状再裁决。
-
-### A3 MANUAL 启动不注入发起人
-
-- **现象**：手动启动的实例 `triggerContext.triggeredByUser` 依赖调用方显式传入，不传即 null（`process.service.ts:288-293` `req.triggeredByUser ?? null`）。
-- **证据**：
-  - studio 手动启动只传 `{ processKey, variables: {} }`（`packages/studio/src/pages/ProcessList.tsx:106`）→ **UI 启动的实例无发起人**；
-  - OpenAPI 同为调用方显式传（`open-api.controller.ts:130` `dto.triggeredByUser ?? null`，服务身份场景合理）。
-- **影响**：①「我发起的」视图（`GET /instances/mine` 按 triggeredByUser 过滤）对 UI 手动启动实例不可见；②审批定论兜底通知发起人 `notifyInitiatorDefault`（engine:1603+）无收件人静默跳过；③A1 INITIATOR 节点在此路径无发起人可用。
-- **建议**：服务端自动注入——`startInstance` 中 `triggeredByUser = req.triggeredByUser ?? callerUserId`（显式传入优先，内部调用兼容）；OpenAPI 保留显式语义。改动一处，三处受益。
+> A 节已清偿：A1/A3 → C6/C7（R1）；A2 → C8（R2，裁决选 (a)：ORG/FORM_FIELD 实现、SUPERVISOR 摘除）。
 
 ---
 
@@ -64,8 +37,19 @@
 | C3 | **#12 仅角色审批无主任务行**：createMany 空数组 → 流程挂起但永无任务 | 零知识旅程 R2（2026-10-03） | 修为无主任务行（assignee=null）+ candidateGroups 匹配角色成员 |
 | C4 | **#10 对象操作契约断裂**：UI 写 fieldMapping、引擎读 inputsValues | 零知识旅程 R2（2026-10-03） | serializer 四态转换 + EventBridge extInfo 并入导出 |
 | C5 | **触发器 pattern 清理互踩**：多触发器 jobId 冲突 | R1.4（2026-10-01） | jobId=scheduled:<env>:<defId> 随环境隔离 |
+| C6 | **A3 MANUAL 启动不注入发起人**：startInstance 仅取显式传入（`req.triggeredByUser ?? null`），studio 只传 {processKey, variables} → 实例无发起人（「我发起的」不可见/兜底通知无收件人/INITIATOR 无发起人可用） | 专题 R1（2026-10-11） | 服务端 `triggeredByUser = req.triggeredByUser ?? callerUserId`（显式优先/用户身份兜底/内部调用 null 兼容，`process.service.ts` startInstance）；三路单测 process-start-instance.spec.ts；OpenAPI 直调 engine.startProcess 不经过此方法，保留服务身份显式语义；TC-173 |
+| C7 | **A1「发起人」审批人类型缺失（INITIATOR）**：UI 5 种无发起人选项、执行器无动态解析、G3 硬闸连变通也拦（原 A1 节四件套方案全项落地） | 专题 R1（2026-10-11） | shared 新增 `UserTaskAssigneeType` 契约（UserTaskConfig.assigneeType 显式化，为 A2 三类型接线铺路）+ executor 解析 `instance.triggerContext.triggeredByUser`（缺失报清晰错误，不静默创建无主任务复现 #12）+ G3 放行（isInitiator 短路）+ node-check 同步 + studio 下拉「发起人」免填审批人 + 方言指南补节 + 单测（executor 两路/validator 放行与回归对照/node-check）；TC-174；实现记录 docs/knowledge-base/PROCESS-ENGINE-TOPIC-R1-INITIATOR-2026-10-11.md |
+| C8 | **A2 ORG/SUPERVISOR/FORM_FIELD 三类型引擎端未接线**（E2 探针实测：ORG/FORM_FIELD 的编码/字段名被当用户 ID 字面消费→任务挂起无人可见且能过发布预检；SUPERVISOR 无输入→死在发布预检） | 专题 R2（2026-10-11，用户裁决选 (a)） | **ORG**：candidateGroups 语义扩展=角色 ID 或组织 ID（Flowable 同款）——executor 校验组织有成员（无成员报清晰错误防静默挂起）、listTasks/assertTaskMembership/assertInstanceVisible 按「角色∪组织」匹配（顺带清除 candidateUsers 不存在列的死代码读取）；**FORM_FIELD**：executor 从触发记录字段取审批人（仅记录触发；无上下文/字段无效报清晰错误）；**SUPERVISOR 摘除**：schema.prisma 无 manager/supervisor 字段（无数据源），shared 类型收窄 + UI 摘除，待身份层 User.managerId 后恢复；studio ORG 改组织下拉（orgsApi.getTree）；方言指南补 ORG/FORM_FIELD 两节；TC-175/176；实现记录 docs/knowledge-base/PROCESS-ENGINE-TOPIC-R2-DYNAMIC-ASSIGNEE-2026-10-11.md |
 
 ---
+
+## I. 推送轮走查发现（2026-10-15，GUI 黑盒走查产出）
+
+| # | 发现 | 证据 | 状态 |
+|---|---|---|---|
+| I-1 | **画布触发器节点不回写 ProcessDef.triggerType**——新建流程弹窗留空→顶层 MANUAL；画布「记录创建触发」只写 workflowSchema 节点，顶层列不同步，记录事件按顶层列匹配（trigger.service.ts:285,289）永不命中；另记录触发可见集=应用 bundle 快照，流程晚于应用发布创建时须应用发布才入 bundle | 走查实测：画布配好触发器+流程发布后提交记录不触发；PUT 顶层 triggerType+应用发布 v1.0.2 后即触发 | **待修**（建议：画布保存/发布时同步顶层 triggerType；与本轮无关的存量缺口，main 同行为） |
+| I-2 | 审批模式默认值不落盘——新 user_task 必须显式选审批模式（引擎执行默认 single 但 node-check 要求显式配置），语义自洽但新用户可能困惑 | 走查实测：三节点均因 approvalMode 缺失标红 | 观察（可考虑表单初始化写默认值） |
+| I-3 | 已办列表「已批准+拒绝」并存行（采购合同会签历史夹具）——多票聚合语义下可能合法 | gui-test-screenshots/tc174-176-done-list.png | 留观（存量数据，非本轮产物） |
 
 ## D. 工程风险（水平扩展前必查）
 
@@ -78,7 +62,7 @@
 ## E. 验证缺口
 
 - **E1** GUI 二级交互走查（台账部分）——任务中心主体已清（2026-10-11 三页签/错误态/进度弹窗 GUI 走查通过）。
-- **E2** A2 三种未接线类型的运行时症状实测（各构造一个用例）。
+- **E2** ~~A2 三种未接线类型的运行时症状实测~~ **已清偿**（R2 探针实测三类型各一用例，证据固于 C8 与实现记录）。
 
 ---
 
@@ -106,11 +90,38 @@
 
 ---
 
+## H. 开源引擎对比与 Temporal 借鉴裁决（2026-10-11，grilling 收官）
+
+> 来源：开源引擎对比 + Temporal 深度调研（全文与来源见 `docs/research/RESEARCH-process-engine-oss-comparison-2026-10-11.md`）；用户准绳="简单稳定可扩展、不造轮子、用好业界开源、少自研不健壮 bug"。本节只留执行摘要。
+
+### H1 新发现缺口（并入 S1/S2 轮执行）
+
+| # | 缺口 | 证据 | 最小修法 |
+|---|---|---|---|
+| H1-a | **边走向+条件求值未持久化**——C1 类静默终结事故无法事后回答"为什么走这条边"；condition 执行器"无匹配降级第一条出边"（C2 教训）无持久化痕迹 | 引擎推进令牌不落路由（process-engine.ts:378-380）；NodeExecution 表已有 input/output/retries 字段（schema.prisma:616-638） | advance 时把路由结果写进源节点 NodeExecution.output，十几行零迁移 |
+| H1-b | **确定性失败被重试 3 次**——全平台唯一重试消费点 attempts:3 一刀切，参数/校验类错误也三连重试 | process-engine.ts:43；HTTP 执行器无自带重试（仅 AbortSignal.timeout） | 执行器结果加 retryable 标志→attempts 分类（1 vs 3），几行 |
+
+### H2 Temporal 裁决
+
+- **不引入为运行组件**。量化依据：理论可替换的手写异步协调代码仅约 781 行（wait-for-condition 54+loop-utils 100+trigger.service 342+dataflow 租约 285），均经真实主线验证、无已知执行可靠性事故；新增 4 服务+DB 违反"简单稳定"准绳。
+- **引入触发条件**（命中任一才重评，白纸黑字防"原则性引入"）：① wait-for-condition 轮询撑不住真实规模；② AI 交付流水线常态化卡死无人管；③ 跨天跨人工闸门编排成为产品功能。
+- **健壮性归因**：C1-C4/A2 全部为契约漂移（编辑器↔引擎↔校验器），无一例执行丢失/等待不可靠——对症药=契约一致性测试，Temporal 类 durable 基建对本类 bug 无疗效。
+
+### H3 模式借鉴降级裁决（3 做 3 不做）
+
+- ✅ **做**：①H1-a 边走向落库（并入 S1/S2 轮）；②事故 schema fixture 契约测试（=方向探讨已列"四层契约一致性测试"候选，C1/C2/C4 事故 schema 固化为 fixture 断言全链路语义，每事故约半天，按原排期）；③H1-b retryable 分类（随手或并入契约轮）。
+- ❌ **不做（防重复提案）**：①重放式回归框架（引擎非确定性重放架构，需全套测试替身，收益被契约 fixture 覆盖）；②saga 自动补偿（逆操作+补偿幂等+不可逆排除=分布式事务级复杂度；主线"决策→回写"中途失败留 FAILED+审计可接受；**S2 维持轻量版=错误出口路由，补偿由搭建者显式画节点**）；③声明式重试 policy 框架（单消费点 YAGNI）。
+
+### H4 开源引擎选型速查（详表见研究文档 §4）
+
+- 可免费商用+可二开：Flowable OSS（Apache 2.0）/ Temporal（MIT）/ Cadence / Conductor OSS / Warm-Flow（Apache 2.0）/ jBPM·Kogito（Apache 2.0，活跃度未逐一核实）；
+- 不可用于生产或受限：Camunda 7 CE（2025-10 EOL）/ Camunda 8（生产自托管收费）/ n8n（Sustainable Use）/ Windmill·FlowLong（AGPL 传染）；
+- 结论：**自研+抄语义**（Flowable/Warm-Flow 当语义字典、Temporal 当范式参照），与 G 节 Q9 裁决一致不翻案；S1 设计参照 Temporal condition+timeout+escalate 范式；G6 major 冻结与 Temporal Workflow Pinning 概念同构（印证）。
+
+---
+
 ## 专题建议排序
 
-1. **A3**（一处改动，解锁 A1 且让「我发起的」覆盖 MANUAL 实例）；
-2. **A1**（发起人类型四件套，真实场景+飞书对齐）；
-3. **A2**（先实测症状 E2，再裁决实现或摘除）；
-4. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账）；
-5. **B1/B2**（产品语义，用户裁决后动）；
-6. **D 系列**（水平扩展前置条件，非当前阻塞）。
+1. **S1/S2**（BPMN 语义补齐两件，见 G 节；S1 一笔投资清三笔账——A 系数据层缺口已全数清偿：A1/A3→C6/C7、A2→C8；**顺带 H1-a/H1-b 两个最小件**——边走向落库+retryable 分类，各十几行）；
+2. **B1/B2**（产品语义，用户裁决后动）；
+3. **D 系列**（水平扩展前置条件，非当前阻塞）。

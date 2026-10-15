@@ -291,9 +291,18 @@ export interface NotificationConfig {
 /** 审批模式（R1.3）：多人审批时的决策聚合语义。 */
 export type ApprovalMode = 'single' | 'countersign' | 'or_sign' | 'sequential';
 
+/**
+ * 审批人类型（UI 配置显式化）。引擎消费：INITIATOR（R1）/ ORG / FORM_FIELD（R2）。
+ * SUPERVISOR 已摘除（R2 裁决 2026-10-11）：schema 无主管数据源（User.managerId
+ * 待身份层补充后随"找不到主管降级"语义一并恢复）。
+ */
+export type UserTaskAssigneeType = 'USER' | 'ROLE' | 'ORG' | 'FORM_FIELD' | 'INITIATOR';
+
 /** 人工任务配置。 */
 export interface UserTaskConfig {
   assignee?: string;
+  /** 审批人类型（显式契约：引擎按类型解析受理人；缺省时按 assignee/candidateGroups 字面消费） */
+  assigneeType?: UserTaskAssigneeType;
   candidateGroups?: string[];
   formKey?: string;
   taskName: string;

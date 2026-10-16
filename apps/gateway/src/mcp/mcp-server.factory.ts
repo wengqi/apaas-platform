@@ -465,6 +465,8 @@ export const DIALECT_GUIDES: Record<string, string> = {
     '- 饼图响应形态不同（payload.data 为 [{category,value}] 数组）：series:[{type:"pie", radius:"60%", data:((payload.data)||[]).map(function(x){return {name:x.category, value:x.value}})}]，无 xAxis/yAxis',
     '- 图表布局用 {"type":"grid","columns":[{"md":6,"body":{...chart 节点...}}]}（md 为 12 栅格列宽）',
     '- "@ref:object:<apiName>" 令牌可用于页面 schema 任意字符串值位置（api.url 子串、data.objectId、chart 的 api.data.sourceId 等），submit_app_drafts 落地时递归解析；单页提交（submit_page_draft）则用 list_objects 拿真实 ID',
+    '- 台账/表格的状态等单选列中文标签：列写 {"type":"mapping","map":{"<存储值>":{"label":"<中文>"}}}（R6 实测：映射写在列的 mapping 键上不生效，amis 渲染器读 map）',
+    '- input-datetime 必须带 valueFormat（如 "YYYY-MM-DD HH:mm:ss"）——缺省提交 Unix 时间戳秒，台账/轨迹将显示裸数字（R6 实测）；台账日期列用普通文本列（存字符串）',
     '- 示例可参考：list_pages 后 get_page 获取既有合法页面照猫画虎',
     '- G3 拦截规则码（被拒时 issues[].code）：ROOT_INVALID=根节点必须是对象且 type="page"；UNKNOWN_TYPE=组件/动作类型不在白名单；TYPE_FORBIDDEN=类型被平台明确禁用（如 input-cascader、static-file）；INVALID_VALUE=属性值非法（如 api.url 必须是平台相对路径）；STRUCTURE_LIMIT=节点数/嵌套深度超限',
   ].join('\n'),

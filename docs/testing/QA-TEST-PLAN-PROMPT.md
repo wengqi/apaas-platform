@@ -135,6 +135,8 @@
 
 **R5 遗留修复轮锚点（2026-10-10，用户裁决四问题）**：**runtime 应用列表运行时视图过滤（TC-155，服务端语义变化）**——`GET /apps?runtime=1` 仅返回已发布且有权限应用（isSuperAdmin 短路/租户级通配 ALLOW=全部已发布[种子 END_USER 语义，R5 裁决①维持]/仅应用级规则按 appId 归纳/无角色默认拒绝）；无参数仍全量（studio 兼容，e2e/22 已断言）；**超管登录 runtime 分流（TC-154）**——runtime 登录页超管提示不进 /home 不写共享 store；/home 对超管 token（含 hash token 注入路径）显式空态+返回登录，非静默"暂无可用应用"；**e2e 限流环境**——登录 429 必须带排查指引报错（不得伪装成"任务超时"），22/23 发布版本号与探针 apiName 防碰撞；**台账 mapping（TC-129 备注）**——老页面/AI 生成页 schema 无 mapping 显示裸值为已知边界（根因=存量 schema 缺配置，非生成器/渲染器缺陷；用户裁决暂不处理）。
 
+**AI 主线 R6 锚点（2026-10-16）**：AI 生成页面两契约——台账单选列中文标签（type:mapping+map，TC-182）与 input-datetime valueFormat（TC-183）；外部 agent 姿态=/api/v1/mcp HTTP 直驱（Bearer JWT，Accept 双类型）；生成质量指标基线（首拦 10%/一次通过 88.9%/返工 0.128）见 AI-MAINLINE-R6-FRESH-DATA-2026-10-16。
+
 **流程引擎 R3 锚点（2026-10-15，S1+S2+explain）**：①审批超时边界（TC-177~179：dueDate×dueUnit+timeoutAction 到点动作——auto_approve 端到端实测/auto_reject 需 rejectToNodeId[G3 拦截]/notify 催办站内信；jobId 禁冒号+自我取消 best-effort 两坑回归）；②节点失败错误出口（TC-180：error/失败 出边路由+NodeExecution FAILED 留痕+_routing 决策留痕）；③权限决策按应用域（TC-181：explain 按目标资源过滤 app 级规则，租户通配不变）；④retryable 分类（NonRetryableNodeError 不重试）。
 
 **流程引擎专题推送轮锚点（2026-10-15）**：①组织树读端点权限语义变化——GET /permissions/orgs、/orgs/:id 从租户管理员放开到登录用户（画布 ORG 审批人下拉基础数据，TC-175 走查实测 builder 403 静默空下拉后修复；写操作/成员/授权明细仍管理员）；②FORM_FIELD 审批人校验加严——字段值须命中本租户用户，否则实例报清晰错误（TC-176）；③矩阵 2 user_task 行 assigneeType 5 种（USER/ROLE/ORG/FORM_FIELD/INITIATOR，SUPERVISOR 已摘除）与组织下拉/字段输入交互已按走查用例覆盖。

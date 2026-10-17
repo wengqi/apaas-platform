@@ -1,4 +1,4 @@
-# aPaaS 平台全量 QA 回归轮报告（第一会话：对账 + 底册 A + 矩阵 3 + 矩阵 2 核心）
+# aPaaS 平台全量 QA 回归轮报告（第一会话：对账 + 底册 A + 矩阵 3 + 矩阵 2 核心｜第二会话：矩阵 2 收官 + 矩阵 4/5 + 底册 B/D + E2E 业务链）
 
 > **执行日期**：2026-10-17 晚（会话 1，用户裁决：回归轮先行 + 标准全量）
 > **执行依据**：`docs/testing/QA-TEST-PLAN-PROMPT.md` v1.0.14（本轮对账修正后）+ `TEST-CASES.md` v2.3
@@ -77,3 +77,132 @@
 ## 六、第二轮建议顺序
 
 矩阵 2 其余节点+矩阵 4/5（半天）→ 底册 D+superadmin 会话（半天）→ 八链（业务链/搭建链优先，半天）→ 矩阵 1（最大块，一天）→ 锚点批量+smoke+缺口销项（半天）。文档漂移 3/4 与 D-NEW-1 次生问题（误导 toast）随第二轮修复。
+
+---
+
+# 第二会话（第二轮执行）
+
+## 二轮总结（先读）
+
+| 项 | 结果 |
+|---|---|
+| 矩阵 2 流程节点 | ✅ **十八节点全项收官**（含 TC-145 销项：RAQB 入口=点画布节点→面板内联构建器；每种节点保存刷新持久化往返） |
+| 矩阵 4 数据流 | ✅ 全项（配置枚举/join 键契约/状态流转 空→刷新中→就绪/刷新中禁用） |
+| 矩阵 5 权限 | ✅ 全项（编辑器五维七动作全枚举/deny-overrides 三源实证） |
+| 底册 B | ✅（审核中心驳回链/连接器 SSRF 调用层拦截/环境变量 G3 加密不可读/API 密钥全闭环/云函数·通知模板·嵌入控制台渲染） |
+| 底册 D | ✅ superadmin 三用例（TC-005/TC-014/TC-154 全过） |
+| E2E 业务链 | ✅ 新建 qa 记录触发流程→发布预检负向拦截→发布→TC-184 记录触发命中+UPDATE 负向→TC-152 运行时审批闭环（实例 COMPLETED+我发起的） |
+| 矩阵 1 | ⚠️ **部分**：运行时渲染面（crud/form/chart 三型）✅；studio 搭建器 amis 全型逐格+字段绑定专项**未执行**，留第三轮（如实登记，见矩阵 1 覆盖边界节） |
+| smoke | 16/17 过，唯一失败=已知 isInternal 夹具假警（e2e/22，非回归） |
+| 新缺陷 | **F2（P1 候选）条件字段选择器无对象字段 / F3（P2）刷新误标未保存 / F6（P1）包容分支双层契约断裂 / F7（P2）数据流键契约零校验+失败态不可见 / F8（P1 候选）权限角色跨应用泄漏 / F9（P3）preflight 500**；观察项 O-5~O-12 |
+| 环境事故披露 | 接管时 gateway dist（16:10 构建）早于 I-1 修复提交（16:23）→ 已重建重启；因此 F1（卡片触发器显示读顶层列）在本轮全程可见，TC-184 验证的是修复后行为 |
+
+
+> 本节为第二轮执行增量记录（草稿态，收尾统一整合进上文结构）。环境备注：gateway 已重建重启（含 I-1 修复 e5bbafe；接管时运行中的 dist 早于修复提交 13 分钟）。
+
+## R2 已执行（矩阵 2 十八节点全部完成）
+
+| 节点 | 结果 | 关键证据 |
+|---|---|---|
+| condition | ✅ 全项 + **TC-145 销项** | 入口=点画布节点→面板分支卡内联 RAQB（Add rule/Add group），非画布分支行点击（上轮三轮不可达根因）；RAQB 配置 recordId 等于 e2e-cond-001 → JsonLogic `{"and":[{"==":[{"var":"recordId"},"e2e-cond-001"]}]}` 落库、边 label=分支 label（#17 契约）、ifBlock/elseBlock 容器；保存刷新逐字段不丢；负向：默认分支删除按钮 disabled（isElse）、2 分支下限 disabled（branches.length<=2）、删除节点 Popconfirm 取消、未配置红标 |
+| object_operation | ✅ | operation 4 种（创建/更新/查询/删除；UPSERT 确认无）；四态联动显隐（创建=映射/更新=映射+筛选/查询=筛选+结果变量/删除=筛选）；fieldMapping 行编辑器+filter+持久化；#10 契约形状核对（fieldMapping map 落库） |
+| notification | ✅ | 渠道 3（邮件/站内/Webhook）；recipients 数组落库；title/content ${} 插值；持久化 |
+| http_request | ✅ | 方法 5 种；POST→body 显隐联动；headers/responseMapping map 行编辑器；持久化 |
+| assign | ✅ | 四态值编辑器（常量/引用 TreeSelect/表达式/模板）；落库 `value:{type:"template",content}` 带判别式；跨态残留值（UX 小注）；持久化 |
+| delay | ✅ | 单位 4 种（秒/分钟/小时/天）；落库 duration+unit 枚举；画布摘要「等待 5SECONDS」（单位枚举未翻译，O-5）；持久化 |
+| loop | ✅ | collection 路径+maxIterations；**上限约束**：输入 2000 无提示、落库钳制 1000（静默钳制，O-6）；持久化 |
+| wait_for_condition | ✅ | JsonLogic 文本框+检查间隔 ms+超时 ms；落库三字段；超时出边语义有文案说明（label=timeout）；持久化 |
+| break/continue | ✅ | 循环体内可加；面板说明文案齐（跳出=终止循环继续后续/继续=跳过本次迭代回到循环节点，均「无需额外配置」）；块子节点以边引用形态存 schema、刷新画布无损还原（与 condition 块同设计） |
+| sub_process | ✅ | subProcessKey Select（本应用无已发布流程=空列表，范围合理 O-7 观察）+手输 apiName+defId(可选)+sync 开关；手输 qa_sub_flow_stub 落库+画布摘要显示 |
+| batch_operation | ✅ | 操作 3 种（批量创建/更新/删除）+目标对象；范围 inputs/filter 为引擎语义非面板字段 |
+| parallel | ✅ | 无配置面板+说明文案（严格 AND-join 汇聚） |
+| inclusive | ⚠️ 面板可配但**发现 F6 缺陷（P1）** | 见下 |
+| user_task | ✅ 面板全枚举 | 审批人类型 5 种（SUPERVISOR 摘除✓）；INITIATOR 下审批模式仅单人（约束✓）；指定用户下审批模式 4 种（单人/会签/或签/依次）；超时动作 3 种（催办/自动通过/自动驳回·需驳回跳转提示）；切型无残留字段（D-009 回归✓）；审批人未选节点红标（必填✓）；截止时间+任务表单+驳回配置+回写+抄送区块齐 |
+
+## R2 新缺陷与观察
+
+### F2（P1 候选，待用户定级）条件分支 RAQB 字段选择器无对象字段——记录触发流程核心场景画布不可配置
+- **症状**：condition 节点 RAQB 字段下拉仅 7 个流程级变量（流程名/操作发起人/流程执行 ID/recordId/record/triggeredByUser/eventType），绑定对象的 23 个字段**不可列亦不可搜**（搜「名称」→暂无数据）。
+- **引擎侧证据**：`process-engine.ts:215-217` startProcess 把 triggerContext.inputs（记录标量字段）展开到 variables 顶层，注释原话「供条件分支等节点直接引用」——引擎按设计支持记录字段条件。
+- **结论**：引擎支持、UI 未暴露（可用字段源未接入触发对象字段）。按记录字段分支（如金额≥1000）只能经 API/MCP 直写 schema。R5.5/R6 的条件流均 AI 直写 schema 生成，画布路径从未走通过——本缺陷此前不可见的原因。
+- **复现**：画布条件节点→面板 Add rule→字段下拉搜索对象字段名 →暂无数据。
+
+### F3（P2）保存后刷新「未保存」Tag 误标（确定性三步复现）
+- 保存（已保存 toast、Tag 消失）→ 刷新 → 零编辑 Tag 即现。两次完整复现 + 多次伴随观察。违反矩阵「未保存 Tag 真实性（重进不误标）」项。疑 schema 往返规范化差异致脏判定假阳（flowgram 序列化键序/extInfo），修复前需单测级最小复现。
+
+### F6（P1）包容分支 UI↔引擎双层契约断裂（#10 同族新 instance）
+- **UI 侧**：inclusive 面板抄 condition 形态（conditions[] 分支列表落 node.data）；画布只生成菱形头+**单条无 label 无 condition 出边**，无分支块、无法给分支接不同后继。
+- **引擎侧**：`InclusiveExecutor` 契约=**per-edge condition**（对每条出边求值 JsonLogic，激活全部满足边；无边满足走无条件边）。`edge.condition` UI 从不产生；`node.data.conditions` 引擎从不消费。
+- **后果**：画布配置的包容分支条件运行时完全不生效（单条无条件出边=unconditional 直通，OR 分支语义整体失效）。
+- **证据**：schema dump（inclusive.conditions[2] + inclusive→parallel 单无 label 出边，对照 condition 的双 block 带 label 出边）+ 执行器源码 + 画布截图（菱形无分支行）。
+- 该项不在 R6 遗留四疑点清单（cloud_function 物料/UPSERT/wait 超时出边/dueDate），为新发现。
+
+### F1（P3）流程卡片触发器显示读顶层 triggerType
+- `ProcessCard.tsx:56` 直读顶层列；画布触发节点 RECORD_CREATED 绑定对象时卡片显示「手动触发」。I-1 修复只覆盖匹配/注册侧（trigger.service），列表显示未随 SSOT 决策同步。编辑器顶栏 Tag 同样显示（同族）。
+
+### 观察项（P3/P4）
+| # | 内容 |
+|---|---|
+| O-5 | delay 画布摘要「等待 5SECONDS」单位枚举未翻译 |
+| O-6 | loop maxIterations 超上限（2000）输入无提示，保存静默钳制 1000 |
+| O-7 | sub_process 已发布流程 Select 空列表（本应用无已发布流程，范围合理；未验证跨应用场景） |
+| O-8 | 画布点选分支行标签即标脏（schema 无变化）；「未保存」假阳与 F3 同族但触发不同（F3=刷新即脏，本条=点选即脏） |
+| O-9 | assign 四态值编辑器切态时残留前态值（表达式/模板共用文本框） |
+
+## R2 环境与工具记录
+- 接管时 gateway dist 构建 16:10 < I-1 提交 16:23 → 重建重启（`pnpm build` + nohup node dist/main.js，日志 /tmp/gateway-r2.log）。TC-184 端到端前必须用新 gateway（已就绪）。
+- 画布加号添加器点击时序：单击开→再击关（toggle），不稳定；**双击可靠**。配置面板遮挡右侧加号时需先关面板。
+- AntD Select 搜索：`fill()` 可写（Backspace 循环无效）；清空用 fill 全量覆盖。
+
+## R2 矩阵 4（数据流）✅ 全项完成
+
+- 配置项枚举：数据源（对象+别名，双源）/JOIN（左右别名下拉/左·内关联/左右字段裸键输入+**右表 {rightAlias}_ 前缀契约文案直出**）/筛选（JsonLogic textarea+示例 helper）/分组汇总（分组字段逗号分隔[D-005 契约]+聚合指标[字段×函数 5 种(求和/计数/平均/最大/最小)×输出列名×显示名]）/输出字段（源/输出列名/显示名/类型 3 种文本数字日期）。
+- join 键契约专项：落库 config 三源核对（join.type=left/leftField 裸键/rightAlias 前缀规则/groupBy 数组/metrics 带 label/outputFields 带类型）。
+- 状态流转实测：空 →（执行）刷新中[刷新按钮禁用✓] → 就绪(3 行 1 列)。
+- **F7（P2）数据流键契约 UI 零校验 + 失败态不可见**：①表单接受非法键（filter var `base.is_urgent` 点路径、groupBy 点路径均无校验无提示，契约只在方言指南）→ 点路径 filter 翻译后匹配不到 joined 数据 → **静默 0 行**（无错误）；②配置非法导致物化 FAILED 时（首跑 `base.status_sel` 点路径触发键校验拒绝），数据集列表状态显示「**空**」而非「失败」，lastError 仅 API 可见——用户无从得知失败原因。修复建议：表单层键格式校验（对齐 G3 精神）+ 状态映射补 FAILED 态+错误提示。
+- 诊断注意：`POST data-flows/:id/preview` **不接受 config 覆盖**（读已存配置）——API 二分调试时勿误以为可带 body 试配置。
+
+## R2 矩阵 5（权限规则编辑器）✅ 全项完成
+
+- 编辑器枚举：效果 2（允许/拒绝）/ 维度 5（记录权限行级/页面/流程/数据模型/连接器）/ 动作 7（查看/创建/编辑/删除/执行/审批/管理）/ 目标下拉（所有*+对象/页面列表）/ 行级条件 RAQB（Not/Add rule/Add group）/ 列级权限复选框（fieldScope，18 字段勾选）/ +添加权限规则多行。
+- deny-overrides 实证（三源）：END_USER 加「拒绝+记录权限（行级）+删除+QA全字段对象」→ DB permission_rules 落 DENY（app_id=本应用）→ 权限调试 explain：DELETE=allowed:false reason:DENY_RULE；VIEW=allowed:true reason:ALLOW_RULE（2 命中）。DENY 压制 ALLOW 语义正确。
+- **F8（P1 候选）应用权限页角色跨应用泄漏 + 规则读写 app_id 混乱**：
+  - 现象：本应用权限页角色列表显示采购查看者（属采购合同应用）/报销用户（属员工报销）/QA测试角色（属QA全量测试）等**其他应用的应用级角色**；编辑 QA_TESTER 时读到的规则、保存写回的 app_id、目标下拉候选全部是「QA全量测试」应用的——本轮给 QA_TESTER 加的 DENY 规则实际落在了 QA全量测试 的规则集，本应用权限引擎不消费。
+  - 根因（代码定位）：`RoleManager.tsx:44` `rolesApi.list()` 未传 appId（API 签名支持；同文件 create 正确传 appId——读写不对称）；后端 `GET /permissions/roles?appId=` 语义=仅该应用专属角色（内置角色也不返回，前端若直传会丢内置——修复需后端语义改为「内置∪该应用」，或前端拉全量自过滤）；规则读/写按 roleId 全局、目标下拉按角色所属应用列对象，均无当前应用一致性校验。
+  - 安全面备注：规则集写入（PUT setPermissionRules）不校验角色归属与当前操作应用的关系，跨应用改规则仅受页面访问控制保护——建议同修（与 G6 IDOR 白名单教训同族）。
+- **O-10（P3）END_USER 内置规则 ×2 副本复发**：种子幂等收敛轮（先删通配再建）后再次出现每种规则 2 条（DB 实测 12 条）。修复建议：permission_rules 加 (role_id,type,action,target_id,effect) 唯一索引。
+- 观察附注：QA_TESTER 场景暴露的目标下拉跨应用对象（全字段类型=QA全量测试的对象）为 F8 同一症状，不单列。
+
+## R2 E2E 业务链 ✅（qa_record_trigger 流程全旅程，I-1 端到端复验）
+
+1. UI 画布新建流程「QA记录触发链」（新建弹窗触发器类型 7 种枚举✓）→ 触发器节点（记录创建+绑定 QA全字段对象）+ 人工任务（发起人）→ 保存。
+2. **发布预检硬闸（负向 PASS）**：审批模式空置时发布 →「流程存在 1 处未完成的配置，无法发布：「人工任务」审批人或审批模式未配置」精确报节点与缺失项；补全（INITIATOR 下审批模式仅单人✓）后发布成功「已发布,生成新版本」。
+3. **TC-184 正向**：API 建记录（ORD-0002 自动编号✓）→ 实例 cmvci93yl009fm 自动启动 WAITING_USER_TASK——**I-1 修复端到端复验**（画布形状 schema 触发节点为 SSOT，顶层 triggerType 无关）。
+4. **TC-184 负向**：UPDATE 记录成功 → 实例数仍 1（RECORD_UPDATED 不触发 RECORD_CREATED）。
+5. **TC-152 运行时闭环**：runtime-ui(5174) admin 登录 → 任务中心待办首行 QA触发链审批 → 审批弹窗（申请内容友好标签：自动编号/名称文本/创建人/状态选择✓，流程变量折叠区✓）→ 填意见批准「任务已处理」→ 待办 8→7 → 实例 COMPLETED →「我发起的」含该实例 ✓。
+6. 三源一致：schema（trigger/user_task 落库形状）+ 实例/任务数据 + UI 双端反馈。
+
+## R2 底册 D（superadmin 会话）✅ + 底册 B ✅ + E2E 运行时渲染面 ✅
+
+### superadmin 三用例
+- **TC-005 ✅**：studio 超管免租户登录 → 直达 /platform/tenants 平台超管视角。
+- **TC-154 ✅（三步全过）**：①runtime 登录页空租户提交被客户端拦截（红字「请输入租户标识」，请求不出）②注入 apaas:auth 超管态访问 /home → 显式空态「平台管理员无租户上下文，请以租户账号登录运行时」+返回登录按钮（非静默空列表）；/apps?runtime=1 对超管 token 返 400（非 401，不触发登出拦截器，与用例备注一致）③点返回登录 → apaas:auth 清空（token:null）回登录页。
+- **TC-014 ✅**：租户管理列表 Demo 租户（运行中/用户 4/应用 25/2026-10-3），创建租户入口可用；应用数 25 与 studio 首页计数一致（三源）。
+
+### 底册 B
+- **审核中心 ✅**：diff 抽屉（逐字段新增绿标+config JSON+提交快照）/**驳回意见弹窗（空意见时提交驳回禁用——好设计）**→ 填意见「已驳回」→ DB REJECTED + review_comment 落库（意见回传 AI 修正链闭合）。改稿收编按钮在列（未执行收编动作，登记）。
+- **连接器 SSRF 负向 ✅**：创建接受任意 baseUrl（守卫在调用层，设计如此）→ test/invoke 调用层 safeFetch 拦截：169.254.169.254 与 10.0.0.1 均报「出站目标解析到受限地址 X（SSRF 防护）」。测试连接器已清理。
+- **环境变量 G3 ✅**：sensitive 变量 DB 存储=IV:密文:tag（74 字符密文），列表读回不返回值（写后不可读），设值响应 value=null。
+- **G4 部分 ⚠️ 见 F9**：qa 应用无发布版本，preflight 抛 500（应结构化 4xx）；G4 完整硬闸路径需已发布应用，本轮未重跑（历史轮已验，无变化证据）。
+- **F9（P3）preflight 对无发布版本应用抛 500**：`Error: 无可预检的版本` 裸 Error → 500 Internal Server Error；应为结构化 4xx（消息文案本身清晰）。
+- **API 密钥 ✅ 全闭环**：创建→明文一次性展示弹窗（「请立即保存——此明文密钥不会再次显示」+复制）→列表脱敏（ak_b10f9eda1…）→持 key 调 open 端点鉴权通过（404 业务错误=认证 OK）→UI 吊销「已吊销（立即失效）」→复调 401。
+- **云函数/通知模板/嵌入控制台页 ✅ 渲染快扫**：云函数空表+新建入口；通知模板列表（真实路由 /processes/notifications，探路时猜 /notification-templates 会 fallback 首页——非缺陷，路径备忘）；嵌入控制台完整（接入配置/已发布页面/环境/部署清单/实时预览入口）。
+
+### E2E 运行时渲染面（矩阵 1 运行时侧）
+- **crud 台账 ✅**：采购合同列表页（列头/数据行/审批状态中文 mapping「审批中/已批准」/排序/列显隐工具/新建按钮）。
+- **form 页 ✅**：合同统计看板两同名页渲染表单形态（**O-11**：页面类型标「仪表盘」但 schema 内容为表单——存量数据类型标注与内容不符，非本轮回归，两页 URL 不同 contract_stats / contract_stats_1790997766385）。
+- **chart 看板 ✅**：采购分析看板柱状图（各供应商采购金额）+饼图（供应商等级分布 S/A/B）双图渲染+数据集取数正常。**O-12 小观察**：看板页加载弹 2 次「操作成功」toast（疑似数据集刷新成功反馈泄漏到 UI，语义噪声）。
+- runtime 门户过滤复核：QA全量测试应用（isInternal 夹具）正确不出现在 runtime 门户（按设计过滤，非缺陷）。
+
+## R2 矩阵 1 覆盖边界（如实登记）
+本轮完成矩阵 1 的**运行时渲染面**（crud/form/chart 三型跨 2 个已发布应用）。studio 搭建器侧的「amis 全型逐格（166 白名单组件×属性）+字段绑定专项+表单生成器 12 映射+G3 负向」**未在本轮执行**——工作量需独立会话，留待第三轮（与第一会话报告 §五未覆盖清单合并跟踪）。已执行部分无新增缺陷。

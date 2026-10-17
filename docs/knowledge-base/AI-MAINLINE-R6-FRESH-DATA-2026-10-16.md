@@ -35,7 +35,11 @@
    （approved/rejected）。amis 渲染器实际读 `type:"mapping"` + `map` 键
    （平台生成器 page-template.ts:190 同款）。→ **方言指南补契约行 + 警告**。
 2. **input-datetime 缺 valueFormat**：缺省提交 Unix 时间戳秒 → 台账/轨迹显示裸数字
-   （1792456200）。平台生成器表单带 format/valueFormat（:65）。→ **方言指南补契约行**。
+   （1792456200）。→ **方言指南补契约行**。
+   **勘误（2026-10-17 修缮轮）**：本节原记"平台生成器表单带 format/valueFormat（:65）"
+   **失实**——当时生成器 page-template.ts:65 只有显示用 `format`，全 studio 无一处
+   `valueFormat`（R6 的修复只落在该应用的存量 schema，生成器未修）。生成器与
+   seed-procurement 已于修缮轮补上 `valueFormat`（同口径）。
 3. 两缺口修复走完整治理链：submit_page_draft v2（PENDING）→ 人审批准 → 应用发布
    v0.1.1 → GUI 复验通过（中文标签+日期字符串+新提交 valueFormat 生效）。
    旧记录时间戳值已 API 修为字符串。
@@ -51,6 +55,9 @@
 - 「指南↔运行时渲染契约」目前靠人工实测发现；可评估给 amis-page G3 增加软告警级
   （warning）规则：crud 列引用 single_select 字段却无 type:mapping、input-datetime
   缺 valueFormat——发布预检提示但不拦截（候选，未立项）。
+  **→ 已于修缮轮落地（2026-10-17）**：G3 MISSING_REQUIRED warning 两规则 + 发布预检
+  WARNING 通道（不拦截），端到端实测两告警命中；见
+  PROCESS-ENGINE-I1-TRIGGER-SCHEMA-2026-10-17.md 与 TC-185。
 - MCP HTTP 直驱时 ai-analytics 的 G3 拒绝事件含 issueCodes（traceId 串联）✓。
 
 验证：gateway 842 + mcp 29 全绿；typecheck 过。夹具：办公用车管理应用（v0.1.1 已发布）

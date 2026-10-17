@@ -141,6 +141,8 @@
 
 **流程引擎专题推送轮锚点（2026-10-15）**：①组织树读端点权限语义变化——GET /permissions/orgs、/orgs/:id 从租户管理员放开到登录用户（画布 ORG 审批人下拉基础数据，TC-175 走查实测 builder 403 静默空下拉后修复；写操作/成员/授权明细仍管理员）；②FORM_FIELD 审批人校验加严——字段值须命中本租户用户，否则实例报清晰错误（TC-176）；③矩阵 2 user_task 行 assigneeType 5 种（USER/ROLE/ORG/FORM_FIELD/INITIATOR，SUPERVISOR 已摘除）与组织下拉/字段输入交互已按走查用例覆盖。
 
+**流程引擎修缮轮锚点（2026-10-17，I-1+G3 软告警）**：①**画布触发器记录触发命中（TC-184，I-1 修复=触发语义服务端变化）**——画布触发器节点（顶层 triggerType 未同步亦可）发布后，向绑定对象提交记录必须自动建实例（triggeredBy=RECORD_CREATED）；更新记录不触发（事件类型匹配）；触发节点绑定对象时其他对象事件不误触发；种子/AI 建流（无触发节点，顶层列）行为不变；②**发布预检渲染契约软告警（TC-185）**——预检 Drawer/检查报告对「crud 选择列缺 type:mapping+map」「input-datetime 缺 valueFormat」出 WARNING（status 仍 PASS 不拦截）；⚠️ 存量坏配置页面自此开始出警告属**预期行为**非缺陷；③模板生成器表单 date_time 控件现带 valueFormat（生成页提交日期字符串）。详见 PROCESS-ENGINE-I1-TRIGGER-SCHEMA-2026-10-17.md。
+
 **任务中心修复轮锚点（2026-10-10；TC 改号 TC-170/157/158→TC-170/171/172，2026-10-15 合并轮避免与嵌入域撞号）
 
 PLACEHOLDER，用户报告"待办已办为空"调查）**：**终端用户任务中心可用（TC-156，权限语义变化）**——END_USER 种子角色补 `PROCESS VIEW`（修复前 GET /tasks 要求 PROCESS:VIEW 而 END_USER 只有 EXECUTE/APPROVE → 403 被前端吞成空表：被授权审批的角色打不开任务中心）；规约=**运行时角色（需用任务中心）必须含 PROCESS VIEW**（app 级自定义角色建角色时同样适用）；seed 权限规则改为先删后建幂等收敛（permission_rules 无唯一索引，createMany+skipDuplicates 实际不去重，历史已累积 END_USER ×3/BUILDER ×2 副本）；**列表加载失败错误态显式化（TC-157）**——任务中心三个列表查询失败渲染红色告警+原因+重试（ListErrorAlert），禁止吞成"暂无任务"假空态；**我发起的视图（TC-158）**——`GET /instances/mine` 按 triggerContext.triggeredByUser 过滤发起人本人（与撤回/M-2 实例可见性同语义），前端三 Tab+进度弹窗（TraceViewer 轨迹+审批记录），申请人提交后可查进度（对标飞书 aPaaS「我发起的」）。
@@ -182,3 +184,4 @@ PLACEHOLDER，用户报告"待办已办为空"调查）**：**终端用户任务
 | 2026-10-12 | v1.0.10 | 方案一转正：底册 C+ 新增 studio 嵌入集成控制台（/app/:appId/embed）；底册 D 的 /embed-demo 标注退役；TC-156/157 载体改指控制台 | 用户裁决方案一（控制台迁 studio，跨端口真跨域预览） |
 | 2026-10-12 | v1.0.11 | SDK 交付：底册 C+ 控制台补「获取 SDK」（IIFE/ESM 下载+平台直链）与片段双形态（npm/SDK 直链）；TC-159 入库 | 第三方对接断链补全（私有包不可达→零依赖单文件分发） |
 | 2026-10-10 | v1.0.12 | 任务中心修复轮：底册 D 任务中心更新为三 Tab（我发起的+进度弹窗+错误态）；第七节追加「任务中心修复轮锚点」（TC-170 END_USER 补 PROCESS VIEW + seed 幂等收敛 / TC-171 错误态显式化 / TC-172 我发起的视图） | 用户报告"待办已办为空"调查修复轮 |
+| 2026-10-17 | v1.0.13 | 流程引擎修缮轮：第七节追加「流程引擎修缮轮锚点」——TC-184 画布触发器记录触发命中（I-1 修复，触发匹配改读 schema 触发节点+活表 PUBLISHED 统一）与 TC-185 发布预检渲染契约软告警（crud 选择列缺 mapping/datetime 缺 valueFormat 出 WARNING 不拦截；存量坏配置出警告=预期行为） | 流程引擎修缮轮（用户裁决修法②） |

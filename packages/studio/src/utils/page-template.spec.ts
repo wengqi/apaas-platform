@@ -216,3 +216,13 @@ describe('buildPageTemplate — 回写字段过滤（双视角评审 2026-10-04�
     expect(formBody).toEqual([]);
   });
 });
+
+describe('fieldToFormControl 渲染值契约（R6）', () => {
+  it('date_time 控件带 valueFormat（缺省提交 Unix 时间戳秒的缺口修复）', async () => {
+    const { fieldToFormControl } = await import('./page-template.js');
+    const ctrl = fieldToFormControl(makeField({ apiName: 'plan_time', type: 'date_time' }));
+    expect(ctrl['type']).toBe('input-datetime');
+    expect(ctrl['valueFormat']).toBe('YYYY-MM-DD HH:mm:ss');
+    expect(ctrl['format']).toBe('YYYY-MM-DD HH:mm:ss');
+  });
+});

@@ -23,6 +23,17 @@ const MAX_DEPTH = 24;
 /** 单页节点数上限（防病态膨胀；正常业务页 < 200 节点）。 */
 const MAX_NODES = 500;
 
+/**
+ * amis 页面校验上下文（结构兼容 SchemaValidationContext，类型独立声明避免环依赖）。
+ */
+export interface AmisPageValidationContext {
+  /**
+   * 应用内选择类（single_select/multi_select）字段 apiName 集——crud 列映射契约
+   * 软告警用；缺省时跳过该检查（纯结构校验不受影响）。
+   */
+  selectFieldApiNames?: ReadonlySet<string>;
+}
+
 /** 平台允许的按钮动作类型（amis actionType 子集）。 */
 const KNOWN_ACTION_TYPES: ReadonlySet<string> = new Set([
   'ajax',
@@ -65,8 +76,12 @@ const NON_NODE_ARRAY_KEYS: ReadonlySet<string> = new Set([
 /**
  * 校验 amis 页面 schema。
  * @param schema 页面根对象（type: 'page'）
+ * @param ctx 可选上下文（选择类字段集等，缺省跳过依赖上下文的软告警）
  */
-export function validateAmisPage(schema: unknown): SchemaIssue[] {
+export function validateAmisPage(
+  schema: unknown,
+  ctx: AmisPageValidationContext = {},
+): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
   if (!isPlainObject(schema) || typeof schema['type'] !== 'string') {
     issues.push({
@@ -88,7 +103,7 @@ export function validateAmisPage(schema: unknown): SchemaIssue[] {
   }
 
   let nodeCount = 0;
-  walkNode(schema, '', 0, issues, () => {
+  walkNode(schema, '', 0, issues, ctx, () => {
     nodeCount++;
     return nodeCount <= MAX_NODES;
   });
@@ -101,6 +116,7 @@ function walkNode(
   path: string,
   depth: number,
   issues: SchemaIssue[],
+  ctx: AmisPageValidationContext,
   budget: () => boolean,
 ): void {
   if (!budget()) {
@@ -128,6 +144,9 @@ function walkNode(
     validateType(type, path, issues);
   }
 
+  // 渲染契约软告警（warning 级不拦截，见 validateRenderContracts）
+  validateRenderContracts(node, path, issues, ctx);
+
   // 递归容器属性（body/items/tabs 等中的渲染器节点）
   for (const key of AMIS_CONTAINER_BODY_KEYS) {
     const child = node[key];
@@ -137,10 +156,10 @@ function walkNode(
       // options/options 类配置数组不是渲染器节点，跳过递归
       if (NON_NODE_ARRAY_KEYS.has(key)) continue;
       child.forEach((item, idx) =>
-        walkNode(item, `${childPath}/${idx}`, depth + 1, issues, budget),
+        walkNode(item, `${childPath}/${idx}`, depth + 1, issues, ctx, budget),
       );
     } else if (isPlainObject(child)) {
-      walkNode(child, childPath, depth + 1, issues, budget);
+      walkNode(child, childPath, depth + 1, issues, ctx, budget);
     }
   }
 
@@ -150,11 +169,11 @@ function walkNode(
     if (key === 'type' || typeof value !== 'object' || value === null) continue;
     const v = value as Record<string, unknown>;
     if (typeof v['type'] === 'string' && AMIS_ALL_TYPES.has(v['type'])) {
-      walkNode(value, `${path}/${key}`, depth + 1, issues, budget);
+      walkNode(value, `${path}/${key}`, depth + 1, issues, ctx, budget);
     } else if (isPlainObject(v)) {
       // 不深挖未知对象（选项/映射等配置），仅处理已知容器键的嵌套（如 filter 内 form）
       if (key === 'filter' || key === 'dialog' || key === 'drawer') {
-        walkNode(v, `${path}/${key}`, depth + 1, issues, budget);
+        walkNode(v, `${path}/${key}`, depth + 1, issues, ctx, budget);
       }
     }
   }
@@ -181,6 +200,53 @@ function validateType(type: string, path: string, issues: SchemaIssue[]): void {
       code: SCHEMA_ISSUE_CODES.UNKNOWN_TYPE,
       message: `未知的 amis 组件类型 "${type}"${suggestion ? `——是否想用 "${suggestion}"？` : '，请查阅平台支持的组件清单'}`,
       severity: 'error',
+    });
+  }
+}
+
+/**
+ * 渲染契约软告警（R6 实测两缺口，warning 级不拦截）：schema 能通过类型白名单、
+ * 也能渲染，但缺平台渲染契约属性会造成运行时呈现/取值缺陷——
+ * ① crud 列引用选择类字段缺 {"type":"mapping","map":{...}}：台账显示存储值
+ *    （如 approved）而非中文选项标签（列上写 mapping 键不生效，渲染器读 map）；
+ * ② input-datetime 缺 valueFormat：提交值为 Unix 时间戳秒，台账/轨迹显示裸数字。
+ * 依据：平台生成器 page-template（mapping 列 + valueFormat）与 R6 实测复验。
+ */
+function validateRenderContracts(
+  node: Record<string, unknown>,
+  path: string,
+  issues: SchemaIssue[],
+  ctx: AmisPageValidationContext,
+): void {
+  const type = node['type'];
+
+  if (type === 'crud' && Array.isArray(node['columns']) && ctx.selectFieldApiNames) {
+    (node['columns'] as unknown[]).forEach((col, idx) => {
+      if (!isPlainObject(col)) return;
+      const name = col['name'];
+      if (typeof name !== 'string' || !ctx.selectFieldApiNames!.has(name)) return;
+      const hasContract =
+        col['type'] === 'mapping' &&
+        isPlainObject(col['map']) &&
+        Object.keys(col['map'] as Record<string, unknown>).length > 0;
+      if (!hasContract) {
+        issues.push({
+          path: `${path}/columns/${idx}`,
+          code: SCHEMA_ISSUE_CODES.MISSING_REQUIRED,
+          message: `crud 列 "${name}" 引用选择类字段但缺映射契约 {"type":"mapping","map":{"<存储值>":{"label":"<中文标签>"}}}——台账将显示存储值而非中文标签（在列上直接写 mapping 键不生效，渲染器读 map 属性）`,
+          severity: 'warning',
+        });
+      }
+    });
+  }
+
+  if (type === 'input-datetime' && !node['valueFormat']) {
+    issues.push({
+      path: `${path}/valueFormat`,
+      code: SCHEMA_ISSUE_CODES.MISSING_REQUIRED,
+      message:
+        'input-datetime 缺 valueFormat（如 "YYYY-MM-DD HH:mm:ss"）——缺省提交 Unix 时间戳秒，台账/轨迹将显示裸数字',
+      severity: 'warning',
     });
   }
 }

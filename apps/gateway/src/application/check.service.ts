@@ -3,12 +3,14 @@ import { collectNodeIssues } from '@apaas/shared';
 import { prisma } from '@apaas/db';
 import type { AppSnapshot, CheckResult } from '@apaas/shared';
 import { SnapshotService } from './snapshot.service.js';
+import { SchemaContractService } from '../schema-contract/schema-contract.service.js';
 
 /**
  * 预检引擎服务 — 发布前检查应用配置完整性。
  *
  * 检查规则覆盖：
- * - 页面：绑定的对象是否存在
+ * - 页面：绑定的对象是否存在；G3 渲染契约软告警（R6 两缺口：crud 选择列缺
+ *   mapping 契约 / input-datetime 缺 valueFormat，warning 不拦截）
  * - 流程：触发器配置是否完整
  * - 对象：关联字段目标对象是否存在
  * - 权限：规则目标资源是否存在
@@ -17,7 +19,10 @@ import { SnapshotService } from './snapshot.service.js';
  */
 @Injectable()
 export class CheckService {
-  constructor(private readonly snapshotService: SnapshotService) {}
+  constructor(
+    private readonly snapshotService: SnapshotService,
+    private readonly schemaContract: SchemaContractService,
+  ) {}
 
   /**
    * 执行预检。
@@ -34,6 +39,7 @@ export class CheckService {
     // 运行各模块检查器
     const issues: CheckResult['issues'] = [
       ...this.checkPages(snapshot),
+      ...this.checkPageRenderContracts(snapshot),
       ...this.checkProcesses(snapshot),
       ...this.checkObjects(snapshot),
     ];
@@ -76,6 +82,50 @@ export class CheckService {
           entityName: page.name,
           message: `页面「${page.name}」绑定的对象不存在（objectId: ${page.objectId}）`,
           suggestion: '请删除该页面或重新绑定有效的对象',
+        });
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * 页面渲染契约软告警（R6 两缺口）：跑 G3 amis 校验器的 warning 级检查，
+   * 映射为预检 WARNING（不拦截发布）。ctx 按页面绑定对象的选择类字段构建
+   * （快照内自带对象字段，无需额外查询）。
+   */
+  private checkPageRenderContracts(snapshot: AppSnapshot): CheckResult['issues'] {
+    const issues: CheckResult['issues'] = [];
+    const selectApiNamesByObjectId = new Map<string, Set<string>>();
+    for (const obj of snapshot.objects) {
+      const fields = obj.fields as Array<Record<string, unknown>>;
+      if (!Array.isArray(fields)) continue;
+      const names = fields
+        .filter((f) => f.type === 'single_select' || f.type === 'multi_select')
+        .map((f) => f.apiName)
+        .filter((n): n is string => typeof n === 'string' && n.length > 0);
+      if (names.length > 0) selectApiNamesByObjectId.set(obj.id, new Set(names));
+    }
+
+    for (const page of snapshot.pages) {
+      const schema = page.schema as Record<string, unknown> | null;
+      if (!schema || typeof schema !== 'object') continue;
+      const objectId =
+        page.objectId ??
+        ((schema['data'] as Record<string, unknown> | undefined)?.['objectId'] as
+          string | undefined);
+      const result = this.schemaContract.validate('amis_page', schema, {
+        selectFieldApiNames: objectId ? selectApiNamesByObjectId.get(objectId) : undefined,
+      });
+      for (const issue of result.issues) {
+        if (issue.severity !== 'warning') continue;
+        issues.push({
+          level: 'WARNING',
+          module: 'PAGE',
+          entityId: page.id,
+          entityName: page.name,
+          message: `页面「${page.name}」${issue.message}（${issue.path}）`,
+          suggestion: '按消息中的契约示例补全属性；不补全不影响发布，仅影响运行时呈现/取值',
         });
       }
     }

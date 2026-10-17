@@ -162,9 +162,15 @@ export class ProcessService {
         where: { id: processId },
         data: { status: 'DRAFT' },
       });
-      // B3 修复：从已发布降级为草稿时取消定时触发器
+      // B3 修复：从已发布降级为草稿时取消定时触发器（I-1：触发信息以 schema 触发节点为 SSOT）
       void this.triggerService
-        .onProcessUnpublished(existing.id, existing.triggerType, existing.cron, existing.apiName)
+        .onProcessUnpublished(
+          existing.id,
+          existing.triggerType,
+          existing.cron,
+          existing.apiName,
+          existing.workflowSchema,
+        )
         .catch((err) => this.logger.error(`定时触发器取消失败: ${err.message}`));
     }
 
@@ -260,9 +266,9 @@ export class ProcessService {
       },
     });
 
-    // B3 修复：发布后即时注册定时触发器（此前仅在启动时注册）
+    // B3 修复：发布后即时注册定时触发器（此前仅在启动时注册；I-1：以 schema 触发节点为 SSOT）
     void this.triggerService
-      .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName)
+      .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName, def.workflowSchema)
       .catch((err) => this.logger.error(`定时触发器注册失败: ${err.message}`));
 
     // 评审整改：业务动作级审计

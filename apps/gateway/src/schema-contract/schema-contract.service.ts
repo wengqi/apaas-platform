@@ -21,6 +21,11 @@ import { validatePermission } from './validators/permission.validator.js';
 export interface SchemaValidationContext {
   /** 平台已存在的页面 ID 集（workflow.user_task.pageId 校验） */
   pageIds?: ReadonlySet<string>;
+  /**
+   * 应用内选择类（single_select/multi_select）字段 apiName 集——amis_page crud 列
+   * 映射契约软告警用（R6 两渲染契约缺口之一）；缺省跳过该检查。
+   */
+  selectFieldApiNames?: ReadonlySet<string>;
 }
 
 @Injectable()
@@ -34,7 +39,7 @@ export class SchemaContractService {
     let issues: SchemaIssue[];
     switch (kind) {
       case 'amis_page':
-        issues = validateAmisPage(schema);
+        issues = validateAmisPage(schema, ctx);
         break;
       case 'workflow':
         issues = validateWorkflow(schema, ctx as WorkflowValidationContext);

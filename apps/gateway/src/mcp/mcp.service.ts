@@ -774,8 +774,33 @@ export class McpService {
     // 2) 页面逐项 G3 校验 + objectApiName 引用解析（活表对象 → 真实 ID；本批对象 → 令牌）
     const liveObjects = await this.objectService.list(tenantId, appId);
     const liveObjectIdsByApiName = new Map(liveObjects.map((o) => [o.apiName, o.id]));
+    // G3 渲染契约软告警 ctx（R6 缺口①）：选择类字段 apiName 集按对象键索引
+    // （活表对象=真实 ID，本批对象="@ref:object:<apiName>" 令牌）
+    const selectApiNamesOf = (fields: unknown): ReadonlySet<string> | undefined => {
+      if (!Array.isArray(fields)) return undefined;
+      const names = (fields as Array<{ apiName?: unknown; type?: unknown }>)
+        .filter((f) => f.type === 'single_select' || f.type === 'multi_select')
+        .map((f) => f.apiName)
+        .filter((n): n is string => typeof n === 'string' && n.length > 0);
+      return names.length > 0 ? new Set(names) : undefined;
+    };
+    const selectFieldsByObjectKey = new Map<string, ReadonlySet<string>>();
+    for (const o of liveObjects) {
+      const set = selectApiNamesOf(o.fields);
+      if (set) selectFieldsByObjectKey.set(o.id, set);
+    }
+    for (const o of objects) {
+      const apiName = String(o['apiName'] ?? '');
+      const set = selectApiNamesOf(o['fields']);
+      if (apiName && set) selectFieldsByObjectKey.set(`@ref:object:${apiName}`, set);
+    }
     for (const page of pages) {
-      const check = this.schemaContract.validate('amis_page', page['schema']);
+      const schema = page['schema'] as Record<string, unknown> | undefined;
+      const objectKey = (schema?.['data'] as Record<string, unknown> | undefined)?.['objectId'];
+      const check = this.schemaContract.validate('amis_page', page['schema'], {
+        selectFieldApiNames:
+          typeof objectKey === 'string' ? selectFieldsByObjectKey.get(objectKey) : undefined,
+      });
       if (!check.valid)
         return this.rejected(check, {
           tenantId,

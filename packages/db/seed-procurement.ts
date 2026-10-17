@@ -149,7 +149,13 @@ function amisFieldControl(f: StoredField): Record<string, unknown> {
     case 'date':
       return { type: 'input-date', ...base, format: 'YYYY-MM-DD' };
     case 'date_time':
-      return { type: 'input-datetime', ...base, format: 'YYYY-MM-DD HH:mm:ss' };
+      // valueFormat 提交值契约与 page-template.fieldToFormControl 同口径（R6 实测：缺省提交 Unix 时间戳秒）
+      return {
+        type: 'input-datetime',
+        ...base,
+        format: 'YYYY-MM-DD HH:mm:ss',
+        valueFormat: 'YYYY-MM-DD HH:mm:ss',
+      };
     case 'auto_number':
       return { type: 'static', name: f.apiName, label: f.label };
     case 'checkbox':

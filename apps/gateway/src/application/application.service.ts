@@ -499,13 +499,14 @@ export class ApplicationService {
 
     // 评审 P1-7：应用级发布上线的 SCHEDULED 流程需即时注册定时触发器
     // （此前仅 onModuleInit 注册，应用级发布后定时流程静默不执行）
+    // I-1：不按顶层列预过滤——画布配置的定时触发只写在 schema 触发节点
     const publishedDefs = await prisma.processDef.findMany({
-      where: { tenantId, appId, status: 'PUBLISHED', triggerType: 'SCHEDULED' },
-      select: { id: true, cron: true, apiName: true },
+      where: { tenantId, appId, status: 'PUBLISHED' },
+      select: { id: true, triggerType: true, cron: true, apiName: true, workflowSchema: true },
     });
     for (const def of publishedDefs) {
       await this.triggerService
-        .onProcessPublished(def.id, 'SCHEDULED', def.cron, def.apiName)
+        .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName, def.workflowSchema)
         .catch((err: unknown) => this.logger?.warn?.(`定时触发器注册失败: ${String(err)}`));
     }
 

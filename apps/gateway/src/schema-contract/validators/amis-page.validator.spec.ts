@@ -59,3 +59,85 @@ describe('G3 动作类型白名单', () => {
     expect(issues.some((i) => i.path.includes('api'))).toBe(true);
   });
 });
+
+describe('G3 渲染契约软告警（R6 两缺口，warning 不拦截）', () => {
+  const ctx = { selectFieldApiNames: new Set(['status', 'priority']) };
+
+  it('crud 列引用选择类字段缺 mapping 契约：出 warning 且 valid 不受影响', () => {
+    const issues = validateAmisPage(
+      basePage([{ type: 'crud', columns: [{ name: 'status', label: '状态' }] }]),
+      ctx,
+    );
+    const warn = issues.find((i) => i.severity === 'warning');
+    expect(warn).toBeDefined();
+    expect(warn?.path).toBe('/body/0/columns/0');
+    expect(warn?.code).toBe('MISSING_REQUIRED');
+    expect(warn?.message).toContain('mapping');
+    expect(issues.every((i) => i.severity !== 'error')).toBe(true);
+  });
+
+  it('mapping 契约完整（type:mapping + 非空 map）：不告警', () => {
+    const issues = validateAmisPage(
+      basePage([
+        {
+          type: 'crud',
+          columns: [
+            {
+              name: 'status',
+              label: '状态',
+              type: 'mapping',
+              map: { approved: { label: '已通过' } },
+            },
+          ],
+        },
+      ]),
+      ctx,
+    );
+    expect(issues.filter((i) => i.severity === 'warning')).toHaveLength(0);
+  });
+
+  it('type:mapping 但 map 为空对象：仍告警', () => {
+    const issues = validateAmisPage(
+      basePage([
+        {
+          type: 'crud',
+          columns: [{ name: 'priority', label: '优先级', type: 'mapping', map: {} }],
+        },
+      ]),
+      ctx,
+    );
+    expect(issues.some((i) => i.severity === 'warning')).toBe(true);
+  });
+
+  it('非选择类字段的列不告警；无 ctx（未传选择字段集）跳过该检查', () => {
+    const plain = basePage([{ type: 'crud', columns: [{ name: 'status', label: '状态' }] }]);
+    expect(validateAmisPage(plain, {}).filter((i) => i.severity === 'warning')).toHaveLength(0);
+    expect(
+      validateAmisPage(
+        basePage([{ type: 'crud', columns: [{ name: 'unknown_field', label: '其他' }] }]),
+        ctx,
+      ).filter((i) => i.severity === 'warning'),
+    ).toHaveLength(0);
+  });
+
+  it('input-datetime 缺 valueFormat：出 warning；带 valueFormat 不告警', () => {
+    const missing = validateAmisPage(
+      basePage([{ type: 'input-datetime', name: 'plan_time', label: '计划时间' }]),
+    );
+    const warn = missing.find((i) => i.severity === 'warning');
+    expect(warn?.path).toBe('/body/0/valueFormat');
+    expect(warn?.message).toContain('valueFormat');
+
+    const ok = validateAmisPage(
+      basePage([
+        {
+          type: 'input-datetime',
+          name: 'plan_time',
+          label: '计划时间',
+          valueFormat: 'YYYY-MM-DD HH:mm:ss',
+        },
+      ]),
+    );
+    expect(ok.filter((i) => i.severity === 'warning')).toHaveLength(0);
+  });
+});

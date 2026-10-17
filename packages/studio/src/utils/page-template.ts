@@ -62,7 +62,14 @@ export function fieldToFormControl(f: TemplateField): Record<string, unknown> {
     case 'date':
       return { type: 'input-date', ...base, format: 'YYYY-MM-DD' };
     case 'date_time':
-      return { type: 'input-datetime', ...base, format: 'YYYY-MM-DD HH:mm:ss' };
+      // valueFormat 提交值契约（R6 实测 2026-10-16）：缺省提交 Unix 时间戳秒，
+      // 台账/轨迹显示裸数字；G3 MISSING_REQUIRED 软告警同源检查此属性
+      return {
+        type: 'input-datetime',
+        ...base,
+        format: 'YYYY-MM-DD HH:mm:ss',
+        valueFormat: 'YYYY-MM-DD HH:mm:ss',
+      };
     case 'auto_number':
       return { type: 'static', name: f.apiName, label: f.label };
     case 'checkbox':

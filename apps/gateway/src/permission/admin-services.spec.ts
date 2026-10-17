@@ -11,6 +11,7 @@ import { RoleService } from './role.service.js';
 import { UserService } from './user.service.js';
 import { OrgService } from './org.service.js';
 import { CheckService } from '../application/check.service.js';
+import { SchemaContractService } from '../schema-contract/schema-contract.service.js';
 import { MailService } from '../notification/mail.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 
@@ -193,7 +194,7 @@ describe('CheckService', () => {
       collectSnapshot: vi.fn().mockResolvedValue({ objects: [], pages: [], processes: [] }),
     };
     prisma.appCheck.create.mockResolvedValue({ id: 'chk-1' });
-    service = new CheckService(snapshotService as never);
+    service = new CheckService(snapshotService as never, new SchemaContractService());
   });
 
   it('快照无问题：PASS', async () => {
@@ -231,6 +232,46 @@ describe('CheckService', () => {
     const result = await service.check('t-1', 'app-1', 'user-1');
     expect(result.status).toBe('PASS');
     expect(result.issues).toHaveLength(0);
+  });
+
+  it('页面渲染契约缺陷出 WARNING 不拦截（R6：crud 选择列缺 mapping / datetime 缺 valueFormat）', async () => {
+    snapshotService.collectSnapshot.mockResolvedValue({
+      objects: [
+        {
+          id: 'obj-1',
+          apiName: 'vehicle_request',
+          fields: [
+            { apiName: 'status', name: '状态', type: 'single_select' },
+            { apiName: 'plan_time', name: '计划时间', type: 'date_time' },
+          ],
+        },
+      ],
+      pages: [
+        {
+          id: 'p-1',
+          name: '台账',
+          objectId: 'obj-1',
+          schema: {
+            type: 'page',
+            body: [
+              {
+                type: 'crud',
+                columns: [{ name: 'status', label: '状态' }],
+              },
+              {
+                type: 'form',
+                body: [{ type: 'input-datetime', name: 'plan_time', label: '计划时间' }],
+              },
+            ],
+          },
+        },
+      ],
+      processes: [],
+    });
+    const result = await service.check('t-1', 'app-1', 'user-1');
+    expect(result.status).toBe('PASS'); // warning 不拦截
+    expect(result.issues).toHaveLength(2);
+    expect(result.issues.every((i) => i.level === 'WARNING' && i.module === 'PAGE')).toBe(true);
   });
 });
 

@@ -37,6 +37,28 @@ export class PageService {
   ) {}
 
   /**
+   * 对象的选择类字段 apiName 集（G3 渲染契约软告警 ctx——crud 列映射契约检查）。
+   * 对象无效/无选择字段返回 undefined（validator 缺省跳过该检查，不误报）。
+   */
+  private async selectFieldApiNames(
+    tenantId: string,
+    objectId?: string | null,
+  ): Promise<ReadonlySet<string> | undefined> {
+    if (!objectId) return undefined;
+    const obj = await prisma.objectMeta.findFirst({
+      where: { id: objectId, tenantId },
+      select: { fields: true },
+    });
+    if (!obj) return undefined;
+    const fields = obj.fields as Array<{ apiName?: unknown; type?: unknown }>;
+    const names = fields
+      .filter((f) => f.type === 'single_select' || f.type === 'multi_select')
+      .map((f) => f.apiName)
+      .filter((n): n is string => typeof n === 'string' && n.length > 0);
+    return names.length > 0 ? new Set(names) : undefined;
+  }
+
+  /**
    * 列出页面保存点（E2-4 飞书式历史，不含 schema 全量，按时间倒序）。
    */
   async listSavePoints(tenantId: string, pageId: string): Promise<PageSavePointInfo[]> {
@@ -276,7 +298,9 @@ export class PageService {
     };
 
     // R1.7 第二轮③：页面唯一方言 = amis，create 一律过 G3 合同（硬闸）
-    const check = this.schemaContract.validate('amis_page', defaultSchema);
+    const check = this.schemaContract.validate('amis_page', defaultSchema, {
+      selectFieldApiNames: await this.selectFieldApiNames(tenantId, req.objectId),
+    });
     if (!check.valid) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
@@ -329,12 +353,14 @@ export class PageService {
     // 先查 appId（变更日志需要）
     const existing = await prisma.pageMeta.findFirst({
       where: { id: pageId, tenantId },
-      select: { appId: true, name: true },
+      select: { appId: true, name: true, objectId: true },
     });
 
     // R1.7 第二轮③：页面唯一方言 = amis，schema 更新一律过 G3 合同（硬闸，无 v1 旁路）
     if (req.schema) {
-      const check = this.schemaContract.validate('amis_page', req.schema);
+      const check = this.schemaContract.validate('amis_page', req.schema, {
+        selectFieldApiNames: await this.selectFieldApiNames(tenantId, existing?.objectId),
+      });
       if (!check.valid) {
         throw new BadRequestException({
           code: 'VALIDATION_ERROR',

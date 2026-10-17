@@ -468,7 +468,7 @@ export const DIALECT_GUIDES: Record<string, string> = {
     '- 台账/表格的状态等单选列中文标签：列写 {"type":"mapping","map":{"<存储值>":{"label":"<中文>"}}}（R6 实测：映射写在列的 mapping 键上不生效，amis 渲染器读 map）',
     '- input-datetime 必须带 valueFormat（如 "YYYY-MM-DD HH:mm:ss"）——缺省提交 Unix 时间戳秒，台账/轨迹将显示裸数字（R6 实测）；台账日期列用普通文本列（存字符串）',
     '- 示例可参考：list_pages 后 get_page 获取既有合法页面照猫画虎',
-    '- G3 拦截规则码（被拒时 issues[].code）：ROOT_INVALID=根节点必须是对象且 type="page"；UNKNOWN_TYPE=组件/动作类型不在白名单；TYPE_FORBIDDEN=类型被平台明确禁用（如 input-cascader、static-file）；INVALID_VALUE=属性值非法（如 api.url 必须是平台相对路径）；STRUCTURE_LIMIT=节点数/嵌套深度超限',
+    '- G3 拦截规则码（issues[].code）：ROOT_INVALID=根节点必须是对象且 type="page"；UNKNOWN_TYPE=组件/动作类型不在白名单；TYPE_FORBIDDEN=类型被平台明确禁用（如 input-cascader、static-file）；INVALID_VALUE=属性值非法（如 api.url 必须是平台相对路径）；STRUCTURE_LIMIT=节点数/嵌套深度超限；MISSING_REQUIRED=渲染契约软告警（severity=warning，放行不拦截，仅发布预检提示）——crud 列引用选择类字段缺 {"type":"mapping","map":{...}} 或 input-datetime 缺 valueFormat，按上述两契约行补全可消除告警',
   ].join('\n'),
   workflow: [
     '## WorkflowSchema 方言指南',

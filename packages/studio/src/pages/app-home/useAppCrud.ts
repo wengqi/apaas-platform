@@ -75,8 +75,10 @@ export function useAppCrud({
   });
 
   const moveMutation = useMutation({
+    // 清空 = 移入未分组：必须显式传 null（group||undefined 会被 JSON 序列化丢弃，
+    // PUT 部分更新语义下字段不生效 = no-op 却报成功，2026-10-17 全量 QA D-NEW-1）
     mutationFn: ({ appId, group }: { appId: string; group?: string }) =>
-      appsApi.update(appId, { group: group || undefined }),
+      appsApi.update(appId, { group: group || null }),
     onSuccess: () => {
       message.success('应用已移动到新分组');
       refreshApps();

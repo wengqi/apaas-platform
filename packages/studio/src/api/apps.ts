@@ -49,7 +49,13 @@ export const appsApi = {
     client
       .post<ApiResponse<AppSummary>>('/api/apps', data)
       .then((res) => res.data.data as AppSummary),
-  update: (appId: string, data: Partial<CreateAppRequest>) =>
+  // group 允许显式 null（= 移入未分组）：后端 UpdateAppDto @IsOptional 对 null 跳过校验，
+  // service 原样透传给 Prisma 置 NULL。须 Omit 后重声明——直接交叉会取交集把 null 消掉；
+  // api 层单点放宽，禁止调用点用 as 绕过（D-011 教训）。
+  update: (
+    appId: string,
+    data: Omit<Partial<CreateAppRequest>, 'group'> & { group?: string | null },
+  ) =>
     client
       .put<ApiResponse<AppSummary>>(`/api/apps/${appId}`, data)
       .then((res) => res.data.data as AppSummary),

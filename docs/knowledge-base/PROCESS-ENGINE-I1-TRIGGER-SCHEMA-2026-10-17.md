@@ -93,6 +93,21 @@
   保存成功（warning 不拦）→ 发布预检 status=PASS 且两条 WARNING 精确命中；
   办公用车夹具预检 0 告警（其页面 R6 治理链已修，口径自洽）。
 
+### GUI 黑盒走查（web-gui-tester，证据 gui-test-screenshots/i1-*.png）
+
+- **T1 登录**：builder 登录 studio → 开发中心首页正常。✓
+- **T2 预检 Drawer**：走查应用跑「检查」→「1 个警告」橙标+WARNING 卡（黄色警示图标/
+  PAGE 标/契约示例/路径/建议），补 datetime 坏页后「重新检查」→「2 个警告」两类齐出，
+  全程 status 不拦截。✓（i1-precheck-warning-mapping / -datetime.png）
+- **T3 画布触发器全旅程（I-1 修复旅程）**：UI 新建流程 → 画布「+」加触发器节点（默认
+  「有未完成的配置」标红=node-check 画布侧在岗）→ 配置面板选「记录创建触发」+关联对象
+  （红标即时消失）→ 保存（「已保存」，未保存标消失）→ 发布（确认弹窗→「已发布,生成
+  新版本」；头部仍显示「手动触发」= 顶层未同步的 I-1 场景活体）→ 提交记录 →
+  **实例自动创建**（COMPLETED/RECORD_CREATED）。✓（i1-canvas-trigger-config-saved /
+  -published-manual-top.png）
+- 未执行项：画布「转为草稿编辑」/定时触发 cron 路径 GUI 走查（后端单测+API 实测已覆盖，
+  界面无本轮改动面）。走查夹具（应用/对象/流程）用后即删。
+
 ## 五、遗留与观察
 
 - 对象删除守卫（object.service delete 第 3 步）仍按顶层列计数——画布触发的引用不在

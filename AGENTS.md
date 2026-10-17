@@ -49,7 +49,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 4. **Prisma 迁移历史不可回改**（详见「数据库变更规范」）。
 5. **破坏性命令**（rm -rf 危险路径 / 删库删卷 / DROP DDL 等）由 `.zcode/config.json` PreToolUse 守卫自动拦截——被拦截说明该操作需要人工执行。
 6. **记录准确性红线（2026-10-06）**：对话中给出的"正式结论级"内容（矩阵/清单/数据/裁决/影响分析）必须与权威文档**同源**——在给出陈述的同一提交内写入对应权威文档，禁止"先说后补"造成陈述与文档双轨；未落档内容必须显式标注"草稿/提案"。文档是唯一事实源，聊天记录不是。陈述与文档不一致按欺骗同类处理。
-7. **git 命令规范红线（2026-10-06，机械守卫已加固）**：① **禁止改写已推送历史**——`commit --amend` 仅限未推送的本地提交，已推送提交的修正一律**追加新提交**（守卫比对 origin/<branch> 自动拦截改写）；② **禁止一切强制推送**——`--force` / `-f` / `--force-with-lease` 全部拦截（个人分支也不行，修正用追加提交）；③ **push 前确认本地与远端关系**（`git status -sb` / `git log origin/<branch> -1`），分叉时 `git reset <远端分支>` 重做而非强推；④ `reset --hard` 等破坏性操作按第 5 条人工执行；⑤ **提交/推送前必须确认所在分支**（`git branch --show-current`）——测试/脚本内的 git 操作禁止改变仓库状态（切分支/删分支/reset），确需的必须恢复原分支并在脚本结尾断言（直推 main 事故根因）；⑥ **禁止无 pathspec 的宽范围暂存**（裸 `git add -A`/`-u`）——先 `git status` 审查，构建产物/截图/临时文件/**凭证与环境文件**不入库；⑦ **禁止 `push --all` / `--mirror`**（半成品分支一并推送，守卫拦截）；⑧ **禁止 `git clean -f`**（未跟踪区可能含用户文件与生成产物，守卫拦截）；⑨ **冲突解决必须理解双方语义后融合**，不得未读就选一边或整体丢弃。
+7. **git 命令规范红线（2026-10-06，机械守卫已加固）**：① **禁止改写已推送历史**——`commit --amend` 仅限未推送的本地提交，已推送提交的修正一律**追加新提交**（守卫比对 origin/<branch> 自动拦截改写）；② **禁止一切强制推送**——`--force` / `-f` / `--force-with-lease` 全部拦截（个人分支也不行，修正用追加提交）；③ **push 前确认本地与远端关系**（`git status -sb` / `git log origin/<branch> -1`），分叉时 `git reset <远端分支>` 重做而非强推；④ `reset --hard` 等破坏性操作按第 5 条人工执行；⑤ **推送前必须确认所在分支与将推送的提交范围**（`git branch --show-current` + `git log origin/main..HEAD --oneline`）——主干开发（2026-10-17 起）下人工直推 main 是常态，但**意外推送仍是事故**：测试/脚本内的 git 操作禁止改变仓库状态（切分支/删分支/reset），确需的必须恢复原分支并在脚本结尾断言（直推 main 事故根因）；⑥ **禁止无 pathspec 的宽范围暂存**（裸 `git add -A`/`-u`）——先 `git status` 审查，构建产物/截图/临时文件/**凭证与环境文件**不入库；⑦ **禁止 `push --all` / `--mirror`**（半成品分支一并推送，守卫拦截）；⑧ **禁止 `git clean -f`**（未跟踪区可能含用户文件与生成产物，守卫拦截）；⑨ **冲突解决必须理解双方语义后融合**，不得未读就选一边或整体丢弃。
 8. **测试执行纪律红线（2026-10-06，D-011 漏测复盘后设立，无任何例外）**：
 9. **诚实准确纪律（2026-10-07，适用开发/方案/测试等一切工作）**：① **不确定的不猜、不编造**——事实、契约形状、方案取舍、测试结论存疑时，立即与用户确认沟通，禁止脑补；② **任何结论必须有证据**——引用文件行号/命令输出/测试结果/实测数据，凭印象、记忆、推断的陈述必须先降级为"待验证"并补验证，禁止冒充结论；③ **多调研、实际论证**——动手与下结论前先核实代码与文档当前实态（记忆与文档可能过时），"先核实后修复/先实测后修缺"为标准方法论；④ **如实报告**——没验证、查不到、失败了的直说，禁止以"应该可以/大概没问题"式含糊措辞掩盖不确定性；与第 6 条（记录准确性）互为表里，口径不实按欺骗同类处理。① **计划内功能点必须操作到"结果可见"**——弹窗渲染/数据变化/状态流转，禁止以"入口可达/页面渲染/结构通过"替代二级交互（弹窗/抽屉/详情/操作按钮）的实际执行；② **二级交互必须拆为独立用例行**，不得并入模块级结论——模块级"结构通过"不得隐没任何未执行的交互点；③ **无法执行的场景必须单列《未执行清单》并注明原因**（外部依赖/权限/环境），与已测结论严格分离；④ **空列表不得作为跳过理由**——列表为空时必须主动构造数据把交互走通，或显式记录"未构造数据，该点未测"；⑤ **"通过"结论必须基于当次实际反馈**，禁止凭入口存在、代码阅读、历史结论推断功能正确；⑥ **任务时间再长、步骤再复杂不得降级执行口径**——发现必须降级时（外部依赖不可达等），立即显式报告并经用户确认，禁止自行缩水后事后解释；⑦ **前后端契约一致性**：api 层禁止以 `as` 断言谎报契约形状——后端响应与 shared 类型不一致时必须在 api 层显式适配并加注释标记漂移点，配套契约测试待补（D-011 教训）。
 
@@ -97,7 +97,7 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - **必须**使用事件驱动架构替代：框架原生事件 API（flowgram `onSelectionChanged` / `onNodeCreate` / `onNodeDispose` / `onExtInfoChange`）、Pub/Sub、WebSocket、React Query 事件订阅等
 - 原因：定时器轮询存在持续 CPU 开销、轮询间隔内状态不一致窗口、调试困难、且违反事件驱动架构原则
 - 前车之鉴：流程引擎条件分支 300ms `setInterval` 轮询（画布↔配置面板同步）→ 重构为 `EventBridge` 事件驱动，消除轮询间隔与全量扫描开销
-- **允许的例外**：`setTimeout` 用于 debounce/defer（防抖导出、表单 reset 延迟等单次延迟调用）；React Query `refetchInterval` 需在 PR 中说明必要性
+- **允许的例外**：`setTimeout` 用于 debounce/defer（防抖导出、表单 reset 延迟等单次延迟调用）；React Query `refetchInterval` 需在提交说明中说明必要性
 - ESLint 已用 `no-restricted-syntax` 拦截 `setInterval` 调用（`error` 级），详见 `docs/knowledge-base/CODING-PRINCIPLE-NO-POLLING-2026-08-16.md`
 
 ### 提交规范
@@ -107,10 +107,10 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 - scope：`gateway/shared/db/studio/runtime-ui/meta-svc/process-svc/runtime-svc/auth/mcp/review/object/record/page/process/permission/tenant/application/notification/queue/infra/docs/config/deps/connector/dataset/cloud-function/e2e`
 - pre-commit 钩子：lint-staged（eslint --fix + prettier --write 暂存文件）
 - commit-msg 钩子：commitlint 格式校验（`commitlint.config.mjs`）
-- **推送前 OCR 评审（工作约定，2026-10-01）**：功能分支推送前执行 `/ocr-review`（OCR 委托模式：
+- **推送前 OCR 评审（工作约定，2026-10-01；2026-10-17 随主干开发改为分支无关）**：推送前对本次将推送的全部提交（`origin/main..HEAD`）执行 `/ocr-review`（OCR 委托模式：
   preview → 逐文件审查 → High/Medium 修复复验 → 结构化报告）。评审与修复在同一推送内完成；
   体系性发现须同步知识库踩坑节。无 LLM 依赖（agent 自身执行），与「盯 CI」约定同级
-- **推送前 QA 走查（工作约定，2026-10-06）**：功能分支推送前除 OCR 代码评审外，另执行一轮
+- **推送前 QA 走查（工作约定，2026-10-06；2026-10-17 随主干开发改为分支无关）**：推送前除 OCR 代码评审外，另执行一轮
   GUI 黑盒走查（web-gui-tester 方法论）：按 {草稿,已发布}×{画布创建,API创建} 矩阵覆盖受影响
   界面，验证截图后做全帧异常扫描（列出所有状态标签自问是否矛盾），产出走查报告（通过点/
   问题点/证据截图，gui-test-screenshots/ 留档）。与开发验证互补，减少对用户人工 QA 的依赖；
@@ -158,11 +158,11 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 ### CI/CD
 
-- 远端：GitHub 私有仓库。PR 推送后 GitHub Actions（`.github/workflows/ci.yml`）并行运行 static（doc-sync + lint + typecheck）/ test（单测 + 覆盖率阈值 58/72/72/58 强制）/ build，三者全绿后运行 e2e（Playwright）
-- PR 必须通过全部 CI job 才能合并；远端推送后启用分支保护：required checks 覆盖全部 CI job，禁止直推 main
+- **分支管理：主干开发（trunk-based，2026-10-17 起，单人开发简化）**：日常直接在 main 小步提交并 `git push`，不开分支、不开 PR。推送前闸门 = husky pre-push 四道闸（typecheck / 全量单测 / doc-sync / 设计 token）+ 推送前 OCR 评审与 QA 走查（见提交规范节）。仅实验性 spike 与大型重构（想在合并前看完整 CI 含 e2e）才开短命分支，合完即删本地与远端
+- 远端：GitHub 私有仓库。推送后 GitHub Actions（`.github/workflows/ci.yml`）在 main 上运行 static（doc-sync + lint + typecheck）/ test（单测 + 覆盖率阈值 58/72/72/58 强制）/ build，三者全绿后运行 e2e（Playwright）——**CI 定位为推送后安全网**：红了**追加修复提交**（fix-forward），不改写历史；`pull_request → main` 触发保留供例外分支使用，PR 模板在 `.github/pull_request_template.md`（含检查清单和飞书对齐标注，仅例外分支场景使用）
+- **历史勘误（2026-10-17）**：原"启用分支保护：required checks 覆盖全部 CI job，禁止直推 main"自 2026-09-27 记录以来从未技术生效——私有仓库免费计划不支持分支保护（GitHub API 实测 403），该规则一直仅靠约定维持，随主干开发转正正式废除
 - 仓库内 AI 会话闸门：`.zcode/config.json` hooks（PostToolUse 即时格式化 / Stop typecheck 收口 / PreToolUse 危险命令拦截），hook 脚本在 `scripts/zcode-hooks/`
 - 新增依赖必须更新 lockfile（`pnpm install`）
-- PR 模板在 `.github/pull_request_template.md`，包含检查清单和飞书对齐标注
 
 ### 文件命名规范
 
@@ -231,8 +231,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 #### 自动化保障机制
 
 - **pre-push 钩子**：`bash scripts/check-doc-sync.sh` 检查 .env.example ↔ env.validation.ts 和 commitlint ↔ AGENTS.md scope 一致性
-- **CI 流水线**：PR 合并前运行文档同步检查
-- **PR 模板**：feat/fix 类型 PR 必填文档同步检查项
+- **CI 流水线**：推送后运行文档同步检查（例外分支 PR 场景为合并前）
+- **PR 模板**：feat/fix 类型 PR 必填文档同步检查项（仅例外分支场景使用）
 
 #### 阶段性工作
 

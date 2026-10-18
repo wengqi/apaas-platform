@@ -41,10 +41,12 @@ import {
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { qk, useAuthStore } from '@apaas/shared/stores';
+import { hasStudioAccess } from '@apaas/shared';
 import { appTileBackground, LAYOUT, TOKENS as T } from '@apaas/shared/design';
 import { appsApi } from '../api/apps.js';
 import { reviewsApi } from '../api/reviews.js';
 import CheckPanel from '../components/publish/CheckPanel.js';
+import RuntimePortalNotice from './RuntimePortalNotice.js';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -202,6 +204,27 @@ export default function StudioLayout() {
       },
     },
   ];
+
+  // studio/runtime 用户域分离（2026-10-18）：无搭建器权限的用户（END_USER-only/
+  // 仅应用级角色）不进入应用工作台——深链直访与 /apps 同闸，落运行时门户引导
+  // （判定 SSOT=@apaas/shared hasStudioAccess，与 TenantLayout 同口径）。
+  if (
+    user &&
+    !hasStudioAccess(
+      Boolean(user.isPlatformAdmin),
+      (user.roles ?? []).map((r) => r.code),
+    )
+  ) {
+    return (
+      <RuntimePortalNotice
+        userName={user.name ?? user.email ?? '用户'}
+        onLogout={() => {
+          logout();
+          navigate('/login', { replace: true });
+        }}
+      />
+    );
+  }
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

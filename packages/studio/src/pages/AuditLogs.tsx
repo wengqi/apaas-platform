@@ -2,32 +2,20 @@
  * 审计日志页面 — 租户级，展示权限操作审计记录。
  *
  * 支持按操作类型、资源类型、用户 ID 筛选，分页查询。
+ * 顶栏导航由 TenantLayout 常显，页面只负责内容区。
  */
 
-import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Card,
-  Table,
-  Tag,
-  Input,
-  Select,
-  Space,
-  Typography,
-  Button,
-  Descriptions,
-  Alert,
-} from 'antd';
-import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { Card, Table, Tag, Input, Select, Space, Button, Descriptions, Alert } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import { auditLogsApi, type AuditLogItem } from '../api/audit-logs.js';
 import { apiErrorMessage } from '../api/client.js';
 import { AUDIT_CATEGORY_OPTIONS } from '../constants/audit-category.js';
 import { displayName, useUserNameMap } from '../utils/user-display.js';
 import AuditCategoryTag from '../components/shared/AuditCategoryTag.js';
-
-const { Title } = Typography;
+import PageHeader from '../components/shared/PageHeader.js';
+import PageContainer from '../components/shared/PageContainer.js';
 
 const DEFAULT_PAGE_SIZE = 20;
 
@@ -40,7 +28,6 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export default function AuditLogs() {
-  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [actionFilter, setActionFilter] = useState<string | undefined>();
@@ -143,24 +130,13 @@ export default function AuditLogs() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
-      <div
-        style={{
-          background: T.colorWhite,
-          padding: '16px 24px',
-          borderBottom: `1px solid ${T.colorSplit}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-        }}
-      >
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} type="text" />
-        <Title level={4} style={{ margin: 0 }}>
-          审计日志
-        </Title>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="审计日志"
+        description="权限与业务操作审计记录，支持按分类、操作类型、资源类型与用户筛选。"
+      />
 
-      <div style={{ padding: 24 }}>
+      <div>
         <Card style={{ marginBottom: 16 }}>
           <Space wrap size={12}>
             <Select
@@ -272,6 +248,6 @@ export default function AuditLogs() {
           />
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

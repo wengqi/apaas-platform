@@ -14,22 +14,18 @@ import {
   Descriptions,
   App,
 } from 'antd';
-import {
-  ArrowLeftOutlined,
-  ThunderboltFilled,
-  GlobalOutlined,
-  UserAddOutlined,
-  UserOutlined,
-  AppstoreOutlined,
-} from '@ant-design/icons';
+import { GlobalOutlined, UserAddOutlined, UserOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tenantsApi } from '../api/tenants.js';
+import PageHeader from '../components/shared/PageHeader.js';
+import PageContainer from '../components/shared/PageContainer.js';
 
 const { Title: _Title, Text } = Typography;
 
 /**
  * 租户详情页 — 平台超管查看租户信息、用户列表、应用列表，分配管理员。
+ * 顶栏导航由 TenantLayout 常显（「租户管理」选中），页头提供返回列表。
  */
 export default function TenantDetail() {
   const { id } = useParams<{ id: string }>();
@@ -169,42 +165,11 @@ export default function TenantDetail() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
-      {/* ── 顶部导航栏 ── */}
-      <div
-        style={{
-          height: 56,
-          background: T.colorWhite,
-          borderBottom: `1px solid ${T.colorBorderSecondary}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 32px',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-        }}
-      >
-        <Space size={16}>
-          <Button
-            type="text"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate('/platform/tenants')}
-          >
-            返回租户列表
-          </Button>
-          <Space size={8}>
-            <ThunderboltFilled style={{ fontSize: 20, color: T.colorPrimary }} />
-            <Text strong style={{ fontSize: 16 }}>
-              租户详情
-            </Text>
-          </Space>
-        </Space>
-      </div>
+    <PageContainer>
+      <PageHeader title="租户详情" onBack={() => navigate('/platform/tenants')} />
 
       {/* ── 内容区 ── */}
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 32px' }}>
+      <div>
         {/* 基本信息 */}
         <Card style={{ marginBottom: 16 }} loading={isLoading}>
           {tenant && (
@@ -352,6 +317,6 @@ export default function TenantDetail() {
           </Text>
         </div>
       </Modal>
-    </div>
+    </PageContainer>
   );
 }

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Spin } from 'antd';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import StudioLayout from './layouts/StudioLayout.js';
+import TenantLayout from './layouts/TenantLayout.js';
 import Login from './pages/Login.js';
 import DevCenterHome from './pages/app-home/DevCenterHome.js';
 import AppDashboard from './pages/AppDashboard.js';
@@ -81,8 +82,25 @@ function PlatformAdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * 租户管理员守卫：仅 TENANT_ADMIN 或平台超管可访问。
- * 用于用户管理、组织架构路由。
+ * 租户成员路由守卫：开发中心仅租户成员（含租户管理员）可访问。
+ * 平台超管无租户上下文（tenant-context.ts 设计决策），直访 /apps 重定向租户管理。
+ * 运行时业务用户（END_USER-only）的拦截在 TenantLayout 统一落运行时引导页。
+ */
+function TenantMemberRoute({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user?.isPlatformAdmin) {
+    return <Navigate to="/platform/tenants" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * 租户管理员守卫：仅 TENANT_ADMIN 可访问（2026-10-18 起不再放行平台超管——
+ * 超管=平台控制台，无租户上下文，直访重定向租户管理）。
  */
 function TenantAdminRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -90,9 +108,10 @@ function TenantAdminRoute({ children }: { children: React.ReactNode }) {
   if (!token) {
     return <Navigate to="/login" replace />;
   }
-  // 平台超管 或 TENANT_ADMIN 角色
-  const isTenantAdmin =
-    user?.isPlatformAdmin || user?.roles?.some((r) => r.code === 'TENANT_ADMIN');
+  if (user?.isPlatformAdmin) {
+    return <Navigate to="/platform/tenants" replace />;
+  }
+  const isTenantAdmin = user?.roles?.some((r) => r.code === 'TENANT_ADMIN');
   if (!isTenantAdmin) {
     return <Navigate to="/apps" replace />;
   }
@@ -103,13 +122,18 @@ function TenantAdminRoute({ children }: { children: React.ReactNode }) {
  * 路由表 (react-router-dom v6)。
  *
  * 层级：平台超管 → 租户管理 → 应用
- * - /login                          登录页(公开)
+ * 身份收敛（2026-10-18 方案一）：超管=平台控制台，直访 /apps 与租户级治理页
+ * 一律重定向 /platform/tenants（后端 requireTenantId 同源设计，见 auth/tenant-context.ts）。
+ * - /login                          登录页(公开；超管登录已直落 /platform/tenants)
  * - /t/:slug/login                  带租户标识的登录页(预填 slug)
- * - /apps                           应用列表(租户用户首页)
- * - /platform/tenants               平台超管 — 租户管理
- * - /platform/tenants/:id           平台超管 — 租户详情
- * - /platform/users                 租户管理员 — 用户管理
- * - /platform/orgs                  租户管理员 — 组织架构
+ * - /apps                           开发中心首页 ── TenantLayout(顶栏导航常显)
+ * - /platform/tenants               平台超管 — 租户管理   ┐
+ * - /platform/tenants/:id           平台超管 — 租户详情   │ 同属 TenantLayout，
+ * - /platform/users                 租户管理员 — 用户管理  │ 治理页不再自带头部
+ * - /platform/orgs                  租户管理员 — 组织架构  │
+ * - /platform/audit-logs            审计日志              │
+ * - /platform/observability         观测中心              │
+ * - /platform/permission-debug      权限调试              ┘
  * - /app/:appId                     应用内路由(StudioLayout)
  *   - /app/:appId/dashboard         应用工作台
  *   - /app/:appId/objects           对象设计器
@@ -126,75 +150,83 @@ export function AppRoutes() {
         <Route path="/login" element={<Login />} />
         <Route path="/t/:slug/login" element={<Login />} />
 
-        {/* 应用列表 —— 全屏首页，无侧边栏 */}
+        {/* 租户级工作台 —— AppHeader 顶栏导航在此层常显（开发中心 + 平台治理页） */}
         <Route
-          path="/apps"
           element={
             <ProtectedRoute>
-              <DevCenterHome />
+              <TenantLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route
+            path="/apps"
+            element={
+              <TenantMemberRoute>
+                <DevCenterHome />
+              </TenantMemberRoute>
+            }
+          />
 
-        {/* 平台超管路由 — 租户管理 */}
-        <Route
-          path="/platform/tenants"
-          element={
-            <PlatformAdminRoute>
-              <TenantManagement />
-            </PlatformAdminRoute>
-          }
-        />
-        <Route
-          path="/platform/tenants/:id"
-          element={
-            <PlatformAdminRoute>
-              <TenantDetail />
-            </PlatformAdminRoute>
-          }
-        />
+          {/* 平台超管路由 — 租户管理 */}
+          <Route
+            path="/platform/tenants"
+            element={
+              <PlatformAdminRoute>
+                <TenantManagement />
+              </PlatformAdminRoute>
+            }
+          />
+          <Route
+            path="/platform/tenants/:id"
+            element={
+              <PlatformAdminRoute>
+                <TenantDetail />
+              </PlatformAdminRoute>
+            }
+          />
 
-        {/* 租户管理员路由 — 用户管理 / 组织架构 */}
-        <Route
-          path="/platform/users"
-          element={
-            <TenantAdminRoute>
-              <PlatformUsers />
-            </TenantAdminRoute>
-          }
-        />
-        <Route
-          path="/platform/orgs"
-          element={
-            <TenantAdminRoute>
-              <PlatformOrgs />
-            </TenantAdminRoute>
-          }
-        />
-        <Route
-          path="/platform/audit-logs"
-          element={
-            <TenantAdminRoute>
-              <AuditLogs />
-            </TenantAdminRoute>
-          }
-        />
-        <Route
-          path="/platform/observability"
-          element={
-            <TenantAdminRoute>
-              <ObservabilityCenter />
-            </TenantAdminRoute>
-          }
-        />
-        <Route
-          path="/platform/permission-debug"
-          element={
-            <TenantAdminRoute>
-              <PermissionDebug />
-            </TenantAdminRoute>
-          }
-        />
+          {/* 租户管理员路由 — 用户管理 / 组织架构 / 审计 / 观测 / 权限调试 */}
+          <Route
+            path="/platform/users"
+            element={
+              <TenantAdminRoute>
+                <PlatformUsers />
+              </TenantAdminRoute>
+            }
+          />
+          <Route
+            path="/platform/orgs"
+            element={
+              <TenantAdminRoute>
+                <PlatformOrgs />
+              </TenantAdminRoute>
+            }
+          />
+          <Route
+            path="/platform/audit-logs"
+            element={
+              <TenantAdminRoute>
+                <AuditLogs />
+              </TenantAdminRoute>
+            }
+          />
+          <Route
+            path="/platform/observability"
+            element={
+              <TenantAdminRoute>
+                <ObservabilityCenter />
+              </TenantAdminRoute>
+            }
+          />
+          <Route
+            path="/platform/permission-debug"
+            element={
+              <TenantAdminRoute>
+                <PermissionDebug />
+              </TenantAdminRoute>
+            }
+          />
+        </Route>
 
         {/* 应用内路由 —— 共用 StudioLayout(侧边栏 + 顶栏) */}
         <Route

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { prisma } from '@apaas/db';
+import { BUILDER_RULES, END_USER_RULES } from '@apaas/shared';
 
 /**
  * 租户管理服务 — 平台超管管理租户的 CRUD + 状态管理。
@@ -79,29 +80,9 @@ export class TenantService {
       },
     });
 
-    // BUILDER 权限规则（18 条，全 ALLOW + targetId='*'）
-    const builderRules = [
-      { type: 'PAGE', action: 'MANAGE' },
-      { type: 'PAGE', action: 'CREATE' },
-      { type: 'PAGE', action: 'EDIT' },
-      { type: 'PAGE', action: 'DELETE' },
-      { type: 'PAGE', action: 'VIEW' },
-      { type: 'DATA_MODEL', action: 'CREATE' },
-      { type: 'DATA_MODEL', action: 'EDIT' },
-      { type: 'DATA_MODEL', action: 'DELETE' },
-      { type: 'DATA_MODEL', action: 'VIEW' },
-      { type: 'PROCESS', action: 'CREATE' },
-      { type: 'PROCESS', action: 'EDIT' },
-      { type: 'PROCESS', action: 'DELETE' },
-      { type: 'PROCESS', action: 'EXECUTE' },
-      { type: 'PROCESS', action: 'VIEW' },
-      { type: 'RECORD', action: 'CREATE' },
-      { type: 'RECORD', action: 'EDIT' },
-      { type: 'RECORD', action: 'DELETE' },
-      { type: 'RECORD', action: 'VIEW' },
-    ];
+    // BUILDER 权限规则 — SSOT 见 @apaas/shared builtin-roles（seed 同源，防漂移）
     await prisma.permissionRule.createMany({
-      data: builderRules.map((rule) => ({
+      data: BUILDER_RULES.map((rule) => ({
         tenantId,
         roleId: builderRole.id,
         type: rule.type,
@@ -111,16 +92,9 @@ export class TenantService {
       })),
     });
 
-    // END_USER 权限规则（5 条 — 可查看页面、提交记录、查看记录、执行流程、审批）
-    const endUserRules = [
-      { type: 'PAGE', action: 'VIEW' },
-      { type: 'RECORD', action: 'CREATE' },
-      { type: 'RECORD', action: 'VIEW' },
-      { type: 'PROCESS', action: 'EXECUTE' },
-      { type: 'PROCESS', action: 'APPROVE' },
-    ];
+    // END_USER 权限规则 — SSOT 同上（含 PROCESS:VIEW，运行时角色规约）
     await prisma.permissionRule.createMany({
-      data: endUserRules.map((rule) => ({
+      data: END_USER_RULES.map((rule) => ({
         tenantId,
         roleId: endUserRole.id,
         type: rule.type,
@@ -131,7 +105,7 @@ export class TenantService {
     });
 
     this.logger.log(
-      `租户 ${tenantId} 内置角色初始化完成 (TENANT_ADMIN/BUILDER/END_USER + 23 条权限规则)`,
+      `租户 ${tenantId} 内置角色初始化完成 (TENANT_ADMIN/BUILDER/END_USER + ${BUILDER_RULES.length + END_USER_RULES.length} 条权限规则)`,
     );
   }
 

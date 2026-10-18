@@ -3,14 +3,13 @@
  *
  * 顶部 4 张分类统计卡（最近 24h 总数/错误数）+ 分类/级别筛选 + 事件分页表格。
  * 分类/级别常量以 @apaas/shared/observability 为 SSOT。
+ * 顶栏导航由 TenantLayout 常显，页面只负责内容区。
  */
 
-import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Card, Row, Col, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
-import { ArrowLeftOutlined, FundOutlined, ReloadOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { ReloadOutlined } from '@ant-design/icons';
 import {
   EVENT_CATEGORIES,
   EVENT_CATEGORY_LABELS,
@@ -21,8 +20,10 @@ import {
 } from '@apaas/shared';
 import { observabilityApi, type ObservabilityEvent } from '../api/observability.js';
 import AiQualityPanel from '../components/observability/AiQualityPanel.js';
+import PageHeader from '../components/shared/PageHeader.js';
+import PageContainer from '../components/shared/PageContainer.js';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const DEFAULT_PAGE_SIZE = 20;
 /** 统计卡栅格跨度：24 栅格 / 8 = 每行 3 张卡（5 分类 3+2 排布）。 */
@@ -127,7 +128,6 @@ const columns = [
 ];
 
 export default function ObservabilityCenter() {
-  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL);
@@ -150,28 +150,13 @@ export default function ObservabilityCenter() {
   });
 
   return (
-    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
-      <div
-        style={{
-          background: T.colorWhite,
-          padding: '16px 24px',
-          borderBottom: `1px solid ${T.colorSplit}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-        }}
-      >
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} type="text" />
-        <FundOutlined />
-        <Title level={4} style={{ margin: 0 }}>
-          观测中心
-        </Title>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          云函数执行 / 慢查询 / 页面报错 / 开放 API 调用 / AI 生成（最近 24h）
-        </Text>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="观测中心"
+        description="云函数执行 / 慢查询 / 页面报错 / 开放 API 调用 / AI 生成（最近 24h）"
+      />
 
-      <div style={{ padding: 24 }}>
+      <div>
         <Row gutter={16} style={{ marginBottom: 16 }}>
           {(summary ?? []).map((s) => (
             <Col key={s.category} span={SUMMARY_SPAN}>
@@ -249,6 +234,6 @@ export default function ObservabilityCenter() {
           />
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

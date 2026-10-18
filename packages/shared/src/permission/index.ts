@@ -188,3 +188,5 @@ export interface UpdateOrgNodeRequest {
   sort?: number;
   parentId?: string;
 }
+
+export * from './builtin-roles.js';

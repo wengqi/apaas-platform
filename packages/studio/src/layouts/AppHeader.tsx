@@ -1,10 +1,10 @@
 /**
- * 应用列表页 — 顶部导航栏（素蓝顶栏导航版，2026-10-13）。
+ * 租户级工作台 — 持久顶栏导航（素蓝，2026-10-18 由 pages/app-list 迁入布局层）。
  *
- * 布局：品牌（方孔a + aPaaS Studio）+ 租户级导航（开发中心恒显；
- * 用户管理/组织架构/审计日志/观测中心/权限调试按管理员角色显隐；
- * 租户管理仅平台超管）+ 右侧用户下拉。
- * 原「平台管理」下拉退役——治理/运维入口升级为一级导航（用户裁决）。
+ * 由 TenantLayout 渲染，开发中心与 /platform/* 治理页共用——导航在任何租户级
+ * 页面常显，选中项随路由点亮（前缀匹配，租户详情等二级路由保持父项选中）。
+ * 布局：品牌（方孔a + aPaaS Studio）+ 租户级导航 + 右侧用户下拉。
+ * 可见性模型见 ./app-header-nav.ts（超管=平台控制台，仅见租户管理）。
  */
 
 import { TOKENS as T, brandLogoMarkSvg } from '@apaas/shared/design';
@@ -12,6 +12,7 @@ import { Avatar, Button, Dropdown, Space, Typography } from 'antd';
 import { GlobalOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useLocation } from 'react-router-dom';
+import { NAV_ITEMS, isNavActive, visibleNavItems } from './app-header-nav.js';
 
 const { Text } = Typography;
 
@@ -24,25 +25,7 @@ interface AppHeaderProps {
   onLogout: () => void;
 }
 
-/** 顶栏导航项（租户级）。 */
-interface NavItem {
-  key: string;
-  label: string;
-  /** 可见角色：默认全员 */
-  roles?: ('platform' | 'tenant')[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { key: '/apps', label: '开发中心' },
-  { key: '/platform/users', label: '用户管理', roles: ['platform', 'tenant'] },
-  { key: '/platform/orgs', label: '组织架构', roles: ['platform', 'tenant'] },
-  { key: '/platform/audit-logs', label: '审计日志', roles: ['platform', 'tenant'] },
-  { key: '/platform/observability', label: '观测中心', roles: ['platform', 'tenant'] },
-  { key: '/platform/permission-debug', label: '权限调试', roles: ['platform', 'tenant'] },
-  { key: '/platform/tenants', label: '租户管理', roles: ['platform'] },
-];
-
-/** 应用列表页顶部导航。 */
+/** 租户级工作台持久顶栏。 */
 export default function AppHeader({
   isPlatformAdmin,
   isTenantAdmin,
@@ -73,12 +56,7 @@ export default function AppHeader({
     },
   ];
 
-  const visibleNav = NAV_ITEMS.filter(
-    (item) =>
-      !item.roles ||
-      (isPlatformAdmin && item.roles.includes('platform')) ||
-      (isTenantAdmin && item.roles.includes('tenant')),
-  );
+  const visibleNav = visibleNavItems(NAV_ITEMS, isPlatformAdmin, isTenantAdmin);
 
   return (
     <div
@@ -109,12 +87,13 @@ export default function AppHeader({
       </Space>
       <nav style={{ display: 'flex', gap: 4, marginLeft: 22 }} aria-label="租户级导航">
         {visibleNav.map((item) => {
-          const active = location.pathname === item.key;
+          const active = isNavActive(location.pathname, item.key);
           return (
             <Button
               key={item.key}
               type="text"
               onClick={() => onNavigate(item.key)}
+              aria-current={active ? 'page' : undefined}
               style={{
                 padding: '6px 14px',
                 borderRadius: 8,

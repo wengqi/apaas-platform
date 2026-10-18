@@ -17,6 +17,7 @@
 import { prisma, runAsSystem } from './src/index.js';
 import { seedDemoContent } from './seed-demo.js';
 import { seedProcurementContent } from './seed-procurement.js';
+import { BUILDER_RULES, END_USER_RULES } from '@apaas/shared';
 import * as bcrypt from 'bcrypt';
 
 async function main() {
@@ -183,35 +184,8 @@ async function main() {
     `✅ 用户: ${admin.email} (TENANT_ADMIN), ${builder.email} (BUILDER), ${endUser.email} (END_USER)`,
   );
 
-  // 6. 为 BUILDER 角色创建权限规则（允许搭建操作）
-  const builderRules = [
-    { type: 'PAGE', action: 'MANAGE', targetId: '*' },
-    { type: 'PAGE', action: 'CREATE', targetId: '*' },
-    { type: 'PAGE', action: 'EDIT', targetId: '*' },
-    { type: 'PAGE', action: 'DELETE', targetId: '*' },
-    { type: 'PAGE', action: 'VIEW', targetId: '*' },
-    { type: 'DATA_MODEL', action: 'CREATE', targetId: '*' },
-    { type: 'DATA_MODEL', action: 'EDIT', targetId: '*' },
-    { type: 'DATA_MODEL', action: 'DELETE', targetId: '*' },
-    { type: 'DATA_MODEL', action: 'VIEW', targetId: '*' },
-    // 交互评审（2026-10-04）修复：数据流执行端点要求 DATA_MODEL:EXECUTE，
-    // 此前 BUILDER 缺该规则——能建数据流却无权执行自己创建的物化
-    { type: 'DATA_MODEL', action: 'EXECUTE', targetId: '*' },
-    { type: 'PROCESS', action: 'CREATE', targetId: '*' },
-    { type: 'PROCESS', action: 'EDIT', targetId: '*' },
-    { type: 'PROCESS', action: 'DELETE', targetId: '*' },
-    { type: 'PROCESS', action: 'EXECUTE', targetId: '*' },
-    { type: 'PROCESS', action: 'VIEW', targetId: '*' },
-    { type: 'RECORD', action: 'CREATE', targetId: '*' },
-    { type: 'RECORD', action: 'EDIT', targetId: '*' },
-    { type: 'RECORD', action: 'DELETE', targetId: '*' },
-    { type: 'RECORD', action: 'VIEW', targetId: '*' },
-    { type: 'CONNECTOR', action: 'CREATE', targetId: '*' },
-    { type: 'CONNECTOR', action: 'EDIT', targetId: '*' },
-    { type: 'CONNECTOR', action: 'DELETE', targetId: '*' },
-    { type: 'CONNECTOR', action: 'VIEW', targetId: '*' },
-    { type: 'CONNECTOR', action: 'EXECUTE', targetId: '*' },
-  ];
+  // 6. 为 BUILDER 角色创建权限规则（SSOT：@apaas/shared builtin-roles，
+  //    与 TenantService.initBuiltInRoles 同源——两处各写一份曾致新租户规则漂移）
   // 幂等收敛（2026-10-10）：permission_rules 无唯一索引，createMany+skipDuplicates 实际不去重，
   // 每次重跑 seed 都会追加一份副本（实测 BUILDER ×2 / END_USER ×3）。
   // seed 管辖的规则形态固定为通配 targetId + ALLOW——先删后建，收敛为恰好一份；
@@ -220,44 +194,33 @@ async function main() {
     where: { roleId: builderRole.id, targetId: '*', effect: 'ALLOW' },
   });
   await prisma.permissionRule.createMany({
-    data: builderRules.map((rule) => ({
+    data: BUILDER_RULES.map((rule) => ({
       tenantId: tenant.id,
       roleId: builderRole.id,
       type: rule.type,
       action: rule.action,
-      targetId: rule.targetId,
+      targetId: '*',
       effect: 'ALLOW',
     })),
   });
-  console.log(`✅ BUILDER 权限规则: ${builderRules.length} 条`);
+  console.log(`✅ BUILDER 权限规则: ${BUILDER_RULES.length} 条`);
 
-  // 7. 为 END_USER 角色创建权限规则（查看页面 + 提交记录 + 查看记录 + 任务中心 + 审批）
-  const endUserRules = [
-    { type: 'PAGE', action: 'VIEW', targetId: '*' },
-    { type: 'RECORD', action: 'CREATE', targetId: '*' },
-    { type: 'RECORD', action: 'VIEW', targetId: '*' },
-    // 任务中心修复（2026-10-10）：GET /tasks 与 GET /instances/mine 要求 PROCESS:VIEW，
-    // 此前 END_USER 只有 EXECUTE/APPROVE——被授权审批的角色反而打不开任务中心（403 被前端渲染成空表）。
-    // 规约：运行时角色（需使用任务中心）必须包含 PROCESS VIEW。
-    { type: 'PROCESS', action: 'VIEW', targetId: '*' },
-    { type: 'PROCESS', action: 'EXECUTE', targetId: '*' },
-    { type: 'PROCESS', action: 'APPROVE', targetId: '*' },
-  ];
-  // 幂等收敛（同上：先删 seed 管辖的通配规则再建，不再累积副本）
+  // 7. 为 END_USER 角色创建权限规则（SSOT 同 BUILDER，见 @apaas/shared builtin-roles；
+  //    含 PROCESS:VIEW——2026-10-10 任务中心修复确立的运行时角色规约）
   await prisma.permissionRule.deleteMany({
     where: { roleId: endUserRole.id, targetId: '*', effect: 'ALLOW' },
   });
   await prisma.permissionRule.createMany({
-    data: endUserRules.map((rule) => ({
+    data: END_USER_RULES.map((rule) => ({
       tenantId: tenant.id,
       roleId: endUserRole.id,
       type: rule.type,
       action: rule.action,
-      targetId: rule.targetId,
+      targetId: '*',
       effect: 'ALLOW',
     })),
   });
-  console.log(`✅ END_USER 权限规则: ${endUserRules.length} 条`);
+  console.log(`✅ END_USER 权限规则: ${END_USER_RULES.length} 条`);
 
   // 8. 创建示例应用
   const app = await prisma.application.upsert({

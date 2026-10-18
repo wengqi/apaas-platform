@@ -278,6 +278,26 @@
 | TC-168 | 登录页素蓝融合版（分屏） | P2 | 访问 /login（studio 与 runtime 各一） | ① 看分屏结构与品牌栏 ② 表单校验与登录 ③ 窄屏（<960px） | ① 左 46% 淡蓝灰品牌栏（方孔a+主张+能力点+天光水印）右白表单 ② studio 租户可留空（超管直达租户管理）、runtime 租户必填且无 SSO 按钮（网关无 CAS 端点，不做死按钮）③ 窄屏隐藏品牌栏保表单 | 未自动化 | 品牌位=brandLogoMarkSvg（方孔a，E 案）；SSOT 常量 LOGIN_PANEL_*/brandLogoMonoSvg |
 | TC-169 | 素蓝主题一致性（AntD theme + 守卫） | P1 | 任意页面 | ① 检查主按钮/链接/聚焦环颜色 ② 看应用瓷片形态 ③ 跑 scripts/check-design-tokens.sh | ① 全站唯一蓝 #2563EB（ConfigProvider theme=ANT_D_THEME 派生自 shared TOKENS）② 瓷片=实底素蓝+名称首字（无 emoji/无逐应用色/无投影）③ 前端 src 零 hex 字面量 | 未自动化 | 违反最常见处=新增组件里手写 hex；豁免须 // design-token-allow + 理由 |
 
+### N. 顶部导航持久化轮（TC-192，2026-10-18）
+
+> 来源：用户反馈「点击菜单后顶部导航整个变了」。AppHeader 顶栏提升为 TenantLayout 布局层，
+> /apps 与 /platform/* 七条路由共用；六个治理页自带头部（返回应用/⚡平台管理）退役，统一 PageHeader。
+
+| 编号 | 名称 | 优先级 | 前置 | 步骤 | 预期 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-192 | 顶部导航常显与选中态（租户级工作台） | P1 | admin（或 builder）登录 studio | ① 看 /apps 顶栏 ② 依次点击 用户管理/组织架构/审计日志/观测中心/权限调试 ③ 超管点 租户管理→某租户「查看详情」 ④ 详情页点返回 ⑤ 对照 /apps 与任一治理页内容区左缘 | ① 顶栏导航恒显（admin 六项/超管仅「租户管理」一项），开发中心蓝底选中 ② 每页顶栏不变，点击项蓝底选中（aria-current=page），页面无「返回应用」自带头部，页头=标题+描述 ③ 详情页（/platform/tenants/:id）「租户管理」保持选中（前缀匹配），页头带返回按钮 ④ 返回后回 /platform/tenants ⑤ 内容区宽度与左缘一致（PageContainer maxWidth 1340+44px；实测 1440 视口两页标题 x=94） | 未自动化 | 布局=TenantLayout（AppHeader+Outlet，layouts/）；内容宽度 SSOT=PageContainer（components/shared/）；可见性模型单测锚定 layouts/app-header-nav.spec.ts；旧 TenantManagement ⚡头部与手写 localStorage 登出顺带退役（登出统一走用户下拉）；实测截图 gui-test-screenshots/persistent-nav/ |
+| TC-193 | 超管平台控制台收敛（方案一：无租户上下文不展示租户业务面） | P1 | 平台超管登录（superadmin@apaas.dev） | ① 看顶栏导航 ② 直访 /apps ③ 直访 /platform/users（及 orgs/audit-logs/observability/permission-debug 任一）④ 租户管理页操作 | ① 导航仅「租户管理」选中（开发中心与五个租户级导航不展示——超管 tenantId=null 无租户上下文，创建应用等租户业务面后端 requireTenantId 一律 400/403 拒绝，入口不再展示）② 重定向 /platform/tenants ③ 同样重定向 /platform/tenants（TenantAdminRoute 不再放行超管）④ 租户 CRUD/挂起激活/详情（租户用户与应用只读列表）/分配管理员正常可用 | 未自动化 | 用户裁决方案一（2026-10-18，超管创建应用 400 报错引出的权限收敛）；远期候选登记=平台级审计/观测聚合视图、进入租户代操作（强审计）；实测截图 persistent-nav/10-superadmin-console-only-tenants.png |
+
+### O. 权限模型收敛轮（TC-194~195，2026-10-18）
+
+> 来源：构建态角色权限全面梳理（用户裁决：END_USER 只属运行时，studio/runtime 用户域分离；
+> 内置角色规则两处各写一份已实际漂移）。SSOT=@apaas/shared builtin-roles（BUILDER 24 条 / END_USER 6 条）。
+
+| 编号 | 名称 | 优先级 | 前置 | 步骤 | 预期 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-194 | 新建租户内置角色规则完备（SSOT 防漂移） | P1 | 平台超管经「租户管理」新建租户 | ① 新建租户 ② 查该租户 BUILDER/END_USER 规则数与内容 ③ 新租户 BUILDER 打开连接器页/执行数据流 ④ 新租户 END_USER 打开任务中心 | ① BUILDER 恰 24 条（含 CONNECTOR×5 与 DATA_MODEL:EXECUTE）、END_USER 恰 6 条（含 PROCESS:VIEW）② 连接器页正常加载数据流可执行 ③ 任务中心可打开（不复发 TC-170 的 403 假空表） | shared builtin-roles.spec.ts 锚定（24/6 条+关键规则+hasStudioAccess） | 修复前：tenant.service BUILDER 18 条缺 CONNECTOR×5+DATA_MODEL:EXECUTE、END_USER 5 条缺 PROCESS:VIEW（seed/服务两处各写一份漂移实锤，DB 实测 zz-rule-check 租户 18/5→修后 24/6）；seed.ts 与 tenant.service 均改消费 shared SSOT |
+| TC-195 | END_USER-only 用户 studio 拦截（runtime/studio 用户域分离） | P1 | 仅 END_USER 或仅应用级角色的用户（user@apaas.dev）登录 studio | ① 登录后看落地页 ② 点「前往运行时门户」 ③ 深链直访 /apps 与 /app/:id ④ 对照：BUILDER/TENANT_ADMIN 登录 | ① 落 RuntimePortalNotice 引导页（非开发中心假空态）：说明业务用户请用运行时+「前往运行时门户」按钮（href=VITE_RUNTIME_BASE_URL）+退出登录 ② 新开运行时门户 ③ 同样落引导页（闸在 TenantLayout 全局）④ BUILDER/TENANT_ADMIN 正常进入开发中心 | shared hasStudioAccess 单测（超管/租户管理员/搭建者可进，END_USER/仅应用级角色/无角色不可进） | 用户裁决（2026-10-18）：END_USER 只使用 runtime，除非被授予 studio 权限（TENANT_ADMIN/BUILDER）；此前 END_USER 在 studio 见 25 应用含 8 DRAFT 假空态+创建应用 403 假入口，随闸门消解；实测截图 persistent-nav/13-enduser-runtime-portal-notice.png |
+
 ---
 
 ## 变更记录
@@ -313,4 +333,7 @@
 | TC-190 | 应用权限页角色按应用隔离（F8 修复回归） | P1 | 租户内有 ≥2 应用各建应用级角色 | ① 打开应用 A 权限页 ② 查角色列表 ③ 编辑 B 应用角色规则 ④ 查规则落库 app_id | ① 仅内置角色+A 应用专属角色 ② 无跨应用角色泄漏 ③ 入口不可达或显式跨域提示 ④ 规则 app_id=A（或操作被拒），目标下拉仅 A 应用资源 | 未自动化 | 全量回归轮 F8 缺陷（rolesApi.list 未传 appId；规则读写按 roleId 全局，QA_TESTER 规则实际写入 QA全量测试 应用）；安全面：setPermissionRules 不校验角色归属（与 G6 IDOR 同族） |
 | TC-191 | 发布预检对无发布版本应用返回结构化错误（F9 修复回归） | P3 | 从未发布过的应用调 POST /environments/prod/preflight | ① 查 HTTP 状态码与响应体 | ① 返回 400/409 + 结构化错误「应用尚无已发布版本，无可预检」而非 500 | 未自动化 | 全量回归轮 F9 缺陷（裸 Error → 500，消息文案本身清晰） |
 | 2026-10-17 | v2.4 | 第二轮回归：新增 TC-186~191（缺陷回归锚点：条件字段选择器 F2/草稿刷新误标脏 F3/包容分支契约 F6/数据流键契约与失败态 F7/权限角色跨应用泄漏 F8/preflight 500 F9），随 QA-FULL-REPORT-2026-10-17 第二会话 | 全量 QA 回归轮第二轮 |
+| 2026-10-18 | v2.5 | 顶部导航持久化轮：新增 TC-192「顶部导航常显与选中态」（TenantLayout 收编 /apps 与 /platform/* 七条路由，六个治理页自带头部退役统一 PageHeader，租户详情前缀匹配保持父项选中） | 用户反馈「点击后顶部导航都变了」打磨轮 |
+| 2026-10-18 | v2.6 | 超管权限收敛轮（方案一）：新增 TC-193「超管平台控制台收敛」（顶栏仅租户管理、/apps 与租户级治理页直访重定向 /platform/tenants，对齐后端 requireTenantId 设计决策）；TC-192 预期①改写（超管导航七项→一项）；可见性模型抽 layouts/app-header-nav.ts 纯模块 + 6 条单测锚定 | 用户裁决（超管创建应用 400 报错 → 权限模型梳理 → 方案一） |
+| 2026-10-18 | v2.7 | 权限模型收敛轮：新增 TC-194「新建租户内置角色规则完备」（SSOT=@apaas/shared builtin-roles，修 seed/tenant.service 漂移——新租户 BUILDER 18→24 条补 CONNECTOR×5+DATA_MODEL:EXECUTE、END_USER 5→6 条补 PROCESS:VIEW）与 TC-195「END_USER-only 用户 studio 拦截」（用户域分离裁决：END_USER 只属运行时，TenantLayout 落 RuntimePortalNotice 引导） | 用户裁决（构建态角色梳理 → END_USER 定位最小修 + 漂移修复） |
 | 2026-10-17 | v2.3 | 全量回归轮执行前对账：TC-008 改写（图标/主题色随素蓝轮退役→分组字段三源一致）/TC-010 改写（侧栏 13 菜单→三组 14 项，嵌入集成入列）/TC-013 备注补入口事实（平台管理 Dropdown 退役，直访守卫原样有效）/TC-014 步骤改顶栏导航入口/TC-052 改写（assigneeType 去 SUPERVISOR 加 INITIATOR，R2 漏账）。**教训：素蓝轮与 R2 轮功能变化时未同步改写既有用例，对账轮补账** | 全量 QA 回归轮（用户裁决：回归先行+标准全量） |

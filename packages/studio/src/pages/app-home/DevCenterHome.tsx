@@ -31,7 +31,6 @@ import { auditLogsApi } from '../../api/audit-logs.js';
 import { useUserNameMap } from '../../utils/user-display.js';
 import { AppCard } from '../app-list/AppCard.js';
 import { type CreateFormValues } from '../app-list/constants.js';
-import AppHeader from '../app-list/AppHeader.js';
 import AppListView from './AppListView.js';
 import AppHomeDialogs from './AppHomeDialogs.js';
 import GroupLocatorRail, { UNGROUPED_KEY, type AppGroup } from './GroupLocatorRail.js';
@@ -46,7 +45,7 @@ const VIEW_KEY = 'apaas:devcenter.view';
 
 export default function DevCenterHome() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [createOpen, setCreateOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<AppSummary | null>(null);
   const [movingApp, setMovingApp] = useState<AppSummary | null>(null);
@@ -198,18 +197,7 @@ export default function DevCenterHome() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
-      <AppHeader
-        isPlatformAdmin={Boolean(user?.isPlatformAdmin)}
-        isTenantAdmin={Boolean(user?.roles?.some((r) => r.code === 'TENANT_ADMIN'))}
-        userName={user?.name ?? user?.email ?? '用户'}
-        userAvatar={user?.avatar ?? undefined}
-        onNavigate={navigate}
-        onLogout={() => {
-          logout();
-          navigate('/login', { replace: true });
-        }}
-      />
+    <>
       <div
         style={{
           maxWidth: 1340,
@@ -378,6 +366,6 @@ export default function DevCenterHome() {
         onClose={() => setDrawerOpen(false)}
         onChanged={refreshApps}
       />
-    </div>
+    </>
   );
 }

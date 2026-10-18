@@ -3,14 +3,13 @@
  *
  * 表单：用户 / 类型 / 动作 / 目标 ID（+可选节点、记录 ID）→ POST /permissions/debug；
  * 结果区拆分至 ./permission-debug/DebugResult.tsx。
+ * 顶栏导航由 TenantLayout 常显，页面只负责内容区。
  */
 
-import { TOKENS as T } from '@apaas/shared/design';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Card, Col, Form, Input, Row, Select, Space, Typography, message } from 'antd';
-import { ArrowLeftOutlined, ExperimentOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { PlayCircleOutlined } from '@ant-design/icons';
 import { isAxiosError } from 'axios';
 import type { PermissionAction, PermissionType } from '../api/permissions.js';
 import { usersApi } from '../api/permissions.js';
@@ -18,8 +17,10 @@ import { qk } from '@apaas/shared/stores';
 import { permissionDebugApi, type PermissionDebugResult } from '../api/permission-debug.js';
 import { TARGET_ACTION_OPTIONS, TARGET_TYPE_OPTIONS } from './permission-debug/constants.js';
 import DebugResult from './permission-debug/DebugResult.js';
+import PageHeader from '../components/shared/PageHeader.js';
+import PageContainer from '../components/shared/PageContainer.js';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface DebugFormValues {
   userId: string;
@@ -41,7 +42,6 @@ function extractErrorMessage(err: unknown): string {
 }
 
 export default function PermissionDebug() {
-  const navigate = useNavigate();
   const [form] = Form.useForm<DebugFormValues>();
   const [result, setResult] = useState<PermissionDebugResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -77,28 +77,13 @@ export default function PermissionDebug() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
-      <div
-        style={{
-          background: T.colorWhite,
-          padding: '16px 24px',
-          borderBottom: `1px solid ${T.colorSplit}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-        }}
-      >
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)} type="text" />
-        <ExperimentOutlined />
-        <Title level={4} style={{ margin: 0 }}>
-          权限调试
-        </Title>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          解释权限决策：有效角色 / 命中规则 / 合并条件 / 行级翻译 / 记录可见性
-        </Text>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="权限调试"
+        description="解释权限决策：有效角色 / 命中规则 / 合并条件 / 行级翻译 / 记录可见性"
+      />
 
-      <div style={{ padding: 24 }}>
+      <div>
         <Card style={{ marginBottom: 16 }}>
           <Form<DebugFormValues>
             form={form}
@@ -180,6 +165,6 @@ export default function PermissionDebug() {
           </Card>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

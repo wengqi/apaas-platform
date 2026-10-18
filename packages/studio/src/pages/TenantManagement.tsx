@@ -14,17 +14,13 @@ import {
   App,
 } from 'antd';
 import type { MenuProps } from 'antd';
-import {
-  PlusOutlined,
-  ThunderboltFilled,
-  GlobalOutlined,
-  MoreOutlined,
-  UserOutlined,
-  AppstoreOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, MoreOutlined, UserOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tenantsApi, type TenantSummary } from '../api/tenants.js';
+import { BUILDER_RULES, END_USER_RULES } from '@apaas/shared';
+import PageHeader from '../components/shared/PageHeader.js';
+import PageContainer from '../components/shared/PageContainer.js';
 
 const { Title, Text } = Typography;
 
@@ -215,76 +211,29 @@ export default function TenantManagement() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: T.colorBgLayout }}>
-      {/* ── 顶部导航栏 ── */}
-      <div
-        style={{
-          height: 56,
-          background: T.colorWhite,
-          borderBottom: `1px solid ${T.colorBorderSecondary}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 32px',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-        }}
-      >
-        <Space size={16}>
-          <Space size={8}>
-            <ThunderboltFilled style={{ fontSize: 20, color: T.colorPrimary }} />
-            <Text strong style={{ fontSize: 16 }}>
-              aPaaS Studio
-            </Text>
-          </Space>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            <GlobalOutlined /> 平台管理
-          </Text>
-        </Space>
-        <Button
-          type="text"
-          onClick={() => {
-            localStorage.removeItem('apaas:token');
-            localStorage.removeItem('apaas:user');
-            navigate('/login', { replace: true });
-          }}
-        >
-          退出登录
-        </Button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="租户管理"
+        description="管理平台上的所有租户。创建租户时自动初始化内置角色（TENANT_ADMIN / BUILDER / END_USER）及权限规则。"
+      />
 
-      {/* ── 内容区 ── */}
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 32px' }}>
-        <Card style={{ marginBottom: 16 }}>
-          <Title level={4} style={{ margin: 0 }}>
-            <GlobalOutlined /> 租户管理
+      <Card>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+          <Title level={5} style={{ margin: 0 }}>
+            租户列表
           </Title>
-          <Text type="secondary">
-            管理平台上的所有租户。创建租户时自动初始化内置角色（TENANT_ADMIN / BUILDER /
-            END_USER）及权限规则。
-          </Text>
-        </Card>
-
-        <Card>
-          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-            <Title level={5} style={{ margin: 0 }}>
-              租户列表
-            </Title>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-              创建租户
-            </Button>
-          </div>
-          <Table
-            columns={columns}
-            dataSource={tenants}
-            rowKey="id"
-            loading={isLoading}
-            pagination={{ pageSize: 20 }}
-          />
-        </Card>
-      </div>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            创建租户
+          </Button>
+        </div>
+        <Table
+          columns={columns}
+          dataSource={tenants}
+          rowKey="id"
+          loading={isLoading}
+          pagination={{ pageSize: 20 }}
+        />
+      </Card>
 
       {/* ── 创建租户弹窗 ── */}
       <Modal
@@ -336,11 +285,12 @@ export default function TenantManagement() {
           }}
         >
           <Text type="secondary" style={{ fontSize: 12 }}>
-            创建后将自动初始化 TENANT_ADMIN / BUILDER / END_USER 三个内置角色及 23 条权限规则。
+            创建后将自动初始化 TENANT_ADMIN / BUILDER / END_USER 三个内置角色及{' '}
+            {BUILDER_RULES.length + END_USER_RULES.length} 条权限规则（与种子同源）。
             创建后请在租户详情中分配租户管理员。
           </Text>
         </div>
       </Modal>
-    </div>
+    </PageContainer>
   );
 }

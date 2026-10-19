@@ -71,9 +71,9 @@ export class CredentialService {
   }
 
   /** 更新凭证。 */
-  async update(tenantId: string, credentialId: string, data: UpdateCredentialInput) {
+  async update(tenantId: string, appId: string, credentialId: string, data: UpdateCredentialInput) {
     const existing = await prisma.connectorCredential.findFirst({
-      where: { id: credentialId, tenantId },
+      where: { id: credentialId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('凭证不存在');
 
@@ -100,9 +100,9 @@ export class CredentialService {
   }
 
   /** 删除凭证。 */
-  async delete(tenantId: string, credentialId: string) {
+  async delete(tenantId: string, appId: string, credentialId: string) {
     const existing = await prisma.connectorCredential.findFirst({
-      where: { id: credentialId, tenantId },
+      where: { id: credentialId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('凭证不存在');
 

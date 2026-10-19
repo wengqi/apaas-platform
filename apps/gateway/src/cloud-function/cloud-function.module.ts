@@ -6,6 +6,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CloudFunctionController } from './cloud-function.controller.js';
+import { DesignCloudFunctionController } from './design-cloud-function.controller.js';
 import { CloudFunctionService } from './cloud-function.service.js';
 import { CloudFunctionRunner } from './cloud-function.runner.service.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
@@ -28,7 +29,7 @@ import { ObservabilityModule } from '../observability/observability.module.js';
     ChangeLogModule,
     ObservabilityModule,
   ],
-  controllers: [CloudFunctionController],
+  controllers: [CloudFunctionController, DesignCloudFunctionController],
   providers: [CloudFunctionService, CloudFunctionRunner, JwtStrategy],
   exports: [CloudFunctionService, CloudFunctionRunner],
 })

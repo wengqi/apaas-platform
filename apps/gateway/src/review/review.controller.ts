@@ -31,7 +31,7 @@ import {
 
 @ApiTags('reviews')
 @ApiBearerAuth()
-@Controller('apps')
+@Controller('design/apps')
 @UseGuards(PermissionGuard)
 export class ReviewController {
   constructor(private readonly reviewService: ReviewService) {}

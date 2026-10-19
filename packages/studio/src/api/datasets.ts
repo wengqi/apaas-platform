@@ -129,18 +129,23 @@ const unwrap = <T>(p: Promise<{ data: ApiResponse<T> }>) => p.then((res) => res.
 
 /** 数据流 API。 */
 export const dataFlowsApi = {
-  list: (appId: string) => unwrap<DataFlow[]>(client.get(`/api/apps/${appId}/data-flows`)),
-  get: (flowId: string) => unwrap<DataFlow>(client.get(`/api/data-flows/${flowId}`)),
+  list: (appId: string) => unwrap<DataFlow[]>(client.get(`/api/design/apps/${appId}/data-flows`)),
+  get: (appId: string, flowId: string) =>
+    unwrap<DataFlow>(client.get(`/api/design/apps/${appId}/data-flows/${flowId}`)),
   create: (appId: string, data: CreateDataFlowRequest) =>
-    unwrap<DataFlow>(client.post(`/api/apps/${appId}/data-flows`, data)),
-  update: (flowId: string, data: UpdateDataFlowRequest) =>
-    unwrap<DataFlow>(client.put(`/api/data-flows/${flowId}`, data)),
-  delete: (flowId: string) =>
-    unwrap<{ deleted: boolean }>(client.delete(`/api/data-flows/${flowId}`)),
-  preview: (flowId: string) =>
-    unwrap<DataFlowPreviewResult>(client.post(`/api/data-flows/${flowId}/preview`)),
-  execute: (flowId: string) =>
-    unwrap<{ datasetId: string }>(client.post(`/api/data-flows/${flowId}/execute`)),
+    unwrap<DataFlow>(client.post(`/api/design/apps/${appId}/data-flows`, data)),
+  update: (appId: string, flowId: string, data: UpdateDataFlowRequest) =>
+    unwrap<DataFlow>(client.put(`/api/design/apps/${appId}/data-flows/${flowId}`, data)),
+  delete: (appId: string, flowId: string) =>
+    unwrap<{ deleted: boolean }>(client.delete(`/api/design/apps/${appId}/data-flows/${flowId}`)),
+  preview: (appId: string, flowId: string) =>
+    unwrap<DataFlowPreviewResult>(
+      client.post(`/api/design/apps/${appId}/data-flows/${flowId}/preview`),
+    ),
+  execute: (appId: string, flowId: string) =>
+    unwrap<{ datasetId: string }>(
+      client.post(`/api/design/apps/${appId}/data-flows/${flowId}/execute`),
+    ),
 };
 
 /** 图表聚合请求参数。 */
@@ -164,16 +169,18 @@ export interface ChartDataResult {
 
 /** 数据集 API。 */
 export const datasetsApi = {
-  list: (appId: string) => unwrap<Dataset[]>(client.get(`/api/apps/${appId}/datasets`)),
+  list: (appId: string) => unwrap<Dataset[]>(client.get(`/api/design/apps/${appId}/datasets`)),
   get: (datasetId: string) => unwrap<Dataset>(client.get(`/api/datasets/${datasetId}`)),
-  delete: (datasetId: string) =>
-    unwrap<{ deleted: boolean }>(client.delete(`/api/datasets/${datasetId}`)),
+  delete: (appId: string, datasetId: string) =>
+    unwrap<{ deleted: boolean }>(client.delete(`/api/design/apps/${appId}/datasets/${datasetId}`)),
   queryRows: (
     datasetId: string,
     params: { page?: number; pageSize?: number; sort?: string; filter?: string },
   ) => unwrap<DatasetRowListResponse>(client.get(`/api/datasets/${datasetId}/rows`, { params })),
-  refresh: (datasetId: string) =>
-    unwrap<{ datasetId: string }>(client.post(`/api/datasets/${datasetId}/refresh`)),
+  refresh: (appId: string, datasetId: string) =>
+    unwrap<{ datasetId: string }>(
+      client.post(`/api/design/apps/${appId}/datasets/${datasetId}/refresh`),
+    ),
   getChartData: (appId: string, request: ChartDataRequest) =>
     unwrap<ChartDataResult>(client.post(`/api/apps/${appId}/datasets/chart-data`, request)),
 };

@@ -170,7 +170,8 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
 
   // 保存
   const saveMutation = useMutation({
-    mutationFn: (newConfig: DataFlowConfig) => dataFlowsApi.update(flow.id, { config: newConfig }),
+    mutationFn: (newConfig: DataFlowConfig) =>
+      dataFlowsApi.update(appId, flow.id, { config: newConfig }),
     onSuccess: () => {
       message.success('数据流配置已保存');
       void queryClient.invalidateQueries({ queryKey: ['data-flows', appId] });
@@ -182,7 +183,9 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
   const previewMutation = useMutation({
     mutationFn: () => {
       // 先保存再预览
-      return dataFlowsApi.update(flow.id, { config }).then(() => dataFlowsApi.preview(flow.id));
+      return dataFlowsApi
+        .update(appId, flow.id, { config })
+        .then(() => dataFlowsApi.preview(appId, flow.id));
     },
     onSuccess: (result) => {
       const rows = result.rows?.length ?? 0;
@@ -208,7 +211,9 @@ export default function DataFlowCanvas({ flow, onClose }: DataFlowCanvasProps) {
   // 执行
   const executeMutation = useMutation({
     mutationFn: () => {
-      return dataFlowsApi.update(flow.id, { config }).then(() => dataFlowsApi.execute(flow.id));
+      return dataFlowsApi
+        .update(appId, flow.id, { config })
+        .then(() => dataFlowsApi.execute(appId, flow.id));
     },
     onSuccess: () => {
       message.success('数据流已执行，数据集正在刷新');

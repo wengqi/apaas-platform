@@ -81,7 +81,10 @@ export default function CredentialFormModal({
       }
 
       if (editingCredential) {
-        await credentialsApi.update(editingCredential.id, { name: values.name, data: data.data });
+        await credentialsApi.update(appId, editingCredential.id, {
+          name: values.name,
+          data: data.data,
+        });
         message.success('凭证已更新');
       } else {
         await credentialsApi.create(appId, data);

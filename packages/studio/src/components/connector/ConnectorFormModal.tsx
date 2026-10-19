@@ -102,7 +102,7 @@ export default function ConnectorFormModal({
       };
 
       if (editingConnector) {
-        await connectorsApi.update(editingConnector.id, {
+        await connectorsApi.update(appId, editingConnector.id, {
           name: data.name,
           description: data.description,
           baseUrl: data.baseUrl,

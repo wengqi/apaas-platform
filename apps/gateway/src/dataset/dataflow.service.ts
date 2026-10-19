@@ -40,10 +40,15 @@ export class DataFlowService {
     return flows.map((f) => this.toDto(f));
   }
 
-  async get(tenantId: string, flowId: string): Promise<DataFlow> {
-    const flow = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
+  async get(tenantId: string, appId: string, flowId: string): Promise<DataFlow> {
+    return this.toDto(await this.requireFlow(tenantId, appId, flowId));
+  }
+
+  /** 断言数据流存在且属于该应用（租户 + 应用双域隔离，ADR-0005），不存在抛 404。 */
+  private async requireFlow(tenantId: string, appId: string, flowId: string) {
+    const flow = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId, appId } });
     if (!flow) throw new NotFoundException('数据流不存在');
-    return this.toDto(flow);
+    return flow;
   }
 
   async create(
@@ -85,12 +90,12 @@ export class DataFlowService {
 
   async update(
     tenantId: string,
+    appId: string,
     flowId: string,
     updatedBy: string,
     data: UpdateDataFlowRequest,
   ): Promise<DataFlow> {
-    const existing = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
-    if (!existing) throw new NotFoundException('数据流不存在');
+    const existing = await this.requireFlow(tenantId, appId, flowId);
 
     const flow = await prisma.dataFlow.update({
       where: { id: flowId },
@@ -116,9 +121,8 @@ export class DataFlowService {
     return this.toDto(flow);
   }
 
-  async delete(tenantId: string, flowId: string, deletedBy: string): Promise<void> {
-    const existing = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
-    if (!existing) throw new NotFoundException('数据流不存在');
+  async delete(tenantId: string, appId: string, flowId: string, deletedBy: string): Promise<void> {
+    const existing = await this.requireFlow(tenantId, appId, flowId);
 
     // 删除关联的数据集（Cascade 会自动删除 DatasetRow）
     await prisma.dataset.deleteMany({ where: { sourceFlowId: flowId } });
@@ -139,9 +143,8 @@ export class DataFlowService {
   /**
    * 预览数据流结果（不物化，限制 100 行）。
    */
-  async preview(tenantId: string, flowId: string): Promise<DataFlowPreviewResult> {
-    const flow = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
-    if (!flow) throw new NotFoundException('数据流不存在');
+  async preview(tenantId: string, appId: string, flowId: string): Promise<DataFlowPreviewResult> {
+    const flow = await this.requireFlow(tenantId, appId, flowId);
     const config = flow.config as unknown as DataFlowConfig;
     return this.engine.preview(tenantId, config);
   }
@@ -150,9 +153,8 @@ export class DataFlowService {
    * 执行数据流 — 创建/更新数据集并入队 BullMQ 异步执行。
    * 返回 datasetId。
    */
-  async execute(tenantId: string, flowId: string): Promise<string> {
-    const flow = await prisma.dataFlow.findFirst({ where: { id: flowId, tenantId } });
-    if (!flow) throw new NotFoundException('数据流不存在');
+  async execute(tenantId: string, appId: string, flowId: string): Promise<string> {
+    const flow = await this.requireFlow(tenantId, appId, flowId);
 
     // 查找或创建关联数据集
     let dataset = await prisma.dataset.findFirst({

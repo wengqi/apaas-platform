@@ -27,7 +27,7 @@ export class ListReleasesQuery {
 
 @ApiTags('process-api-releases')
 @ApiBearerAuth()
-@Controller('apps')
+@Controller('design/apps')
 @UseGuards(PermissionGuard)
 export class ProcessApiReleaseController {
   constructor(private readonly releaseService: ProcessApiReleaseService) {}

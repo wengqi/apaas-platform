@@ -28,7 +28,7 @@ test.describe('连接器与集成', () => {
 
   test('创建 HTTP 连接器并调用测试', async () => {
     // 创建 HTTP 连接器
-    const connector = await api.post<{ id: string }>('/apps/' + appId + '/connectors', {
+    const connector = await api.post<{ id: string }>('/design/apps/' + appId + '/connectors', {
       apiName: 'e2e_http_conn',
       name: 'E2E HTTP 连接器',
       type: 'HTTP',
@@ -41,7 +41,7 @@ test.describe('连接器与集成', () => {
       statusCode: number;
       responseBody: unknown;
       success: boolean;
-    }>(`/connectors/${connector.id}/test`, {
+    }>(`/design/apps/${appId}/connectors/${connector.id}/test`, {
       method: 'GET',
       path: '/posts/1',
     });
@@ -54,7 +54,7 @@ test.describe('连接器与集成', () => {
   });
 
   test('调用连接器 invoke 获取多条数据', async () => {
-    const connector = await api.post<{ id: string }>('/apps/' + appId + '/connectors', {
+    const connector = await api.post<{ id: string }>('/design/apps/' + appId + '/connectors', {
       apiName: 'e2e_http_invoke',
       name: 'E2E Invoke 连接器',
       type: 'HTTP',
@@ -77,7 +77,7 @@ test.describe('连接器与集成', () => {
   });
 
   test('连接器列表查询', async () => {
-    await api.post('/apps/' + appId + '/connectors', {
+    await api.post('/design/apps/' + appId + '/connectors', {
       apiName: 'e2e_conn_list',
       name: '列表测试连接器',
       type: 'HTTP',
@@ -85,7 +85,7 @@ test.describe('连接器与集成', () => {
     });
 
     const list = await api.get<Array<{ id: string; name: string }>>(
-      '/apps/' + appId + '/connectors',
+      '/design/apps/' + appId + '/connectors',
     );
     expect(Array.isArray(list)).toBe(true);
     expect(list.length).toBeGreaterThanOrEqual(1);

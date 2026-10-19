@@ -109,7 +109,7 @@ describe('ConnectorService', () => {
       prisma.connector.findFirst.mockResolvedValue(makeConnector());
 
       const { service } = createService();
-      const result = await service.get('tenant-001', 'conn-001');
+      const result = await service.get('tenant-001', 'app-001', 'conn-001');
 
       expect(result.id).toBe('conn-001');
       expect(result.apiName).toBe('test_connector');
@@ -120,7 +120,9 @@ describe('ConnectorService', () => {
       prisma.connector.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.get('tenant-001', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.get('tenant-001', 'app-001', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -195,7 +197,7 @@ describe('ConnectorService', () => {
       prisma.connector.update.mockResolvedValue(makeConnector({ name: 'Updated Name' }));
 
       const { service, changeLogService } = createService();
-      const result = await service.update('tenant-001', 'conn-001', 'user-001', {
+      const result = await service.update('tenant-001', 'app-001', 'conn-001', 'user-001', {
         name: 'Updated Name',
       });
 
@@ -210,7 +212,7 @@ describe('ConnectorService', () => {
 
       const { service } = createService();
       await expect(
-        service.update('tenant-001', 'missing', 'user-001', { name: 'X' }),
+        service.update('tenant-001', 'app-001', 'missing', 'user-001', { name: 'X' }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -225,7 +227,7 @@ describe('ConnectorService', () => {
       prisma.connector.delete.mockResolvedValue({});
 
       const { service, changeLogService } = createService();
-      await service.delete('tenant-001', 'conn-001', 'user-001');
+      await service.delete('tenant-001', 'app-001', 'conn-001', 'user-001');
 
       expect(prisma.connector.delete).toHaveBeenCalledWith({ where: { id: 'conn-001' } });
       expect(changeLogService.log).toHaveBeenCalledWith(
@@ -237,7 +239,7 @@ describe('ConnectorService', () => {
       prisma.connector.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'missing', 'user-001')).rejects.toThrow(
+      await expect(service.delete('tenant-001', 'app-001', 'missing', 'user-001')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -252,7 +254,7 @@ describe('ConnectorService', () => {
       prisma.connector.findFirst.mockResolvedValue(makeConnector({ type: 'HTTP' }));
 
       const { service, callService } = createService();
-      const result = await service.test('tenant-001', 'conn-001', {
+      const result = await service.test('tenant-001', 'app-001', 'conn-001', {
         method: 'GET',
         path: '/posts',
       });
@@ -265,9 +267,9 @@ describe('ConnectorService', () => {
       prisma.connector.findFirst.mockResolvedValue(makeConnector({ type: 'WEBHOOK' }));
 
       const { service } = createService();
-      await expect(service.test('tenant-001', 'conn-001', { method: 'GET' })).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.test('tenant-001', 'app-001', 'conn-001', { method: 'GET' }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

@@ -76,11 +76,11 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
 
     // 4. 幂等建数据流（区域金额汇总）并执行物化
     const flows = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/data-flows`,
+      `/design/apps/${appId}/data-flows`,
     );
     let flow = flows.find((f) => f.apiName === 'sales_by_region');
     if (!flow) {
-      flow = await admin.post<{ id: string }>(`/apps/${appId}/data-flows`, {
+      flow = await admin.post<{ id: string }>(`/design/apps/${appId}/data-flows`, {
         apiName: 'sales_by_region',
         name: '区域销售汇总',
         config: {
@@ -99,7 +99,7 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
       });
     }
     const exec = await admin.post<{ datasetId?: string } | string>(
-      `/data-flows/${flow!.id}/execute`,
+      `/design/apps/${appId}/data-flows/${flow!.id}/execute`,
       {},
     );
     datasetId =

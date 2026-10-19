@@ -15,7 +15,7 @@ import { CreateServiceIdentityDto } from './service-identity.dto.js';
 
 @ApiTags('service-identities')
 @ApiBearerAuth()
-@Controller('apps')
+@Controller('design/apps')
 @UseGuards(PermissionGuard)
 export class ServiceIdentityController {
   constructor(private readonly apiKeyService: ApiKeyService) {}

@@ -8,7 +8,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatasetController } from './dataset.controller.js';
 import { DatasetService } from './dataset.service.js';
 import { DatasetRowService } from './dataset-row.service.js';
-import { DataFlowController } from './dataflow.controller.js';
+import { DesignDataFlowController } from './design-dataflow.controller.js';
+import { DesignDatasetController } from './design-dataset.controller.js';
 import { DataFlowService } from './dataflow.service.js';
 import { DataFlowEngine } from './dataflow-engine.service.js';
 import { ChartDataService } from './chart-data.service.js';
@@ -36,7 +37,12 @@ import { EnvironmentCoreModule } from '../environment/environment-core.module.js
     ChangeLogModule,
     forwardRef(() => QueueModule),
   ],
-  controllers: [DatasetController, DataFlowController, ChartDataController],
+  controllers: [
+    DatasetController,
+    DesignDatasetController,
+    DesignDataFlowController,
+    ChartDataController,
+  ],
   providers: [
     DatasetService,
     DatasetRowService,

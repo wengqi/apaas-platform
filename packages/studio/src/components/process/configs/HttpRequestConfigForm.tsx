@@ -65,7 +65,7 @@ export default function HttpRequestConfigForm({
   // 加载选中连接器的详情（获取操作列表）
   const { data: selectedConnector } = useQuery({
     queryKey: ['connector', data.connectorId],
-    queryFn: () => connectorsApi.get(data.connectorId!),
+    queryFn: () => connectorsApi.get(appId as string, data.connectorId!),
     enabled: !!data.connectorId,
   });
 

@@ -91,7 +91,7 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.findFirst.mockResolvedValue(makeFn());
 
       const { service } = createService();
-      const result = await service.get('tenant-001', 'cf-001');
+      const result = await service.get('tenant-001', 'app-001', 'cf-001');
 
       expect(result.id).toBe('cf-001');
       expect(result.code.source).toContain('handler');
@@ -101,7 +101,9 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.get('tenant-001', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.get('tenant-001', 'app-001', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -150,7 +152,7 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.update.mockResolvedValue(makeFn({ name: 'Updated' }));
 
       const { service } = createService();
-      const result = await service.update('tenant-001', 'cf-001', 'user-001', {
+      const result = await service.update('tenant-001', 'app-001', 'cf-001', 'user-001', {
         name: 'Updated',
       });
 
@@ -162,7 +164,7 @@ describe('CloudFunctionService', () => {
 
       const { service } = createService();
       await expect(
-        service.update('tenant-001', 'missing', 'user-001', { name: 'X' }),
+        service.update('tenant-001', 'app-001', 'missing', 'user-001', { name: 'X' }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -177,7 +179,7 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.delete.mockResolvedValue({});
 
       const { service, changeLogService } = createService();
-      await service.delete('tenant-001', 'cf-001', 'user-001');
+      await service.delete('tenant-001', 'app-001', 'cf-001', 'user-001');
 
       expect(prisma.cloudFunction.delete).toHaveBeenCalledWith({ where: { id: 'cf-001' } });
       expect(changeLogService.log).toHaveBeenCalledWith(
@@ -189,7 +191,7 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'missing', 'user-001')).rejects.toThrow(
+      await expect(service.delete('tenant-001', 'app-001', 'missing', 'user-001')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -205,7 +207,7 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.update.mockResolvedValue(makeFn({ status: 'PUBLISHED', version: 1 }));
 
       const { service } = createService();
-      const result = await service.publish('tenant-001', 'cf-001', 'user-001');
+      const result = await service.publish('tenant-001', 'app-001', 'cf-001', 'user-001');
 
       expect(result.status).toBe('PUBLISHED');
       expect(result.version).toBe(1);
@@ -215,7 +217,7 @@ describe('CloudFunctionService', () => {
       prisma.cloudFunction.findFirst.mockResolvedValue(makeFn({ status: 'PUBLISHED' }));
 
       const { service } = createService();
-      await expect(service.publish('tenant-001', 'cf-001', 'user-001')).rejects.toThrow(
+      await expect(service.publish('tenant-001', 'app-001', 'cf-001', 'user-001')).rejects.toThrow(
         BadRequestException,
       );
     });

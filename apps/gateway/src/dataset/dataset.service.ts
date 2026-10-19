@@ -19,28 +19,30 @@ export class DatasetService {
     return datasets.map((d) => this.toDto(d));
   }
 
+  /** 运行面读数据集元信息（GET /datasets/:id，看板取数前置）。 */
   async get(tenantId: string, datasetId: string): Promise<Dataset> {
     const dataset = await prisma.dataset.findFirst({ where: { id: datasetId, tenantId } });
     if (!dataset) throw new NotFoundException('数据集不存在');
     return this.toDto(dataset);
   }
 
-  async delete(tenantId: string, datasetId: string): Promise<void> {
-    const existing = await prisma.dataset.findFirst({ where: { id: datasetId, tenantId } });
+  /** 设计面删除（DELETE /design/apps/:appId/datasets/:id，租户 + 应用双域）。 */
+  async delete(tenantId: string, appId: string, datasetId: string): Promise<void> {
+    const existing = await prisma.dataset.findFirst({ where: { id: datasetId, tenantId, appId } });
     if (!existing) throw new NotFoundException('数据集不存在');
     // DatasetRow 通过 onDelete: Cascade 自动删除
     await prisma.dataset.delete({ where: { id: datasetId } });
   }
 
   /**
-   * 刷新数据集 — 重新执行关联的数据流。
+   * 刷新数据集 — 重新执行关联的数据流（设计面手动刷新）。
    * 返回 datasetId（实际执行由 BullMQ worker 异步处理）。
    */
-  async refresh(tenantId: string, datasetId: string): Promise<string> {
-    const dataset = await prisma.dataset.findFirst({ where: { id: datasetId, tenantId } });
+  async refresh(tenantId: string, appId: string, datasetId: string): Promise<string> {
+    const dataset = await prisma.dataset.findFirst({ where: { id: datasetId, tenantId, appId } });
     if (!dataset) throw new NotFoundException('数据集不存在');
     // 委托给 DataFlowService.execute（它会设置 REFRESHING 状态）
-    return this.dataFlowService.execute(tenantId, dataset.sourceFlowId);
+    return this.dataFlowService.execute(tenantId, appId, dataset.sourceFlowId);
   }
 
   private toDto(d: {

@@ -44,7 +44,7 @@ export default function CloudFunctionList() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => cloudFunctionsApi.delete(id),
+    mutationFn: (id: string) => cloudFunctionsApi.delete(appId as string, id),
     onSuccess: () => {
       message.success('云函数已删除');
       queryClient.invalidateQueries({ queryKey: ['cloud-functions', appId] });
@@ -52,7 +52,7 @@ export default function CloudFunctionList() {
   });
 
   const publishMutation = useMutation({
-    mutationFn: (id: string) => cloudFunctionsApi.publish(id),
+    mutationFn: (id: string) => cloudFunctionsApi.publish(appId as string, id),
     onSuccess: () => {
       message.success('云函数已发布');
       queryClient.invalidateQueries({ queryKey: ['cloud-functions', appId] });

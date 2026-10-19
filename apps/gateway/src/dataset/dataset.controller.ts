@@ -1,8 +1,9 @@
 /**
- * 数据集控制器 — 数据集列表/详情/删除/查询行/刷新。
+ * 数据集控制器（运行面）— 数据集元信息 / 行查询（看板取数，ADR-0005 design/runtime 双命名空间）。
+ * 设计面（应用下数据集列表 / 删除 / 手动刷新）在 DesignDatasetController。
  */
 
-import { Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
@@ -11,9 +12,9 @@ import { DatasetRowService } from './dataset-row.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
-@ApiTags('Dataset')
+@ApiTags('Dataset (runtime)')
 @ApiBearerAuth()
-@Controller()
+@Controller('datasets')
 @UseGuards(PermissionGuard)
 export class DatasetController {
   constructor(
@@ -21,28 +22,14 @@ export class DatasetController {
     private readonly rowService: DatasetRowService,
   ) {}
 
-  @Get('apps/:appId/datasets')
-  @RequirePermission('DATA_MODEL', 'VIEW')
-  async list(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const datasets = await this.datasetService.list(requireTenantId(req), appId);
-    return { ok: true as const, data: datasets };
-  }
-
-  @Get('datasets/:datasetId')
+  @Get(':datasetId')
   @RequirePermission('DATA_MODEL', 'VIEW')
   async get(@Req() req: AuthenticatedRequest, @Param('datasetId') datasetId: string) {
     const dataset = await this.datasetService.get(requireTenantId(req), datasetId);
     return { ok: true as const, data: dataset };
   }
 
-  @Delete('datasets/:datasetId')
-  @RequirePermission('DATA_MODEL', 'DELETE')
-  async delete(@Req() req: AuthenticatedRequest, @Param('datasetId') datasetId: string) {
-    await this.datasetService.delete(requireTenantId(req), datasetId);
-    return { ok: true as const, data: { deleted: true } };
-  }
-
-  @Get('datasets/:datasetId/rows')
+  @Get(':datasetId/rows')
   @RequirePermission('DATA_MODEL', 'VIEW')
   async queryRows(
     @Req() req: AuthenticatedRequest,
@@ -59,12 +46,5 @@ export class DatasetController {
       filter,
     });
     return { ok: true as const, data: result };
-  }
-
-  @Post('datasets/:datasetId/refresh')
-  @RequirePermission('DATA_MODEL', 'EXECUTE')
-  async refresh(@Req() req: AuthenticatedRequest, @Param('datasetId') datasetId: string) {
-    const result = await this.datasetService.refresh(requireTenantId(req), datasetId);
-    return { ok: true as const, data: { datasetId: result } };
   }
 }

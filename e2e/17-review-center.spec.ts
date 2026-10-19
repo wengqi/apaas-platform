@@ -143,7 +143,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     const submissionId = submit['submissionId'] as string;
 
     // 驳回（审核者 API 动作）
-    await api.post(`/apps/${appId}/reviews/${submissionId}/reject`, {
+    await api.post(`/design/apps/${appId}/reviews/${submissionId}/reject`, {
       comment: 'E2E 驳回意见：页面命名需带业务前缀',
     });
 
@@ -172,7 +172,10 @@ test.describe('审核中心与版本模型（R1.2）', () => {
 
   test('提交基线 + 撤销未提交（恢复基线快照）', async ({ page }) => {
     // 1. 人工提交基线（对象当前态 → APPROVED 基线）
-    await api.post(`/apps/${appId}/reviews/submit`, { module: 'OBJECT', entityId: objectId });
+    await api.post(`/design/apps/${appId}/reviews/submit`, {
+      module: 'OBJECT',
+      entityId: objectId,
+    });
 
     // 2. 人工修改（新增字段）→ 活表漂移
     await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {

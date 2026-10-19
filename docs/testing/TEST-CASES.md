@@ -298,6 +298,21 @@
 | TC-194 | 新建租户内置角色规则完备（SSOT 防漂移） | P1 | 平台超管经「租户管理」新建租户 | ① 新建租户 ② 查该租户 BUILDER/END_USER 规则数与内容 ③ 新租户 BUILDER 打开连接器页/执行数据流 ④ 新租户 END_USER 打开任务中心 | ① BUILDER 恰 24 条（含 CONNECTOR×5 与 DATA_MODEL:EXECUTE）、END_USER 恰 6 条（含 PROCESS:VIEW）② 连接器页正常加载数据流可执行 ③ 任务中心可打开（不复发 TC-170 的 403 假空表） | shared builtin-roles.spec.ts 锚定（24/6 条+关键规则+hasStudioAccess） | 修复前：tenant.service BUILDER 18 条缺 CONNECTOR×5+DATA_MODEL:EXECUTE、END_USER 5 条缺 PROCESS:VIEW（seed/服务两处各写一份漂移实锤，DB 实测 zz-rule-check 租户 18/5→修后 24/6）；seed.ts 与 tenant.service 均改消费 shared SSOT |
 | TC-195 | END_USER-only 用户 studio 拦截（runtime/studio 用户域分离） | P1 | 仅 END_USER 或仅应用级角色的用户（user@apaas.dev）登录 studio | ① 登录后看落地页 ② 点「前往运行时门户」 ③ 深链直访 /apps 与 /app/:id ④ 对照：BUILDER/TENANT_ADMIN 登录 | ① 落 RuntimePortalNotice 引导页（非开发中心假空态）：说明业务用户请用运行时+「前往运行时门户」按钮（href=VITE_RUNTIME_BASE_URL）+退出登录 ② 新开运行时门户 ③ 同样落引导页（闸在 TenantLayout 全局）④ BUILDER/TENANT_ADMIN 正常进入开发中心 | shared hasStudioAccess 单测（超管/租户管理员/搭建者可进，END_USER/仅应用级角色/无角色不可进） | 用户裁决（2026-10-18）：END_USER 只使用 runtime，除非被授予 studio 权限（TENANT_ADMIN/BUILDER）；此前 END_USER 在 studio 见 25 应用含 8 DRAFT 假空态+创建应用 403 假入口，随闸门消解；实测截图 persistent-nav/13-enduser-runtime-portal-notice.png |
 
+### P. 应用归属与 design/runtime 双命名空间轮（TC-196~199，2026-10-19）
+
+> 来源：ADR-0005（用户裁决方案 b：所有权+协作成员表；API design/runtime 双命名空间，
+> 拔 `?runtime=1`）。归属源=`application_members`（OWNER 唯一 partial unique + MEMBER），
+> `Application.createdBy` 保留历史创建人语义；闸=`DesignAccessGuard`（hasStudioAccess 纵深
+> + 归属断言）挂全部 `/design/apps` 控制器，MCP 同源断言；运行面（角色权限+已发布语义）
+> 不受归属影响。
+
+| 编号 | 名称 | 优先级 | 前置 | 步骤 | 预期 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-196 | 设计面归属可见集与非成员深链 403 | P0 | admin 新建应用（builder 非成员）；seed 已把 builder 设为 procurement 的 MEMBER | ① builder 查设计面列表 GET /design/apps ② builder 深链 GET /design/apps/:adminAppId ③ ②的响应体 ④ 对照：procurement 在列表且 myRole=member、ownerName 非空 ⑤ GET /design/apps/:procId 详情 myRole | ① 列表不含 admin 新建应用（只见自己为 owner/member 的应用）② 403 ③ 错误信息「无权访问该应用（需所有者添加为协作者或联系管理员）」不透露所有者 ④ procurement 可见且协作标记数据齐 ⑤ myRole=member | e2e/25-app-ownership.spec.ts（前 2 用例） | 归属判定 SSOT=AppAccessService.resolveDesignRole（admin/owner/member/null）；列表卡片「由 {ownerName} 共享」小字为 UI 呈现层 |
+| TC-197 | 协作者权限边界与所有权转移 | P0 | TC-196 前置；admin 另建夹具应用 | ① MEMBER 对 procurement 执行 DELETE /design/apps/:id ② admin 给夹具应用加 builder 为 MEMBER ③ admin 转移所有权给 builder ④ 查成员清单 ⑤ builder 把所有权转回 admin | ① 403「该操作仅应用所有者或管理员可执行」② 添加成功（候选=租户级 BUILDER 且未入会）③ 转移成功 ④ 恰一个 OWNER（builder）、原所有者 admin 降为 MEMBER ⑤ 转回成功 | e2e/25-app-ownership.spec.ts（用例 3~5） | 所有者级操作=删除/归档/转移/成员管理；MEMBER 拥有其余全部搭建能力含发布与审 AI 草稿；owner 不可移除只能转移（partial unique 保证全程至多一个 OWNER） |
+| TC-198 | 运行面不受归属影响（业务用户语义不变） | P0 | procurement 已发布；builder 具种子通配角色规则 | ① builder 查运行面 GET /apps ② GET /apps/:procId ③ 对照 END_USER-only 用户查同两端点 | ① 已发布 procurement 可见（status=PUBLISHED）② 详情 200 ③ END_USER-only 同样按角色权限可见已发布应用——归属关系不进入运行时可见性 | e2e/25-app-ownership.spec.ts（末例）+ application.service.spec（listVisibleForUser 既有 6 例不回归） | ADR-0005 决策 8：业务用户能用哪些应用由角色权限决定，与谁创建无关；runtime-ui 零语义变化（仅调用点机械更新） |
+| TC-199 | 设计面/运行面 API 双命名空间与 `?runtime=1` 退役 | P1 | 任意已登录账号 | ① GET /apps ② GET /design/apps ③ GET /apps/:appId（已发布）④ GET /apps/:appId（DRAFT）⑤ GET /design/apps/:appId/pages 等设计面子资源 ⑥ GET /apps/:appId/pages（运行面页签） | ① 运行时视图：仅已发布+权限归纳（原 ?runtime=1 语义）② 设计面全量（按归属可见集）③ 200 ④ 404（运行时视角应用尚不存在）⑤ 设计面全部嵌套 /design/apps/:appId/**，服务层 appId 域隔离（跨应用 ID 404）⑥ 只回已部署 bundle 页面（草稿页不出现在页签） | e2e/22（运行面/设计面双列表断言）+ e2e 全量（92 例既有引用全部迁移）+ design-routes-guarded.spec 静态锚定（设计面控制器必挂两守卫/运行面不挂/方法级 design/ 路由为零） | 全仓库唯一模式开关 `?runtime=1` 已拔除；env-vars 的 `?env=` 为环境键参数（非模式开关）保留；运行面 `pages/runtime/:pid` 更名 `pages/:pid`（本就 404 无活表兜底，控制器旧注释"降级活表"失实已勘误） |
+
 ---
 
 ## 变更记录
@@ -337,3 +352,4 @@
 | 2026-10-18 | v2.6 | 超管权限收敛轮（方案一）：新增 TC-193「超管平台控制台收敛」（顶栏仅租户管理、/apps 与租户级治理页直访重定向 /platform/tenants，对齐后端 requireTenantId 设计决策）；TC-192 预期①改写（超管导航七项→一项）；可见性模型抽 layouts/app-header-nav.ts 纯模块 + 6 条单测锚定 | 用户裁决（超管创建应用 400 报错 → 权限模型梳理 → 方案一） |
 | 2026-10-18 | v2.7 | 权限模型收敛轮：新增 TC-194「新建租户内置角色规则完备」（SSOT=@apaas/shared builtin-roles，修 seed/tenant.service 漂移——新租户 BUILDER 18→24 条补 CONNECTOR×5+DATA_MODEL:EXECUTE、END_USER 5→6 条补 PROCESS:VIEW）与 TC-195「END_USER-only 用户 studio 拦截」（用户域分离裁决：END_USER 只属运行时，TenantLayout 落 RuntimePortalNotice 引导） | 用户裁决（构建态角色梳理 → END_USER 定位最小修 + 漂移修复） |
 | 2026-10-17 | v2.3 | 全量回归轮执行前对账：TC-008 改写（图标/主题色随素蓝轮退役→分组字段三源一致）/TC-010 改写（侧栏 13 菜单→三组 14 项，嵌入集成入列）/TC-013 备注补入口事实（平台管理 Dropdown 退役，直访守卫原样有效）/TC-014 步骤改顶栏导航入口/TC-052 改写（assigneeType 去 SUPERVISOR 加 INITIATOR，R2 漏账）。**教训：素蓝轮与 R2 轮功能变化时未同步改写既有用例，对账轮补账** | 全量 QA 回归轮（用户裁决：回归先行+标准全量） |
+| 2026-10-19 | v2.8 | 应用归属与双命名空间轮（ADR-0005）：新增 TC-196「设计面归属可见集与非成员深链 403」/ TC-197「协作者权限边界与所有权转移」/ TC-198「运行面不受归属影响」/ TC-199「design/runtime 双命名空间与 ?runtime=1 退役」；既有 92 例 e2e 的设计面引用全部迁移 /design/apps 嵌套路径 | 用户裁决（应用可见性 grilling：方案 b 所有权+协作成员表 + /design 前缀一次到位） |

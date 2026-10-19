@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ApplicationService } from './application.service.js';
 import { ApplicationController } from './application.controller.js';
 import { DesignApplicationController } from './design-application.controller.js';
+import { DesignAppMemberController } from './design-app-member.controller.js';
+import { AppMemberService } from './app-member.service.js';
 import { SnapshotService } from './snapshot.service.js';
 import { CheckService } from './check.service.js';
 import { ChangeLogModule } from './changelog.module.js';
@@ -53,8 +55,8 @@ import { EnvironmentModule } from '../environment/environment.module.js';
     // 预检页面渲染契约软告警消费 G3 校验器（R6 两缺口 warning）
     SchemaContractModule,
   ],
-  controllers: [ApplicationController, DesignApplicationController],
-  providers: [ApplicationService, SnapshotService, CheckService, JwtStrategy],
+  controllers: [ApplicationController, DesignApplicationController, DesignAppMemberController],
+  providers: [ApplicationService, AppMemberService, SnapshotService, CheckService, JwtStrategy],
   exports: [ApplicationService],
 })
 export class ApplicationModule {}

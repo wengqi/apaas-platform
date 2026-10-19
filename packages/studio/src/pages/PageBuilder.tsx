@@ -175,7 +175,7 @@ export default function PageBuilder() {
     return () => {
       cancelled = true;
     };
-  }, [boundObjectIds, queryClient]);
+  }, [boundObjectIds, queryClient, appId]);
 
   // 评审 P1-2 沿革：加载失败显式暴露，绝不静默回退空 Schema（防覆盖线上内容）
   const saveMutation = useMutation({

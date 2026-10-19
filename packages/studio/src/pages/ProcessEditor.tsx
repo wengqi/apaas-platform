@@ -98,7 +98,7 @@ export default function ProcessEditor() {
   /** 加载流程详情。 */
   const { data: processDef, isLoading } = useQuery({
     queryKey: ['process', processId],
-    queryFn: () => processesApi.get(processId as string),
+    queryFn: () => processesApi.get(appId as string, processId as string),
     enabled: !!processId,
     retry: 1,
   });
@@ -171,7 +171,7 @@ export default function ProcessEditor() {
   /** 保存草稿。 */
   const saveMutation = useMutation({
     mutationFn: (data: { workflowSchema?: WorkflowSchema }) =>
-      processesApi.update(processId as string, data as never),
+      processesApi.update(appId as string, processId as string, data as never),
     onSuccess: () => {
       message.success('已保存');
       store.markSaved();
@@ -182,7 +182,7 @@ export default function ProcessEditor() {
 
   /** 发布。 */
   const publishMutation = useMutation({
-    mutationFn: () => processesApi.publish(processId as string),
+    mutationFn: () => processesApi.publish(appId as string, processId as string),
     onSuccess: () => {
       message.success('已发布,生成新版本');
       void queryClient.invalidateQueries({ queryKey: ['process', processId] });

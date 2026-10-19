@@ -50,13 +50,13 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     api = createApiClient(token);
     appId = await createTestApp(api, `审核中心 E2E ${Date.now()}`);
 
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: `review_spec_object_${Date.now()}`,
       name: '审核验证对象',
       icon: 'box',
     });
     objectId = obj.id;
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'title',
       label: '标题',
       type: 'text',
@@ -100,7 +100,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
 
     // 2. 提交未落活表：页面列表无该页面
     const pagesBefore = await api.get<Array<{ apiName?: string; slug?: string }>>(
-      `/apps/${appId}/pages`,
+      `/design/apps/${appId}/pages`,
     );
     expect(pagesBefore.some((p) => (p.apiName ?? p.slug) === pageApiName)).toBe(false);
 
@@ -120,7 +120,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
       .poll(
         async () => {
           const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(
-            `/apps/${appId}/pages`,
+            `/design/apps/${appId}/pages`,
           );
           return pages.some((p) => (p.apiName ?? p.slug) === pageApiName);
         },
@@ -143,7 +143,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     const submissionId = submit['submissionId'] as string;
 
     // 驳回（审核者 API 动作）
-    await api.post(`/apps/${appId}/reviews/${submissionId}/reject`, {
+    await api.post(`/design/apps/${appId}/reviews/${submissionId}/reject`, {
       comment: 'E2E 驳回意见：页面命名需带业务前缀',
     });
 
@@ -159,7 +159,9 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     expect(rejected?.reviewComment).toContain('E2E 驳回意见');
 
     // 页面不落活表
-    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     expect(pages.some((p) => (p.apiName ?? p.slug) === rejectApiName)).toBe(false);
 
     // UI：已处理页签显示已驳回
@@ -170,10 +172,13 @@ test.describe('审核中心与版本模型（R1.2）', () => {
 
   test('提交基线 + 撤销未提交（恢复基线快照）', async ({ page }) => {
     // 1. 人工提交基线（对象当前态 → APPROVED 基线）
-    await api.post(`/apps/${appId}/reviews/submit`, { module: 'OBJECT', entityId: objectId });
+    await api.post(`/design/apps/${appId}/reviews/submit`, {
+      module: 'OBJECT',
+      entityId: objectId,
+    });
 
     // 2. 人工修改（新增字段）→ 活表漂移
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: `extra_${Date.now()}`,
       label: '临时字段',
       type: 'text',
@@ -196,7 +201,9 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     await expect
       .poll(
         async () => {
-          const obj = await api.get<{ fields: Array<{ apiName: string }> }>(`/objects/${objectId}`);
+          const obj = await api.get<{ fields: Array<{ apiName: string }> }>(
+            `/design/apps/${appId}/objects/${objectId}`,
+          );
           return obj.fields.some((f) => f.apiName.startsWith('extra_'));
         },
         { timeout: 15_000 },

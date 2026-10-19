@@ -92,7 +92,7 @@ export default function FieldConfigDrawer({
 
   /** 新增字段。 */
   const addFieldMutation = useMutation({
-    mutationFn: (data: CreateFieldRequest) => objectsApi.addField(objectId, data),
+    mutationFn: (data: CreateFieldRequest) => objectsApi.addField(appId, objectId, data),
     onSuccess: () => {
       message.success('字段已添加');
       queryClient.invalidateQueries({ queryKey: qk.object(objectId) });
@@ -107,7 +107,7 @@ export default function FieldConfigDrawer({
   const updateFieldMutation = useMutation({
     mutationFn: (data: UpdateFieldRequest) => {
       if (!field) throw new Error('字段不存在');
-      return objectsApi.updateField(objectId, field.id, data);
+      return objectsApi.updateField(appId, objectId, field.id, data);
     },
     onSuccess: () => {
       message.success('字段已更新');

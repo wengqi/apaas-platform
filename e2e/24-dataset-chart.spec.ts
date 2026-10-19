@@ -26,10 +26,10 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
     admin = createApiClient(token);
 
     // 1. 幂等建应用
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     let app = apps.find((a) => a.apiName === 'chart_journey_app');
     if (!app) {
-      app = await admin.post<{ id: string; apiName: string }>('/apps', {
+      app = await admin.post<{ id: string; apiName: string }>('/design/apps', {
         name: '报表旅程夹具',
         apiName: 'chart_journey_app',
       });
@@ -38,20 +38,20 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
 
     // 2. 幂等建对象+字段（对象与字段分离端点）
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     let obj = objects.find((o) => o.apiName === 'chart_sales');
     if (!obj) {
-      obj = await admin.post<{ id: string }>(`/apps/${appId}/objects`, {
+      obj = await admin.post<{ id: string }>(`/design/apps/${appId}/objects`, {
         apiName: 'chart_sales',
         name: '销售记录',
       });
-      await admin.post(`/objects/${obj.id}/fields`, {
+      await admin.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
         apiName: 'region',
         label: '区域',
         type: 'text',
       });
-      await admin.post(`/objects/${obj.id}/fields`, {
+      await admin.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
         apiName: 'amount',
         label: '金额',
         type: 'currency',
@@ -76,11 +76,11 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
 
     // 4. 幂等建数据流（区域金额汇总）并执行物化
     const flows = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/data-flows`,
+      `/design/apps/${appId}/data-flows`,
     );
     let flow = flows.find((f) => f.apiName === 'sales_by_region');
     if (!flow) {
-      flow = await admin.post<{ id: string }>(`/apps/${appId}/data-flows`, {
+      flow = await admin.post<{ id: string }>(`/design/apps/${appId}/data-flows`, {
         apiName: 'sales_by_region',
         name: '区域销售汇总',
         config: {
@@ -99,7 +99,7 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
       });
     }
     const exec = await admin.post<{ datasetId?: string } | string>(
-      `/data-flows/${flow!.id}/execute`,
+      `/design/apps/${appId}/data-flows/${flow!.id}/execute`,
       {},
     );
     datasetId =
@@ -132,10 +132,12 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
 
   test('发布后看板：chart-data 请求发出、聚合正确、图表渲染', async ({ page }) => {
     // 幂等建看板页（引用数据集 ID——API 创建时已知）
-    const pages = await admin.get<Array<{ id: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await admin.get<Array<{ id: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     let dash = pages.find((p) => p.slug === PAGE_SLUG || p.apiName === PAGE_SLUG);
     if (!dash) {
-      dash = await admin.post<{ id: string }>(`/apps/${appId}/pages`, {
+      dash = await admin.post<{ id: string }>(`/design/apps/${appId}/pages`, {
         apiName: PAGE_SLUG,
         name: '销售看板',
         type: 'dashboard',
@@ -165,14 +167,16 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
     }
 
     // 发布（版本号 = 现有最大 patch + 1，与向导同规则，防撞车）
-    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const versions = await admin.get<Array<{ versionNumber: string }>>(
+      `/design/apps/${appId}/versions`,
+    );
     const triples = versions
       .map((v) => v.versionNumber.split('.').map((n) => Number.parseInt(n, 10)))
       .filter((n) => n.length === 3 && n.every((x) => !Number.isNaN(x)));
     triples.sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!);
     const top = triples[triples.length - 1] ?? [0, 0, 0];
     const version = `${top[0]}.${top[1]}.${top[2]! + 1}`;
-    await admin.post(`/apps/${appId}/publish`, { version, description: 'J8 旅程发布' });
+    await admin.post(`/design/apps/${appId}/publish`, { version, description: 'J8 旅程发布' });
 
     // 管理员登录态注入 + 打开看板
     const { token, user } = await loginViaApiWithUser();

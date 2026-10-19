@@ -8,11 +8,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ConnectorController } from './connector.controller.js';
 import { ConnectorService } from './connector.service.js';
 import { ConnectorCallService } from './connector-call.service.js';
-import { CredentialController } from './credential.controller.js';
+import { DesignConnectorController } from './design-connector.controller.js';
+import { DesignCredentialController } from './design-credential.controller.js';
 import { CredentialService } from './credential.service.js';
 import { WebhookController } from './webhook.controller.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { ProcessModule } from '../process/process.module.js';
 
@@ -28,10 +30,16 @@ import { ProcessModule } from '../process/process.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     forwardRef(() => ProcessModule),
   ],
-  controllers: [ConnectorController, CredentialController, WebhookController],
+  controllers: [
+    ConnectorController,
+    DesignConnectorController,
+    DesignCredentialController,
+    WebhookController,
+  ],
   providers: [ConnectorService, ConnectorCallService, CredentialService, JwtStrategy],
   exports: [ConnectorService, ConnectorCallService, CredentialService],
 })

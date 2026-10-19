@@ -66,7 +66,7 @@ export default function DatasetList() {
   });
 
   const executeMutation = useMutation({
-    mutationFn: (flowId: string) => dataFlowsApi.execute(flowId),
+    mutationFn: (flowId: string) => dataFlowsApi.execute(appId as string, flowId),
     onSuccess: () => {
       message.success('数据流执行已启动，请稍后查看数据集状态');
       queryClient.invalidateQueries({ queryKey: ['datasets', appId] });
@@ -75,7 +75,7 @@ export default function DatasetList() {
   });
 
   const deleteFlowMutation = useMutation({
-    mutationFn: (flowId: string) => dataFlowsApi.delete(flowId),
+    mutationFn: (flowId: string) => dataFlowsApi.delete(appId as string, flowId),
     onSuccess: () => {
       message.success('数据流已删除');
       queryClient.invalidateQueries({ queryKey: ['data-flows', appId] });
@@ -84,7 +84,7 @@ export default function DatasetList() {
   });
 
   const deleteDatasetMutation = useMutation({
-    mutationFn: (datasetId: string) => datasetsApi.delete(datasetId),
+    mutationFn: (datasetId: string) => datasetsApi.delete(appId as string, datasetId),
     onSuccess: () => {
       message.success('数据集已删除');
       queryClient.invalidateQueries({ queryKey: ['datasets', appId] });
@@ -92,7 +92,7 @@ export default function DatasetList() {
   });
 
   const refreshMutation = useMutation({
-    mutationFn: (datasetId: string) => datasetsApi.refresh(datasetId),
+    mutationFn: (datasetId: string) => datasetsApi.refresh(appId as string, datasetId),
     onSuccess: () => {
       message.success('数据集刷新已启动');
       queryClient.invalidateQueries({ queryKey: ['datasets', appId] });

@@ -101,7 +101,7 @@ export default function ObjectListPanel({ appId }: ObjectListPanelProps) {
 
   /** 删除对象。 */
   const deleteMutation = useMutation({
-    mutationFn: (objectId: string) => objectsApi.delete(objectId),
+    mutationFn: (objectId: string) => objectsApi.delete(appId, objectId),
     onSuccess: () => {
       message.success('对象已删除');
       queryClient.invalidateQueries({ queryKey: qk.appObjects(appId) });

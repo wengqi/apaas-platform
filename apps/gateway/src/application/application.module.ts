@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ApplicationService } from './application.service.js';
 import { ApplicationController } from './application.controller.js';
+import { DesignApplicationController } from './design-application.controller.js';
+import { DesignAppMemberController } from './design-app-member.controller.js';
+import { AppMemberService } from './app-member.service.js';
 import { SnapshotService } from './snapshot.service.js';
 import { CheckService } from './check.service.js';
 import { ChangeLogModule } from './changelog.module.js';
@@ -8,6 +11,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { SchemaContractModule } from '../schema-contract/schema-contract.module.js';
 import { ProcessModule } from '../process/process.module.js';
 import { EnvironmentModule } from '../environment/environment.module.js';
@@ -21,7 +25,8 @@ import { EnvironmentModule } from '../environment/environment.module.js';
  *   ApplicationService → {SnapshotService, CheckService, ChangeLogService}
  *   CheckService → SnapshotService
  *   ChangeLogService → (无，直接用 prisma)
- *   ApplicationController → {ApplicationService, ChangeLogService}
+ *   ApplicationController（运行面 /apps）→ {ApplicationService}
+ *   DesignApplicationController（设计面 /design/apps）→ {ApplicationService, ChangeLogService}
  *
  * ChangeLogService 通过 ChangeLogModule 导入，供其他模块复用。
  */
@@ -45,12 +50,13 @@ import { EnvironmentModule } from '../environment/environment.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     // 预检页面渲染契约软告警消费 G3 校验器（R6 两缺口 warning）
     SchemaContractModule,
   ],
-  controllers: [ApplicationController],
-  providers: [ApplicationService, SnapshotService, CheckService, JwtStrategy],
+  controllers: [ApplicationController, DesignApplicationController, DesignAppMemberController],
+  providers: [ApplicationService, AppMemberService, SnapshotService, CheckService, JwtStrategy],
   exports: [ApplicationService],
 })
 export class ApplicationModule {}

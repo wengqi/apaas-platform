@@ -65,7 +65,7 @@ export default function CloudFunctionFormModal({ open, editingFn, onClose, onSuc
       };
 
       if (editingFn) {
-        await cloudFunctionsApi.update(editingFn.id, fnData);
+        await cloudFunctionsApi.update(appId as string, editingFn.id, fnData);
         message.success('云函数已保存');
       } else {
         await cloudFunctionsApi.create(appId!, {

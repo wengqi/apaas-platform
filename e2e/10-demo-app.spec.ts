@@ -68,7 +68,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     // appId 必须在此独立解析：Playwright 失败重试会更换 worker 并重跑 beforeAll，
     // 但不会重跑文件内其它测试——若依赖首个测试的副作用赋值，重试 worker 中
     // appId 恒为 undefined，一次失败会级联成多个 /app/undefined 的必然失败。
-    const apps = await api.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await api.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const app = apps.find((a) => a.apiName === 'asset_management');
     if (!app) throw new Error('Demo app asset_management not found — 请先执行 pnpm db:seed');
     appId = app.id;
@@ -77,7 +77,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   test('应用已发布（PUBLISHED + 环境部署可读）', async () => {
     const apps =
       await api.get<Array<{ id: string; apiName: string; status: string; version: number }>>(
-        '/apps',
+        '/design/apps',
       );
     const app = apps.find((a) => a.apiName === 'asset_management');
     expect(app).toBeDefined();
@@ -85,13 +85,15 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     expect(app!.version).toBeGreaterThanOrEqual(1);
     // R1.7 后运行时唯一读路径 = AppVersion bundle + 环境指针：
     // 详情端点返回 publishedAt（发布语义），运行时 slug 端点可读（部署语义）
-    const detail = await api.get<{ id: string; publishedAt: string | null }>(`/apps/${app!.id}`);
+    const detail = await api.get<{ id: string; publishedAt: string | null }>(
+      `/design/apps/${app!.id}`,
+    );
     expect(detail.publishedAt).toBeTruthy();
   });
 
   test('3 个业务对象存在', async () => {
     const objects = await api.get<Array<{ id: string; apiName: string; name: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     const apiNames = objects.map((o) => o.apiName);
     expect(apiNames).toContain('asset');
@@ -106,7 +108,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
         apiName: string;
         fields: Array<{ apiName: string; type: string; label: string }>;
       }>
-    >(`/apps/${appId}/objects`);
+    >(`/design/apps/${appId}/objects`);
     const asset = objects.find((o) => o.apiName === 'asset');
     expect(asset).toBeDefined();
     const fieldApiNames = asset!.fields.map((f) => f.apiName);
@@ -121,7 +123,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     // 页面接口字段映射：Prisma apiName→slug, isPublished→published
     const pages = await api.get<
       Array<{ id: string; slug: string; name: string; type: string; published: boolean }>
-    >(`/apps/${appId}/pages`);
+    >(`/design/apps/${appId}/pages`);
     const publishedPages = pages.filter((p) => p.published);
     expect(publishedPages.length).toBeGreaterThanOrEqual(7);
 
@@ -138,7 +140,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   test('审批流程已发布', async () => {
     const processes = await api.get<
       Array<{ id: string; apiName: string; name: string; status: string; triggerType: string }>
-    >(`/apps/${appId}/processes`);
+    >(`/design/apps/${appId}/processes`);
     const approval = processes.find((p) => p.apiName === 'asset_borrow_approval');
     expect(approval).toBeDefined();
     expect(approval!.status).toBe('PUBLISHED');
@@ -146,7 +148,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   });
 
   test('资产记录存在（15 条）', async () => {
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     const asset = objects.find((o) => o.apiName === 'asset');
     expect(asset).toBeDefined();
     const records = await api.get<{
@@ -163,7 +167,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   });
 
   test('资产分类记录存在（4 条）', async () => {
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     const category = objects.find((o) => o.apiName === 'asset_category');
     expect(category).toBeDefined();
     const records = await api.get<{ items: unknown[]; total: number }>(
@@ -173,7 +179,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   });
 
   test('领用申请记录存在（5 条）', async () => {
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     const borrow = objects.find((o) => o.apiName === 'borrow_request');
     expect(borrow).toBeDefined();
     const records = await api.get<{ items: unknown[]; total: number }>(

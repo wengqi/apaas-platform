@@ -32,7 +32,7 @@ test.describe('仪表盘与图表', () => {
   // -------------------------------------------------------------------------
 
   test('创建仪表盘页面产出 amis 空页 scaffold（v1 模板已退役）', async () => {
-    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const page_meta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'e2e_dashboard',
       name: 'E2E仪表盘',
       type: 'dashboard',
@@ -42,7 +42,7 @@ test.describe('仪表盘与图表', () => {
     // R1.7 第二轮：v1 DashboardGrid 模板已随 v1 渲染轨退役，无 schema 创建
     // 统一产出 amis 空页 scaffold（图表能力由 amis-editor 搭建）
     const detail = await api.get<{ schema: { type?: string; body?: unknown[] } }>(
-      `/pages/${page_meta.id}`,
+      `/design/apps/${appId}/pages/${page_meta.id}`,
     );
     expect(detail.schema.type).toBe('page');
     expect(Array.isArray(detail.schema.body)).toBe(true);
@@ -54,18 +54,18 @@ test.describe('仪表盘与图表', () => {
 
   test('后端聚合 API：对象记录 sum/count/avg 聚合', async () => {
     // 创建对象 + 数值字段
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_chart_obj',
       name: '图表测试对象',
       icon: 'bar_chart',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'category',
       label: '类别',
       type: 'TEXT',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'amount',
       label: '金额',
       type: 'NUMBER',
@@ -132,18 +132,18 @@ test.describe('仪表盘与图表', () => {
   });
 
   test('后端聚合 API：时间分桶 day 粒度 + 时间排序', async () => {
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_chart_time',
       name: '时间图表测试',
       icon: 'calendar',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'date',
       label: '日期',
       type: 'TEXT',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'sales',
       label: '销售额',
       type: 'NUMBER',
@@ -178,13 +178,13 @@ test.describe('仪表盘与图表', () => {
   });
 
   test('后端聚合 API：指标卡标量聚合（无 categoryField）', async () => {
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_chart_metric',
       name: '指标卡测试',
       icon: 'dashboard',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'amount',
       label: '金额',
       type: 'NUMBER',

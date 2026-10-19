@@ -38,7 +38,7 @@ export default function TriggerConfigModal({
     try {
       const values = await form.validateFields();
       setSaving(true);
-      await processesApi.update(processDef.id, {
+      await processesApi.update(processDef.appId, processDef.id, {
         triggerType: values.triggerType,
         ...(values.triggerType === 'SCHEDULED' ? { cron: values.cron } : {}),
       } as never);

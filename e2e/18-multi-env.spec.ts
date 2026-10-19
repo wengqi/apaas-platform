@@ -20,12 +20,12 @@ test.describe('多环境（R1.4）', () => {
     pageApiName = `multi_env_page_${Date.now()}`;
 
     // 建对象 + 页面（v1：标题"第一版"）
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: `multi_env_obj_${Date.now()}`,
       name: '多环境对象',
       icon: 'box',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'title',
       label: '标题',
       type: 'text',
@@ -33,7 +33,7 @@ test.describe('多环境（R1.4）', () => {
     });
 
     // 页面 schema 内含 ${env.GREETING} 引用（验证 bundle 替换链路）
-    await api.post(`/apps/${appId}/pages`, {
+    await api.post(`/design/apps/${appId}/pages`, {
       apiName: pageApiName,
       name: '多环境页面',
       type: 'custom',
@@ -45,7 +45,7 @@ test.describe('多环境（R1.4）', () => {
     });
 
     // 发布应用（= 部署 prod 指针）
-    await api.post(`/apps/${appId}/publish`, { version: '1.0.0', description: 'v1' });
+    await api.post(`/design/apps/${appId}/publish`, { version: '1.0.0', description: 'v1' });
   });
 
   test.afterAll(async () => {
@@ -54,7 +54,7 @@ test.describe('多环境（R1.4）', () => {
 
   test('环境列表：prod 指针在 v1.0.0，dev 未部署', async () => {
     const envs = await api.get<Array<{ key: string; currentVersionNumber: string | null }>>(
-      `/apps/${appId}/environments`,
+      `/design/apps/${appId}/environments`,
     );
     const prod = envs.find((e) => e.key === 'prod');
     const dev = envs.find((e) => e.key === 'dev');
@@ -64,26 +64,26 @@ test.describe('多环境（R1.4）', () => {
 
   test('dev 部署 v1.0.1 后：dev 见新内容、prod 保持旧内容（隔离）', async () => {
     // 修改页面为"第二版" → 发布 v1.0.1 → 仅部署 dev
-    const pages = await api.get<Array<{ id: string; slug: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ id: string; slug: string }>>(`/design/apps/${appId}/pages`);
     const page = pages.find((p) => p.slug === pageApiName);
-    await api.put(`/pages/${page!.id}`, {
+    await api.put(`/design/apps/${appId}/pages/${page!.id}`, {
       schema: {
         type: 'page',
         title: '${env.GREETING}',
         body: [{ type: 'tpl', text: '第二版' }],
       },
     });
-    await api.post(`/apps/${appId}/publish`, { version: '1.0.1', description: 'v2' });
+    await api.post(`/design/apps/${appId}/publish`, { version: '1.0.1', description: 'v2' });
     // 发布默认部署 prod（后端行为）→ prod 已是 1.0.1；再显式把 dev 也指到 1.0.1，
     // 然后验证隔离用"prod 回滚到 1.0.0"的用例
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     const v101 = versions.find((v) => v.versionNumber === '1.0.1');
-    await api.post(`/apps/${appId}/environments/dev/publish`, { versionId: v101!.id });
+    await api.post(`/design/apps/${appId}/environments/dev/publish`, { versionId: v101!.id });
 
     const envs = await api.get<Array<{ key: string; currentVersionNumber: string | null }>>(
-      `/apps/${appId}/environments`,
+      `/design/apps/${appId}/environments`,
     );
     expect(envs.find((e) => e.key === 'prod')?.currentVersionNumber).toBe('1.0.1');
     expect(envs.find((e) => e.key === 'dev')?.currentVersionNumber).toBe('1.0.1');
@@ -102,7 +102,7 @@ test.describe('多环境（R1.4）', () => {
 
   test('G4：必填环境变量未设值 → 部署被拦截；设值后通过', async () => {
     // 定义必填变量（两个环境共享定义）
-    const def = await api.post<{ id: string }>(`/apps/${appId}/env-vars/defs`, {
+    const def = await api.post<{ id: string }>(`/design/apps/${appId}/env-vars/defs`, {
       key: 'GREETING',
       description: '页面标题问候语',
       required: true,
@@ -111,12 +111,12 @@ test.describe('多环境（R1.4）', () => {
 
     // dev 环境缺值 → 部署拦截
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     const latest = versions.find((v) => v.versionNumber === '1.0.1')!.id;
 
     const blocked = await fetch(
-      `http://localhost:3000/api/v1/apps/${appId}/environments/dev/publish`,
+      `http://localhost:3000/api/v1/design/apps/${appId}/environments/dev/publish`,
       {
         method: 'POST',
         headers: {
@@ -131,9 +131,11 @@ test.describe('多环境（R1.4）', () => {
     expect(blockedJson.error?.message).toContain('GREETING');
 
     // 设值 → 部署通过
-    await api.post(`/apps/${appId}/env-vars/defs/${def.id}/value?env=dev`, { value: '你好，开发' });
+    await api.post(`/design/apps/${appId}/env-vars/defs/${def.id}/value?env=dev`, {
+      value: '你好，开发',
+    });
     const deploy = await api.post<{ deployment: { versionNumber: string } }>(
-      `/apps/${appId}/environments/dev/publish`,
+      `/design/apps/${appId}/environments/dev/publish`,
       { versionId: latest },
     );
     expect(deploy.deployment.versionNumber).toBe('1.0.1');
@@ -149,21 +151,21 @@ test.describe('多环境（R1.4）', () => {
 
   test('prod 回滚到 v1.0.0：指针回切 + Deployment 历史 + 记录不回滚', async () => {
     // prod 写一条记录（回滚后应仍在）
-    const objects = await api.get<Array<{ id: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string }>>(`/design/apps/${appId}/objects`);
     await api.post(`/objects/${objects[0]!.id}/records`, { title: '回滚不删我' });
 
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     const v100 = versions.find((v) => v.versionNumber === '1.0.0')!;
     const result = await api.post<{ deployment: { kind: string } }>(
-      `/apps/${appId}/environments/prod/rollback`,
+      `/design/apps/${appId}/environments/prod/rollback`,
       { versionId: v100.id, note: 'e2e 回滚' },
     );
     expect(result.deployment.kind).toBe('rollback');
 
     const envs = await api.get<Array<{ key: string; currentVersionNumber: string | null }>>(
-      `/apps/${appId}/environments`,
+      `/design/apps/${appId}/environments`,
     );
     expect(envs.find((e) => e.key === 'prod')?.currentVersionNumber).toBe('1.0.0');
 
@@ -175,13 +177,13 @@ test.describe('多环境（R1.4）', () => {
 
     // 部署历史含 rollback 条目
     const deployments = await api.get<Array<{ kind: string }>>(
-      `/apps/${appId}/environments/prod/deployments`,
+      `/design/apps/${appId}/environments/prod/deployments`,
     );
     expect(deployments.some((d) => d.kind === 'rollback')).toBe(true);
   });
 
   test('dev/prod 记录隔离：同对象各自环境的数据互不可见', async () => {
-    const objects = await api.get<Array<{ id: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string }>>(`/design/apps/${appId}/objects`);
     const objectId = objects[0]!.id;
 
     // env=dev 上下文写记录（运行时读写 API 经 ?env= 透传）

@@ -21,13 +21,14 @@ export default function ObjectDetail() {
   /** 加载对象详情(含字段)。 */
   const { data: object, isLoading } = useQuery({
     queryKey: qk.object(objectId!),
-    queryFn: () => objectsApi.get(objectId as string),
+    queryFn: () => objectsApi.get(appId as string, objectId as string),
     enabled: !!objectId,
   });
 
   /** 更新对象(内联编辑)。 */
   const updateMutation = useMutation({
-    mutationFn: (data: UpdateObjectRequest) => objectsApi.update(objectId as string, data),
+    mutationFn: (data: UpdateObjectRequest) =>
+      objectsApi.update(appId as string, objectId as string, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.object(objectId!) });
       queryClient.invalidateQueries({ queryKey: qk.appObjects(appId!) });

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Button,
   Empty,
@@ -64,6 +65,7 @@ interface CreateViewFormValues {
  * 每个视图项展示类型标签与筛选/排序摘要,支持配置(打开 ViewConfigurator)与删除。
  */
 export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) {
+  const { appId } = useParams<{ appId: string }>();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [configView, setConfigView] = useState<ViewInfo | undefined>(undefined);
@@ -72,12 +74,12 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
   /** 加载视图列表。 */
   const { data: views, isLoading } = useQuery({
     queryKey: qk.objectViews(objectId),
-    queryFn: () => objectsApi.listViews(objectId),
+    queryFn: () => objectsApi.listViews(appId as string, objectId),
   });
 
   /** 创建视图。 */
   const createMutation = useMutation({
-    mutationFn: (data: CreateViewRequest) => objectsApi.createView(objectId, data),
+    mutationFn: (data: CreateViewRequest) => objectsApi.createView(appId as string, objectId, data),
     onSuccess: () => {
       message.success('视图创建成功');
       queryClient.invalidateQueries({ queryKey: qk.objectViews(objectId) });
@@ -89,7 +91,7 @@ export default function ViewListPanel({ objectId, fields }: ViewListPanelProps) 
 
   /** 删除视图。 */
   const deleteMutation = useMutation({
-    mutationFn: (viewId: string) => objectsApi.deleteView(viewId),
+    mutationFn: (viewId: string) => objectsApi.deleteView(appId as string, objectId, viewId),
     onSuccess: () => {
       message.success('视图已删除');
       queryClient.invalidateQueries({ queryKey: qk.objectViews(objectId) });

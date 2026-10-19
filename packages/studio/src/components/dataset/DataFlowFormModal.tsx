@@ -133,7 +133,7 @@ export default function DataFlowFormModal({ open, editingFlow, onClose, onSucces
       };
 
       if (editingFlow) {
-        await dataFlowsApi.update(editingFlow.id, {
+        await dataFlowsApi.update(appId as string, editingFlow.id, {
           name: values.name,
           description: values.description,
           config,

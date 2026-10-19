@@ -22,6 +22,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
   let contractApiName = '';
   let processDefId = '';
   let approvalPageId = '';
+  let appId = '';
 
   test.beforeAll(async () => {
     const adminToken = await loginViaApi();
@@ -30,12 +31,13 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     builder = createApiClient(builderToken);
 
     // 定位种子数据：procurement 应用 → contract 对象 + 审批流程 + 审批页面
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const procApp = apps.find((a) => a.apiName === 'procurement');
     expect(procApp, '种子应用 procurement 不存在——请先跑 pnpm db:seed').toBeTruthy();
+    appId = procApp!.id;
 
     const pages = await admin.get<Array<{ id: string; slug?: string; apiName?: string }>>(
-      `/apps/${procApp!.id}/pages`,
+      `/design/apps/${procApp!.id}/pages`,
     );
     // PageMeta 列表以 slug 暴露（apiName 的运行时别名）
     approvalPageId = pages.find(
@@ -45,14 +47,14 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
 
     // 合同对象 id（通过应用详情或对象列表；此处走对象列表端点）
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${procApp!.id}/objects`,
+      `/design/apps/${procApp!.id}/objects`,
     );
     contractApiName = objects.find((o) => o.apiName === 'contract')!.id;
     expect(contractApiName).toBeTruthy();
 
     // 流程定义
     const processDefs = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${procApp!.id}/processes`,
+      `/design/apps/${procApp!.id}/processes`,
     );
     processDefId = processDefs.find((p) => p.apiName === 'contract_approval')!.id;
     expect(processDefId).toBeTruthy();
@@ -80,7 +82,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     while (Date.now() < deadline) {
       const instances = await admin.get<
         Array<{ id: string; triggerContext?: { recordId?: string | null } }>
-      >(`/processes/${processDefId}/instances`);
+      >(`/design/apps/${appId}/processes/${processDefId}/instances`);
       const hit = instances.find(
         (i) => (i.triggerContext?.recordId as string | undefined) === recordId,
       );

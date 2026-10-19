@@ -26,20 +26,24 @@ function unwrap<T>(p: Promise<{ data: ApiResponse<T> }>): Promise<T> {
 
 export const cloudFunctionsApi = {
   list: (appId: string) =>
-    unwrap<CloudFunction[]>(client.get(`/api/v1/apps/${appId}/cloud-functions`)),
+    unwrap<CloudFunction[]>(client.get(`/api/v1/design/apps/${appId}/cloud-functions`)),
 
-  get: (id: string) => unwrap<CloudFunction>(client.get(`/api/v1/cloud-functions/${id}`)),
+  get: (appId: string, id: string) =>
+    unwrap<CloudFunction>(client.get(`/api/v1/design/apps/${appId}/cloud-functions/${id}`)),
 
   create: (appId: string, data: CreateCloudFunctionRequest) =>
-    unwrap<CloudFunction>(client.post(`/api/v1/apps/${appId}/cloud-functions`, data)),
+    unwrap<CloudFunction>(client.post(`/api/v1/design/apps/${appId}/cloud-functions`, data)),
 
-  update: (id: string, data: UpdateCloudFunctionRequest) =>
-    unwrap<CloudFunction>(client.put(`/api/v1/cloud-functions/${id}`, data)),
+  update: (appId: string, id: string, data: UpdateCloudFunctionRequest) =>
+    unwrap<CloudFunction>(client.put(`/api/v1/design/apps/${appId}/cloud-functions/${id}`, data)),
 
-  delete: (id: string) => unwrap<null>(client.delete(`/api/v1/cloud-functions/${id}`)),
+  delete: (appId: string, id: string) =>
+    unwrap<null>(client.delete(`/api/v1/design/apps/${appId}/cloud-functions/${id}`)),
 
-  publish: (id: string) =>
-    unwrap<CloudFunction>(client.post(`/api/v1/cloud-functions/${id}/publish`)),
+  publish: (appId: string, id: string) =>
+    unwrap<CloudFunction>(
+      client.post(`/api/v1/design/apps/${appId}/cloud-functions/${id}/publish`),
+    ),
 
   invoke: (id: string, data: InvokeCloudFunctionRequest) =>
     unwrap<CloudFunctionCallResult>(client.post(`/api/v1/cloud-functions/${id}/invoke`, data)),

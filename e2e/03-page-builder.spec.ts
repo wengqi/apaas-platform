@@ -23,7 +23,7 @@ test.describe('页面搭建器', () => {
   });
 
   test('创建列表页并打开搭建器', async () => {
-    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const page_meta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'test_list_page',
       name: '测试列表页',
       type: 'list_page',
@@ -33,11 +33,14 @@ test.describe('页面搭建器', () => {
 
   test('amis 画布挂载：搭建器顶栏与编辑器可见', async ({ page }) => {
     // R1.7 第二轮：画布唯一实现 = amis-editor（v1 三栏画布已退役）
-    const page_meta = await api.post<{ id: string; apiName: string }>(`/apps/${appId}/pages`, {
-      apiName: 'test_amis_canvas',
-      name: 'amis画布冒烟',
-      type: 'custom',
-    });
+    const page_meta = await api.post<{ id: string; apiName: string }>(
+      `/design/apps/${appId}/pages`,
+      {
+        apiName: 'test_amis_canvas',
+        name: 'amis画布冒烟',
+        type: 'custom',
+      },
+    );
     await page.goto(`/app/${appId}/pages/${page_meta.id}`);
     // 自研顶栏（保存按钮）+ amis-editor 画布均挂载
     await expect(page.getByRole('button', { name: '保存' })).toBeVisible({ timeout: 20_000 });
@@ -47,7 +50,7 @@ test.describe('页面搭建器', () => {
   });
 
   test('创建仪表盘页面（自动生成模板）', async () => {
-    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const page_meta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'test_dashboard',
       name: '测试仪表盘',
       type: 'dashboard',
@@ -56,7 +59,7 @@ test.describe('页面搭建器', () => {
 
     // R1.7 第二轮：v1 仪表盘模板已退役，无 schema 创建统一产出 amis 空页 scaffold
     const detail = await api.get<{ schema: { type?: string; body?: unknown[] } }>(
-      `/pages/${page_meta.id}`,
+      `/design/apps/${appId}/pages/${page_meta.id}`,
     );
     expect(detail.schema).toBeTruthy();
     expect(detail.schema.type).toBe('page');
@@ -70,14 +73,14 @@ test.describe('页面搭建器', () => {
   });
 
   test('更新页面 Schema', async () => {
-    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const page_meta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'test_schema_page',
       name: '测试Schema页面',
       type: 'custom',
     });
 
     // R1.7 第二轮③：唯一方言 = amis，schema 更新过 G3 硬闸（v1 schema 会被 400 拒绝）
-    const updated = await api.put(`/pages/${page_meta.id}`, {
+    const updated = await api.put(`/design/apps/${appId}/pages/${page_meta.id}`, {
       schema: {
         type: 'page',
         title: 'E2E测试页面',
@@ -88,7 +91,7 @@ test.describe('页面搭建器', () => {
 
     // 验证更新已保存
     const detail = await api.get<{ schema: { body?: Array<Record<string, unknown>> } }>(
-      `/pages/${page_meta.id}`,
+      `/design/apps/${appId}/pages/${page_meta.id}`,
     );
     const body = detail.schema.body ?? [];
     expect((body[0] as { type?: string } | undefined)?.type).toBe('markdown');

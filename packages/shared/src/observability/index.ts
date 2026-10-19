@@ -93,6 +93,10 @@ export const AUDIT_ACTION_CATEGORIES: Record<string, AuditCategory> = {
   // 访问与权限
   PERMISSION_CHECK: 'ACCESS',
   PERMISSION_DENIED: 'ACCESS',
+  // 应用归属（ADR-0005）：成员增删 / 所有权转移
+  APP_MEMBER_ADD: 'ACCESS',
+  APP_MEMBER_REMOVE: 'ACCESS',
+  APP_OWNER_TRANSFER: 'ACCESS',
 };
 
 /** 按分类反查动作列表（审计查询端点把 category 过滤展开为 action IN）。 */

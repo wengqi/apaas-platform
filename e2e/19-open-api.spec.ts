@@ -60,19 +60,19 @@ test.describe('开放 API（G6）', () => {
     appId = await createTestApp(api, `开放API E2E ${Date.now()}`);
 
     // 建 API 触发流程（v1 契约：taskName = 一审）
-    const proc = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const proc = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName,
       name: '开放订单流',
       triggerType: 'API',
       workflowSchema: schema('一审'),
     });
     processId = proc.id;
-    await api.post(`/processes/${processId}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${processId}/publish`);
 
     // 发布 major 1 + 创建服务身份
-    await api.post(`/apps/${appId}/processes/${processId}/api-release`, { majorVersion: 1 });
+    await api.post(`/design/apps/${appId}/processes/${processId}/api-release`, { majorVersion: 1 });
     const identity = await api.post<{ id: string; apiKey: string }>(
-      `/apps/${appId}/service-identities`,
+      `/design/apps/${appId}/service-identities`,
       { name: 'E2E 集成' },
     );
     identityId = identity.id;
@@ -122,14 +122,14 @@ test.describe('开放 API（G6）', () => {
 
   test('版本稳定性：发 major2 后，v1 钉版本仍按 v1 冻结契约执行', async () => {
     // 修改流程（updateProcess 会打回 DRAFT）→ 重新发布 → 发 major 2
-    await api.put(`/processes/${processId}`, {
+    await api.put(`/design/apps/${appId}/processes/${processId}`, {
       workflowSchema: schema('二审（新契约）'),
     });
-    await api.post(`/processes/${processId}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${processId}/publish`);
     const release = await api.post<{
       deprecatedMajors: number[];
       diff: { changeCount: number } | null;
-    }>(`/apps/${appId}/processes/${processId}/api-release`, { majorVersion: 2 });
+    }>(`/design/apps/${appId}/processes/${processId}/api-release`, { majorVersion: 2 });
     expect(release.deprecatedMajors).toEqual([1]);
     expect(release.diff).not.toBeNull();
     expect(release.diff!.changeCount).toBeGreaterThan(0);
@@ -152,16 +152,19 @@ test.describe('开放 API（G6）', () => {
   });
 
   test('吊销服务身份 → 立即 401', async () => {
-    await api.post(`/apps/${appId}/service-identities/${identityId}/revoke`);
+    await api.post(`/design/apps/${appId}/service-identities/${identityId}/revoke`);
     const { status } = await openCall('POST', `/apps/${appId}/processes/${apiName}/start`, {});
     expect(status).toBe(401);
   });
 
   test('流程发现：GET /open/apps/:id/processes 列出可调流程', async () => {
     // 吊销后无法调用发现接口——用新身份验证发现
-    const identity2 = await api.post<{ apiKey: string }>(`/apps/${appId}/service-identities`, {
-      name: 'E2E 发现',
-    });
+    const identity2 = await api.post<{ apiKey: string }>(
+      `/design/apps/${appId}/service-identities`,
+      {
+        name: 'E2E 发现',
+      },
+    );
     const { json } = await openCall('GET', `/apps/${appId}/processes`, undefined, identity2.apiKey);
     expect(json.ok).toBe(true);
     const list = json.data as Array<{ apiName: string; latestMajor: number }>;

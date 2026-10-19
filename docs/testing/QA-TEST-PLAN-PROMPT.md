@@ -37,6 +37,7 @@
 - **入口**：搭建器 Studio `http://localhost:5173`；运行时 Runtime-UI `http://localhost:5174`；API 网关 `http://localhost:3000`（Swagger `/api/docs`）。
 - **账号**（租户 slug=`demo`，登录需带；密码 admin123/builder123/user123）：`admin@apaas.dev` 租户管理员（全管理面）/ `builder@apaas.dev` 搭建者 / `user@apaas.dev` 终端用户；`superadmin@apaas.dev` 平台超管（密码 `superadmin123`，登录留空租户）。
 - **种子应用（回归基线，禁删改）**：资产管理 `asset_management`、采购合同管理 `procurement`（含金额分支→会签→依次审批流）。新建测试资源一律 `qa_` 前缀。
+- **应用归属（ADR-0005，2026-10-19）**：归属源=`application_members`（OWNER 唯一 + MEMBER）；seed 幂等把 builder 设为 `procurement` 的 **MEMBER 协作夹具**（builder 开发中心可见 11 个应用=自建 10 + 协作 1，卡片带「由 admin 共享」标记）；admin 恒全量；END_USER-only（user@apaas.dev）设计面 403。**API 双命名空间**：设计面=`/api/v1/design/apps/:appId/**`（成员闸），运行面=无前缀（角色权限+已发布语义），`GET /apps` 即运行时视图（`?runtime=1` 已退役）
 - **关键机制**：auth 限流 10/min（优先 API 登录复用 token，勿反复 UI 登录）；页面发布走应用级发布向导（页面搭建器无发布按钮）；未发布改草稿不影响已部署环境（bundle 唯一/活表二分）；无驳回边的审批节点运行时必须无驳回入口。
 
 ## 二、执行纪律（全程遵守）
@@ -147,6 +148,8 @@
 
 PLACEHOLDER，用户报告"待办已办为空"调查）**：**终端用户任务中心可用（TC-156，权限语义变化）**——END_USER 种子角色补 `PROCESS VIEW`（修复前 GET /tasks 要求 PROCESS:VIEW 而 END_USER 只有 EXECUTE/APPROVE → 403 被前端吞成空表：被授权审批的角色打不开任务中心）；规约=**运行时角色（需用任务中心）必须含 PROCESS VIEW**（app 级自定义角色建角色时同样适用）；seed 权限规则改为先删后建幂等收敛（permission_rules 无唯一索引，createMany+skipDuplicates 实际不去重，历史已累积 END_USER ×3/BUILDER ×2 副本）；**列表加载失败错误态显式化（TC-157）**——任务中心三个列表查询失败渲染红色告警+原因+重试（ListErrorAlert），禁止吞成"暂无任务"假空态；**我发起的视图（TC-158）**——`GET /instances/mine` 按 triggerContext.triggeredByUser 过滤发起人本人（与撤回/M-2 实例可见性同语义），前端三 Tab+进度弹窗（TraceViewer 轨迹+审批记录），申请人提交后可查进度（对标飞书 aPaaS「我发起的」）。
 
+**应用归属轮锚点（2026-10-19，ADR-0005）**：①**设计面归属可见集与非成员深链 403（TC-196）**——builder 设计面列表 GET /design/apps 只见自己为 owner/member 的应用（admin 恒全量含他人 DRAFT）；非成员深链 GET /design/apps/:id 403「无权访问该应用（需所有者添加为协作者或联系管理员）」不透露所有者；判定 SSOT=AppAccessService（admin/owner/member/null），DesignAccessGuard 挂全部 design/apps 控制器（design-routes-guarded.spec 静态锚定），MCP 带 appId 工具同源断言；②**协作者边界与所有权转移（TC-197）**——MEMBER 可读可搭可发布可审草稿，删除/归档/转移/成员管理 403「仅应用所有者或管理员」；转移后恰一 OWNER、原 owner 降 MEMBER；候选集=租户级 BUILDER 未入会（TENANT_ADMIN 恒全量不进候选）；③**运行面不受归属影响（TC-198）**——builder/END_USER 业务身份按角色权限见已发布应用，与归属无关；④**双命名空间（TC-199）**——设计面 /design/apps/**（嵌套应用下，服务层 appId 域），GET /apps=运行时视图（?runtime=1 已退役），DRAFT 应用运行面详情 404，运行面页签只回已部署 bundle。
+
 ## 八、缺陷记录标准
 
 每条含：编号/标题/模块页面/精确复现步骤（含输入内容）/预期 vs 实际/截图/严重级别/是否有替代路径/关联 API 请求响应与 traceId/影响矩阵格位。判级：**P0** 阻断（核心流程走不通·数据丢失错误·页面崩溃·越权）；**P1** 严重（主要功能结果错误·校验缺失致脏数据·审批误路由）；**P2** 一般（次要功能异常·有替代路径的体验问题·静默失败）；**P3** 轻微（文案·样式·提示）。链路中途失败须定位上游数据问题还是本环节缺陷并注明影响范围。
@@ -186,3 +189,4 @@ PLACEHOLDER，用户报告"待办已办为空"调查）**：**终端用户任务
 | 2026-10-10 | v1.0.12 | 任务中心修复轮：底册 D 任务中心更新为三 Tab（我发起的+进度弹窗+错误态）；第七节追加「任务中心修复轮锚点」（TC-170 END_USER 补 PROCESS VIEW + seed 幂等收敛 / TC-171 错误态显式化 / TC-172 我发起的视图） | 用户报告"待办已办为空"调查修复轮 |
 | 2026-10-17 | v1.0.13 | 流程引擎修缮轮：第七节追加「流程引擎修缮轮锚点」——TC-184 画布触发器记录触发命中（I-1 修复，触发匹配改读 schema 触发节点+活表 PUBLISHED 统一）与 TC-185 发布预检渲染契约软告警（crud 选择列缺 mapping/datetime 缺 valueFormat 出 WARNING 不拦截；存量坏配置出警告=预期行为） | 流程引擎修缮轮（用户裁决修法②） |
 | 2026-10-17 | v1.0.14 | 全量回归轮对账修正：底册 B 侧栏计数 13→14 项三组（搭建 6/治理 3/扩展与运维 5，嵌入集成入列——素蓝轮漏账）；用例库同步 TC-008/010/013/014/052 改写 | 全量 QA 回归轮（用户裁决：回归先行+标准全量） |
+| 2026-10-19 | v1.0.15 | 应用归属与双命名空间轮（ADR-0005）：第一节环境事实补 builder=procurement 协作夹具（MEMBER，seed 幂等）与应用归属模型；第七节追加「应用归属轮锚点」——TC-196 设计面归属可见集+非成员深链 403（AppAccessService 单一判定源）/TC-197 协作者边界+所有权转移/TC-198 运行面不受归属影响/TC-199 双命名空间与 ?runtime=1 退役；**API 路径事实变更**：设计面全部迁移 `/api/v1/design/apps/:appId/**`（嵌套应用下），`GET /apps`=运行时视图（原 ?runtime=1 语义），`pages/runtime/:pid`→`pages/:pid`，用例与脚本引用旧路径一律按 TC-199 口径更新 | 应用归属轮（用户裁决：方案 b + /design 前缀一次到位） |

@@ -41,6 +41,19 @@ export function createApiClient(token: string) {
 
   return {
     get: <T = unknown>(path: string) => request<T>('GET', path),
+    /** 断言失败路径（403/404 等）专用：不抛错，返回原始 status + 响应体。 */
+    raw: async (
+      method: 'get' | 'post' | 'put' | 'delete',
+      path: string,
+      body?: unknown,
+    ): Promise<{ status: number; json: { ok?: boolean; error?: { message?: string } } }> => {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: method.toUpperCase(),
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: res.status, json: (await res.json()) as never };
+    },
     post: <T = unknown>(path: string, body?: unknown) => request<T>('POST', path, body),
     put: <T = unknown>(path: string, body?: unknown) => request<T>('PUT', path, body),
     delete: <T = unknown>(path: string) => request<T>('DELETE', path),
@@ -128,7 +141,7 @@ export async function createTestApp(
   api: ReturnType<typeof createApiClient>,
   name = `E2E 测试应用 ${Date.now()}`,
 ): Promise<string> {
-  const app = await api.post<{ id: string }>('/apps', {
+  const app = await api.post<{ id: string }>('/design/apps', {
     apiName: `e2e_${Date.now()}`,
     name,
     description: 'E2E 测试自动创建',
@@ -142,7 +155,7 @@ export async function deleteTestApp(
   appId: string,
 ): Promise<void> {
   try {
-    await api.delete(`/apps/${appId}`);
+    await api.delete(`/design/apps/${appId}`);
   } catch {
     // 清理失败不阻断测试
   }

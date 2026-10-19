@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { PageService } from './page.service.js';
 import { PageController } from './page.controller.js';
+import { DesignPageController } from './design-page.controller.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
 import { SchemaContractModule } from '../schema-contract/schema-contract.module.js';
@@ -29,9 +31,10 @@ import { SchemaContractModule } from '../schema-contract/schema-contract.module.
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
   ],
-  controllers: [PageController],
+  controllers: [PageController, DesignPageController],
   providers: [PageService, JwtStrategy],
   exports: [PageService],
 })

@@ -356,7 +356,7 @@ export class ReviewSnapshotService {
       });
       flowId = created.id;
     }
-    await this.dataFlowService.execute(tenantId, flowId);
+    await this.dataFlowService.execute(tenantId, appId, flowId);
     await this.changeLogService.log({
       tenantId,
       appId,
@@ -433,6 +433,7 @@ export class ReviewSnapshotService {
       // AI 提交批准只落 schema/名称；上线仍随应用发布（isPublished 语义不变）
       await this.pageService.update(
         tenantId,
+        appId,
         target.id,
         { name: finalSnapshot.name, schema: finalSnapshot.schema as never },
         changedBy,
@@ -549,6 +550,7 @@ export class ReviewSnapshotService {
       // AI 变更批准后需人工重新发布才重新生效）
       await this.processService.updateProcess(
         tenantId,
+        appId,
         target.id,
         {
           name: snapshot.name,
@@ -575,6 +577,7 @@ export class ReviewSnapshotService {
       // createProcess 不收 cron，SCHEDULED 场景批准后补一次触发配置
       await this.processService.updateProcess(
         tenantId,
+        appId,
         created.id,
         { cron: snapshot.cron },
         changedBy,

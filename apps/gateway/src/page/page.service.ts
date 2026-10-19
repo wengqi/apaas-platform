@@ -61,8 +61,12 @@ export class PageService {
   /**
    * 列出页面保存点（E2-4 飞书式历史，不含 schema 全量，按时间倒序）。
    */
-  async listSavePoints(tenantId: string, pageId: string): Promise<PageSavePointInfo[]> {
-    await this.requirePage(tenantId, pageId);
+  async listSavePoints(
+    tenantId: string,
+    appId: string,
+    pageId: string,
+  ): Promise<PageSavePointInfo[]> {
+    await this.requirePage(tenantId, appId, pageId);
     const rows = await prisma.pageSavePoint.findMany({
       where: { tenantId, pageId },
       orderBy: { createdAt: 'desc' },
@@ -84,11 +88,12 @@ export class PageService {
    */
   async restoreSavePoint(
     tenantId: string,
+    appId: string,
     pageId: string,
     savePointId: string,
     changedBy?: string,
   ): Promise<PageMeta> {
-    await this.requirePage(tenantId, pageId);
+    const current = await this.requirePage(tenantId, appId, pageId);
     const point = await prisma.pageSavePoint.findFirst({
       where: { id: savePointId, tenantId, pageId },
     });
@@ -97,7 +102,7 @@ export class PageService {
     const schema = point.schema as unknown as Prisma.InputJsonValue;
     await prisma.$transaction([
       prisma.pageMeta.updateMany({
-        where: { id: pageId, tenantId },
+        where: { id: pageId, tenantId, appId },
         data: { schema },
       }),
       prisma.pageSavePoint.create({
@@ -112,34 +117,33 @@ export class PageService {
     ]);
     await this.pruneSavePoints(tenantId, pageId);
 
-    const current = await prisma.pageMeta.findFirst({
-      where: { id: pageId, tenantId },
-      select: { appId: true, name: true },
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'PageMeta',
+      entityId: pageId,
+      entityName: current.name,
+      changeType: 'UPDATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `恢复页面历史保存点: ${current.name} @ ${point.createdAt.toISOString()}`,
     });
-    if (current) {
-      await this.changeLogService.log({
-        tenantId,
-        appId: current.appId,
-        module: 'PAGE',
-        entityType: 'PageMeta',
-        entityId: pageId,
-        entityName: current.name,
-        changeType: 'UPDATE',
-        changedBy: changedBy ?? 'system',
-        changeDescription: `恢复页面历史保存点: ${current.name} @ ${point.createdAt.toISOString()}`,
-      });
-    }
 
-    return this.get(tenantId, pageId);
+    return this.get(tenantId, appId, pageId);
   }
 
-  /** 断言页面存在（租户隔离），不存在抛 404。 */
-  private async requirePage(tenantId: string, pageId: string): Promise<void> {
+  /** 断言页面存在且属于该应用（租户 + 应用双域隔离，ADR-0005），不存在抛 404。 */
+  private async requirePage(
+    tenantId: string,
+    appId: string,
+    pageId: string,
+  ): Promise<{ id: string; name: string; objectId: string | null }> {
     const page = await prisma.pageMeta.findFirst({
-      where: { id: pageId, tenantId },
-      select: { id: true },
+      where: { id: pageId, tenantId, appId },
+      select: { id: true, name: true, objectId: true },
     });
     if (!page) throw new NotFoundException('页面不存在');
+    return page;
   }
 
   /** 捕获保存点并裁剪到上限。 */
@@ -192,28 +196,36 @@ export class PageService {
   }
 
   /**
-   * 获取页面详情（含完整 Schema）。
+   * 获取页面详情（含完整 Schema）— 设计面 GET /design/apps/:appId/pages/:pageId（活表开发态）。
    */
-  async get(tenantId: string, pageId: string): Promise<PageMeta> {
+  async get(tenantId: string, appId: string, pageId: string): Promise<PageMeta> {
     const page = await prisma.pageMeta.findFirst({
-      where: { id: pageId, tenantId },
+      where: { id: pageId, tenantId, appId },
     });
     if (!page) throw new NotFoundException('页面不存在');
     return this.toPageMeta(page);
   }
 
   /**
-   * 按 slug 获取页面（旧方法，直接读开发态 PageMeta）。
-   * 保留用于向后兼容；运行态应使用 getPublishedBySlug。
-   * slug 对应 Prisma 中的 apiName，在应用内唯一。
+   * 运行面页面列表（GET /apps/:appId/pages）— 环境指针指向的已发布 bundle 中的页面
+   * （摘要投影，不含 schema），与 getPublishedBySlug / getRuntimeById 同源：
+   * 运行时只见已部署面，发布后新建的草稿页不会出现在页签里（ADR-0005 决策 10③）。
+   * 未部署返回空数组而非 404——门户已按 Application.status 判定可见，空页签是该降级态的如实呈现。
    */
-  async getBySlug(tenantId: string, slug: string): Promise<PageMeta> {
-    const page = await prisma.pageMeta.findFirst({
-      where: { tenantId, apiName: slug, isPublished: true },
-      orderBy: { updatedAt: 'desc' },
+  async listRuntime(tenantId: string, appId: string): Promise<PageMeta[]> {
+    const env = getEnvironmentId() ?? 'prod';
+    const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
+    if (!resolved.bundle) return [];
+    const publishedAt = resolved.bundle.meta.publishedAt;
+    return resolved.bundle.pages.map((p) => {
+      const { schema: _schema, ...summary } = this.bundlePageToMeta(
+        tenantId,
+        appId,
+        p,
+        publishedAt,
+      );
+      return summary;
     });
-    if (!page) throw new NotFoundException('页面不存在');
-    return this.toPageMeta(page);
   }
 
   /**
@@ -222,7 +234,7 @@ export class PageService {
    * 环境隔离核心方法：从环境指针指向的 AppVersion.snapshot（不可变 bundle）中
    * 读取页面 schema，而非开发态 PageMeta.schema。确保运行态用户只看到已发布版本。
    *
-   * Studio 预览模式不受影响 — Studio 通过 GET /pages/:pageId 读取开发态数据。
+   * Studio 预览模式不受影响 — Studio 经设计面 GET /design/apps/:appId/pages/:pageId 读开发态。
    */
   async getPublishedBySlug(tenantId: string, appId: string, slug: string): Promise<PageMeta> {
     // R1.4：环境解析（ALS env，缺省 prod）——指针→AppVersion.bundle，未部署即 404
@@ -230,40 +242,42 @@ export class PageService {
     const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
     if (!resolved.bundle) throw new NotFoundException('应用尚未发布');
 
-    const snapshot = resolved.bundle;
-    const pageData = snapshot.pages.find((p: { apiName: string }) => p.apiName === slug);
+    const pageData = resolved.bundle.pages.find((p) => p.apiName === slug);
     if (!pageData) {
       throw new NotFoundException('页面不存在或未发布');
     }
-
-    return {
-      id: asPageId(pageData.id),
-      tenantId: asTenantId(tenantId),
-      appId: asAppId(appId),
-      name: pageData.name,
-      slug: pageData.apiName,
-      apiName: pageData.apiName,
-      type: pageData.type as PageType,
-      objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
-      schema: pageData.schema as unknown as PageSchema,
-      published: true,
-      createdAt: snapshot.meta.publishedAt,
-      updatedAt: snapshot.meta.publishedAt,
-    };
+    return this.bundlePageToMeta(tenantId, appId, pageData, resolved.bundle.meta.publishedAt);
   }
 
   /**
-   * 运行时按 ID 读页面（R1.4 审批页渲染入口）——环境指针指向的已发布 bundle，
-   * 未部署 / bundle 不含该页面即 404（无活表兜底）。
-   * Studio 编辑器仍走 GET /pages/:pageId 读活表开发态，两者语义分离。
+   * 运行时按 ID 读页面（R1.4 审批页渲染入口，GET /apps/:appId/pages/:pageId）——环境指针
+   * 指向的已发布 bundle，未部署 / bundle 不含该页面即 404（无活表兜底）。
+   * Studio 编辑器走设计面读活表开发态，两者语义分离。
    */
   async getRuntimeById(tenantId: string, appId: string, pageId: string): Promise<PageMeta> {
     const env = getEnvironmentId() ?? 'prod';
     const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
-    const pageData = resolved.bundle?.pages.find((p: { id: string }) => p.id === pageId);
+    const pageData = resolved.bundle?.pages.find((p) => p.id === pageId);
     if (!resolved.bundle || !pageData) {
       throw new NotFoundException('页面不存在或未发布');
     }
+    return this.bundlePageToMeta(tenantId, appId, pageData, resolved.bundle.meta.publishedAt);
+  }
+
+  /** 已发布 bundle 中的页面 → PageMeta（三个运行面读方法共用投影）。 */
+  private bundlePageToMeta(
+    tenantId: string,
+    appId: string,
+    pageData: {
+      id: string;
+      name: string;
+      apiName: string;
+      type: string;
+      objectId?: string | null;
+      schema?: unknown;
+    },
+    publishedAt: string,
+  ): PageMeta {
     return {
       id: asPageId(pageData.id),
       tenantId: asTenantId(tenantId),
@@ -275,8 +289,8 @@ export class PageService {
       objectId: pageData.objectId ? asObjectId(pageData.objectId) : undefined,
       schema: pageData.schema as unknown as PageSchema,
       published: true,
-      createdAt: resolved.bundle.meta.publishedAt,
-      updatedAt: resolved.bundle.meta.publishedAt,
+      createdAt: publishedAt,
+      updatedAt: publishedAt,
     };
   }
 
@@ -338,7 +352,7 @@ export class PageService {
       changeDescription: `新建页面: ${req.name}`,
     });
 
-    return this.get(tenantId, page.id);
+    return this.get(tenantId, appId, page.id);
   }
 
   /**
@@ -346,20 +360,17 @@ export class PageService {
    */
   async update(
     tenantId: string,
+    appId: string,
     pageId: string,
     req: UpdatePageRequest,
     changedBy?: string,
   ): Promise<PageMeta> {
-    // 先查 appId（变更日志需要）
-    const existing = await prisma.pageMeta.findFirst({
-      where: { id: pageId, tenantId },
-      select: { appId: true, name: true, objectId: true },
-    });
+    const existing = await this.requirePage(tenantId, appId, pageId);
 
     // R1.7 第二轮③：页面唯一方言 = amis，schema 更新一律过 G3 合同（硬闸，无 v1 旁路）
     if (req.schema) {
       const check = this.schemaContract.validate('amis_page', req.schema, {
-        selectFieldApiNames: await this.selectFieldApiNames(tenantId, existing?.objectId),
+        selectFieldApiNames: await this.selectFieldApiNames(tenantId, existing.objectId),
       });
       if (!check.valid) {
         throw new BadRequestException({
@@ -374,7 +385,7 @@ export class PageService {
     }
 
     await prisma.pageMeta.updateMany({
-      where: { id: pageId, tenantId },
+      where: { id: pageId, tenantId, appId },
       data: {
         name: req.name,
         schema: req.schema as unknown as Prisma.InputJsonValue | undefined,
@@ -393,62 +404,56 @@ export class PageService {
       );
     }
 
-    if (existing) {
-      await this.changeLogService.log({
-        tenantId,
-        appId: existing.appId,
-        module: 'PAGE',
-        entityType: 'PageMeta',
-        entityId: pageId,
-        entityName: req.name ?? existing.name,
-        changeType: 'UPDATE',
-        changedBy: changedBy ?? 'system',
-        changeDescription: `更新页面: ${req.name ?? existing.name}`,
-      });
-    }
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'PageMeta',
+      entityId: pageId,
+      entityName: req.name ?? existing.name,
+      changeType: 'UPDATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `更新页面: ${req.name ?? existing.name}`,
+    });
 
-    return this.get(tenantId, pageId);
+    return this.get(tenantId, appId, pageId);
   }
 
   /**
    * 删除页面。
    */
-  async delete(tenantId: string, pageId: string, changedBy?: string): Promise<void> {
+  async delete(tenantId: string, appId: string, pageId: string, changedBy?: string): Promise<void> {
     // 先查信息（删除后无法获取）
-    const existing = await prisma.pageMeta.findFirst({
-      where: { id: pageId, tenantId },
-      select: { appId: true, name: true },
-    });
+    const existing = await this.requirePage(tenantId, appId, pageId);
 
     const result = await prisma.pageMeta.deleteMany({
-      where: { id: pageId, tenantId },
+      where: { id: pageId, tenantId, appId },
     });
     if (result.count === 0) throw new NotFoundException('页面不存在');
 
-    if (existing) {
-      await this.changeLogService.log({
-        tenantId,
-        appId: existing.appId,
-        module: 'PAGE',
-        entityType: 'PageMeta',
-        entityId: pageId,
-        entityName: existing.name,
-        changeType: 'DELETE',
-        changedBy: changedBy ?? 'system',
-        changeDescription: `删除页面: ${existing.name}`,
-      });
-    }
+    await this.changeLogService.log({
+      tenantId,
+      appId,
+      module: 'PAGE',
+      entityType: 'PageMeta',
+      entityId: pageId,
+      entityName: existing.name,
+      changeType: 'DELETE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `删除页面: ${existing.name}`,
+    });
   }
 
   /**
    * 发布页面（isPublished = true）。
    */
-  async publish(tenantId: string, pageId: string): Promise<PageMeta> {
-    await prisma.pageMeta.updateMany({
-      where: { id: pageId, tenantId },
+  async publish(tenantId: string, appId: string, pageId: string): Promise<PageMeta> {
+    const result = await prisma.pageMeta.updateMany({
+      where: { id: pageId, tenantId, appId },
       data: { isPublished: true },
     });
-    return this.get(tenantId, pageId);
+    if (result.count === 0) throw new NotFoundException('页面不存在');
+    return this.get(tenantId, appId, pageId);
   }
 
   /**

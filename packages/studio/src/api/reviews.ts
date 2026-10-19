@@ -2,15 +2,15 @@
  * 审核中心 API 封装（R1.2）。
  *
  * 后端端点:
- *   GET  /api/apps/:appId/reviews             — 提交单列表
- *   GET  /api/apps/:appId/reviews/dirty       — 未提交变更清单
- *   GET  /api/apps/:appId/reviews/versions    — 资源版本链
- *   GET  /api/apps/:appId/reviews/:id         — 提交单详情（含 diff）
- *   POST /api/apps/:appId/reviews/submit      — 人工提交基线
- *   POST /api/apps/:appId/reviews/discard     — 撤销未提交
- *   POST /api/apps/:appId/reviews/:id/approve — 批准
- *   POST /api/apps/:appId/reviews/:id/reject  — 驳回
- *   POST /api/apps/:appId/reviews/:id/adopt   — 改稿收编（ADR-0004 决策 4）
+ *   GET  /api/design/apps/:appId/reviews             — 提交单列表
+ *   GET  /api/design/apps/:appId/reviews/dirty       — 未提交变更清单
+ *   GET  /api/design/apps/:appId/reviews/versions    — 资源版本链
+ *   GET  /api/design/apps/:appId/reviews/:id         — 提交单详情（含 diff）
+ *   POST /api/design/apps/:appId/reviews/submit      — 人工提交基线
+ *   POST /api/design/apps/:appId/reviews/discard     — 撤销未提交
+ *   POST /api/design/apps/:appId/reviews/:id/approve — 批准
+ *   POST /api/design/apps/:appId/reviews/:id/reject  — 驳回
+ *   POST /api/design/apps/:appId/reviews/:id/adopt   — 改稿收编（ADR-0004 决策 4）
  */
 
 import client from './client.js';
@@ -43,7 +43,7 @@ export const reviewsApi = {
             latest: { module: string; apiName: string; name: string; createdAt: string } | null;
           }>;
         }>
-      >('/api/apps/reviews/pending-summary')
+      >('/api/design/apps/reviews/pending-summary')
       .then(
         (res) =>
           res.data.data as {
@@ -60,25 +60,29 @@ export const reviewsApi = {
   /** 提交单列表 */
   list: (appId: string, params?: ReviewListParams) =>
     client
-      .get<ApiResponse<ResourceVersionListItemDto[]>>(`/api/apps/${appId}/reviews`, { params })
+      .get<ApiResponse<ResourceVersionListItemDto[]>>(`/api/design/apps/${appId}/reviews`, {
+        params,
+      })
       .then((res) => res.data.data as ResourceVersionListItemDto[]),
 
   /** 提交单详情（含快照与完整 diff） */
   get: (appId: string, submissionId: string) =>
     client
-      .get<ApiResponse<ResourceVersionDetailDto>>(`/api/apps/${appId}/reviews/${submissionId}`)
+      .get<ApiResponse<ResourceVersionDetailDto>>(
+        `/api/design/apps/${appId}/reviews/${submissionId}`,
+      )
       .then((res) => res.data.data as ResourceVersionDetailDto),
 
   /** 未提交变更清单 */
   dirty: (appId: string) =>
     client
-      .get<ApiResponse<DirtyResourceDto[]>>(`/api/apps/${appId}/reviews/dirty`)
+      .get<ApiResponse<DirtyResourceDto[]>>(`/api/design/apps/${appId}/reviews/dirty`)
       .then((res) => res.data.data as DirtyResourceDto[]),
 
   /** 资源版本链 */
   versions: (appId: string, module: ReviewModule, entityId: string) =>
     client
-      .get<ApiResponse<ResourceVersionDto[]>>(`/api/apps/${appId}/reviews/versions`, {
+      .get<ApiResponse<ResourceVersionDto[]>>(`/api/design/apps/${appId}/reviews/versions`, {
         params: { module, entityId },
       })
       .then((res) => res.data.data as ResourceVersionDto[]),
@@ -86,14 +90,14 @@ export const reviewsApi = {
   /** 人工提交基线 */
   submit: (appId: string, params: { module: ReviewModule; entityId: string }) =>
     client
-      .post<ApiResponse<ResourceVersionDto>>(`/api/apps/${appId}/reviews/submit`, params)
+      .post<ApiResponse<ResourceVersionDto>>(`/api/design/apps/${appId}/reviews/submit`, params)
       .then((res) => res.data.data as ResourceVersionDto),
 
   /** 撤销未提交 */
   discard: (appId: string, params: { module: ReviewModule; entityId: string }) =>
     client
       .post<ApiResponse<{ reverted: boolean; apiName: string }>>(
-        `/api/apps/${appId}/reviews/discard`,
+        `/api/design/apps/${appId}/reviews/discard`,
         params,
       )
       .then((res) => res.data.data as { reverted: boolean; apiName: string }),
@@ -102,7 +106,7 @@ export const reviewsApi = {
   approve: (appId: string, submissionId: string, params?: { comment?: string; force?: boolean }) =>
     client
       .post<ApiResponse<ResourceVersionDto>>(
-        `/api/apps/${appId}/reviews/${submissionId}/approve`,
+        `/api/design/apps/${appId}/reviews/${submissionId}/approve`,
         params ?? {},
       )
       .then((res) => res.data.data as ResourceVersionDto),
@@ -110,16 +114,19 @@ export const reviewsApi = {
   /** 驳回（意见必填） */
   reject: (appId: string, submissionId: string, comment: string) =>
     client
-      .post<ApiResponse<ResourceVersionDto>>(`/api/apps/${appId}/reviews/${submissionId}/reject`, {
-        comment,
-      })
+      .post<ApiResponse<ResourceVersionDto>>(
+        `/api/design/apps/${appId}/reviews/${submissionId}/reject`,
+        {
+          comment,
+        },
+      )
       .then((res) => res.data.data as ResourceVersionDto),
 
   /** 批量批准：对象→页面→流程拓扑序落地并解析 @ref: 引用令牌 */
   approveBatch: (appId: string, batchId: string, params?: { comment?: string; force?: boolean }) =>
     client
       .post<ApiResponse<ResourceVersionDto[]>>(
-        `/api/apps/${appId}/reviews/batch/${batchId}/approve`,
+        `/api/design/apps/${appId}/reviews/batch/${batchId}/approve`,
         params ?? {},
       )
       .then((res) => res.data.data as ResourceVersionDto[]),
@@ -128,7 +135,7 @@ export const reviewsApi = {
   rejectBatch: (appId: string, batchId: string, comment: string) =>
     client
       .post<ApiResponse<{ rejected: number }>>(
-        `/api/apps/${appId}/reviews/batch/${batchId}/reject`,
+        `/api/design/apps/${appId}/reviews/batch/${batchId}/reject`,
         { comment },
       )
       .then((res) => res.data.data as { rejected: number }),
@@ -141,7 +148,7 @@ export const reviewsApi = {
   ) =>
     client
       .post<ApiResponse<ResourceVersionDto>>(
-        `/api/apps/${appId}/reviews/${submissionId}/adopt`,
+        `/api/design/apps/${appId}/reviews/${submissionId}/adopt`,
         params,
       )
       .then((res) => res.data.data as ResourceVersionDto),

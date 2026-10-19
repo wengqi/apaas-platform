@@ -75,7 +75,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
           const schemas = await Promise.all(
             processes.map((p) =>
               processesApi
-                .get(p.id)
+                .get(appId!, p.id)
                 .then((d) => d.workflowSchema)
                 .catch(() => undefined),
             ),
@@ -86,7 +86,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
         }
       }
       if (data.objectId && supportsTemplate(data.type)) {
-        obj = await objectsApi.get(data.objectId);
+        obj = await objectsApi.get(appId!, data.objectId);
         schema = buildPageTemplate(data.type, obj, data.name, {
           excludeFields,
           // 列表页必含回写状态列（表单页的 includeFields 不生效，由其分支忽略）
@@ -145,7 +145,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
 
   /** 删除页面。 */
   const deleteMutation = useMutation({
-    mutationFn: (pageId: string) => pagesApi.delete(pageId),
+    mutationFn: (pageId: string) => pagesApi.delete(appId!, pageId),
     onSuccess: () => {
       message.success('页面已删除');
       queryClient.invalidateQueries({ queryKey: qk.appPages(appId!) });

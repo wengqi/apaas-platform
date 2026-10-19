@@ -37,9 +37,8 @@ export class McpController {
   ): Promise<void> {
     const authenticated = req as unknown as AuthenticatedRequest;
     const tenantId = requireTenantId(authenticated);
-    const userId = authenticated.user?.id ?? 'unknown';
 
-    const server = createMcpServer(this.mcpService, tenantId, userId);
+    const server = createMcpServer(this.mcpService, tenantId, authenticated.user);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

@@ -8,7 +8,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatasetController } from './dataset.controller.js';
 import { DatasetService } from './dataset.service.js';
 import { DatasetRowService } from './dataset-row.service.js';
-import { DataFlowController } from './dataflow.controller.js';
+import { DesignDataFlowController } from './design-dataflow.controller.js';
+import { DesignDatasetController } from './design-dataset.controller.js';
 import { DataFlowService } from './dataflow.service.js';
 import { DataFlowEngine } from './dataflow-engine.service.js';
 import { ChartDataService } from './chart-data.service.js';
@@ -16,6 +17,7 @@ import { ChartDataController } from './chart-data.controller.js';
 import { DatasetProcessor } from './dataset.processor.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { QueueModule } from '../queue/queue.module.js';
 import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
@@ -33,10 +35,16 @@ import { EnvironmentCoreModule } from '../environment/environment-core.module.js
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     forwardRef(() => QueueModule),
   ],
-  controllers: [DatasetController, DataFlowController, ChartDataController],
+  controllers: [
+    DatasetController,
+    DesignDatasetController,
+    DesignDataFlowController,
+    ChartDataController,
+  ],
   providers: [
     DatasetService,
     DatasetRowService,

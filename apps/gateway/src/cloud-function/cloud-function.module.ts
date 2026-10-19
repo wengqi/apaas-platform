@@ -6,10 +6,12 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CloudFunctionController } from './cloud-function.controller.js';
+import { DesignCloudFunctionController } from './design-cloud-function.controller.js';
 import { CloudFunctionService } from './cloud-function.service.js';
 import { CloudFunctionRunner } from './cloud-function.runner.service.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { ObservabilityModule } from '../observability/observability.module.js';
 
@@ -25,10 +27,11 @@ import { ObservabilityModule } from '../observability/observability.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     ObservabilityModule,
   ],
-  controllers: [CloudFunctionController],
+  controllers: [CloudFunctionController, DesignCloudFunctionController],
   providers: [CloudFunctionService, CloudFunctionRunner, JwtStrategy],
   exports: [CloudFunctionService, CloudFunctionRunner],
 })

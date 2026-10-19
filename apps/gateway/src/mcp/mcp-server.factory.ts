@@ -20,6 +20,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { McpService } from './mcp.service.js';
+import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 
 /** JSON-RPC 工具参数（MCP 层透传的松散对象）。 */
 type ToolArgs = Record<string, unknown>;
@@ -84,21 +85,21 @@ const TOOLS: Array<{
   },
   {
     name: 'get_page',
-    description: '获取页面详情（含完整 amis 页面 schema）。',
+    description: '获取页面详情（含完整 amis 页面 schema）。页面按应用寻址，appId 必填。',
     inputSchema: {
       type: 'object',
-      properties: { pageId: { type: 'string' } },
-      required: ['pageId'],
+      properties: { appId: { type: 'string' }, pageId: { type: 'string' } },
+      required: ['appId', 'pageId'],
       additionalProperties: false,
     },
   },
   {
     name: 'get_process',
-    description: '获取流程定义详情（含完整 WorkflowSchema）。',
+    description: '获取流程定义详情（含完整 WorkflowSchema）。流程按应用寻址，appId 必填。',
     inputSchema: {
       type: 'object',
-      properties: { processId: { type: 'string' } },
-      required: ['processId'],
+      properties: { appId: { type: 'string' }, processId: { type: 'string' } },
+      required: ['appId', 'processId'],
       additionalProperties: false,
     },
   },
@@ -529,7 +530,11 @@ export const DIALECT_GUIDES: Record<string, string> = {
 };
 
 /** 构建 MCP Server（每请求一个实例，无状态）。 */
-export function createMcpServer(mcpService: McpService, tenantId: string, userId: string): Server {
+export function createMcpServer(
+  mcpService: McpService,
+  tenantId: string,
+  user: AuthenticatedUser,
+): Server {
   const server = new Server(
     { name: 'apaas-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } },
@@ -546,7 +551,7 @@ export function createMcpServer(mcpService: McpService, tenantId: string, userId
       payload = guard;
     } else {
       try {
-        payload = await dispatch(mcpService, tenantId, userId, name, args);
+        payload = await dispatch(mcpService, tenantId, user, name, args);
       } catch (err) {
         payload = {
           ok: false,
@@ -604,13 +609,18 @@ export function requireParams(name: string, args: ToolArgs): McpToolResultLike |
 async function dispatch(
   svc: McpService,
   tenantId: string,
-  userId: string,
+  user: AuthenticatedUser,
   name: string,
   args: ToolArgs,
 ): Promise<McpToolResultLike> {
+  const userId = user.id;
+  // ADR-0005：凡带 appId 的工具一律先过归属断言（与 HTTP 设计面 DesignAccessGuard 同一判定源），
+  // AI 用谁的 token 就只见/只改谁可见的应用；create_application 不带 appId，建成即 OWNER
+  const scopedAppId = optionalStr(args['appId']);
+  if (scopedAppId) await svc.assertAppAccess(user, tenantId, scopedAppId);
   switch (name) {
     case 'get_platform_overview':
-      return svc.overview(tenantId);
+      return svc.overview(tenantId, user);
     case 'get_dialect_guide': {
       const kind = String(args['kind']);
       const guide = DIALECT_GUIDES[kind];
@@ -644,9 +654,9 @@ async function dispatch(
     case 'list_roles':
       return svc.listRoles(tenantId, optionalStr(args['appId']));
     case 'get_page':
-      return svc.getPage(tenantId, str(args['pageId']));
+      return svc.getPage(tenantId, str(args['appId']), str(args['pageId']));
     case 'get_process':
-      return svc.getProcess(tenantId, str(args['processId']));
+      return svc.getProcess(tenantId, str(args['appId']), str(args['processId']));
     case 'validate_schema':
       return svc.validateSchema(tenantId, str(args['kind']) as 'amis_page', args['schema']);
     case 'submit_page_draft':

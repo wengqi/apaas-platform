@@ -21,6 +21,8 @@ import { ObjectService } from '../object/object.service.js';
 import { ReviewService, collectRefTokens, type AiDraftInput } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
+import { AppAccessService } from '../app-access/app-access.service.js';
+import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 import { writeAudit } from '../common/audit.js';
 
 /** MCP 工具的结构化返回（JSON-RPC result.content 前的数据负载）。 */
@@ -43,15 +45,33 @@ export class McpService {
     private readonly reviewService: ReviewService,
     private readonly applicationService: ApplicationService,
     private readonly observability: ObservabilityService,
+    private readonly appAccess: AppAccessService,
   ) {}
+
+  /**
+   * 归属断言（ADR-0005）：MCP 不经 HTTP 控制器，须在此显式过与 DesignAccessGuard 同一判定源。
+   * 工厂 dispatch 对所有带 appId 的工具统一调用。
+   */
+  async assertAppAccess(user: AuthenticatedUser, tenantId: string, appId: string): Promise<void> {
+    await this.appAccess.assertDesignAccess(user, tenantId, appId);
+  }
 
   // ===========================================================================
   // 读工具
   // ===========================================================================
 
-  async overview(tenantId: string): Promise<McpToolResult> {
+  async overview(tenantId: string, user: AuthenticatedUser): Promise<McpToolResult> {
+    // ADR-0005：概览只列 token 持有人的归属可见集（管理员全量）
+    const visible = await this.appAccess.visibleAppIds(user, tenantId);
+    if (visible !== 'all' && visible.length === 0) {
+      return {
+        ok: true,
+        apps: [],
+        hint: '当前账号尚无归属应用：用 create_application 新建，或请所有者添加为协作者',
+      };
+    }
     const apps = await prisma.application.findMany({
-      where: { tenantId },
+      where: { tenantId, ...(visible === 'all' ? {} : { id: { in: visible } }) },
       select: { id: true, apiName: true, name: true, status: true, version: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -400,13 +420,13 @@ export class McpService {
     };
   }
 
-  async getPage(tenantId: string, pageId: string): Promise<McpToolResult> {
-    const page = await this.pageService.get(tenantId, pageId);
+  async getPage(tenantId: string, appId: string, pageId: string): Promise<McpToolResult> {
+    const page = await this.pageService.get(tenantId, appId, pageId);
     return { ok: true, page };
   }
 
-  async getProcess(tenantId: string, processId: string): Promise<McpToolResult> {
-    const process = await this.processService.getProcess(tenantId, processId);
+  async getProcess(tenantId: string, appId: string, processId: string): Promise<McpToolResult> {
+    const process = await this.processService.getProcess(tenantId, appId, processId);
     return { ok: true, process };
   }
 

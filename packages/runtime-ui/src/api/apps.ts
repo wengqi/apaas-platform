@@ -25,9 +25,10 @@ export interface AppSummary {
 }
 
 export const appsApi = {
-  // runtime=1：服务端运行时视图——仅返回已发布且有权限的应用（2026-10-10）。
-  // 客户端的 PUBLISHED 过滤保留为兜底；studio 端不传该参数，行为不变。
-  list: () => apiClient.get('/apps?runtime=1').then((res) => res.data.data as AppSummary[]),
+  // 运行面 GET /apps（ADR-0005）：服务端只返回已发布且当前用户有权限的应用；
+  // 搭建者全量列表在设计面 /design/apps，运行时不消费。客户端 PUBLISHED 过滤保留为兜底。
+  list: () => apiClient.get('/apps').then((res) => res.data.data as AppSummary[]),
+  // 运行面详情：未发布或无权限 → 404（运行时视角应用尚不存在）
   get: (appId: string) =>
     apiClient.get(`/apps/${appId}`).then((res) => res.data.data as AppSummary),
 };

@@ -36,9 +36,9 @@ export class ConnectorService {
   }
 
   /** 获取连接器详情。 */
-  async get(tenantId: string, connectorId: string): Promise<Connector> {
+  async get(tenantId: string, appId: string, connectorId: string): Promise<Connector> {
     const connector = await prisma.connector.findFirst({
-      where: { id: connectorId, tenantId },
+      where: { id: connectorId, tenantId, appId },
     });
     if (!connector) throw new NotFoundException('连接器不存在');
     return this.toDto(connector);
@@ -101,12 +101,13 @@ export class ConnectorService {
   /** 更新连接器。 */
   async update(
     tenantId: string,
+    appId: string,
     connectorId: string,
     updatedBy: string,
     data: UpdateConnectorRequest,
   ): Promise<Connector> {
     const existing = await prisma.connector.findFirst({
-      where: { id: connectorId, tenantId },
+      where: { id: connectorId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('连接器不存在');
 
@@ -137,9 +138,14 @@ export class ConnectorService {
   }
 
   /** 删除连接器。 */
-  async delete(tenantId: string, connectorId: string, deletedBy: string): Promise<void> {
+  async delete(
+    tenantId: string,
+    appId: string,
+    connectorId: string,
+    deletedBy: string,
+  ): Promise<void> {
     const existing = await prisma.connector.findFirst({
-      where: { id: connectorId, tenantId },
+      where: { id: connectorId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('连接器不存在');
 
@@ -160,10 +166,12 @@ export class ConnectorService {
   /** 测试连接器（执行一次调用并返回结果）。 */
   async test(
     tenantId: string,
+    appId: string,
     connectorId: string,
     params: InvokeConnectorRequest,
   ): Promise<ConnectorCallResult> {
     const connector = await this.getEntity(tenantId, connectorId);
+    if (connector.appId !== appId) throw new NotFoundException('连接器不存在');
     if (connector.type !== 'HTTP') {
       throw new BadRequestException('只有 HTTP 类型的连接器支持测试');
     }

@@ -79,7 +79,7 @@ export class ProcessService {
   // 流程定义 CRUD
   // ===========================================================================
 
-  /** 列出应用下流程定义。 */
+  /** 列出应用下流程定义（设计面，含草稿）。 */
   async listProcesses(tenantId: string, appId: string) {
     const defs = await prisma.processDef.findMany({
       where: { tenantId, appId },
@@ -88,13 +88,31 @@ export class ProcessService {
     return defs.map((d) => this.toProcessDefDto(d));
   }
 
-  /** 获取流程定义。 */
-  async getProcess(tenantId: string, processId: string) {
+  /**
+   * 列出应用下已发布流程（运行面 GET /apps/:appId/processes，ADR-0005 决策 10③）。
+   * 流程级发布语义以活表 status=PUBLISHED 为准（I-1：bundle 不约束流程触发与手动发起）。
+   */
+  async listPublishedProcesses(tenantId: string, appId: string) {
+    const defs = await prisma.processDef.findMany({
+      where: { tenantId, appId, status: 'PUBLISHED' },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return defs.map((d) => this.toProcessDefDto(d));
+  }
+
+  /** 获取流程定义（设计面）。 */
+  async getProcess(tenantId: string, appId: string, processId: string) {
+    const def = await this.requireProcessDef(tenantId, appId, processId);
+    return this.toProcessDefDto(def);
+  }
+
+  /** 断言流程定义存在且属于该应用（租户 + 应用双域隔离，ADR-0005），不存在抛 404。 */
+  private async requireProcessDef(tenantId: string, appId: string, processId: string) {
     const def = await prisma.processDef.findFirst({
-      where: { id: processId, tenantId },
+      where: { id: processId, tenantId, appId },
     });
     if (!def) throw new NotFoundException('流程不存在');
-    return this.toProcessDefDto(def);
+    return def;
   }
 
   /** 创建流程定义。 */
@@ -146,14 +164,12 @@ export class ProcessService {
   /** 更新流程定义（含 workflowSchema）。 */
   async updateProcess(
     tenantId: string,
+    appId: string,
     processId: string,
     req: UpdateProcessDefRequest,
     changedBy?: string,
   ) {
-    const existing = await prisma.processDef.findFirst({
-      where: { id: processId, tenantId },
-    });
-    if (!existing) throw new NotFoundException('流程不存在');
+    const existing = await this.requireProcessDef(tenantId, appId, processId);
     // 已发布流程允许更新,但回退为草稿状态(便于开发迭代)
     // 生产环境应改为"新建版本"逻辑
     if (existing.status === 'PUBLISHED') {
@@ -196,15 +212,12 @@ export class ProcessService {
       changeDescription: `更新流程: ${req.name ?? existing.name}`,
     });
 
-    return this.getProcess(tenantId, processId);
+    return this.getProcess(tenantId, appId, processId);
   }
 
   /** 删除流程定义（草稿可删，已发布需先归档）。 */
-  async deleteProcess(tenantId: string, processId: string, changedBy?: string) {
-    const existing = await prisma.processDef.findFirst({
-      where: { id: processId, tenantId },
-    });
-    if (!existing) throw new NotFoundException('流程不存在');
+  async deleteProcess(tenantId: string, appId: string, processId: string, changedBy?: string) {
+    const existing = await this.requireProcessDef(tenantId, appId, processId);
     if (existing.status === 'PUBLISHED') {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
@@ -230,11 +243,8 @@ export class ProcessService {
   }
 
   /** 发布流程（版本自增，状态→PUBLISHED）。 */
-  async publishProcess(tenantId: string, processId: string, userId?: string) {
-    const existing = await prisma.processDef.findFirst({
-      where: { id: processId, tenantId },
-    });
-    if (!existing) throw new NotFoundException('流程不存在');
+  async publishProcess(tenantId: string, appId: string, processId: string, userId?: string) {
+    const existing = await this.requireProcessDef(tenantId, appId, processId);
 
     const schema = existing.workflowSchema as { nodes?: unknown[] } | null;
     if (!schema || !Array.isArray(schema.nodes) || schema.nodes.length === 0) {
@@ -513,11 +523,14 @@ export class ProcessService {
   /** 列出某流程定义的实例。 */
   async listInstancesByProcess(
     tenantId: string,
+    appId: string,
     processId: string,
     status?: string,
     page?: number,
     pageSize?: number,
   ) {
+    // 设计面监控：先断言流程属于路径上的应用（ADR-0005 双域）
+    await this.requireProcessDef(tenantId, appId, processId);
     // 前端传入大写状态枚举值（对齐 ProcessInstanceState），直接传给 Prisma 查询
     return this.listInstances(tenantId, processId, status, page, pageSize);
   }
@@ -1057,9 +1070,14 @@ export class ProcessService {
   }
 
   /** 更新模版。 */
-  async updateTemplate(tenantId: string, templateId: string, req: UpdateTemplateRequest) {
+  async updateTemplate(
+    tenantId: string,
+    appId: string,
+    templateId: string,
+    req: UpdateTemplateRequest,
+  ) {
     const existing = await prisma.notificationTemplate.findFirst({
-      where: { id: templateId, tenantId },
+      where: { id: templateId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('通知模版不存在');
 
@@ -1080,9 +1098,9 @@ export class ProcessService {
   }
 
   /** 删除模版。 */
-  async deleteTemplate(tenantId: string, templateId: string) {
+  async deleteTemplate(tenantId: string, appId: string, templateId: string) {
     const existing = await prisma.notificationTemplate.findFirst({
-      where: { id: templateId, tenantId },
+      where: { id: templateId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('通知模版不存在');
     await prisma.notificationTemplate.delete({ where: { id: templateId } });

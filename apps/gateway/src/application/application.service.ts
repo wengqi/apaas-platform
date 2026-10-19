@@ -23,7 +23,11 @@ import { TriggerService } from '../process/trigger.service.js';
 import { writeAudit } from '../common/audit.js';
 import { EnvironmentService } from '../environment/environment.service.js';
 import { PermissionService } from '../permission/permission.service.js';
+import { AppAccessService } from '../app-access/app-access.service.js';
 import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
+
+/** 应用详情响应：shared Application + 资源统计（GET /design/apps/:appId 与 GET /apps/:appId 共用）。 */
+export type ApplicationDetail = Application & { stats: AppSummary['stats'] };
 
 /**
  * 应用服务 — Application CRUD + 发布/回滚/版本管理。
@@ -38,17 +42,23 @@ export class ApplicationService {
     private readonly triggerService: TriggerService,
     private readonly environmentService: EnvironmentService,
     private readonly permissionService: PermissionService,
+    private readonly appAccess: AppAccessService,
   ) {}
 
   /** 评审整改：类内日志器（不作为 DI 依赖） */
   private readonly logger = new Logger(ApplicationService.name);
 
   /**
-   * 列出租户下所有应用（含资源统计）。
+   * 设计面列应用（GET /design/apps）— 搭建者归属可见集（ADR-0005）：
+   * 管理员全量（含他人 DRAFT）；搭建者只见自己为 OWNER/MEMBER 的应用。
+   * 每项附 myRole（卡片据此显示「由 {ownerName} 共享」）与 OWNER 姓名。
    */
-  async list(tenantId: string): Promise<AppSummary[]> {
+  async listForDesign(tenantId: string, user: AuthenticatedUser): Promise<AppSummary[]> {
+    const visible = await this.appAccess.visibleAppIds(user, tenantId);
+    if (visible !== 'all' && visible.length === 0) return [];
+
     const apps = await prisma.application.findMany({
-      where: { tenantId },
+      where: { tenantId, ...(visible === 'all' ? {} : { id: { in: visible } }) },
       orderBy: { updatedAt: 'desc' },
       include: {
         _count: {
@@ -56,50 +66,64 @@ export class ApplicationService {
         },
       },
     });
+    if (apps.length === 0) return [];
 
-    return apps.map((app) => this.toSummary(app));
+    const [owners, myRoles] = await Promise.all([
+      prisma.applicationMember.findMany({
+        where: { tenantId, appId: { in: apps.map((a) => a.id) }, role: 'OWNER' },
+        select: { appId: true, user: { select: { name: true } } },
+      }),
+      this.appAccess.membershipRoles(user, tenantId),
+    ]);
+    const ownerNameByApp = new Map(owners.map((o) => [o.appId, o.user.name]));
+    return apps.map((app) => ({
+      ...this.toSummary(app, ownerNameByApp.get(app.id)),
+      myRole: user.isSuperAdmin ? 'admin' : myRoles.get(app.id),
+    }));
   }
 
   /**
-   * 运行时视图列应用（GET /apps?runtime=1）— 终端用户语义：
-   * 仅返回【已发布】且【当前用户有权限】的应用。
-   *
-   * 可见性判定（权限归纳，单次规则查询；不做逐应用 explain 的 N 次查询）：
+   * 运行时可见应用集归纳（GET /apps 与 GET /apps/:appId 共用，单次规则查询；
+   * 不做逐应用 explain 的 N 次查询）：
    * - 管理员短路（isSuperAdmin = 平台超管或 TENANT_ADMIN，与 PermissionService/jwt.strategy
-   *   同源）→ 全部已发布应用；
+   *   同源）→ 'all'；
    * - 用户有效角色集（直接+组织授权+扩散，复用 PermissionService.getUserRoleIds）名下存在
-   *   租户级 ALLOW 规则（appId=null，种子 END_USER/BUILDER 通配即此类）→ 全部已发布应用可见
+   *   租户级 ALLOW 规则（appId=null，种子 END_USER/BUILDER 通配即此类）→ 'all'
    *   （R5 裁决①：种子通配维持，终端用户开箱可见全部已发布应用）；
-   * - 否则仅 appId 命中角色 ALLOW 规则的应用可见（R4 应用级角色语义）；无角色 → 默认拒绝。
+   * - 否则仅 appId 命中角色 ALLOW 规则的应用（R4 应用级角色语义）；无角色/无命中 → []（默认拒绝）。
+   */
+  private async resolveRuntimeVisibleAppIds(
+    tenantId: string,
+    user: AuthenticatedUser,
+  ): Promise<'all' | string[]> {
+    if (user.isSuperAdmin) return 'all';
+    const roleIds = await this.permissionService.getUserRoleIds(user.id, tenantId);
+    if (roleIds.length === 0) return [];
+    const rules = await prisma.permissionRule.findMany({
+      where: { tenantId, roleId: { in: roleIds }, effect: 'ALLOW' },
+      select: { appId: true },
+    });
+    if (rules.some((r) => r.appId === null)) return 'all';
+    return [...new Set(rules.map((r) => r.appId).filter((v): v is string => v !== null))];
+  }
+
+  /**
+   * 运行时视图列应用（GET /apps）— 终端用户语义：仅返回【已发布】且【当前用户有权限】的应用。
    *
    * "已发布"用 Application.status='PUBLISHED' 判定（与前端既有客户端过滤、e2e 断言一致），
    * 不用 prod 环境指针——publish 事务后 deploy 失败可容忍（仅告警），指针判定会漏掉这部分应用。
    */
   async listVisibleForUser(tenantId: string, user: AuthenticatedUser): Promise<AppSummary[]> {
+    const visible = await this.resolveRuntimeVisibleAppIds(tenantId, user);
+    if (visible !== 'all' && visible.length === 0) return [];
+
     // isInternal=false（2026-10-12 评审 P0）：E2E/QA 夹具等内部应用不进业务用户运行时门户
-    let where: Prisma.ApplicationWhereInput = {
+    const where: Prisma.ApplicationWhereInput = {
       tenantId,
       status: 'PUBLISHED',
       isInternal: false,
+      ...(visible === 'all' ? {} : { id: { in: visible } }),
     };
-
-    if (!user.isSuperAdmin) {
-      const roleIds = await this.permissionService.getUserRoleIds(user.id, tenantId);
-      if (roleIds.length === 0) return [];
-
-      const rules = await prisma.permissionRule.findMany({
-        where: { tenantId, roleId: { in: roleIds }, effect: 'ALLOW' },
-        select: { appId: true },
-      });
-      const hasTenantWildcard = rules.some((r) => r.appId === null);
-      if (!hasTenantWildcard) {
-        const appIds = [
-          ...new Set(rules.map((r) => r.appId).filter((v): v is string => v !== null)),
-        ];
-        if (appIds.length === 0) return [];
-        where = { ...where, id: { in: appIds } };
-      }
-    }
 
     const apps = await prisma.application.findMany({
       where,
@@ -118,6 +142,32 @@ export class ApplicationService {
     });
     const nameById = new Map(creators.map((u) => [u.id, u.name]));
     return apps.map((app) => this.toSummary(app, nameById.get(app.createdBy)));
+  }
+
+  /**
+   * 运行时读单个应用（GET /apps/:appId）— 与 listVisibleForUser 同一可见性归纳。
+   * 未发布或无权限一律 404：运行时视角该应用尚不存在，不区分"存在但无权"。
+   * 不过滤 isInternal：内部应用只是不进门户列表，直链（e2e/QA 夹具）仍可打开。
+   */
+  async getVisibleForUser(
+    tenantId: string,
+    user: AuthenticatedUser,
+    appId: string,
+  ): Promise<ApplicationDetail> {
+    const visible = await this.resolveRuntimeVisibleAppIds(tenantId, user);
+    if (visible !== 'all' && !visible.includes(appId)) {
+      throw new NotFoundException('应用不存在');
+    }
+    const app = await prisma.application.findFirst({
+      where: { id: appId, tenantId, status: 'PUBLISHED' },
+      include: {
+        _count: {
+          select: { objects: true, pages: true, processes: true },
+        },
+      },
+    });
+    if (!app) throw new NotFoundException('应用不存在');
+    return this.toApplication(app);
   }
 
   /** Prisma 实体 → AppSummary（list / listVisibleForUser 共用投影）。 */
@@ -160,9 +210,9 @@ export class ApplicationService {
   }
 
   /**
-   * 获取单个应用详情。
+   * 获取单个应用详情 — 设计面 GET /design/apps/:appId（含 DRAFT/ARCHIVED）。
    */
-  async get(tenantId: string, appId: string) {
+  async get(tenantId: string, appId: string): Promise<ApplicationDetail> {
     const app = await prisma.application.findFirst({
       where: { id: appId, tenantId },
       include: {
@@ -172,6 +222,26 @@ export class ApplicationService {
       },
     });
     if (!app) throw new NotFoundException('应用不存在');
+    return this.toApplication(app);
+  }
+
+  /** Prisma 实体 → Application DTO（get / getVisibleForUser 共用投影）。 */
+  private toApplication(app: {
+    id: string;
+    tenantId: string;
+    apiName: string;
+    name: string;
+    description: string | null;
+    icon: string | null;
+    color: string | null;
+    status: string;
+    version: number;
+    publishedAt: Date | null;
+    createdBy: string;
+    createdAt: Date;
+    updatedAt: Date;
+    _count: { objects: number; pages: number; processes: number };
+  }): ApplicationDetail {
     return {
       id: asAppId(app.id),
       tenantId: asTenantId(app.tenantId),
@@ -199,14 +269,22 @@ export class ApplicationService {
    */
   /**
    * 分组管理（2026-10-13 素蓝首页）：重命名（from→to）或删除分组（to 空 → 移入未分组）。
-   * 分组是应用上的自由文本，无独立实体——管理即批量改写。
+   * 分组是应用上的自由文本，无独立实体——管理即批量改写；
+   * 改写范围收口到调用者的归属可见集（ADR-0005）：搭建者改分组名不连带他人应用。
    */
-  async updateGroup(tenantId: string, from: string, to?: string): Promise<{ updated: number }> {
+  async updateGroup(
+    tenantId: string,
+    user: AuthenticatedUser,
+    from: string,
+    to?: string,
+  ): Promise<{ updated: number }> {
     const target = to?.trim();
     if (!from.trim()) throw new BadRequestException('现分组名不能为空');
     if (target && target === from) return { updated: 0 };
+    const visible = await this.appAccess.visibleAppIds(user, tenantId);
+    if (visible !== 'all' && visible.length === 0) return { updated: 0 };
     const result = await prisma.application.updateMany({
-      where: { tenantId, group: from },
+      where: { tenantId, group: from, ...(visible === 'all' ? {} : { id: { in: visible } }) },
       data: { group: target || null },
     });
     this.logger.log(`分组「${from}」→「${target || '未分组'}」：更新 ${result.count} 个应用`);
@@ -230,6 +308,9 @@ export class ApplicationService {
         createdBy,
       },
     });
+
+    // ADR-0005：创建人即应用 OWNER（归属以成员表为准，createdBy 仅保留历史创建人语义）
+    await this.appAccess.grantOwner(tenantId, app.id, createdBy);
 
     // 记录变更日志
     await this.changeLogService.log({

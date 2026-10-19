@@ -56,7 +56,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
 
   /** 删除字段。 */
   const deleteFieldMutation = useMutation({
-    mutationFn: (fieldId: string) => objectsApi.deleteField(object.id, fieldId),
+    mutationFn: (fieldId: string) => objectsApi.deleteField(object.appId, object.id, fieldId),
     onSuccess: () => {
       message.success('字段已删除');
       queryClient.invalidateQueries({ queryKey: qk.object(object.id) });
@@ -67,7 +67,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
   /** 内联更新字段(必填开关等)。 */
   const updateFieldMutation = useMutation({
     mutationFn: ({ fieldId, data }: { fieldId: string; data: { required?: boolean } }) =>
-      objectsApi.updateField(object.id, fieldId, data),
+      objectsApi.updateField(object.appId, object.id, fieldId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.object(object.id) });
     },
@@ -160,7 +160,7 @@ export default function FieldTable({ object, appId }: FieldTableProps) {
     try {
       for (const f of changed) {
         const newOrder = newOrderMap.get(f.id);
-        await objectsApi.updateField(object.id, f.id, { order: newOrder });
+        await objectsApi.updateField(object.appId, object.id, f.id, { order: newOrder });
       }
     } catch (err) {
       showError(err);

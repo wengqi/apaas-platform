@@ -23,7 +23,7 @@ test.describe('对象建模 CRUD', () => {
   });
 
   test('创建对象并添加字段', async () => {
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'test_asset',
       name: '测试资产',
       icon: 'box',
@@ -31,7 +31,7 @@ test.describe('对象建模 CRUD', () => {
     expect(obj.id).toBeTruthy();
 
     // 添加文本字段
-    const field = await api.post(`/objects/${obj.id}/fields`, {
+    const field = await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'asset_name',
       label: '资产名称',
       type: 'TEXT',
@@ -40,7 +40,7 @@ test.describe('对象建模 CRUD', () => {
     expect(field).toBeTruthy();
 
     // 添加数字字段
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'asset_value',
       label: '资产价值',
       type: 'NUMBER',
@@ -49,19 +49,19 @@ test.describe('对象建模 CRUD', () => {
     // 验证字段已添加（对象创建自动附带 5 个系统字段，此处只数业务字段）
     const objDetail = await api.get<{
       fields: Array<{ apiName: string; isSystem: boolean }>;
-    }>(`/objects/${obj.id}`);
+    }>(`/design/apps/${appId}/objects/${obj.id}`);
     expect(objDetail.fields.filter((f) => !f.isSystem)).toHaveLength(2);
   });
 
   test('创建记录并查询', async () => {
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'test_record_obj',
       name: '测试记录对象',
       icon: 'box',
     });
 
     // 添加字段
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'name',
       label: '名称',
       type: 'TEXT',

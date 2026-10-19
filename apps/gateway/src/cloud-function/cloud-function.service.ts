@@ -43,9 +43,9 @@ export class CloudFunctionService {
   }
 
   /** 获取云函数详情（含代码）。 */
-  async get(tenantId: string, functionId: string): Promise<CloudFunction> {
+  async get(tenantId: string, appId: string, functionId: string): Promise<CloudFunction> {
     const fn = await prisma.cloudFunction.findFirst({
-      where: { id: functionId, tenantId },
+      where: { id: functionId, tenantId, appId },
     });
     if (!fn) throw new NotFoundException('云函数不存在');
     return this.toDto(fn);
@@ -109,12 +109,13 @@ export class CloudFunctionService {
   /** 更新云函数。 */
   async update(
     tenantId: string,
+    appId: string,
     functionId: string,
     updatedBy: string,
     data: UpdateCloudFunctionRequest,
   ): Promise<CloudFunction> {
     const existing = await prisma.cloudFunction.findFirst({
-      where: { id: functionId, tenantId },
+      where: { id: functionId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('云函数不存在');
 
@@ -158,9 +159,14 @@ export class CloudFunctionService {
   }
 
   /** 删除云函数。 */
-  async delete(tenantId: string, functionId: string, deletedBy: string): Promise<void> {
+  async delete(
+    tenantId: string,
+    appId: string,
+    functionId: string,
+    deletedBy: string,
+  ): Promise<void> {
     const existing = await prisma.cloudFunction.findFirst({
-      where: { id: functionId, tenantId },
+      where: { id: functionId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('云函数不存在');
 
@@ -179,9 +185,14 @@ export class CloudFunctionService {
   }
 
   /** 发布云函数（DRAFT → PUBLISHED）。 */
-  async publish(tenantId: string, functionId: string, publishedBy: string): Promise<CloudFunction> {
+  async publish(
+    tenantId: string,
+    appId: string,
+    functionId: string,
+    publishedBy: string,
+  ): Promise<CloudFunction> {
     const existing = await prisma.cloudFunction.findFirst({
-      where: { id: functionId, tenantId },
+      where: { id: functionId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('云函数不存在');
     if (existing.status === 'PUBLISHED') throw new BadRequestException('云函数已发布');

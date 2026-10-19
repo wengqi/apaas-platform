@@ -34,7 +34,7 @@ test.describe('编辑器 UI 真实性不变量', () => {
     admin = createApiClient(token);
 
     // 定位/创建反馈环夹具应用（e2e/22 同款，API 创建 = extInfo 空场景）
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const app = apps.find((a) => a.apiName === 'e2e_feedback_loop');
     if (!app) {
       test.skip(true, '反馈环夹具应用不存在（e2e/22 未运行）');
@@ -43,7 +43,7 @@ test.describe('编辑器 UI 真实性不变量', () => {
     appId = app.id;
 
     const flows = await admin.get<Array<{ id: string; apiName: string; status: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     const flow = flows.find(
       (f) => f.apiName === 'feedback_approval_v2' && f.status === 'PUBLISHED',
@@ -77,7 +77,7 @@ test.describe('编辑器 UI 真实性不变量', () => {
     await injectAdminAuth(page);
     // 自建不完整流程草稿（user_task 缺审批人）
     // apiName 用低碰撞后缀：上次运行清理失败时 %100000 会撞唯一约束（2026-10-10 复盘）
-    const created = await admin.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const created = await admin.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: `incomplete_probe_${Date.now().toString(36)}`,
       name: '真实性对照-缺审批人',
       triggerType: 'MANUAL',
@@ -99,13 +99,15 @@ test.describe('编辑器 UI 真实性不变量', () => {
     await expect(page.getByText('有未完成的配置').first()).toBeVisible({ timeout: 10_000 });
 
     // 清理
-    await admin.delete(`/processes/${created.id}`).catch(() => undefined);
+    await admin.delete(`/design/apps/${appId}/processes/${created.id}`).catch(() => undefined);
   });
 
   test('发布向导：建议版本号不与任何历史版本冲突（b00f989 回归）', async ({ page }) => {
     await injectAdminAuth(page);
     // 造两条历史版本差异：直接读现有版本列表
-    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const versions = await admin.get<Array<{ versionNumber: string }>>(
+      `/design/apps/${appId}/versions`,
+    );
     expect(versions.length, '夹具应用应已有发布版本').toBeGreaterThan(0);
 
     await page.goto(`${STUDIO_BASE}/app/${appId}/publish`);

@@ -208,7 +208,7 @@ export function ProcessCard({
                   setUrlOpen(true);
                 } else if (key === 'export-schema') {
                   processesApi
-                    .get(process.id)
+                    .get(process.appId, process.id)
                     .then((fullProcess) => {
                       const schema = fullProcess.workflowSchema;
                       if (!schema) {

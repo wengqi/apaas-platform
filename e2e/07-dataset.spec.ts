@@ -44,18 +44,18 @@ test.describe('数据集与数据流', () => {
 
   test('创建数据流 + 预览（单表 + 分组汇总）', async () => {
     // 创建对象 + 字段 + 记录
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_orders',
       name: 'E2E 订单',
       icon: 'shopping_cart',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'category',
       label: '类别',
       type: 'TEXT',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'amount',
       label: '金额',
       type: 'NUMBER',
@@ -70,7 +70,7 @@ test.describe('数据集与数据流', () => {
     }
 
     // 创建数据流（单表 + 分组汇总）
-    const flow = await api.post<{ id: string }>('/apps/' + appId + '/data-flows', {
+    const flow = await api.post<{ id: string }>('/design/apps/' + appId + '/data-flows', {
       apiName: 'e2e_flow_preview',
       name: 'E2E 预览数据流',
       config: {
@@ -92,7 +92,7 @@ test.describe('数据集与数据流', () => {
       columns: Array<{ apiName: string }>;
       rows: Array<Record<string, unknown>>;
       total: number;
-    }>(`/data-flows/${flow.id}/preview`);
+    }>(`/design/apps/${appId}/data-flows/${flow.id}/preview`);
 
     expect(preview.columns.length).toBeGreaterThanOrEqual(1);
     expect(preview.total).toBe(2); // 2 个分组（A, B）
@@ -104,18 +104,18 @@ test.describe('数据集与数据流', () => {
   });
 
   test('执行数据流 + 查询数据集行', async () => {
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_sales',
       name: 'E2E 销售',
       icon: 'bar_chart',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'region',
       label: '区域',
       type: 'TEXT',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'revenue',
       label: '收入',
       type: 'NUMBER',
@@ -129,7 +129,7 @@ test.describe('数据集与数据流', () => {
       await api.post(`/objects/${obj.id}/records`, r);
     }
 
-    const flow = await api.post<{ id: string }>('/apps/' + appId + '/data-flows', {
+    const flow = await api.post<{ id: string }>('/design/apps/' + appId + '/data-flows', {
       apiName: 'e2e_flow_exec',
       name: 'E2E 执行数据流',
       config: {
@@ -153,7 +153,9 @@ test.describe('数据集与数据流', () => {
     });
 
     // 执行（异步，返回 datasetId）
-    const execResult = await api.post<{ datasetId: string }>(`/data-flows/${flow.id}/execute`);
+    const execResult = await api.post<{ datasetId: string }>(
+      `/design/apps/${appId}/data-flows/${flow.id}/execute`,
+    );
     expect(execResult.datasetId).toBeTruthy();
 
     // 轮询等待数据集就绪

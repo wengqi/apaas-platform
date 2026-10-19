@@ -95,3 +95,10 @@ export class PublishAppDto {
   @IsString()
   description!: string;
 }
+
+/** 应用成员操作请求体（ADR-0005）：添加协作者 / 转移所有权，目标用户 ID。 */
+export class AppMemberTargetDto {
+  @ApiProperty({ example: 'cmvf...', description: '目标用户 ID（须具备搭建器访问权限）' })
+  @IsString()
+  userId!: string;
+}

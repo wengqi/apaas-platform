@@ -23,16 +23,16 @@ test.describe('审批页数据可见性（DOM 级）', () => {
   test.beforeAll(async () => {
     admin = createApiClient(await loginViaApi());
 
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     appId = apps.find((a) => a.apiName === 'procurement')!.id;
 
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     contractObjId = objects.find((o) => o.apiName === 'contract')!.id;
 
     const processes = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     processDefId = processes.find((p) => p.apiName === 'contract_approval')!.id;
   });
@@ -71,7 +71,7 @@ test.describe('审批页数据可见性（DOM 级）', () => {
     while (Date.now() < instDeadline && !instanceId) {
       const instances = await admin.get<
         Array<{ id: string; triggerContext?: { recordId?: string | null } }>
-      >(`/processes/${processDefId}/instances`);
+      >(`/design/apps/${appId}/processes/${processDefId}/instances`);
       instanceId =
         instances.find((i) => (i.triggerContext?.recordId as string | undefined) === rec.id)?.id ??
         '';

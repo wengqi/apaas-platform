@@ -29,7 +29,7 @@ test.describe('云函数', () => {
   test('创建 + 发布 + 调用云函数', async () => {
     // 创建云函数 — 输入值翻倍
     const fn = await api.post<{ id: string; status: string }>(
-      '/apps/' + appId + '/cloud-functions',
+      '/design/apps/' + appId + '/cloud-functions',
       {
         apiName: 'e2e_double',
         name: 'E2E 翻倍函数',
@@ -46,7 +46,7 @@ test.describe('云函数', () => {
 
     // 发布
     const published = await api.post<{ id: string; status: string; version: number }>(
-      `/cloud-functions/${fn.id}/publish`,
+      `/design/apps/${appId}/cloud-functions/${fn.id}/publish`,
     );
     expect(published.status).toBe('PUBLISHED');
     expect(published.version).toBeGreaterThanOrEqual(1);
@@ -67,7 +67,7 @@ test.describe('云函数', () => {
   });
 
   test('未发布云函数调用应报错', async () => {
-    const fn = await api.post<{ id: string }>('/apps/' + appId + '/cloud-functions', {
+    const fn = await api.post<{ id: string }>('/design/apps/' + appId + '/cloud-functions', {
       apiName: 'e2e_unpublished',
       name: 'E2E 未发布函数',
       code: {
@@ -81,7 +81,7 @@ test.describe('云函数', () => {
   });
 
   test('云函数日志输出验证', async () => {
-    const fn = await api.post<{ id: string }>('/apps/' + appId + '/cloud-functions', {
+    const fn = await api.post<{ id: string }>('/design/apps/' + appId + '/cloud-functions', {
       apiName: 'e2e_logging',
       name: 'E2E 日志函数',
       code: {
@@ -91,7 +91,7 @@ test.describe('云函数', () => {
       },
     });
 
-    await api.post(`/cloud-functions/${fn.id}/publish`);
+    await api.post(`/design/apps/${appId}/cloud-functions/${fn.id}/publish`);
 
     const result = await api.post<{
       success: boolean;

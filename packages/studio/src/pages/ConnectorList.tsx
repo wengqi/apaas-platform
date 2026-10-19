@@ -74,7 +74,7 @@ export default function ConnectorList() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => connectorsApi.delete(id),
+    mutationFn: (id: string) => connectorsApi.delete(appId as string, id),
     onSuccess: () => {
       message.success('连接器已删除');
       queryClient.invalidateQueries({ queryKey: ['connectors', appId] });
@@ -83,7 +83,7 @@ export default function ConnectorList() {
   });
 
   const deleteCredMutation = useMutation({
-    mutationFn: (id: string) => credentialsApi.delete(id),
+    mutationFn: (id: string) => credentialsApi.delete(appId as string, id),
     onSuccess: () => {
       message.success('凭证已删除');
       queryClient.invalidateQueries({ queryKey: ['credentials', appId] });

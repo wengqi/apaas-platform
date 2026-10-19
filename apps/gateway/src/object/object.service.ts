@@ -188,13 +188,10 @@ export class ObjectService {
   }
 
   /**
-   * 获取单个对象（含完整 fields JSON）。
+   * 获取单个对象（含完整 fields JSON）— 设计面 GET /design/apps/:appId/objects/:objectId。
    */
-  async get(tenantId: string, objectId: string) {
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async get(tenantId: string, appId: string, objectId: string) {
+    const obj = await this.requireObject(tenantId, appId, objectId);
 
     return {
       id: obj.id,
@@ -209,6 +206,15 @@ export class ObjectService {
       createdAt: obj.createdAt.toISOString(),
       updatedAt: obj.updatedAt.toISOString(),
     };
+  }
+
+  /** 断言对象存在且属于该应用（租户 + 应用双域隔离，ADR-0005），不存在抛 404。 */
+  private async requireObject(tenantId: string, appId: string, objectId: string) {
+    const obj = await prisma.objectMeta.findFirst({
+      where: { id: objectId, tenantId, appId },
+    });
+    if (!obj) throw new NotFoundException('对象不存在');
+    return obj;
   }
 
   /**
@@ -247,18 +253,20 @@ export class ObjectService {
       changeDescription: `新建对象: ${data.name}`,
     });
 
-    return this.get(tenantId, obj.id);
+    return this.get(tenantId, appId, obj.id);
   }
 
   /**
    * 更新对象（name/description/icon）。
    */
-  async update(tenantId: string, objectId: string, data: UpdateObjectInput, changedBy?: string) {
-    // 先校验对象存在且属于该租户
-    const existing = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!existing) throw new NotFoundException('对象不存在');
+  async update(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    data: UpdateObjectInput,
+    changedBy?: string,
+  ) {
+    const existing = await this.requireObject(tenantId, appId, objectId);
 
     await prisma.objectMeta.update({
       where: { id: objectId },
@@ -271,7 +279,7 @@ export class ObjectService {
 
     await this.changeLogService.log({
       tenantId,
-      appId: existing.appId,
+      appId,
       module: 'OBJECT',
       entityType: 'ObjectMeta',
       entityId: objectId,
@@ -281,7 +289,7 @@ export class ObjectService {
       changeDescription: `更新对象: ${data.name ?? existing.name}`,
     });
 
-    return this.get(tenantId, objectId);
+    return this.get(tenantId, appId, objectId);
   }
 
   /**
@@ -293,11 +301,13 @@ export class ObjectService {
    *   3. 有流程引用此对象（RECORD_CREATED/RECORD_UPDATED 触发器）
    *   4. 有权限规则引用此对象（DATA_MODEL/RECORD 类型的 targetId）
    */
-  async delete(tenantId: string, objectId: string, changedBy?: string): Promise<void> {
-    const existing = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!existing) throw new NotFoundException('对象不存在');
+  async delete(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    changedBy?: string,
+  ): Promise<void> {
+    const existing = await this.requireObject(tenantId, appId, objectId);
 
     // 1. 校验对象下是否有业务记录
     const recordCount = await prisma.record.count({
@@ -370,11 +380,8 @@ export class ObjectService {
   /**
    * 新增字段到 fields JSON 数组。
    */
-  async addField(tenantId: string, objectId: string, data: CreateFieldInput) {
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async addField(tenantId: string, appId: string, objectId: string, data: CreateFieldInput) {
+    const obj = await this.requireObject(tenantId, appId, objectId);
 
     const fields = this.parseFields(obj.fields);
 
@@ -414,11 +421,14 @@ export class ObjectService {
   /**
    * 更新字段。
    */
-  async updateField(tenantId: string, objectId: string, fieldId: string, data: UpdateFieldInput) {
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async updateField(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    fieldId: string,
+    data: UpdateFieldInput,
+  ) {
+    const obj = await this.requireObject(tenantId, appId, objectId);
 
     const fields = this.parseFields(obj.fields);
     const index = fields.findIndex((f) => f.id === fieldId);
@@ -462,11 +472,13 @@ export class ObjectService {
   /**
    * 删除字段（系统字段禁止删除）。
    */
-  async deleteField(tenantId: string, objectId: string, fieldId: string): Promise<void> {
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async deleteField(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    fieldId: string,
+  ): Promise<void> {
+    const obj = await this.requireObject(tenantId, appId, objectId);
 
     const fields = this.parseFields(obj.fields);
     const field = fields.find((f) => f.id === fieldId);
@@ -491,36 +503,23 @@ export class ObjectService {
   /**
    * 列出对象视图。
    */
-  async listViews(tenantId: string, objectId: string) {
-    // View 无 tenantId 列，通过校验 object 归属来实现租户隔离
-    const obj = await prisma.objectMeta.findFirst({ where: { id: objectId, tenantId } });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async listViews(tenantId: string, appId: string, objectId: string) {
+    // View 无 tenantId 列，通过校验 object 归属（租户 + 应用）来实现隔离
+    await this.requireObject(tenantId, appId, objectId);
 
     const views = await prisma.view.findMany({
       where: { objectId },
       orderBy: { createdAt: 'asc' },
     });
 
-    return views.map((v) => ({
-      id: v.id,
-      objectId: v.objectId,
-      name: v.name,
-      type: v.type,
-      config: v.config,
-      createdAt: v.createdAt.toISOString(),
-      updatedAt: v.updatedAt.toISOString(),
-    }));
+    return views.map((v) => this.toView(v));
   }
 
   /**
    * 创建视图。
    */
-  async createView(tenantId: string, objectId: string, data: CreateViewInput) {
-    // 校验对象存在且属于当前租户
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async createView(tenantId: string, appId: string, objectId: string, data: CreateViewInput) {
+    await this.requireObject(tenantId, appId, objectId);
 
     const view = await prisma.view.create({
       data: {
@@ -531,30 +530,20 @@ export class ObjectService {
       },
     });
 
-    return {
-      id: view.id,
-      objectId: view.objectId,
-      name: view.name,
-      type: view.type,
-      config: view.config,
-      createdAt: view.createdAt.toISOString(),
-      updatedAt: view.updatedAt.toISOString(),
-    };
+    return this.toView(view);
   }
 
   /**
    * 更新视图。
    */
-  async updateView(tenantId: string, viewId: string, data: UpdateViewInput) {
-    // View 无 tenantId 列，先查视图获取 objectId，再校验 object 归属
-    const existing = await prisma.view.findUnique({
-      where: { id: viewId },
-    });
-    if (!existing) throw new NotFoundException('视图不存在');
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: existing.objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
+  async updateView(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    viewId: string,
+    data: UpdateViewInput,
+  ) {
+    await this.requireView(tenantId, appId, objectId, viewId);
 
     const view = await prisma.view.update({
       where: { id: viewId },
@@ -565,32 +554,55 @@ export class ObjectService {
       },
     });
 
-    return {
-      id: view.id,
-      objectId: view.objectId,
-      name: view.name,
-      type: view.type,
-      config: view.config,
-      createdAt: view.createdAt.toISOString(),
-      updatedAt: view.updatedAt.toISOString(),
-    };
+    return this.toView(view);
   }
 
   /**
    * 删除视图。
    */
-  async deleteView(tenantId: string, viewId: string): Promise<void> {
-    // View 无 tenantId 列，先查视图获取 objectId，再校验 object 归属
-    const existing = await prisma.view.findUnique({
-      where: { id: viewId },
-    });
-    if (!existing) throw new NotFoundException('视图不存在');
-    const obj = await prisma.objectMeta.findFirst({
-      where: { id: existing.objectId, tenantId },
-    });
-    if (!obj) throw new NotFoundException('对象不存在');
-
+  async deleteView(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    viewId: string,
+  ): Promise<void> {
+    await this.requireView(tenantId, appId, objectId, viewId);
     await prisma.view.delete({ where: { id: viewId } });
+  }
+
+  /**
+   * 断言视图存在且属于路径上的对象，对象属于路径上的应用——
+   * View 无 tenantId 列，三级嵌套路径（app → object → view）逐级校验归属。
+   */
+  private async requireView(
+    tenantId: string,
+    appId: string,
+    objectId: string,
+    viewId: string,
+  ): Promise<void> {
+    await this.requireObject(tenantId, appId, objectId);
+    const existing = await prisma.view.findFirst({ where: { id: viewId, objectId } });
+    if (!existing) throw new NotFoundException('视图不存在');
+  }
+
+  private toView(v: {
+    id: string;
+    objectId: string;
+    name: string;
+    type: string;
+    config: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: v.id,
+      objectId: v.objectId,
+      name: v.name,
+      type: v.type,
+      config: v.config,
+      createdAt: v.createdAt.toISOString(),
+      updatedAt: v.updatedAt.toISOString(),
+    };
   }
 
   // ===========================================================================

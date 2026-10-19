@@ -103,16 +103,21 @@ const unwrap = <T>(p: Promise<{ data: ApiResponse<T> }>) => p.then((res) => res.
 
 /** 连接器 API。 */
 export const connectorsApi = {
-  list: (appId: string) => unwrap<Connector[]>(client.get(`/api/apps/${appId}/connectors`)),
-  get: (connectorId: string) => unwrap<Connector>(client.get(`/api/connectors/${connectorId}`)),
+  list: (appId: string) => unwrap<Connector[]>(client.get(`/api/design/apps/${appId}/connectors`)),
+  get: (appId: string, connectorId: string) =>
+    unwrap<Connector>(client.get(`/api/design/apps/${appId}/connectors/${connectorId}`)),
   create: (appId: string, data: CreateConnectorRequest) =>
-    unwrap<Connector>(client.post(`/api/apps/${appId}/connectors`, data)),
-  update: (connectorId: string, data: UpdateConnectorRequest) =>
-    unwrap<Connector>(client.put(`/api/connectors/${connectorId}`, data)),
-  delete: (connectorId: string) =>
-    unwrap<{ deleted: boolean }>(client.delete(`/api/connectors/${connectorId}`)),
-  test: (connectorId: string, params: InvokeConnectorRequest) =>
-    unwrap<ConnectorCallResult>(client.post(`/api/connectors/${connectorId}/test`, params)),
+    unwrap<Connector>(client.post(`/api/design/apps/${appId}/connectors`, data)),
+  update: (appId: string, connectorId: string, data: UpdateConnectorRequest) =>
+    unwrap<Connector>(client.put(`/api/design/apps/${appId}/connectors/${connectorId}`, data)),
+  delete: (appId: string, connectorId: string) =>
+    unwrap<{ deleted: boolean }>(
+      client.delete(`/api/design/apps/${appId}/connectors/${connectorId}`),
+    ),
+  test: (appId: string, connectorId: string, params: InvokeConnectorRequest) =>
+    unwrap<ConnectorCallResult>(
+      client.post(`/api/design/apps/${appId}/connectors/${connectorId}/test`, params),
+    ),
   invoke: (connectorId: string, params: InvokeConnectorRequest) =>
     unwrap<ConnectorCallResult>(client.post(`/api/connectors/${connectorId}/invoke`, params)),
 };
@@ -120,11 +125,15 @@ export const connectorsApi = {
 /** 凭证 API。 */
 export const credentialsApi = {
   list: (appId: string) =>
-    unwrap<ConnectorCredential[]>(client.get(`/api/apps/${appId}/credentials`)),
+    unwrap<ConnectorCredential[]>(client.get(`/api/design/apps/${appId}/credentials`)),
   create: (appId: string, data: CreateCredentialRequest) =>
-    unwrap<ConnectorCredential>(client.post(`/api/apps/${appId}/credentials`, data)),
-  update: (credentialId: string, data: UpdateCredentialRequest) =>
-    unwrap<ConnectorCredential>(client.put(`/api/credentials/${credentialId}`, data)),
-  delete: (credentialId: string) =>
-    unwrap<{ deleted: boolean }>(client.delete(`/api/credentials/${credentialId}`)),
+    unwrap<ConnectorCredential>(client.post(`/api/design/apps/${appId}/credentials`, data)),
+  update: (appId: string, credentialId: string, data: UpdateCredentialRequest) =>
+    unwrap<ConnectorCredential>(
+      client.put(`/api/design/apps/${appId}/credentials/${credentialId}`, data),
+    ),
+  delete: (appId: string, credentialId: string) =>
+    unwrap<{ deleted: boolean }>(
+      client.delete(`/api/design/apps/${appId}/credentials/${credentialId}`),
+    ),
 };

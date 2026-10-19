@@ -10,6 +10,7 @@ import { DatasetModule } from '../dataset/dataset.module.js';
 import { NotificationModule } from '../notification/notification.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ObservabilityModule } from '../observability/observability.module.js';
 
 /**
@@ -29,6 +30,7 @@ import { ObservabilityModule } from '../observability/observability.module.js';
     NotificationModule,
     ChangeLogModule,
     PermissionModule,
+    AppAccessModule,
     ObservabilityModule,
   ],
   controllers: [ReviewController],

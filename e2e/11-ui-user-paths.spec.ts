@@ -95,7 +95,7 @@ test.describe('真实 UI 用户路径', () => {
     await expect(page.getByText('UI 默认视图')).toBeVisible({ timeout: 15_000 });
 
     // ---- 6. 保存页面（回归：保存 payload 多发 apiName/type/objectId → 400）----
-    const pageMeta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const pageMeta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       name: `UI 页面 ${SUFFIX}`,
       apiName: `ui_page_${SUFFIX}`,
       type: 'custom',
@@ -115,9 +115,12 @@ test.describe('真实 UI 用户路径', () => {
     await expect
       .poll(
         async () => {
-          const res = await fetch(`http://localhost:3000/api/v1/pages/${pageMeta.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const res = await fetch(
+            `http://localhost:3000/api/v1/design/apps/${appId}/pages/${pageMeta.id}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          );
           const json = (await res.json()) as { data?: { schema?: { body?: unknown[] } } };
           const body = json.data?.schema?.body ?? [];
           return body.some(
@@ -133,19 +136,22 @@ test.describe('真实 UI 用户路径', () => {
   test('流程触发器可配置 + 手动触发流程可启动（回归：UI 断链）', async ({ page }) => {
     // 需要一个已发布的手动触发流程：用 API 建最小流程定义（触发能力本身即为被测对象）
     const client = api;
-    const process = await client.post<{ id: string; apiName: string }>(`/apps/${appId}/processes`, {
-      apiName: `ui_flow_${SUFFIX}`,
-      name: 'UI 手动流程',
-      triggerType: 'MANUAL',
-      workflowSchema: {
-        nodes: [
-          { id: 'start_0', type: 'start', meta: {}, data: {} },
-          { id: 'end_0', type: 'end', meta: {}, data: {} },
-        ],
-        edges: [{ id: 'e0', sourceNodeID: 'start_0', targetNodeID: 'end_0' }],
+    const process = await client.post<{ id: string; apiName: string }>(
+      `/design/apps/${appId}/processes`,
+      {
+        apiName: `ui_flow_${SUFFIX}`,
+        name: 'UI 手动流程',
+        triggerType: 'MANUAL',
+        workflowSchema: {
+          nodes: [
+            { id: 'start_0', type: 'start', meta: {}, data: {} },
+            { id: 'end_0', type: 'end', meta: {}, data: {} },
+          ],
+          edges: [{ id: 'e0', sourceNodeID: 'start_0', targetNodeID: 'end_0' }],
+        },
       },
-    });
-    await client.post(`/processes/${process.id}/publish`, {});
+    );
+    await client.post(`/design/apps/${appId}/processes/${process.id}/publish`, {});
 
     // 流程列表应显示"启动实例"入口
     await page.goto(`/app/${appId}/processes`);

@@ -35,7 +35,7 @@ export default function ConnectorTestPanel({ connector }: ConnectorTestPanelProp
     setLoading(true);
     setResult(null);
     try {
-      const res = await connectorsApi.test(connector.id, {
+      const res = await connectorsApi.test(connector.appId, connector.id, {
         operationId: operationId,
         method: operationId ? undefined : method,
         path: operationId ? undefined : path,

@@ -112,26 +112,30 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     builderApi = createApiClient(await loginViaApi('builder@apaas.dev', 'builder123'));
 
     // 采购 seed 应用与关键资源
-    const apps = await api.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await api.get<Array<{ id: string; apiName: string }>>('/design/apps');
     appId = apps.find((a) => a.apiName === 'procurement')!.id;
 
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     contractObjId = objects.find((o) => o.apiName === 'contract')!.id;
 
     const pages = await api.get<Array<{ id: string; apiName?: string; slug?: string }>>(
-      `/apps/${appId}/pages`,
+      `/design/apps/${appId}/pages`,
     );
     approvalPageId = pages.find((p) => (p.apiName ?? p.slug) === 'contract_approval_page')!.id;
 
     // 审批人 id：从既有 contract_approval 流程的冻结 schema 提取（countersign approveUsers + sequential assignee）
     const processes = await api.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     const seededFlow = await api.get<{
       workflowSchema: {
         nodes: Array<{ id: string; type: string; data?: Record<string, unknown> }>;
       };
-    }>(`/processes/${processes.find((p) => p.apiName === 'contract_approval')!.id}`);
+    }>(
+      `/design/apps/${appId}/processes/${processes.find((p) => p.apiName === 'contract_approval')!.id}`,
+    );
     const countersign = seededFlow.workflowSchema.nodes.find(
       (n) => n.id === 'user_task_countersign',
     );
@@ -194,7 +198,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     expect(submit['status']).toBe('PENDING');
 
     // 治理不变量：批准前不落活表
-    const pages = await api.get<Array<{ apiName: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ apiName: string }>>(`/design/apps/${appId}/pages`);
     expect(pages.some((p) => p.apiName === statsPageApiName)).toBe(false);
   });
 
@@ -205,14 +209,18 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
   test('② 待审列表含 diff 摘要 → 一键批准 → 页面落活表', async () => {
     const pending = await api.get<
       Array<{ apiName: string; status: string; diff: { changeCount: number }; id: string }>
-    >(`/apps/${appId}/reviews?status=PENDING`);
+    >(`/design/apps/${appId}/reviews?status=PENDING`);
     const submission = pending.find((r) => r.apiName === statsPageApiName);
     expect(submission).toBeTruthy();
     expect(submission!.diff.changeCount).toBeGreaterThan(0);
 
-    await api.post(`/apps/${appId}/reviews/${submission!.id}/approve`, { comment: '验收通过' });
+    await api.post(`/design/apps/${appId}/reviews/${submission!.id}/approve`, {
+      comment: '验收通过',
+    });
 
-    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     expect(pages.some((p) => (p.apiName ?? p.slug) === statsPageApiName)).toBe(true);
   });
 
@@ -225,17 +233,17 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     const existing = await api.get<{
       defs: Array<{ id: string; key: string; required: boolean }>;
       values: Array<{ defId: string; isSet: boolean }>;
-    }>(`/apps/${appId}/env-vars?env=prod`);
+    }>(`/design/apps/${appId}/env-vars?env=prod`);
     const existingDef = existing.defs.find((d) => d.key === 'STATS_TITLE');
     const def = existingDef
       ? existingDef
-      : await api.post<{ id: string }>(`/apps/${appId}/env-vars/defs`, {
+      : await api.post<{ id: string }>(`/design/apps/${appId}/env-vars/defs`, {
           key: 'STATS_TITLE',
           description: '合同统计看板标题',
           required: true,
           sensitive: false,
         });
-    await api.post(`/apps/${appId}/env-vars/defs/${def.id}/value?env=prod`, {
+    await api.post(`/design/apps/${appId}/env-vars/defs/${def.id}/value?env=prod`, {
       value: '生产·合同统计看板',
     });
 
@@ -243,7 +251,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     for (const d of existing.defs) {
       const isSet = existing.values.some((v) => v.defId === d.id && v.isSet);
       if (d.required && !isSet) {
-        await api.post(`/apps/${appId}/env-vars/defs/${d.id}/value?env=prod`, {
+        await api.post(`/design/apps/${appId}/env-vars/defs/${d.id}/value?env=prod`, {
           value: 'acceptance',
         });
       }
@@ -254,10 +262,13 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     for (let attempt = 0; attempt < 5 && !version; attempt += 1) {
       const candidate = `2.0.${(Date.now() + attempt * 7) % 1000000}`;
       try {
-        version = await api.post<{ id: string; versionNumber: string }>(`/apps/${appId}/publish`, {
-          version: candidate,
-          description: 'R1.5 验收刷新：MCP 出稿页面随应用发布',
-        });
+        version = await api.post<{ id: string; versionNumber: string }>(
+          `/design/apps/${appId}/publish`,
+          {
+            version: candidate,
+            description: 'R1.5 验收刷新：MCP 出稿页面随应用发布',
+          },
+        );
       } catch (err) {
         if (!(err instanceof Error) || !err.message.includes('已存在')) throw err;
       }
@@ -266,7 +277,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     expect(version!.versionNumber).toBeTruthy();
 
     const envs = await api.get<Array<{ key: string; currentVersionNumber: string | null }>>(
-      `/apps/${appId}/environments`,
+      `/design/apps/${appId}/environments`,
     );
     expect(envs.find((e) => e.key === 'prod')?.currentVersionNumber).toBe(version.versionNumber);
 
@@ -283,7 +294,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
   test('④ G4：新增必填变量未设 dev 值 → 拦截部署 → 设值放行', async () => {
     // 每次运行唯一的必填键（阻断场景要求该键在 dev 无值）
     const blockKey = `E2E_BLOCK_${Date.now()}`;
-    const def = await api.post<{ id: string }>(`/apps/${appId}/env-vars/defs`, {
+    const def = await api.post<{ id: string }>(`/design/apps/${appId}/env-vars/defs`, {
       key: blockKey,
       description: 'G4 阻断验证',
       required: true,
@@ -292,11 +303,11 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
 
     // dev 无值 → G4 拦截部署
     const envsNow = await api.get<Array<{ key: string; currentVersionId: string | null }>>(
-      `/apps/${appId}/environments`,
+      `/design/apps/${appId}/environments`,
     );
     const currentVersionId = envsNow.find((e) => e.key === 'prod')!.currentVersionId!;
 
-    const blocked = await fetch(`${API_BASE}/apps/${appId}/environments/dev/publish`, {
+    const blocked = await fetch(`${API_BASE}/design/apps/${appId}/environments/dev/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.token}` },
       body: JSON.stringify({ versionId: currentVersionId }),
@@ -310,23 +321,23 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     const devState = await api.get<{
       defs: Array<{ id: string; key: string; required: boolean }>;
       values: Array<{ defId: string; isSet: boolean }>;
-    }>(`/apps/${appId}/env-vars?env=dev`);
+    }>(`/design/apps/${appId}/env-vars?env=dev`);
     for (const d of devState.defs) {
       const isSet = devState.values.some((v) => v.defId === d.id && v.isSet);
       if (d.required && !isSet) {
-        await api.post(`/apps/${appId}/env-vars/defs/${d.id}/value?env=dev`, {
+        await api.post(`/design/apps/${appId}/env-vars/defs/${d.id}/value?env=dev`, {
           value: 'acceptance',
         });
       }
     }
     const deploy = await api.post<{ deployment: { versionNumber: string } }>(
-      `/apps/${appId}/environments/dev/publish`,
+      `/design/apps/${appId}/environments/dev/publish`,
       { versionId: currentVersionId },
     );
     expect(deploy.deployment.versionNumber).toBeTruthy();
 
     // prod 也补值：必填键缺 prod 值会卡住后续 run 的应用发布预检（G4）
-    await api.post(`/apps/${appId}/env-vars/defs/${def.id}/value?env=prod`, { value: 'v' });
+    await api.post(`/design/apps/${appId}/env-vars/defs/${def.id}/value?env=prod`, { value: 'v' });
   });
 
   // =========================================================================
@@ -415,26 +426,29 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
 
     // 审核中心批准 → 以 DRAFT 落活表（激活仍走流程发布）
     const pending = await api.get<Array<{ apiName: string; id: string }>>(
-      `/apps/${appId}/reviews?status=PENDING`,
+      `/design/apps/${appId}/reviews?status=PENDING`,
     );
     const submission = pending.find((r) => r.apiName === openFlowApiName);
     expect(submission).toBeTruthy();
-    await api.post(`/apps/${appId}/reviews/${submission!.id}/approve`, {});
+    await api.post(`/design/apps/${appId}/reviews/${submission!.id}/approve`, {});
 
     const processes = await api.get<Array<{ id: string; apiName: string; status: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     const flow = processes.find((p) => p.apiName === openFlowApiName)!;
     expect(flow.status).toBe('DRAFT');
     openFlowId = flow.id;
 
-    await api.post(`/processes/${flow.id}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/publish`);
 
     // 发布为开放 API（major1 冻结契约）+ 服务身份
-    await api.post(`/apps/${appId}/processes/${flow.id}/api-release`, { majorVersion: 1 });
-    const identity = await api.post<{ apiKey: string }>(`/apps/${appId}/service-identities`, {
-      name: 'R1.5 验收集成',
-    });
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/api-release`, { majorVersion: 1 });
+    const identity = await api.post<{ apiKey: string }>(
+      `/design/apps/${appId}/service-identities`,
+      {
+        name: 'R1.5 验收集成',
+      },
+    );
     apiKey = identity.apiKey;
     expect(apiKey).toMatch(/^ak_/);
   });
@@ -482,10 +496,9 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     expect(taskDetail.instance.variables['amount']).toBe(1280000);
     expect(taskDetail.instance.variables['recordId']).toBe(record.id);
 
-    const runtimePageRes = await fetch(
-      `${API_BASE}/apps/${appId}/pages/runtime/${approvalPageId}`,
-      { headers: { Authorization: `Bearer ${api.token}` } },
-    );
+    const runtimePageRes = await fetch(`${API_BASE}/apps/${appId}/pages/${approvalPageId}`, {
+      headers: { Authorization: `Bearer ${api.token}` },
+    });
     expect(runtimePageRes.status).toBe(200);
     const runtimePage = (await runtimePageRes.json()) as {
       ok: boolean;
@@ -548,12 +561,14 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     // 修改 schema（任务改名）→ 重新发布 → major2
     const flowDetail = await api.get<{
       workflowSchema: { nodes: Array<{ id: string; data?: Record<string, unknown> }> };
-    }>(`/processes/${flow.id}`);
+    }>(`/design/apps/${appId}/processes/${flow.id}`);
     const node = flowDetail.workflowSchema.nodes.find((n) => n.id === 'ut_cs');
     if (node?.data) node.data['taskName'] = '开放会签（v2）';
-    await api.put(`/processes/${flow.id}`, { workflowSchema: flowDetail.workflowSchema });
-    await api.post(`/processes/${flow.id}/publish`);
-    await api.post(`/apps/${appId}/processes/${flow.id}/api-release`, { majorVersion: 2 });
+    await api.put(`/design/apps/${appId}/processes/${flow.id}`, {
+      workflowSchema: flowDetail.workflowSchema,
+    });
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/api-release`, { majorVersion: 2 });
 
     const record = await api.post<{ id: string }>(`/objects/${contractObjId}/records`, {
       contract_name: 'R1.5 v1 钉版本合同',

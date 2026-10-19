@@ -29,10 +29,10 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     admin = createApiClient(token);
 
     // 幂等：按 apiName 查找或创建夹具应用
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     let app = apps.find((a) => a.apiName === 'e2e_feedback_loop');
     if (!app) {
-      app = await admin.post<{ id: string; apiName: string }>('/apps', {
+      app = await admin.post<{ id: string; apiName: string }>('/design/apps', {
         name: '反馈环 E2E',
         apiName: 'e2e_feedback_loop',
       });
@@ -41,11 +41,11 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
 
     // 对象（创建与字段分离）+ status 单选（writeback 目标）+ item 文本
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     let obj = objects.find((o) => o.apiName === 'feedback_item');
     if (!obj) {
-      obj = await admin.post<{ id: string }>(`/apps/${appId}/objects`, {
+      obj = await admin.post<{ id: string }>(`/design/apps/${appId}/objects`, {
         apiName: 'feedback_item',
         name: '反馈条目',
       });
@@ -65,16 +65,18 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
         },
       ];
       for (const f of fields) {
-        await admin.post(`/objects/${obj!.id}/fields`, f);
+        await admin.post(`/design/apps/${appId}/objects/${obj!.id}/fields`, f);
       }
     }
     objectId = obj!.id;
 
     // 表单页 + 台账页（幂等）
-    const pages = await admin.get<Array<{ id: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await admin.get<Array<{ id: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     let form = pages.find((p) => p.slug === 'feedback_form' || p.apiName === 'feedback_form');
     if (!form) {
-      form = await admin.post<{ id: string }>(`/apps/${appId}/pages`, {
+      form = await admin.post<{ id: string }>(`/design/apps/${appId}/pages`, {
         apiName: 'feedback_form',
         name: '反馈提交',
         type: 'form_page',
@@ -101,7 +103,7 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
 
     let list = pages.find((p) => p.slug === 'feedback_list' || p.apiName === 'feedback_list');
     if (!list) {
-      list = await admin.post<{ id: string }>(`/apps/${appId}/pages`, {
+      list = await admin.post<{ id: string }>(`/design/apps/${appId}/pages`, {
         apiName: 'feedback_list',
         name: '反馈台账',
         type: 'list_page',
@@ -150,11 +152,11 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     expect(tenantAdminRoleId).toBeTruthy();
 
     const flows = await admin.get<Array<{ id: string; apiName: string; status?: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     let flow = flows.find((p) => p.apiName === 'feedback_approval_v2');
     if (!flow) {
-      flow = await admin.post<{ id: string; status?: string }>(`/apps/${appId}/processes`, {
+      flow = await admin.post<{ id: string; status?: string }>(`/design/apps/${appId}/processes`, {
         apiName: 'feedback_approval_v2',
         name: '反馈审批流',
         triggerType: 'RECORD_CREATED',
@@ -200,15 +202,17 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     // CI 全新库实测"任务永不出现"的根因）。
     // 已发布则跳过（显式条件判断，不再吞错——非幂等原因的失败必须显式暴露）
     if (flow!.status !== 'PUBLISHED') {
-      await admin.post(`/processes/${flow!.id}/publish`, {});
+      await admin.post(`/design/apps/${appId}/processes/${flow!.id}/publish`, {});
     }
 
     // 发布（防碰撞：基于现有版本最大 patch 取 next——原 Date.now()%1000 会撞
     // @@unique([appId,versionNumber]) 且被吞错掩盖成"静默未发布"，2026-10-10 复盘）
-    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const versions = await admin.get<Array<{ versionNumber: string }>>(
+      `/design/apps/${appId}/versions`,
+    );
     const patchNumbers = versions.map((v) => Number(v.versionNumber.split('.')[2] ?? 0));
     const nextPatch = (patchNumbers.length > 0 ? Math.max(...patchNumbers) : 0) + 1;
-    await admin.post(`/apps/${appId}/publish`, {
+    await admin.post(`/design/apps/${appId}/publish`, {
       version: `1.0.${nextPatch}`,
       description: '反馈环 e2e 夹具',
     });
@@ -279,13 +283,13 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     expect(titles).toContain('反馈审批被驳回');
   });
 
-  test('runtime 视图：?runtime=1 只含已发布应用，无参数保持全量（studio 兼容）', async () => {
-    // 服务端过滤断言（2026-10-10）：此前 GET /apps 仅按 tenantId 过滤，
-    // DRAFT 应用对终端用户可见（仅前端客户端过滤兜底）
+  test('运行面 GET /apps 只含已发布应用，设计面 GET /design/apps 全量（ADR-0005 双命名空间）', async () => {
+    // 服务端过滤断言（2026-10-10 建立，2026-10-19 随 ?runtime=1 退役改为路径分流）：
+    // 运行面曾仅按 tenantId 过滤，DRAFT 应用对终端用户可见（仅前端客户端过滤兜底）
     const allApps =
-      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps');
+      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/design/apps');
     const runtimeApps =
-      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps?runtime=1');
+      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps');
     expect(
       runtimeApps.every((a) => a.status === 'PUBLISHED'),
       'runtime 视图不得包含未发布应用',

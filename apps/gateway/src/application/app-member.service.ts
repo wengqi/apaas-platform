@@ -67,13 +67,22 @@ export class AppMemberService {
     return { items: users.map((u) => ({ userId: u.id, name: u.name, email: u.email })) };
   }
 
-  /** 添加协作者（MEMBER）。目标须具备搭建器访问权，防"加了却进不来"。 */
+  /** 添加协作者（MEMBER）。目标须具备搭建器访问权，防"加了却进不来"；已是所有者 → 400（防降级孤儿应用）。 */
   async addMember(tenantId: string, appId: string, targetUserId: string, addedBy: string) {
     const target = await this.requireStudioUser(targetUserId);
-    await prisma.applicationMember.upsert({
+    const existing = await prisma.applicationMember.findUnique({
       where: { appId_userId: { appId, userId: targetUserId } },
-      update: { role: 'MEMBER' },
-      create: {
+    });
+    if (existing?.role === 'OWNER') {
+      // OCR 评审修复（HIGH）：原 upsert update 分支会把 OWNER 降为 MEMBER，应用变无主
+      throw new BadRequestException('该用户已是应用所有者，无需添加为协作者');
+    }
+    if (existing) {
+      // 已是协作者：幂等返回，不重复审计
+      return { userId: targetUserId, role: 'member' as const };
+    }
+    await prisma.applicationMember.create({
+      data: {
         tenantId,
         appId,
         userId: targetUserId,

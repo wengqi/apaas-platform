@@ -91,7 +91,38 @@ describe('AppMemberService', () => {
       await expect(
         service.addMember('tenant-001', 'app-001', 'user-eu', 'owner-1'),
       ).rejects.toThrow(BadRequestException);
-      expect(prisma.applicationMember.upsert).not.toHaveBeenCalled();
+      expect(prisma.applicationMember.create).not.toHaveBeenCalled();
+    });
+
+    it('目标已是应用所有者 → 400 且不写库（防 OWNER 被降级成无主应用，OCR HIGH 修复回归）', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-owner',
+        name: '所有者',
+        userRoles: [{ role: { code: 'BUILDER' } }],
+      });
+      prisma.applicationMember.findUnique.mockResolvedValue(makeMemberRow({ role: 'OWNER' }));
+
+      await expect(
+        service.addMember('tenant-001', 'app-001', 'user-owner', 'owner-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.applicationMember.create).not.toHaveBeenCalled();
+      expect(prisma.applicationMember.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('已是协作者重复添加：幂等返回，不重复审计', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-b',
+        name: '同事',
+        userRoles: [{ role: { code: 'BUILDER' } }],
+      });
+      prisma.applicationMember.findUnique.mockResolvedValue(
+        makeMemberRow({ userId: 'user-b', role: 'MEMBER' }),
+      );
+
+      const result = await service.addMember('tenant-001', 'app-001', 'user-b', 'owner-1');
+
+      expect(result).toEqual({ userId: 'user-b', role: 'member' });
+      expect(prisma.applicationMember.create).not.toHaveBeenCalled();
     });
 
     it('正常添加：写 MEMBER 行 + 审计', async () => {
@@ -100,16 +131,20 @@ describe('AppMemberService', () => {
         name: '同事',
         userRoles: [{ role: { code: 'BUILDER' } }],
       });
+      prisma.applicationMember.findUnique.mockResolvedValue(null);
 
       const result = await service.addMember('tenant-001', 'app-001', 'user-b', 'owner-1');
 
       expect(result).toMatchObject({ userId: 'user-b', role: 'member' });
-      expect(prisma.applicationMember.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { appId_userId: { appId: 'app-001', userId: 'user-b' } },
-          create: expect.objectContaining({ role: 'MEMBER', addedBy: 'owner-1' }),
+      expect(prisma.applicationMember.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          tenantId: 'tenant-001',
+          appId: 'app-001',
+          userId: 'user-b',
+          role: 'MEMBER',
+          addedBy: 'owner-1',
         }),
-      );
+      });
     });
   });
 

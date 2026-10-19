@@ -41,6 +41,19 @@ export function createApiClient(token: string) {
 
   return {
     get: <T = unknown>(path: string) => request<T>('GET', path),
+    /** 断言失败路径（403/404 等）专用：不抛错，返回原始 status + 响应体。 */
+    raw: async (
+      method: 'get' | 'post' | 'put' | 'delete',
+      path: string,
+      body?: unknown,
+    ): Promise<{ status: number; json: { ok?: boolean; error?: { message?: string } } }> => {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: method.toUpperCase(),
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: res.status, json: (await res.json()) as never };
+    },
     post: <T = unknown>(path: string, body?: unknown) => request<T>('POST', path, body),
     put: <T = unknown>(path: string, body?: unknown) => request<T>('PUT', path, body),
     delete: <T = unknown>(path: string) => request<T>('DELETE', path),

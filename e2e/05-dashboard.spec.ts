@@ -32,7 +32,7 @@ test.describe('仪表盘与图表', () => {
   // -------------------------------------------------------------------------
 
   test('创建仪表盘页面产出 amis 空页 scaffold（v1 模板已退役）', async () => {
-    const page_meta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const page_meta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'e2e_dashboard',
       name: 'E2E仪表盘',
       type: 'dashboard',
@@ -42,7 +42,7 @@ test.describe('仪表盘与图表', () => {
     // R1.7 第二轮：v1 DashboardGrid 模板已随 v1 渲染轨退役，无 schema 创建
     // 统一产出 amis 空页 scaffold（图表能力由 amis-editor 搭建）
     const detail = await api.get<{ schema: { type?: string; body?: unknown[] } }>(
-      `/pages/${page_meta.id}`,
+      `/design/apps/${appId}/pages/${page_meta.id}`,
     );
     expect(detail.schema.type).toBe('page');
     expect(Array.isArray(detail.schema.body)).toBe(true);

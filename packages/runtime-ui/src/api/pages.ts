@@ -1,6 +1,6 @@
 /**
  * 页面 API 客户端 — Runtime UI 用。
- * 对接 Gateway 的 /api/apps/:appId/pages 和 /api/pages 端点。
+ * 对接 Gateway 运行面 /api/apps/:appId/pages 端点（ADR-0005：三个读方法同源已发布 bundle）。
  * 类型从 studio api/pages.ts 精简复制（仅运行时所需）。
  */
 
@@ -32,7 +32,7 @@ export interface PageMeta {
 // ---------------------------------------------------------------------------
 
 export const pagesApi = {
-  /** 列出应用下已发布页面 */
+  /** 列出应用下已发布页面（服务端按已部署 bundle 过滤，草稿页不出现在页签） */
   list: (appId: string) =>
     apiClient.get(`/apps/${appId}/pages`).then((res) => res.data.data as PageMeta[]),
 
@@ -42,9 +42,9 @@ export const pagesApi = {
       .get(`/apps/${appId}/pages/slug/${slug}`, { params: env ? { env } : undefined })
       .then((res) => res.data.data as PageMeta),
 
-  /** R1.4：按 ID 读运行时页面（审批页渲染，环境 bundle 优先） */
+  /** R1.4：按 ID 读已发布页面（审批页渲染）——未部署 / 不在 bundle 即 404 */
   getRuntime: (appId: string, pageId: string, env?: string) =>
     apiClient
-      .get(`/apps/${appId}/pages/runtime/${pageId}`, { params: env ? { env } : undefined })
+      .get(`/apps/${appId}/pages/${pageId}`, { params: env ? { env } : undefined })
       .then((res) => res.data.data as PageMeta),
 };

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PageService } from './page.service.js';
 import { PageController } from './page.controller.js';
+import { DesignPageController } from './design-page.controller.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
@@ -31,7 +32,7 @@ import { SchemaContractModule } from '../schema-contract/schema-contract.module.
     PermissionModule,
     ChangeLogModule,
   ],
-  controllers: [PageController],
+  controllers: [PageController, DesignPageController],
   providers: [PageService, JwtStrategy],
   exports: [PageService],
 })

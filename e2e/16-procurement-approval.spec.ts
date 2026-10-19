@@ -35,7 +35,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     expect(procApp, '种子应用 procurement 不存在——请先跑 pnpm db:seed').toBeTruthy();
 
     const pages = await admin.get<Array<{ id: string; slug?: string; apiName?: string }>>(
-      `/apps/${procApp!.id}/pages`,
+      `/design/apps/${procApp!.id}/pages`,
     );
     // PageMeta 列表以 slug 暴露（apiName 的运行时别名）
     approvalPageId = pages.find(

@@ -95,7 +95,7 @@ test.describe('真实 UI 用户路径', () => {
     await expect(page.getByText('UI 默认视图')).toBeVisible({ timeout: 15_000 });
 
     // ---- 6. 保存页面（回归：保存 payload 多发 apiName/type/objectId → 400）----
-    const pageMeta = await api.post<{ id: string }>(`/apps/${appId}/pages`, {
+    const pageMeta = await api.post<{ id: string }>(`/design/apps/${appId}/pages`, {
       name: `UI 页面 ${SUFFIX}`,
       apiName: `ui_page_${SUFFIX}`,
       type: 'custom',

@@ -145,7 +145,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
 
   /** 删除页面。 */
   const deleteMutation = useMutation({
-    mutationFn: (pageId: string) => pagesApi.delete(pageId),
+    mutationFn: (pageId: string) => pagesApi.delete(appId!, pageId),
     onSuccess: () => {
       message.success('页面已删除');
       queryClient.invalidateQueries({ queryKey: qk.appPages(appId!) });

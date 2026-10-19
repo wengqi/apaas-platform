@@ -71,10 +71,12 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     objectId = obj!.id;
 
     // 表单页 + 台账页（幂等）
-    const pages = await admin.get<Array<{ id: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await admin.get<Array<{ id: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     let form = pages.find((p) => p.slug === 'feedback_form' || p.apiName === 'feedback_form');
     if (!form) {
-      form = await admin.post<{ id: string }>(`/apps/${appId}/pages`, {
+      form = await admin.post<{ id: string }>(`/design/apps/${appId}/pages`, {
         apiName: 'feedback_form',
         name: '反馈提交',
         type: 'form_page',
@@ -101,7 +103,7 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
 
     let list = pages.find((p) => p.slug === 'feedback_list' || p.apiName === 'feedback_list');
     if (!list) {
-      list = await admin.post<{ id: string }>(`/apps/${appId}/pages`, {
+      list = await admin.post<{ id: string }>(`/design/apps/${appId}/pages`, {
         apiName: 'feedback_list',
         name: '反馈台账',
         type: 'list_page',

@@ -123,7 +123,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     // 页面接口字段映射：Prisma apiName→slug, isPublished→published
     const pages = await api.get<
       Array<{ id: string; slug: string; name: string; type: string; published: boolean }>
-    >(`/apps/${appId}/pages`);
+    >(`/design/apps/${appId}/pages`);
     const publishedPages = pages.filter((p) => p.published);
     expect(publishedPages.length).toBeGreaterThanOrEqual(7);
 

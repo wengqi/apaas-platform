@@ -80,51 +80,55 @@ export interface UpdatePageRequest {
 // ---------------------------------------------------------------------------
 
 export const pagesApi = {
-  /** 页面列表 */
+  /** 页面列表（设计面，含草稿） */
   list: (appId: string) =>
     client
-      .get<ApiResponse<PageMeta[]>>(`/api/apps/${appId}/pages`)
+      .get<ApiResponse<PageMeta[]>>(`/api/design/apps/${appId}/pages`)
       .then((res) => res.data.data as PageMeta[]),
 
   /** 页面详情(含 Schema) */
-  get: (pageId: string) =>
+  get: (appId: string, pageId: string) =>
     client
-      .get<ApiResponse<PageMeta>>(`/api/pages/${pageId}`)
+      .get<ApiResponse<PageMeta>>(`/api/design/apps/${appId}/pages/${pageId}`)
       .then((res) => res.data.data as PageMeta),
 
   /** 创建页面 */
   create: (appId: string, data: CreatePageRequest) =>
     client
-      .post<ApiResponse<PageMeta>>(`/api/apps/${appId}/pages`, data)
+      .post<ApiResponse<PageMeta>>(`/api/design/apps/${appId}/pages`, data)
       .then((res) => res.data.data as PageMeta),
 
   /** 更新页面(含 Schema 持久化) */
-  update: (pageId: string, data: UpdatePageRequest) =>
+  update: (appId: string, pageId: string, data: UpdatePageRequest) =>
     client
-      .put<ApiResponse<PageMeta>>(`/api/pages/${pageId}`, data)
+      .put<ApiResponse<PageMeta>>(`/api/design/apps/${appId}/pages/${pageId}`, data)
       .then((res) => res.data.data as PageMeta),
 
   /** 删除页面 */
-  delete: (pageId: string) =>
+  delete: (appId: string, pageId: string) =>
     client
-      .delete<ApiResponse<{ deleted: boolean }>>(`/api/pages/${pageId}`)
+      .delete<ApiResponse<{ deleted: boolean }>>(`/api/design/apps/${appId}/pages/${pageId}`)
       .then((res) => res.data.data as { deleted: boolean }),
 
   /** 发布页面 */
-  publish: (pageId: string) =>
+  publish: (appId: string, pageId: string) =>
     client
-      .post<ApiResponse<PageMeta>>(`/api/pages/${pageId}/publish`)
+      .post<ApiResponse<PageMeta>>(`/api/design/apps/${appId}/pages/${pageId}/publish`)
       .then((res) => res.data.data as PageMeta),
 
   /** 保存点列表（E2-4 飞书式历史，按时间倒序） */
-  listSavePoints: (pageId: string) =>
+  listSavePoints: (appId: string, pageId: string) =>
     client
-      .get<ApiResponse<PageSavePointInfo[]>>(`/api/pages/${pageId}/save-points`)
+      .get<ApiResponse<PageSavePointInfo[]>>(
+        `/api/design/apps/${appId}/pages/${pageId}/save-points`,
+      )
       .then((res) => res.data.data as PageSavePointInfo[]),
 
   /** 恢复到保存点（返回恢复后的页面全量） */
-  restoreSavePoint: (pageId: string, savePointId: string) =>
+  restoreSavePoint: (appId: string, pageId: string, savePointId: string) =>
     client
-      .post<ApiResponse<PageMeta>>(`/api/pages/${pageId}/save-points/${savePointId}/restore`)
+      .post<ApiResponse<PageMeta>>(
+        `/api/design/apps/${appId}/pages/${pageId}/save-points/${savePointId}/restore`,
+      )
       .then((res) => res.data.data as PageMeta),
 };

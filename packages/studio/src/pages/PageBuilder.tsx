@@ -68,7 +68,7 @@ function validateAmisJson(
  * docs/knowledge-base/DROP-LEGACY-RUNTIME-2026-10-02.md）。
  */
 export default function PageBuilder() {
-  const { pageId } = useParams<{ appId: string; pageId: string }>();
+  const { appId, pageId } = useParams<{ appId: string; pageId: string }>();
   const queryClient = useQueryClient();
 
   const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
@@ -115,8 +115,8 @@ export default function PageBuilder() {
     refetch,
   } = useQuery({
     queryKey: qk.page(pageId!),
-    queryFn: () => pagesApi.get(pageId as string),
-    enabled: !!pageId,
+    queryFn: () => pagesApi.get(appId as string, pageId as string),
+    enabled: !!appId && !!pageId,
     retry: 1,
   });
 
@@ -180,7 +180,7 @@ export default function PageBuilder() {
   // 评审 P1-2 沿革：加载失败显式暴露，绝不静默回退空 Schema（防覆盖线上内容）
   const saveMutation = useMutation({
     mutationFn: (next: Record<string, unknown>) =>
-      pagesApi.update(page!.id, {
+      pagesApi.update(page!.appId, page!.id, {
         name: page!.name,
         schema: next as never,
       }),

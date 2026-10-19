@@ -41,7 +41,7 @@ test.describe('应用发布与版本管理', () => {
       required: true,
     });
 
-    const page = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
+    const page = await api.post<{ id: string; slug: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'e2e_publish_page',
       name: '发布测试页面',
       type: 'list_page',
@@ -91,7 +91,7 @@ test.describe('应用发布与版本管理', () => {
       type: 'TEXT',
     });
 
-    const page = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
+    const page = await api.post<{ id: string; slug: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'e2e_runtime_page',
       name: '运行态页面',
       type: 'list_page',
@@ -99,7 +99,7 @@ test.describe('应用发布与版本管理', () => {
     });
 
     // 发布页面
-    await api.post(`/pages/${page.id}/publish`);
+    await api.post(`/design/apps/${appId}/pages/${page.id}/publish`);
 
     // 发布应用
     await api.post(`/design/apps/${appId}/publish`, {
@@ -129,7 +129,7 @@ test.describe('应用发布与版本管理', () => {
       type: 'TEXT',
     });
 
-    const _page = await api.post<{ id: string; slug: string }>(`/apps/${appId}/pages`, {
+    const _page = await api.post<{ id: string; slug: string }>(`/design/apps/${appId}/pages`, {
       apiName: 'e2e_rollback_page',
       name: '回滚测试页面',
       type: 'list_page',

@@ -100,7 +100,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
 
     // 2. 提交未落活表：页面列表无该页面
     const pagesBefore = await api.get<Array<{ apiName?: string; slug?: string }>>(
-      `/apps/${appId}/pages`,
+      `/design/apps/${appId}/pages`,
     );
     expect(pagesBefore.some((p) => (p.apiName ?? p.slug) === pageApiName)).toBe(false);
 
@@ -120,7 +120,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
       .poll(
         async () => {
           const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(
-            `/apps/${appId}/pages`,
+            `/design/apps/${appId}/pages`,
           );
           return pages.some((p) => (p.apiName ?? p.slug) === pageApiName);
         },
@@ -159,7 +159,9 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     expect(rejected?.reviewComment).toContain('E2E 驳回意见');
 
     // 页面不落活表
-    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     expect(pages.some((p) => (p.apiName ?? p.slug) === rejectApiName)).toBe(false);
 
     // UI：已处理页签显示已驳回

@@ -433,6 +433,7 @@ export class ReviewSnapshotService {
       // AI 提交批准只落 schema/名称；上线仍随应用发布（isPublished 语义不变）
       await this.pageService.update(
         tenantId,
+        appId,
         target.id,
         { name: finalSnapshot.name, schema: finalSnapshot.schema as never },
         changedBy,

@@ -33,7 +33,7 @@ test.describe('多环境（R1.4）', () => {
     });
 
     // 页面 schema 内含 ${env.GREETING} 引用（验证 bundle 替换链路）
-    await api.post(`/apps/${appId}/pages`, {
+    await api.post(`/design/apps/${appId}/pages`, {
       apiName: pageApiName,
       name: '多环境页面',
       type: 'custom',
@@ -64,9 +64,9 @@ test.describe('多环境（R1.4）', () => {
 
   test('dev 部署 v1.0.1 后：dev 见新内容、prod 保持旧内容（隔离）', async () => {
     // 修改页面为"第二版" → 发布 v1.0.1 → 仅部署 dev
-    const pages = await api.get<Array<{ id: string; slug: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ id: string; slug: string }>>(`/design/apps/${appId}/pages`);
     const page = pages.find((p) => p.slug === pageApiName);
-    await api.put(`/pages/${page!.id}`, {
+    await api.put(`/design/apps/${appId}/pages/${page!.id}`, {
       schema: {
         type: 'page',
         title: '${env.GREETING}',

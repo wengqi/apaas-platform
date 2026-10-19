@@ -132,10 +132,12 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
 
   test('发布后看板：chart-data 请求发出、聚合正确、图表渲染', async ({ page }) => {
     // 幂等建看板页（引用数据集 ID——API 创建时已知）
-    const pages = await admin.get<Array<{ id: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await admin.get<Array<{ id: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     let dash = pages.find((p) => p.slug === PAGE_SLUG || p.apiName === PAGE_SLUG);
     if (!dash) {
-      dash = await admin.post<{ id: string }>(`/apps/${appId}/pages`, {
+      dash = await admin.post<{ id: string }>(`/design/apps/${appId}/pages`, {
         apiName: PAGE_SLUG,
         name: '销售看板',
         type: 'dashboard',

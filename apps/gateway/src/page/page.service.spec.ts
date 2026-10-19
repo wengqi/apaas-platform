@@ -37,7 +37,7 @@ function createMockChangeLogService() {
   };
 }
 
-function createService() {
+function createService(resolved: { bundle: unknown } = { bundle: null }) {
   const changeLogService = createMockChangeLogService();
   const service = new PageService(
     changeLogService as unknown as ConstructorParameters<typeof PageService>[0],
@@ -45,7 +45,7 @@ function createService() {
       resolve: vi.fn().mockResolvedValue({
         environmentId: '',
         versionId: null,
-        bundle: null,
+        ...resolved,
       }),
     } as unknown as ConstructorParameters<typeof PageService>[1],
     {
@@ -60,6 +60,39 @@ describe('PageService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('listRuntime（运行面 GET /apps/:appId/pages，已发布 bundle 同源）', () => {
+    it('未部署（无 bundle）返回空数组，不读活表', async () => {
+      const { service } = createService();
+      const result = await service.listRuntime('tenant-001', 'app-001');
+
+      expect(result).toEqual([]);
+      expect(prisma.pageMeta.findMany).not.toHaveBeenCalled();
+    });
+
+    it('返回 bundle 中的页面摘要（不含 schema、published=true），草稿页不在其中', async () => {
+      const { service } = createService({
+        bundle: {
+          meta: { publishedAt: '2026-10-19T00:00:00.000Z' },
+          pages: [
+            { id: 'page-pub', name: '已发布页', apiName: 'pub', type: 'list', schema: { x: 1 } },
+          ],
+        },
+      });
+      const result = await service.listRuntime('tenant-001', 'app-001');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: 'page-pub',
+        appId: 'app-001',
+        slug: 'pub',
+        published: true,
+        createdAt: '2026-10-19T00:00:00.000Z',
+      });
+      expect('schema' in (result[0] ?? {})).toBe(false);
+      expect(prisma.pageMeta.findMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {
@@ -79,7 +112,7 @@ describe('PageService', () => {
       prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
 
       const { service } = createService();
-      const result = await service.get('tenant-001', 'page-001');
+      const result = await service.get('tenant-001', 'app-001', 'page-001');
 
       expect(result.id).toBe('page-001');
     });
@@ -88,7 +121,9 @@ describe('PageService', () => {
       prisma.pageMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.get('tenant-001', 'nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.get('tenant-001', 'app-001', 'nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -118,17 +153,32 @@ describe('PageService', () => {
   });
 
   describe('delete', () => {
-    it('应删除页面', async () => {
+    it('应删除页面（租户 + 应用双域）', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
       prisma.pageMeta.deleteMany.mockResolvedValue({ count: 1 });
 
       const { service } = createService();
-      await service.delete('tenant-001', 'page-001');
+      await service.delete('tenant-001', 'app-001', 'page-001');
 
       expect(prisma.pageMeta.deleteMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ id: 'page-001', tenantId: 'tenant-001' }),
+          where: expect.objectContaining({
+            id: 'page-001',
+            tenantId: 'tenant-001',
+            appId: 'app-001',
+          }),
         }),
       );
+    });
+
+    it('页面不属于该应用（跨应用 ID）时 404 且不删除', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(null);
+
+      const { service } = createService();
+      await expect(service.delete('tenant-001', 'app-other', 'page-001')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.pageMeta.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -138,7 +188,9 @@ describe('PageService', () => {
       prisma.pageMeta.updateMany.mockResolvedValue({ count: 1 });
 
       const { service } = createService();
-      await service.update('tenant-001', 'page-001', { schema: makePageRow().schema as never });
+      await service.update('tenant-001', 'app-001', 'page-001', {
+        schema: makePageRow().schema as never,
+      });
 
       expect(prisma.pageSavePoint.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -156,7 +208,7 @@ describe('PageService', () => {
       prisma.pageMeta.updateMany.mockResolvedValue({ count: 1 });
 
       const { service } = createService();
-      await service.update('tenant-001', 'page-001', { name: '改名' });
+      await service.update('tenant-001', 'app-001', 'page-001', { name: '改名' });
 
       expect(prisma.pageSavePoint.create).not.toHaveBeenCalled();
     });
@@ -174,7 +226,7 @@ describe('PageService', () => {
       ]);
 
       const { service } = createService();
-      const points = await service.listSavePoints('tenant-001', 'page-001');
+      const points = await service.listSavePoints('tenant-001', 'app-001', 'page-001');
 
       expect(points).toHaveLength(1);
       expect(points[0]).toMatchObject({
@@ -190,7 +242,7 @@ describe('PageService', () => {
       prisma.pageMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.listSavePoints('tenant-001', 'page-404')).rejects.toThrow(
+      await expect(service.listSavePoints('tenant-001', 'app-001', 'page-404')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -208,13 +260,13 @@ describe('PageService', () => {
       });
 
       const { service } = createService();
-      await service.restoreSavePoint('tenant-001', 'page-001', 'sp-1', 'user-2');
+      await service.restoreSavePoint('tenant-001', 'app-001', 'page-001', 'sp-1', 'user-2');
 
       // mock 环境下事务数组元素为 undefined，仅验证事务执行 + 回滚点写入
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.pageMeta.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'page-001', tenantId: 'tenant-001' },
+          where: { id: 'page-001', tenantId: 'tenant-001', appId: 'app-001' },
         }),
       );
       expect(prisma.pageSavePoint.create).toHaveBeenCalledWith(
@@ -229,9 +281,9 @@ describe('PageService', () => {
       prisma.pageSavePoint.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.restoreSavePoint('tenant-001', 'page-001', 'sp-404')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.restoreSavePoint('tenant-001', 'app-001', 'page-001', 'sp-404'),
+      ).rejects.toThrow(NotFoundException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
@@ -246,7 +298,9 @@ describe('PageService', () => {
       prisma.pageSavePoint.findMany.mockResolvedValue(rows);
 
       const { service } = createService();
-      await service.update('tenant-001', 'page-001', { schema: makePageRow().schema as never });
+      await service.update('tenant-001', 'app-001', 'page-001', {
+        schema: makePageRow().schema as never,
+      });
 
       expect(prisma.pageSavePoint.deleteMany).toHaveBeenCalledWith({
         where: { id: { in: ['sp-00'] }, tenantId: 'tenant-001' },

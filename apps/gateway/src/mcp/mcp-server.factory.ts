@@ -84,11 +84,11 @@ const TOOLS: Array<{
   },
   {
     name: 'get_page',
-    description: '获取页面详情（含完整 amis 页面 schema）。',
+    description: '获取页面详情（含完整 amis 页面 schema）。页面按应用寻址，appId 必填。',
     inputSchema: {
       type: 'object',
-      properties: { pageId: { type: 'string' } },
-      required: ['pageId'],
+      properties: { appId: { type: 'string' }, pageId: { type: 'string' } },
+      required: ['appId', 'pageId'],
       additionalProperties: false,
     },
   },
@@ -644,7 +644,7 @@ async function dispatch(
     case 'list_roles':
       return svc.listRoles(tenantId, optionalStr(args['appId']));
     case 'get_page':
-      return svc.getPage(tenantId, str(args['pageId']));
+      return svc.getPage(tenantId, str(args['appId']), str(args['pageId']));
     case 'get_process':
       return svc.getProcess(tenantId, str(args['processId']));
     case 'validate_schema':

@@ -119,7 +119,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     contractObjId = objects.find((o) => o.apiName === 'contract')!.id;
 
     const pages = await api.get<Array<{ id: string; apiName?: string; slug?: string }>>(
-      `/apps/${appId}/pages`,
+      `/design/apps/${appId}/pages`,
     );
     approvalPageId = pages.find((p) => (p.apiName ?? p.slug) === 'contract_approval_page')!.id;
 
@@ -194,7 +194,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     expect(submit['status']).toBe('PENDING');
 
     // 治理不变量：批准前不落活表
-    const pages = await api.get<Array<{ apiName: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ apiName: string }>>(`/design/apps/${appId}/pages`);
     expect(pages.some((p) => p.apiName === statsPageApiName)).toBe(false);
   });
 
@@ -212,7 +212,9 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
 
     await api.post(`/apps/${appId}/reviews/${submission!.id}/approve`, { comment: '验收通过' });
 
-    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(`/apps/${appId}/pages`);
+    const pages = await api.get<Array<{ apiName?: string; slug?: string }>>(
+      `/design/apps/${appId}/pages`,
+    );
     expect(pages.some((p) => (p.apiName ?? p.slug) === statsPageApiName)).toBe(true);
   });
 

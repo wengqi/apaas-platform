@@ -400,8 +400,8 @@ export class McpService {
     };
   }
 
-  async getPage(tenantId: string, pageId: string): Promise<McpToolResult> {
-    const page = await this.pageService.get(tenantId, pageId);
+  async getPage(tenantId: string, appId: string, pageId: string): Promise<McpToolResult> {
+    const page = await this.pageService.get(tenantId, appId, pageId);
     return { ok: true, page };
   }
 

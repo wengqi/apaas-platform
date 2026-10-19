@@ -68,7 +68,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     // appId 必须在此独立解析：Playwright 失败重试会更换 worker 并重跑 beforeAll，
     // 但不会重跑文件内其它测试——若依赖首个测试的副作用赋值，重试 worker 中
     // appId 恒为 undefined，一次失败会级联成多个 /app/undefined 的必然失败。
-    const apps = await api.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await api.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const app = apps.find((a) => a.apiName === 'asset_management');
     if (!app) throw new Error('Demo app asset_management not found — 请先执行 pnpm db:seed');
     appId = app.id;
@@ -77,7 +77,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   test('应用已发布（PUBLISHED + 环境部署可读）', async () => {
     const apps =
       await api.get<Array<{ id: string; apiName: string; status: string; version: number }>>(
-        '/apps',
+        '/design/apps',
       );
     const app = apps.find((a) => a.apiName === 'asset_management');
     expect(app).toBeDefined();
@@ -85,7 +85,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
     expect(app!.version).toBeGreaterThanOrEqual(1);
     // R1.7 后运行时唯一读路径 = AppVersion bundle + 环境指针：
     // 详情端点返回 publishedAt（发布语义），运行时 slug 端点可读（部署语义）
-    const detail = await api.get<{ id: string; publishedAt: string | null }>(`/apps/${app!.id}`);
+    const detail = await api.get<{ id: string; publishedAt: string | null }>(
+      `/design/apps/${app!.id}`,
+    );
     expect(detail.publishedAt).toBeTruthy();
   });
 

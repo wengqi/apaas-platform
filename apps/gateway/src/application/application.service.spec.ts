@@ -212,6 +212,86 @@ describe('ApplicationService', () => {
   });
 
   // =========================================================================
+  // getVisibleForUser（GET /apps/:appId 运行时详情：与列表同一可见性归纳）
+  // =========================================================================
+
+  describe('getVisibleForUser', () => {
+    function makeUser(
+      overrides: Record<string, unknown> = {},
+    ): Parameters<ApplicationService['getVisibleForUser']>[1] {
+      return {
+        id: 'user-001',
+        tenantId: 'tenant-001',
+        isPlatformAdmin: false,
+        isSuperAdmin: false,
+        ...overrides,
+      } as Parameters<ApplicationService['getVisibleForUser']>[1];
+    }
+
+    it('管理员短路：返回已发布应用详情，查询硬带 status=PUBLISHED，不查角色', async () => {
+      prisma.application.findFirst.mockResolvedValue(makeApp({ status: 'PUBLISHED' }));
+
+      const { service, permissionService } = createService();
+      const result = await service.getVisibleForUser(
+        'tenant-001',
+        makeUser({ isSuperAdmin: true }),
+        'app-001',
+      );
+
+      expect(result.id).toBe('app-001');
+      expect(permissionService.getUserRoleIds).not.toHaveBeenCalled();
+      const where = prisma.application.findFirst.mock.calls[0]?.[0]?.where;
+      expect(where).toMatchObject({ id: 'app-001', tenantId: 'tenant-001', status: 'PUBLISHED' });
+    });
+
+    it('租户级通配 ALLOW：可见', async () => {
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: null }]);
+      prisma.application.findFirst.mockResolvedValue(makeApp({ status: 'PUBLISHED' }));
+
+      const { service, permissionService } = createService();
+      permissionService.getUserRoleIds.mockResolvedValue(['role-enduser']);
+      const result = await service.getVisibleForUser('tenant-001', makeUser(), 'app-001');
+
+      expect(result.id).toBe('app-001');
+    });
+
+    it('仅应用级规则且未命中该 appId：404 且不查应用表', async () => {
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: 'app-other' }]);
+
+      const { service, permissionService } = createService();
+      permissionService.getUserRoleIds.mockResolvedValue(['role-app-level']);
+
+      await expect(service.getVisibleForUser('tenant-001', makeUser(), 'app-001')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.application.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('有权限但应用未发布（DRAFT）：404——运行时视角应用尚不存在', async () => {
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: null }]);
+      prisma.application.findFirst.mockResolvedValue(null);
+
+      const { service, permissionService } = createService();
+      permissionService.getUserRoleIds.mockResolvedValue(['role-enduser']);
+
+      await expect(service.getVisibleForUser('tenant-001', makeUser(), 'app-001')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('无角色（默认拒绝）：404，不查规则与应用', async () => {
+      const { service, permissionService } = createService();
+      permissionService.getUserRoleIds.mockResolvedValue([]);
+
+      await expect(service.getVisibleForUser('tenant-001', makeUser(), 'app-001')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.permissionRule.findMany).not.toHaveBeenCalled();
+      expect(prisma.application.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
   // get
   // =========================================================================
 

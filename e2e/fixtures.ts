@@ -128,7 +128,7 @@ export async function createTestApp(
   api: ReturnType<typeof createApiClient>,
   name = `E2E 测试应用 ${Date.now()}`,
 ): Promise<string> {
-  const app = await api.post<{ id: string }>('/apps', {
+  const app = await api.post<{ id: string }>('/design/apps', {
     apiName: `e2e_${Date.now()}`,
     name,
     description: 'E2E 测试自动创建',
@@ -142,7 +142,7 @@ export async function deleteTestApp(
   appId: string,
 ): Promise<void> {
   try {
-    await api.delete(`/apps/${appId}`);
+    await api.delete(`/design/apps/${appId}`);
   } catch {
     // 清理失败不阻断测试
   }

@@ -29,10 +29,10 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     admin = createApiClient(token);
 
     // 幂等：按 apiName 查找或创建夹具应用
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     let app = apps.find((a) => a.apiName === 'e2e_feedback_loop');
     if (!app) {
-      app = await admin.post<{ id: string; apiName: string }>('/apps', {
+      app = await admin.post<{ id: string; apiName: string }>('/design/apps', {
         name: '反馈环 E2E',
         apiName: 'e2e_feedback_loop',
       });
@@ -205,10 +205,12 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
 
     // 发布（防碰撞：基于现有版本最大 patch 取 next——原 Date.now()%1000 会撞
     // @@unique([appId,versionNumber]) 且被吞错掩盖成"静默未发布"，2026-10-10 复盘）
-    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const versions = await admin.get<Array<{ versionNumber: string }>>(
+      `/design/apps/${appId}/versions`,
+    );
     const patchNumbers = versions.map((v) => Number(v.versionNumber.split('.')[2] ?? 0));
     const nextPatch = (patchNumbers.length > 0 ? Math.max(...patchNumbers) : 0) + 1;
-    await admin.post(`/apps/${appId}/publish`, {
+    await admin.post(`/design/apps/${appId}/publish`, {
       version: `1.0.${nextPatch}`,
       description: '反馈环 e2e 夹具',
     });
@@ -279,13 +281,13 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     expect(titles).toContain('反馈审批被驳回');
   });
 
-  test('runtime 视图：?runtime=1 只含已发布应用，无参数保持全量（studio 兼容）', async () => {
-    // 服务端过滤断言（2026-10-10）：此前 GET /apps 仅按 tenantId 过滤，
-    // DRAFT 应用对终端用户可见（仅前端客户端过滤兜底）
+  test('运行面 GET /apps 只含已发布应用，设计面 GET /design/apps 全量（ADR-0005 双命名空间）', async () => {
+    // 服务端过滤断言（2026-10-10 建立，2026-10-19 随 ?runtime=1 退役改为路径分流）：
+    // 运行面曾仅按 tenantId 过滤，DRAFT 应用对终端用户可见（仅前端客户端过滤兜底）
     const allApps =
-      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps');
+      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/design/apps');
     const runtimeApps =
-      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps?runtime=1');
+      await admin.get<Array<{ id: string; apiName: string; status: string }>>('/apps');
     expect(
       runtimeApps.every((a) => a.status === 'PUBLISHED'),
       'runtime 视图不得包含未发布应用',

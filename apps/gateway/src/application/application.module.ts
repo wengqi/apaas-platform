@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ApplicationService } from './application.service.js';
 import { ApplicationController } from './application.controller.js';
+import { DesignApplicationController } from './design-application.controller.js';
 import { SnapshotService } from './snapshot.service.js';
 import { CheckService } from './check.service.js';
 import { ChangeLogModule } from './changelog.module.js';
@@ -21,7 +22,8 @@ import { EnvironmentModule } from '../environment/environment.module.js';
  *   ApplicationService → {SnapshotService, CheckService, ChangeLogService}
  *   CheckService → SnapshotService
  *   ChangeLogService → (无，直接用 prisma)
- *   ApplicationController → {ApplicationService, ChangeLogService}
+ *   ApplicationController（运行面 /apps）→ {ApplicationService}
+ *   DesignApplicationController（设计面 /design/apps）→ {ApplicationService, ChangeLogService}
  *
  * ChangeLogService 通过 ChangeLogModule 导入，供其他模块复用。
  */
@@ -49,7 +51,7 @@ import { EnvironmentModule } from '../environment/environment.module.js';
     // 预检页面渲染契约软告警消费 G3 校验器（R6 两缺口 warning）
     SchemaContractModule,
   ],
-  controllers: [ApplicationController],
+  controllers: [ApplicationController, DesignApplicationController],
   providers: [ApplicationService, SnapshotService, CheckService, JwtStrategy],
   exports: [ApplicationService],
 })

@@ -53,7 +53,7 @@ test.describe('应用发布与版本管理', () => {
     const checkResult = await api.post<{
       status: string;
       issues: Array<{ level: string; message: string }>;
-    }>(`/apps/${appId}/check`);
+    }>(`/design/apps/${appId}/check`);
     expect(checkResult.status).toBe('PASS');
 
     // 发布
@@ -61,7 +61,7 @@ test.describe('应用发布与版本管理', () => {
       id: string;
       versionNumber: string;
       status: string;
-    }>(`/apps/${appId}/publish`, {
+    }>(`/design/apps/${appId}/publish`, {
       version: '1.0.0',
       description: 'E2E 首次发布',
     });
@@ -71,7 +71,7 @@ test.describe('应用发布与版本管理', () => {
 
     // 版本列表
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     expect(versions.length).toBeGreaterThanOrEqual(1);
     expect(versions.some((v) => v.versionNumber === '1.0.0')).toBe(true);
@@ -102,7 +102,7 @@ test.describe('应用发布与版本管理', () => {
     await api.post(`/pages/${page.id}/publish`);
 
     // 发布应用
-    await api.post(`/apps/${appId}/publish`, {
+    await api.post(`/design/apps/${appId}/publish`, {
       version: '1.0.1',
       description: 'E2E 运行态验证发布',
     });
@@ -137,21 +137,21 @@ test.describe('应用发布与版本管理', () => {
     });
 
     // 发布第一个版本
-    await api.post(`/apps/${appId}/check`);
-    await api.post(`/apps/${appId}/publish`, {
+    await api.post(`/design/apps/${appId}/check`);
+    await api.post(`/design/apps/${appId}/publish`, {
       version: '2.0.0',
       description: '回滚测试 — 版本一',
     });
 
     // 发布第二个版本
-    await api.post(`/apps/${appId}/publish`, {
+    await api.post(`/design/apps/${appId}/publish`, {
       version: '2.0.1',
       description: '回滚测试 — 版本二',
     });
 
     // 获取版本列表
     const versions = await api.get<Array<{ id: string; version: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     expect(versions.length).toBeGreaterThanOrEqual(2);
 
@@ -163,12 +163,12 @@ test.describe('应用发布与版本管理', () => {
       id: string;
       version: string;
       status: string;
-    }>(`/apps/${appId}/versions/${targetVersion!.id}/rollback`);
+    }>(`/design/apps/${appId}/versions/${targetVersion!.id}/rollback`);
     expect(rollbackResult.status).toBe('PUBLISHED');
 
     // 验证版本列表中有回滚产生的新版本
     const versionsAfter = await api.get<Array<{ id: string; version: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     expect(versionsAfter.length).toBeGreaterThan(versions.length);
   });

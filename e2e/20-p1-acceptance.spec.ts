@@ -112,7 +112,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     builderApi = createApiClient(await loginViaApi('builder@apaas.dev', 'builder123'));
 
     // 采购 seed 应用与关键资源
-    const apps = await api.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await api.get<Array<{ id: string; apiName: string }>>('/design/apps');
     appId = apps.find((a) => a.apiName === 'procurement')!.id;
 
     const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
@@ -254,10 +254,13 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     for (let attempt = 0; attempt < 5 && !version; attempt += 1) {
       const candidate = `2.0.${(Date.now() + attempt * 7) % 1000000}`;
       try {
-        version = await api.post<{ id: string; versionNumber: string }>(`/apps/${appId}/publish`, {
-          version: candidate,
-          description: 'R1.5 验收刷新：MCP 出稿页面随应用发布',
-        });
+        version = await api.post<{ id: string; versionNumber: string }>(
+          `/design/apps/${appId}/publish`,
+          {
+            version: candidate,
+            description: 'R1.5 验收刷新：MCP 出稿页面随应用发布',
+          },
+        );
       } catch (err) {
         if (!(err instanceof Error) || !err.message.includes('已存在')) throw err;
       }

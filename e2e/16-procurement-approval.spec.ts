@@ -30,7 +30,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     builder = createApiClient(builderToken);
 
     // 定位种子数据：procurement 应用 → contract 对象 + 审批流程 + 审批页面
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const procApp = apps.find((a) => a.apiName === 'procurement');
     expect(procApp, '种子应用 procurement 不存在——请先跑 pnpm db:seed').toBeTruthy();
 

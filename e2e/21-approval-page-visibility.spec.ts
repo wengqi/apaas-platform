@@ -23,7 +23,7 @@ test.describe('审批页数据可见性（DOM 级）', () => {
   test.beforeAll(async () => {
     admin = createApiClient(await loginViaApi());
 
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     appId = apps.find((a) => a.apiName === 'procurement')!.id;
 
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(

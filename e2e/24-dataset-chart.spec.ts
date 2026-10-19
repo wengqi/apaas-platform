@@ -26,10 +26,10 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
     admin = createApiClient(token);
 
     // 1. 幂等建应用
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     let app = apps.find((a) => a.apiName === 'chart_journey_app');
     if (!app) {
-      app = await admin.post<{ id: string; apiName: string }>('/apps', {
+      app = await admin.post<{ id: string; apiName: string }>('/design/apps', {
         name: '报表旅程夹具',
         apiName: 'chart_journey_app',
       });
@@ -165,14 +165,16 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
     }
 
     // 发布（版本号 = 现有最大 patch + 1，与向导同规则，防撞车）
-    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const versions = await admin.get<Array<{ versionNumber: string }>>(
+      `/design/apps/${appId}/versions`,
+    );
     const triples = versions
       .map((v) => v.versionNumber.split('.').map((n) => Number.parseInt(n, 10)))
       .filter((n) => n.length === 3 && n.every((x) => !Number.isNaN(x)));
     triples.sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!);
     const top = triples[triples.length - 1] ?? [0, 0, 0];
     const version = `${top[0]}.${top[1]}.${top[2]! + 1}`;
-    await admin.post(`/apps/${appId}/publish`, { version, description: 'J8 旅程发布' });
+    await admin.post(`/design/apps/${appId}/publish`, { version, description: 'J8 旅程发布' });
 
     // 管理员登录态注入 + 打开看板
     const { token, user } = await loginViaApiWithUser();

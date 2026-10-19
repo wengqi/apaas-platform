@@ -265,7 +265,7 @@ async function main() {
   await seedProcurementContent(tenant.id, procurementApp.id, admin.id);
 
   // 11. 内部应用标记（2026-10-12 评审 P0，幂等）：E2E/QA 夹具等非业务应用
-  // 打 isInternal 标，运行时门户（GET /apps?runtime=1）过滤后不再出现在
+  // 打 isInternal 标，运行时门户（运行面 GET /apps）过滤后不再出现在
   // 业务用户首页——修复"业务用户打开的是工程师的工作台"
   // 11.5 应用分组回填（2026-10-13 素蓝设计轮，幂等）：按 apiName 归组，
   // 首页与运行时门户按分组归类展示；不在表内的应用保持「未分组」
@@ -288,7 +288,7 @@ async function main() {
   console.log(`✅ 应用分组回填: ${appGroupSeed.length} 条`);
 
   // 内部应用标记（2026-10-12 评审 P0，幂等）：E2E/QA 夹具等非业务应用
-  // 不进运行时门户（GET /apps?runtime=1 过滤 isInternal）
+  // 不进运行时门户（运行面 GET /apps 过滤 isInternal）
   const internalMarked = await prisma.application.updateMany({
     where: {
       tenantId: tenant.id,

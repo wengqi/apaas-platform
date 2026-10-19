@@ -1,177 +1,32 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Patch,
-  Delete,
-  Body,
-  Param,
-  Query,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Controller, Get, Param, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
-import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApplicationService } from './application.service.js';
-import { ChangeLogService } from './changelog.service.js';
-import { CreateAppDto, UpdateAppGroupDto, UpdateAppDto, PublishAppDto } from './dto/app.dto.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 
 /**
- * 应用控制器 — Application CRUD + 发布/预检/版本管理。
- * 所有路由受 PermissionGuard 保护（认证 + 授权），从 token 中提取 tenantId。
- * 查询路由仅认证即可；管理类路由需 MANAGE 权限。
+ * 应用控制器（运行面）— 终端用户视角的应用读取（ADR-0005 design/runtime 双命名空间）。
+ *
+ * 运行面只暴露"已发布 + 当前用户有权限"的应用，未发布或无权限一律 404；
+ * 设计面（搭建、发布、版本、分组等）在 DesignApplicationController（/design/apps）。
  */
-@ApiTags('Application')
+@ApiTags('Application (runtime)')
 @ApiBearerAuth()
 @Controller('apps')
 @UseGuards(PermissionGuard)
 export class ApplicationController {
-  constructor(
-    private readonly appService: ApplicationService,
-    private readonly changeLogService: ChangeLogService,
-  ) {}
+  constructor(private readonly appService: ApplicationService) {}
 
-  // ===========================================================================
-  // 应用 CRUD
-  // ===========================================================================
-
-  /**
-   * 列出应用。runtime=1 时为运行时视图（已发布 + 按用户权限归纳过滤，终端用户语义）；
-   * 不带参数保持全量行为——studio 应用列表与既有调用方依赖全量（含 DRAFT）。
-   */
   @Get()
-  async list(@Req() req: AuthenticatedRequest, @Query('runtime') runtime?: string) {
-    const data =
-      runtime === '1'
-        ? await this.appService.listVisibleForUser(requireTenantId(req), req.user)
-        : await this.appService.list(requireTenantId(req));
+  async list(@Req() req: AuthenticatedRequest) {
+    const data = await this.appService.listVisibleForUser(requireTenantId(req), req.user);
     return { ok: true as const, data };
   }
 
   @Get(':appId')
   async get(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const app = await this.appService.get(requireTenantId(req), appId);
+    const app = await this.appService.getVisibleForUser(requireTenantId(req), req.user, appId);
     return { ok: true as const, data: app };
-  }
-
-  @Patch('groups')
-  @RequirePermission('PAGE', 'MANAGE')
-  @ApiOperation({ summary: '分组管理：重命名（from→to）或删除分组（to 空 → 移入未分组）' })
-  async updateGroup(
-    @Req() req: AuthenticatedRequest,
-    @Body() body: UpdateAppGroupDto,
-  ): Promise<{ ok: true; data: { updated: number } }> {
-    const data = await this.appService.updateGroup(requireTenantId(req), body.from, body.to);
-    return { ok: true as const, data };
-  }
-
-  @Post()
-  @RequirePermission('PAGE', 'MANAGE')
-  async create(@Req() req: AuthenticatedRequest, @Body() body: CreateAppDto) {
-    const app = await this.appService.create(requireTenantId(req), req.user.id, body);
-    return { ok: true as const, data: app };
-  }
-
-  @Put(':appId')
-  @RequirePermission('PAGE', 'MANAGE', 'appId')
-  async update(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-    @Body() body: UpdateAppDto,
-  ) {
-    const app = await this.appService.update(requireTenantId(req), appId, body, req.user.id);
-    return { ok: true as const, data: app };
-  }
-
-  @Delete(':appId')
-  @RequirePermission('PAGE', 'MANAGE', 'appId')
-  async delete(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    await this.appService.delete(requireTenantId(req), appId, req.user.id);
-    return { ok: true as const, data: { deleted: true } };
-  }
-
-  @Post(':appId/archive')
-  @RequirePermission('PAGE', 'MANAGE', 'appId')
-  async archive(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const app = await this.appService.archive(requireTenantId(req), appId, req.user.id);
-    return { ok: true as const, data: app };
-  }
-
-  // ===========================================================================
-  // 预检
-  // ===========================================================================
-
-  @Post(':appId/check')
-  @RequirePermission('PAGE', 'MANAGE', 'appId')
-  async check(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const result = await this.appService.check(requireTenantId(req), appId, req.user.id);
-    return { ok: true as const, data: result };
-  }
-
-  @Get(':appId/checks')
-  async listChecks(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const checks = await this.appService.listChecks(requireTenantId(req), appId);
-    return { ok: true as const, data: checks };
-  }
-
-  // ===========================================================================
-  // 变更追踪
-  // ===========================================================================
-
-  @Get(':appId/changes')
-  async getChanges(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const changeSet = await this.changeLogService.getChangeSet(requireTenantId(req), appId);
-    return { ok: true as const, data: changeSet };
-  }
-
-  // ===========================================================================
-  // 发布与版本管理
-  // ===========================================================================
-
-  @Post(':appId/publish')
-  @RequirePermission('PAGE', 'MANAGE', 'appId')
-  async publish(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-    @Body() body: PublishAppDto,
-  ) {
-    const version = await this.appService.publish(requireTenantId(req), appId, req.user.id, body);
-    return { ok: true as const, data: version };
-  }
-
-  @Get(':appId/versions')
-  async listVersions(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
-    const versions = await this.appService.listVersions(requireTenantId(req), appId);
-    return { ok: true as const, data: versions };
-  }
-
-  @Get(':appId/versions/:versionId')
-  async getVersion(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-    @Param('versionId') versionId: string,
-  ) {
-    const version = await this.appService.getVersion(requireTenantId(req), appId, versionId);
-    return { ok: true as const, data: version };
-  }
-
-  @Post(':appId/versions/:versionId/rollback')
-  @RequirePermission('PAGE', 'MANAGE', 'appId')
-  async rollback(
-    @Req() req: AuthenticatedRequest,
-    @Param('appId') appId: string,
-    @Param('versionId') versionId: string,
-  ) {
-    const version = await this.appService.rollback(
-      requireTenantId(req),
-      appId,
-      versionId,
-      req.user.id,
-    );
-    return { ok: true as const, data: version };
   }
 }

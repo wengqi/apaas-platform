@@ -45,7 +45,7 @@ test.describe('多环境（R1.4）', () => {
     });
 
     // 发布应用（= 部署 prod 指针）
-    await api.post(`/apps/${appId}/publish`, { version: '1.0.0', description: 'v1' });
+    await api.post(`/design/apps/${appId}/publish`, { version: '1.0.0', description: 'v1' });
   });
 
   test.afterAll(async () => {
@@ -73,11 +73,11 @@ test.describe('多环境（R1.4）', () => {
         body: [{ type: 'tpl', text: '第二版' }],
       },
     });
-    await api.post(`/apps/${appId}/publish`, { version: '1.0.1', description: 'v2' });
+    await api.post(`/design/apps/${appId}/publish`, { version: '1.0.1', description: 'v2' });
     // 发布默认部署 prod（后端行为）→ prod 已是 1.0.1；再显式把 dev 也指到 1.0.1，
     // 然后验证隔离用"prod 回滚到 1.0.0"的用例
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     const v101 = versions.find((v) => v.versionNumber === '1.0.1');
     await api.post(`/apps/${appId}/environments/dev/publish`, { versionId: v101!.id });
@@ -111,7 +111,7 @@ test.describe('多环境（R1.4）', () => {
 
     // dev 环境缺值 → 部署拦截
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     const latest = versions.find((v) => v.versionNumber === '1.0.1')!.id;
 
@@ -153,7 +153,7 @@ test.describe('多环境（R1.4）', () => {
     await api.post(`/objects/${objects[0]!.id}/records`, { title: '回滚不删我' });
 
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
-      `/apps/${appId}/versions`,
+      `/design/apps/${appId}/versions`,
     );
     const v100 = versions.find((v) => v.versionNumber === '1.0.0')!;
     const result = await api.post<{ deployment: { kind: string } }>(

@@ -3,7 +3,7 @@ import type { ApiResponse } from './client.js';
 
 /**
  * 应用概要（列表页用，不含快照等重字段）。
- * 与后端 GET /api/apps 返回的 AppSummary 对齐。
+ * 与后端 GET /api/design/apps 返回的 AppSummary 对齐。
  */
 export interface AppSummary {
   id: string;
@@ -40,14 +40,16 @@ export interface CreateAppRequest {
  */
 export const appsApi = {
   list: () =>
-    client.get<ApiResponse<AppSummary[]>>('/api/apps').then((res) => res.data.data as AppSummary[]),
+    client
+      .get<ApiResponse<AppSummary[]>>('/api/design/apps')
+      .then((res) => res.data.data as AppSummary[]),
   get: (appId: string) =>
     client
-      .get<ApiResponse<AppSummary>>(`/api/apps/${appId}`)
+      .get<ApiResponse<AppSummary>>(`/api/design/apps/${appId}`)
       .then((res) => res.data.data as AppSummary),
   create: (data: CreateAppRequest) =>
     client
-      .post<ApiResponse<AppSummary>>('/api/apps', data)
+      .post<ApiResponse<AppSummary>>('/api/design/apps', data)
       .then((res) => res.data.data as AppSummary),
   // group 允许显式 null（= 移入未分组）：后端 UpdateAppDto @IsOptional 对 null 跳过校验，
   // service 原样透传给 Prisma 置 NULL。须 Omit 后重声明——直接交叉会取交集把 null 消掉；
@@ -57,25 +59,27 @@ export const appsApi = {
     data: Omit<Partial<CreateAppRequest>, 'group'> & { group?: string | null },
   ) =>
     client
-      .put<ApiResponse<AppSummary>>(`/api/apps/${appId}`, data)
+      .put<ApiResponse<AppSummary>>(`/api/design/apps/${appId}`, data)
       .then((res) => res.data.data as AppSummary),
   delete: (appId: string) =>
     client
-      .delete<ApiResponse<{ deleted: boolean }>>(`/api/apps/${appId}`)
+      .delete<ApiResponse<{ deleted: boolean }>>(`/api/design/apps/${appId}`)
       .then((res) => res.data.data as { deleted: boolean }),
   /** 分组管理：重命名（from→to）或删除分组（to 空 → 移入未分组）。 */
   updateGroup: (from: string, to?: string) =>
-    client.patch<ApiResponse<{ updated: number }>>('/api/apps/groups', { from, to }).then((res) => {
-      // 契约防御：data.updated 缺失（契约漂移/网关兜底响应）显式报错，
-      // 不允许 as 断言掩盖后在调用点炸出无提示的 TypeError
-      const payload = res.data.data;
-      if (typeof payload?.updated !== 'number') {
-        throw new Error('分组接口响应格式异常（data.updated 缺失）');
-      }
-      return { updated: payload.updated };
-    }),
+    client
+      .patch<ApiResponse<{ updated: number }>>('/api/design/apps/groups', { from, to })
+      .then((res) => {
+        // 契约防御：data.updated 缺失（契约漂移/网关兜底响应）显式报错，
+        // 不允许 as 断言掩盖后在调用点炸出无提示的 TypeError
+        const payload = res.data.data;
+        if (typeof payload?.updated !== 'number') {
+          throw new Error('分组接口响应格式异常（data.updated 缺失）');
+        }
+        return { updated: payload.updated };
+      }),
   archive: (appId: string) =>
     client
-      .post<ApiResponse<AppSummary>>(`/api/apps/${appId}/archive`)
+      .post<ApiResponse<AppSummary>>(`/api/design/apps/${appId}/archive`)
       .then((res) => res.data.data as AppSummary),
 };

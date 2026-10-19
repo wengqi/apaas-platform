@@ -34,7 +34,7 @@ test.describe('编辑器 UI 真实性不变量', () => {
     admin = createApiClient(token);
 
     // 定位/创建反馈环夹具应用（e2e/22 同款，API 创建 = extInfo 空场景）
-    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/apps');
+    const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const app = apps.find((a) => a.apiName === 'e2e_feedback_loop');
     if (!app) {
       test.skip(true, '反馈环夹具应用不存在（e2e/22 未运行）');
@@ -105,7 +105,9 @@ test.describe('编辑器 UI 真实性不变量', () => {
   test('发布向导：建议版本号不与任何历史版本冲突（b00f989 回归）', async ({ page }) => {
     await injectAdminAuth(page);
     // 造两条历史版本差异：直接读现有版本列表
-    const versions = await admin.get<Array<{ versionNumber: string }>>(`/apps/${appId}/versions`);
+    const versions = await admin.get<Array<{ versionNumber: string }>>(
+      `/design/apps/${appId}/versions`,
+    );
     expect(versions.length, '夹具应用应已有发布版本').toBeGreaterThan(0);
 
     await page.goto(`${STUDIO_BASE}/app/${appId}/publish`);

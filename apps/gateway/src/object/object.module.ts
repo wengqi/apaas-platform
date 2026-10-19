@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 
 /**
@@ -25,6 +26,7 @@ import { ChangeLogModule } from '../application/changelog.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
   ],
   controllers: [DesignObjectController],

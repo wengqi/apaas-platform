@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { CloudFunctionService } from './cloud-function.service.js';
@@ -26,7 +27,7 @@ import { CreateCloudFunctionDto, UpdateCloudFunctionDto } from './dto/cloud-func
 @ApiTags('cloud-functions (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId/cloud-functions')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignCloudFunctionController {
   constructor(private readonly cloudFunctionService: CloudFunctionService) {}
 

@@ -12,9 +12,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApplicationService } from './application.service.js';
 import { ChangeLogService } from './changelog.service.js';
+import { AppAccessService } from '../app-access/app-access.service.js';
 import { CreateAppDto, UpdateAppGroupDto, UpdateAppDto, PublishAppDto } from './dto/app.dto.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
@@ -27,11 +29,12 @@ import { requireTenantId } from '../auth/tenant-context.js';
 @ApiTags('Application (design)')
 @ApiBearerAuth()
 @Controller('design/apps')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignApplicationController {
   constructor(
     private readonly appService: ApplicationService,
     private readonly changeLogService: ChangeLogService,
+    private readonly appAccess: AppAccessService,
   ) {}
 
   // ===========================================================================
@@ -40,14 +43,15 @@ export class DesignApplicationController {
 
   @Get()
   async list(@Req() req: AuthenticatedRequest) {
-    const data = await this.appService.list(requireTenantId(req));
+    const data = await this.appService.listForDesign(requireTenantId(req), req.user);
     return { ok: true as const, data };
   }
 
   @Get(':appId')
   async get(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
     const app = await this.appService.get(requireTenantId(req), appId);
-    return { ok: true as const, data: app };
+    // myRole 由 DesignAccessGuard 注入（admin/owner/member）——前端据此门控所有者级操作入口
+    return { ok: true as const, data: { ...app, myRole: req.appAccessRole } };
   }
 
   @Patch('groups')
@@ -57,7 +61,12 @@ export class DesignApplicationController {
     @Req() req: AuthenticatedRequest,
     @Body() body: UpdateAppGroupDto,
   ): Promise<{ ok: true; data: { updated: number } }> {
-    const data = await this.appService.updateGroup(requireTenantId(req), body.from, body.to);
+    const data = await this.appService.updateGroup(
+      requireTenantId(req),
+      req.user,
+      body.from,
+      body.to,
+    );
     return { ok: true as const, data };
   }
 
@@ -82,6 +91,8 @@ export class DesignApplicationController {
   @Delete(':appId')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async delete(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
+    // 所有者级操作（ADR-0005 决策 2）：MEMBER 不可删除
+    await this.appAccess.assertOwnerAccess(req.user, requireTenantId(req), appId);
     await this.appService.delete(requireTenantId(req), appId, req.user.id);
     return { ok: true as const, data: { deleted: true } };
   }
@@ -89,6 +100,8 @@ export class DesignApplicationController {
   @Post(':appId/archive')
   @RequirePermission('PAGE', 'MANAGE', 'appId')
   async archive(@Req() req: AuthenticatedRequest, @Param('appId') appId: string) {
+    // 所有者级操作（ADR-0005 决策 2）：MEMBER 不可归档
+    await this.appAccess.assertOwnerAccess(req.user, requireTenantId(req), appId);
     const app = await this.appService.archive(requireTenantId(req), appId, req.user.id);
     return { ok: true as const, data: app };
   }

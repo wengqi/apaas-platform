@@ -815,7 +815,10 @@ export class ReviewService {
    * 租户级待审汇总（2026-10-13 素蓝首页）：按应用聚合 PENDING 提交单，
    * 附各组最近一条单据摘要——开发中心首页"待我审核"条与指标行的数据源。
    */
-  async pendingSummary(tenantId: string): Promise<{
+  async pendingSummary(
+    tenantId: string,
+    visibleAppIds: 'all' | string[] = 'all',
+  ): Promise<{
     total: number;
     items: Array<{
       appId: string;
@@ -824,9 +827,14 @@ export class ReviewService {
       latest: { module: string; apiName: string; name: string; createdAt: Date } | null;
     }>;
   }> {
+    if (visibleAppIds !== 'all' && visibleAppIds.length === 0) return { total: 0, items: [] };
     const rows = await prisma.resourceVersion.groupBy({
       by: ['appId'],
-      where: { tenantId, status: 'PENDING' },
+      where: {
+        tenantId,
+        status: 'PENDING',
+        ...(visibleAppIds === 'all' ? {} : { appId: { in: visibleAppIds } }),
+      },
       _count: { _all: true },
     });
     if (rows.length === 0) return { total: 0, items: [] };

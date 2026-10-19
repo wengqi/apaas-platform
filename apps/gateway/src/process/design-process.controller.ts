@@ -34,6 +34,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
@@ -44,7 +45,7 @@ import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto.js';
 @ApiTags('Process (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignProcessController {
   constructor(private readonly processService: ProcessService) {}
 

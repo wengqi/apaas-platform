@@ -8,6 +8,7 @@ import { ObjectModule } from '../object/object.module.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { ReviewModule } from '../review/review.module.js';
 import { ApplicationModule } from '../application/application.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ObservabilityModule } from '../observability/observability.module.js';
 
 /**
@@ -27,6 +28,7 @@ import { ObservabilityModule } from '../observability/observability.module.js';
     ReviewModule,
     ApplicationModule,
     ObservabilityModule,
+    AppAccessModule,
   ],
   controllers: [McpController],
   providers: [McpService],

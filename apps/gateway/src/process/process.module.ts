@@ -16,6 +16,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { NotificationModule } from '../notification/notification.module.js';
 import { QueueModule } from '../queue/queue.module.js';
@@ -65,6 +66,7 @@ import { RecordModule } from '../record/record.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     NotificationModule,
     // 评审 P1-5：流程节点执行器复用记录写内核（RecordService）

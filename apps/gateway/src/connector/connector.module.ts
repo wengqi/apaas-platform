@@ -14,6 +14,7 @@ import { CredentialService } from './credential.service.js';
 import { WebhookController } from './webhook.controller.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { ProcessModule } from '../process/process.module.js';
 
@@ -29,6 +30,7 @@ import { ProcessModule } from '../process/process.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     forwardRef(() => ProcessModule),
   ],

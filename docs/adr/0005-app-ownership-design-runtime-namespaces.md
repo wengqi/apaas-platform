@@ -33,7 +33,7 @@
 
 ### 二、API 双命名空间：`/design` 设计面 vs 无前缀运行面
 
-9. **设计面** `/api/v1/design/apps/:appId/**`：应用级设计面全量（约 80 条：应用 CRUD/发布/版本/分组、页面、对象(字段/视图)、流程、数据集、审核、环境、API 密钥、嵌入、连接器、云函数、流程 API 发布、成员）迁入并**全部嵌套在应用之下**（`/design/apps/:appId/objects/:objectId/fields/:fieldId` 三级嵌套接受）。服务层查询同步补 `appId` 域（`findFirst({ id, tenantId })` → `{ id, tenantId, appId }`），副产品：封掉跨应用 IDOR 一类，且不再需要资源反查表。守卫挂在 `/design` 前缀：JwtAuthGuard → 成员守卫（含 `hasStudioAccess` 纵深）→ PermissionGuard。
+9. **设计面** `/api/v1/design/apps/:appId/**`：应用级设计面全量（约 80 条：应用 CRUD/发布/版本/分组、页面、对象(字段/视图)、流程、数据集、审核、环境、API 密钥、嵌入、连接器、云函数、流程 API 发布、成员）迁入并**全部嵌套在应用之下**（`/design/apps/:appId/objects/:objectId/fields/:fieldId` 三级嵌套接受）。服务层查询同步补 `appId` 域（`findFirst({ id, tenantId })` → `{ id, tenantId, appId }`），副产品：封掉跨应用 IDOR 一类，且不再需要资源反查表。守卫以控制器级 `@UseGuards(PermissionGuard, DesignAccessGuard)` 挂在全部 `design/apps` 前缀控制器上，顺序 PermissionGuard（认证 + 角色规则，复用既有 JwtAuthGuard 继承链）→ DesignAccessGuard（`hasStudioAccess` 纵深 + 归属断言，角色写入 `request.appAccessRole`）；两层都过才放行。静态锚定测试 `design-routes-guarded.spec.ts` 扫描源码保证：每个 `design/apps` 控制器都挂两守卫、运行面控制器不挂归属守卫、不在非 design 前缀控制器里声明 `design/` 方法级路由。
 10. **运行面**（无前缀）：角色规则 + 已发布语义。三处清理：① `?runtime=1` 删除，`GET /apps` = 运行时视图（已发布 + 权限归纳）；② `pages/runtime/:pageId` → `pages/:pageId`，只回已发布、无 bundle → 404（杀降级活表）；③ `GET /apps/:appId`、`/pages`、`/processes` 服务端只回已发布项。其余运行面路由形态不动（`pages/slug/:slug`、`chart-data`、`datasets/:id[/rows]`、`objects/:id/records`、`records/:id`、`processes/:id/start`、`instances/*`、`tasks/*`、`*/invoke`、`/open/*`、`notifications/*`）。前端页面路由（runtime `/app/:id`、embed `/embed/app/:id/p/:slug`、studio `/app/:id/*`）本就无开关，不动。
 11. **路径即分类**：设计面与运行面的区分由路径承担，不再依赖装饰器归类、路由白名单守卫测试或调用者身份推断。
 12. **错误语义**：运行面对未发布/无权限应用的读 → 404（运行时视角应用尚不存在）；设计面非成员 → 403（前端 403 页，不透露所有者）。

@@ -82,8 +82,13 @@ export interface AppSummary {
   color?: string;
   /** 应用分组（空=未分组；runtime 视图仅返回有已发布应用的分组） */
   group?: string;
-  /** 维护者姓名（runtime 视图返回创建人姓名；studio 列表不返回） */
+  /** 所有者/维护者姓名（runtime 视图返回创建人姓名；设计面列表返回 OWNER 成员姓名） */
   ownerName?: string;
+  /**
+   * 当前用户对该应用的设计面归属角色（ADR-0005，仅设计面列表 GET /design/apps 返回）：
+   * admin=租户管理员恒全量；owner=所有者；member=协作者（开发中心卡片据此显示「由 {ownerName} 共享」）。
+   */
+  myRole?: 'admin' | 'owner' | 'member';
   status: AppStatus;
   version: number;
   /** 应用内资源统计 */

@@ -9,6 +9,7 @@ import type { ServiceIdentityCreatedDto, ServiceIdentityDto } from '@apaas/share
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ApiKeyService } from './api-key.service.js';
 import { CreateServiceIdentityDto } from './service-identity.dto.js';
@@ -16,7 +17,7 @@ import { CreateServiceIdentityDto } from './service-identity.dto.js';
 @ApiTags('service-identities')
 @ApiBearerAuth()
 @Controller('design/apps')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class ServiceIdentityController {
   constructor(private readonly apiKeyService: ApiKeyService) {}
 

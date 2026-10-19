@@ -18,6 +18,7 @@ import type {
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { TriggerService } from '../process/trigger.service.js';
 import { EnvironmentService } from './environment.service.js';
@@ -32,7 +33,7 @@ import {
 @ApiTags('environments')
 @ApiBearerAuth()
 @Controller('design/apps')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class EnvironmentController {
   constructor(
     private readonly environmentService: EnvironmentService,

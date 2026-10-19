@@ -6,6 +6,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { DataFlowService } from './dataflow.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
@@ -15,7 +16,7 @@ import { CreateDataFlowDto, UpdateDataFlowDto } from './dto/dataflow.dto.js';
 @ApiTags('DataFlow (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId/data-flows')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignDataFlowController {
   constructor(private readonly dataFlowService: DataFlowService) {}
 

@@ -13,6 +13,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { CredentialService } from './credential.service.js';
 import { CreateCredentialDto, UpdateCredentialDto } from './dto/credential.dto.js';
@@ -22,7 +23,7 @@ import { requireTenantId } from '../auth/tenant-context.js';
 @ApiTags('Connector Credential (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId/credentials')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignCredentialController {
   constructor(private readonly credentialService: CredentialService) {}
 

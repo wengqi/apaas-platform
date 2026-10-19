@@ -17,6 +17,8 @@ import type {
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
+import { AppAccessService } from '../app-access/app-access.service.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ReviewService } from './review.service.js';
 import {
@@ -32,9 +34,12 @@ import {
 @ApiTags('reviews')
 @ApiBearerAuth()
 @Controller('design/apps')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class ReviewController {
-  constructor(private readonly reviewService: ReviewService) {}
+  constructor(
+    private readonly reviewService: ReviewService,
+    private readonly appAccess: AppAccessService,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // 查询（字面量段在前，避免被 :submissionId 吞掉）
@@ -54,7 +59,10 @@ export class ReviewController {
       }>;
     };
   }> {
-    const data = await this.reviewService.pendingSummary(requireTenantId(req));
+    // ADR-0005 决策 5：待审汇总收口到调用者归属可见集（搭建者只见自己应用的待审）
+    const tenantId = requireTenantId(req);
+    const visible = await this.appAccess.visibleAppIds(req.user, tenantId);
+    const data = await this.reviewService.pendingSummary(tenantId, visible);
     return { ok: true as const, data };
   }
 

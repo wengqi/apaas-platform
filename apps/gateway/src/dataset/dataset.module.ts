@@ -17,6 +17,7 @@ import { ChartDataController } from './chart-data.controller.js';
 import { DatasetProcessor } from './dataset.processor.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { QueueModule } from '../queue/queue.module.js';
 import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
@@ -34,6 +35,7 @@ import { EnvironmentCoreModule } from '../environment/environment-core.module.js
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     forwardRef(() => QueueModule),
   ],

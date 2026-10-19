@@ -356,7 +356,7 @@ export class ReviewSnapshotService {
       });
       flowId = created.id;
     }
-    await this.dataFlowService.execute(tenantId, flowId);
+    await this.dataFlowService.execute(tenantId, appId, flowId);
     await this.changeLogService.log({
       tenantId,
       appId,

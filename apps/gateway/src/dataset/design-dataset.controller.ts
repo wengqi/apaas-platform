@@ -6,6 +6,7 @@
 import { Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { DatasetService } from './dataset.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
@@ -14,7 +15,7 @@ import { requireTenantId } from '../auth/tenant-context.js';
 @ApiTags('Dataset (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId/datasets')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignDatasetController {
   constructor(private readonly datasetService: DatasetService) {}
 

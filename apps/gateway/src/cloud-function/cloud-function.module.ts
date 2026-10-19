@@ -11,6 +11,7 @@ import { CloudFunctionService } from './cloud-function.service.js';
 import { CloudFunctionRunner } from './cloud-function.runner.service.js';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ChangeLogModule } from '../application/changelog.module.js';
 import { ObservabilityModule } from '../observability/observability.module.js';
 
@@ -26,6 +27,7 @@ import { ObservabilityModule } from '../observability/observability.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     ObservabilityModule,
   ],

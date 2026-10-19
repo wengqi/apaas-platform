@@ -20,4 +20,9 @@ export interface AuthenticatedRequest extends Request {
   user: AuthenticatedUser;
   /** 权限上下文（仅 @RequirePermission 路由且非超管时注入）。 */
   permissionContext?: PermissionContext;
+  /**
+   * 设计面归属角色（ADR-0005）：由 DesignAccessGuard 在带 appId 的 /design 路由上注入
+   * （admin / owner / member）；所有者级操作由控制器据此或经 AppAccessService.assertOwnerAccess 二次判定。
+   */
+  appAccessRole?: 'admin' | 'owner' | 'member';
 }

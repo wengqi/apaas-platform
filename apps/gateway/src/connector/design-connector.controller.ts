@@ -12,6 +12,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ConnectorService } from './connector.service.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
@@ -21,7 +22,7 @@ import { CreateConnectorDto, UpdateConnectorDto, InvokeConnectorDto } from './dt
 @ApiTags('Connector (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId/connectors')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignConnectorController {
   constructor(private readonly connectorService: ConnectorService) {}
 

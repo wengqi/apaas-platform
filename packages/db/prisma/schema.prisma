@@ -60,6 +60,7 @@ model Tenant {
   dataFlows             DataFlow[]
   cloudFunctions        CloudFunction[]
   notificationTemplates NotificationTemplate[]
+  applicationMembers    ApplicationMember[]
   autoNumberCounters    AutoNumberCounter[]
   userIdentities        UserIdentity[]
   integrationConfigs    IntegrationConfig[]
@@ -180,6 +181,7 @@ model Application {
   cloudFunctions        CloudFunction[]
   observabilityEvents   ObservabilityEvent[]
   notificationTemplates NotificationTemplate[]
+  members               ApplicationMember[]
 
   @@unique([tenantId, apiName])
   @@index([tenantId])
@@ -190,6 +192,34 @@ enum AppStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
+}
+
+/// 应用成员角色（ADR-0005）：OWNER 唯一（partial unique 索引保证），MEMBER 为协作者。
+enum AppMemberRole {
+  OWNER
+  MEMBER
+}
+
+/// 应用归属与协作成员（ADR-0005）——设计面可见集与写闸的归属源。
+/// Application.createdBy 保留为历史创建人（审计语义），归属以本表为准；
+/// TENANT_ADMIN / 平台超管恒等同 OWNER，不写成员行。
+model ApplicationMember {
+  id        String        @id @default(cuid())
+  tenantId  String        @map("tenant_id")
+  appId     String        @map("app_id")
+  userId    String        @map("user_id")
+  role      AppMemberRole
+  addedBy   String?       @map("added_by") // 添加人（迁移回填 / 系统自动写 OWNER 时为空）
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("application_members")
 }
 
 model User {
@@ -211,6 +241,7 @@ model User {
   orgMemberships OrgMember[]
   cloudFunctions CloudFunction[]
   identities     UserIdentity[]
+  appMemberships ApplicationMember[]
 
   @@unique([tenantId, email])
   @@index([tenantId])

@@ -23,6 +23,7 @@ import { TriggerService } from '../process/trigger.service.js';
 import { writeAudit } from '../common/audit.js';
 import { EnvironmentService } from '../environment/environment.service.js';
 import { PermissionService } from '../permission/permission.service.js';
+import { AppAccessService } from '../app-access/app-access.service.js';
 import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 
 /** 应用详情响应：shared Application + 资源统计（GET /design/apps/:appId 与 GET /apps/:appId 共用）。 */
@@ -41,17 +42,23 @@ export class ApplicationService {
     private readonly triggerService: TriggerService,
     private readonly environmentService: EnvironmentService,
     private readonly permissionService: PermissionService,
+    private readonly appAccess: AppAccessService,
   ) {}
 
   /** 评审整改：类内日志器（不作为 DI 依赖） */
   private readonly logger = new Logger(ApplicationService.name);
 
   /**
-   * 列出租户下所有应用（含资源统计）— 设计面 GET /design/apps。
+   * 设计面列应用（GET /design/apps）— 搭建者归属可见集（ADR-0005）：
+   * 管理员全量（含他人 DRAFT）；搭建者只见自己为 OWNER/MEMBER 的应用。
+   * 每项附 myRole（卡片据此显示「由 {ownerName} 共享」）与 OWNER 姓名。
    */
-  async list(tenantId: string): Promise<AppSummary[]> {
+  async listForDesign(tenantId: string, user: AuthenticatedUser): Promise<AppSummary[]> {
+    const visible = await this.appAccess.visibleAppIds(user, tenantId);
+    if (visible !== 'all' && visible.length === 0) return [];
+
     const apps = await prisma.application.findMany({
-      where: { tenantId },
+      where: { tenantId, ...(visible === 'all' ? {} : { id: { in: visible } }) },
       orderBy: { updatedAt: 'desc' },
       include: {
         _count: {
@@ -59,8 +66,20 @@ export class ApplicationService {
         },
       },
     });
+    if (apps.length === 0) return [];
 
-    return apps.map((app) => this.toSummary(app));
+    const [owners, myRoles] = await Promise.all([
+      prisma.applicationMember.findMany({
+        where: { tenantId, appId: { in: apps.map((a) => a.id) }, role: 'OWNER' },
+        select: { appId: true, user: { select: { name: true } } },
+      }),
+      this.appAccess.membershipRoles(user, tenantId),
+    ]);
+    const ownerNameByApp = new Map(owners.map((o) => [o.appId, o.user.name]));
+    return apps.map((app) => ({
+      ...this.toSummary(app, ownerNameByApp.get(app.id)),
+      myRole: user.isSuperAdmin ? 'admin' : myRoles.get(app.id),
+    }));
   }
 
   /**
@@ -250,14 +269,22 @@ export class ApplicationService {
    */
   /**
    * 分组管理（2026-10-13 素蓝首页）：重命名（from→to）或删除分组（to 空 → 移入未分组）。
-   * 分组是应用上的自由文本，无独立实体——管理即批量改写。
+   * 分组是应用上的自由文本，无独立实体——管理即批量改写；
+   * 改写范围收口到调用者的归属可见集（ADR-0005）：搭建者改分组名不连带他人应用。
    */
-  async updateGroup(tenantId: string, from: string, to?: string): Promise<{ updated: number }> {
+  async updateGroup(
+    tenantId: string,
+    user: AuthenticatedUser,
+    from: string,
+    to?: string,
+  ): Promise<{ updated: number }> {
     const target = to?.trim();
     if (!from.trim()) throw new BadRequestException('现分组名不能为空');
     if (target && target === from) return { updated: 0 };
+    const visible = await this.appAccess.visibleAppIds(user, tenantId);
+    if (visible !== 'all' && visible.length === 0) return { updated: 0 };
     const result = await prisma.application.updateMany({
-      where: { tenantId, group: from },
+      where: { tenantId, group: from, ...(visible === 'all' ? {} : { id: { in: visible } }) },
       data: { group: target || null },
     });
     this.logger.log(`分组「${from}」→「${target || '未分组'}」：更新 ${result.count} 个应用`);
@@ -281,6 +308,9 @@ export class ApplicationService {
         createdBy,
       },
     });
+
+    // ADR-0005：创建人即应用 OWNER（归属以成员表为准，createdBy 仅保留历史创建人语义）
+    await this.appAccess.grantOwner(tenantId, app.id, createdBy);
 
     // 记录变更日志
     await this.changeLogService.log({

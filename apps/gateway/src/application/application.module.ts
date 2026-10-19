@@ -9,6 +9,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { SchemaContractModule } from '../schema-contract/schema-contract.module.js';
 import { ProcessModule } from '../process/process.module.js';
 import { EnvironmentModule } from '../environment/environment.module.js';
@@ -47,6 +48,7 @@ import { EnvironmentModule } from '../environment/environment.module.js';
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     ChangeLogModule,
     // 预检页面渲染契约软告警消费 G3 校验器（R6 两缺口 warning）
     SchemaContractModule,

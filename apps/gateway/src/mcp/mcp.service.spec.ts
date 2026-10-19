@@ -17,6 +17,7 @@ import { ObjectService } from '../object/object.service.js';
 import { ReviewService } from '../review/review.service.js';
 import { ApplicationService } from '../application/application.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
+import { AppAccessService } from '../app-access/app-access.service.js';
 import { requireParams } from './mcp-server.factory.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 import type { ResourceVersionListItemDto } from '@apaas/shared';
@@ -118,6 +119,10 @@ function makeService() {
     reviewService as unknown as ReviewService,
     applicationService as unknown as ApplicationService,
     observability as unknown as ObservabilityService,
+    {
+      assertDesignAccess: vi.fn().mockResolvedValue('owner'),
+      visibleAppIds: vi.fn().mockResolvedValue('all'),
+    } as unknown as AppAccessService,
   );
   return {
     svc,

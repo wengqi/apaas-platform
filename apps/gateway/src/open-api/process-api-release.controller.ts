@@ -9,6 +9,7 @@ import type { ProcessApiReleaseCreatedDto, ProcessApiReleaseDto } from '@apaas/s
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import { ProcessApiReleaseService } from './process-api-release.service.js';
 
@@ -28,7 +29,7 @@ export class ListReleasesQuery {
 @ApiTags('process-api-releases')
 @ApiBearerAuth()
 @Controller('design/apps')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class ProcessApiReleaseController {
   constructor(private readonly releaseService: ProcessApiReleaseService) {}
 

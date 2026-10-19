@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DesignAccessGuard } from '../app-access/design-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
@@ -34,7 +35,7 @@ import { CreateViewDto, UpdateViewDto } from './dto/view.dto.js';
 @ApiTags('Object (design)')
 @ApiBearerAuth()
 @Controller('design/apps/:appId/objects')
-@UseGuards(PermissionGuard)
+@UseGuards(PermissionGuard, DesignAccessGuard)
 export class DesignObjectController {
   constructor(private readonly objectService: ObjectService) {}
 

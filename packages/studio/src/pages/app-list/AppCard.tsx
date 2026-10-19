@@ -116,6 +116,17 @@ export function AppCard({ app, menuItems, onMenuClick, onOpen }: AppCardProps) {
         {app.description || '暂无描述'}
       </Paragraph>
 
+      {/* 协作标记（ADR-0005）：协作者视角标注「由 X 共享」，避免误认为是自己创建的应用 */}
+      {app.myRole === 'member' && (
+        <Text
+          type="secondary"
+          style={{ marginTop: 6, fontSize: 12, color: T.colorTextTertiary }}
+          ellipsis
+        >
+          由 {app.ownerName ?? '所有者'} 共享
+        </Text>
+      )}
+
       {/* 元数据行：状态 · 版本 · 资源统计（钉底保证同排等高下缘对齐） */}
       <div
         style={{

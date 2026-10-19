@@ -14,6 +14,10 @@ export interface AppSummary {
   color?: string;
   /** 应用分组（空=未分组） */
   group?: string;
+  /** 所有者姓名（设计面列表返回 OWNER 成员姓名；协作卡片据此显示「由 X 共享」） */
+  ownerName?: string;
+  /** 当前用户对该应用的归属角色（ADR-0005）：admin 恒全量 / owner 所有者 / member 协作者 */
+  myRole?: 'admin' | 'owner' | 'member';
   status: string;
   version: number;
   stats: { objects: number; pages: number; processes: number };

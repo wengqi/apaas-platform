@@ -65,6 +65,12 @@ export const qk = {
   /** 应用内通知模版列表（QA D-015 接线时入册） */
   notificationTemplates: (appId: string) => ['notification-templates', appId] as const,
 
+  // —— 应用归属（ADR-0005）——
+  /** 应用成员清单（成员页） */
+  appMembers: (appId: string) => ['app-members', appId] as const,
+  /** 可添加成员候选（成员页添加抽屉） */
+  appMemberCandidates: (appId: string) => ['app-member-candidates', appId] as const,
+
   // —— 对象级 ——
   /** 对象详情（含字段定义） */
   object: (objectId: string) => ['object', objectId] as const,

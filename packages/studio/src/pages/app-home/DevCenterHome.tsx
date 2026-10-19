@@ -139,10 +139,11 @@ export default function DevCenterHome() {
   const cardMenuItems = (app: AppSummary): MenuProps['items'] => [
     { key: 'edit', icon: <EditOutlined />, label: '编辑应用' },
     { key: 'move', icon: <ArrowRightOutlined />, label: '移动到分组' },
-    ...(app.status === 'PUBLISHED'
+    // ADR-0005：归档/删除为所有者级操作，协作者（myRole=member）菜单不出现
+    ...(app.myRole !== 'member' && app.status === 'PUBLISHED'
       ? [{ key: 'archive', icon: <InboxOutlined />, label: '归档应用' }]
       : []),
-    ...(app.status === 'DRAFT' || app.status === 'ARCHIVED'
+    ...(app.myRole !== 'member' && (app.status === 'DRAFT' || app.status === 'ARCHIVED')
       ? [{ key: 'delete', icon: <DeleteOutlined />, label: '删除应用', danger: true }]
       : []),
   ];

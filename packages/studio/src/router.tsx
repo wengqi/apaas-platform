@@ -26,6 +26,7 @@ import ObservabilityCenter from './pages/ObservabilityCenter.js';
 import PermissionDebug from './pages/PermissionDebug.js';
 import ReviewCenter from './pages/ReviewCenter.js';
 import Environments from './pages/Environments.js';
+import AppMembers from './pages/AppMembers.js';
 import ApiKeys from './pages/ApiKeys.js';
 import EmbedIntegration from './pages/EmbedIntegration.js';
 import TenantManagement from './pages/TenantManagement.js';
@@ -251,6 +252,8 @@ export function AppRoutes() {
           <Route path="processes/notifications" element={<NotificationTemplateManager />} />
           <Route path="processes/:processId" element={<ProcessEditor />} />
           <Route path="permissions" element={<Permissions />} />
+          <Route path="members" element={<AppMembers />} />
+
           <Route path="connectors" element={<ConnectorList />} />
           <Route path="cloud-functions" element={<CloudFunctionList />} />
           <Route path="audit-logs" element={<AppAuditLogs />} />

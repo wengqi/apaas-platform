@@ -8,6 +8,7 @@ import {
   Avatar,
   Button,
   Skeleton,
+  Result,
   Typography,
   Drawer,
   Badge,
@@ -19,6 +20,7 @@ import {
   LayoutOutlined,
   ApartmentOutlined,
   SafetyOutlined,
+  TeamOutlined,
   BellOutlined,
   LogoutOutlined,
   UserOutlined,
@@ -69,10 +71,17 @@ export default function StudioLayout() {
   } = theme.useToken();
 
   /** 获取当前应用信息(侧边栏顶部展示名称+图标)。 */
-  const { data: app, isLoading: appLoading } = useQuery({
+  const {
+    data: app,
+    isLoading: appLoading,
+    isError: appError,
+    error: appErrorDetail,
+  } = useQuery({
     queryKey: qk.app(appId!),
     queryFn: () => appsApi.get(appId as string),
     enabled: !!appId,
+    // 403 是预期分支（非成员深链），不重试直接呈现无权访问页
+    retry: false,
   });
 
   /** 待审提交单数（审核中心入口徽标，R1.2）。 */
@@ -123,6 +132,7 @@ export default function StudioLayout() {
               ),
           },
           { key: 'permissions', icon: <SafetyOutlined />, label: '权限' },
+          { key: 'members', icon: <TeamOutlined />, label: '成员' },
           { key: 'environments', icon: <CloudServerOutlined />, label: '环境管理' },
         ],
       },
@@ -223,6 +233,33 @@ export default function StudioLayout() {
           navigate('/login', { replace: true });
         }}
       />
+    );
+  }
+
+  // 非成员深链 /app/:id → 403 页（ADR-0005 决策 12）：不透露所有者，指回开发中心
+  if (appError) {
+    const status = (appErrorDetail as { response?: { status?: number } } | undefined)?.response
+      ?.status;
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Result
+          status={status === 403 ? '403' : '404'}
+          title={status === 403 ? '无权访问该应用' : '应用不存在或已删除'}
+          subTitle="需应用所有者将你添加为协作者，或联系租户管理员处理"
+          extra={
+            <Button type="primary" onClick={() => navigate('/apps')}>
+              返回开发中心
+            </Button>
+          }
+        />
+      </div>
     );
   }
 

@@ -2,7 +2,7 @@
  * 流程模块 — 自研流程执行内核。
  *
  * 注册：
- * - ProcessController（流程定义/实例/人工任务/通知模版路由）
+ * - ProcessController（运行面：已发布流程/实例/人工任务）+ DesignProcessController（设计面：定义/发布/模版）
  * - ProcessService（CRUD + 委托引擎执行）
  * - ProcessEngine（状态机 token 流执行内核）
  * - NodeExecutorRegistry + 全部节点执行器（按 type 路由分发）
@@ -22,6 +22,7 @@ import { QueueModule } from '../queue/queue.module.js';
 import { ConnectorModule } from '../connector/connector.module.js';
 import { CloudFunctionModule } from '../cloud-function/cloud-function.module.js';
 import { ProcessController } from './process.controller.js';
+import { DesignProcessController } from './design-process.controller.js';
 import { ProcessService } from './process.service.js';
 import { ProcessAnalyticsService } from './process-analytics.service.js';
 import { ProcessEngine } from './process-engine.js';
@@ -72,7 +73,7 @@ import { RecordModule } from '../record/record.module.js';
     forwardRef(() => ConnectorModule),
     forwardRef(() => CloudFunctionModule),
   ],
-  controllers: [ProcessController],
+  controllers: [ProcessController, DesignProcessController],
   providers: [
     ProcessService,
     ProcessAnalyticsService,

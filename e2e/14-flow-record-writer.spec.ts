@@ -76,7 +76,7 @@ test.describe('流程写库复用记录写内核（P1-5 回归）', () => {
     });
 
     // 1) 流程创建记录（不提供 code/total，应由内核计算）
-    const createFlow = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const createFlow = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: 'writer_create_flow',
       name: '写内核-建记录',
       triggerType: 'MANUAL',
@@ -101,20 +101,20 @@ test.describe('流程写库复用记录写内核（P1-5 回归）', () => {
       ),
     });
     createFlowId = createFlow.id;
-    await api.post(`/processes/${createFlowId}/publish`, {});
+    await api.post(`/design/apps/${appId}/processes/${createFlowId}/publish`, {});
 
     // 2) 记录创建联动流程（用于验证事件传播；触发服务按 triggerType 匹配同应用流程）
-    const trigFlow = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const trigFlow = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: 'writer_record_trigger',
       name: '写内核-记录联动',
       triggerType: 'RECORD_CREATED',
       workflowSchema: minimalSchema([]),
     });
     recordTriggerFlowId = trigFlow.id;
-    await api.post(`/processes/${recordTriggerFlowId}/publish`, {});
+    await api.post(`/design/apps/${appId}/processes/${recordTriggerFlowId}/publish`, {});
 
     // 3) 批量更新流程（按 qty=3 过滤，写入 flag）
-    const batchFlow = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const batchFlow = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: 'writer_batch_flow',
       name: '写内核-批量更新',
       triggerType: 'MANUAL',
@@ -137,7 +137,7 @@ test.describe('流程写库复用记录写内核（P1-5 回归）', () => {
       ),
     });
     batchFlowId = batchFlow.id;
-    await api.post(`/processes/${batchFlowId}/publish`, {});
+    await api.post(`/design/apps/${appId}/processes/${batchFlowId}/publish`, {});
   });
 
   test.afterAll(async () => {
@@ -171,7 +171,7 @@ test.describe('流程写库复用记录写内核（P1-5 回归）', () => {
         async () => {
           // 该端点直接返回实例数组（controller 以 items 作为 data）
           const instances = await api.get<Array<{ id: string }>>(
-            `/processes/${recordTriggerFlowId}/instances`,
+            `/design/apps/${appId}/processes/${recordTriggerFlowId}/instances`,
           );
           return Array.isArray(instances) ? instances.length : 0;
         },

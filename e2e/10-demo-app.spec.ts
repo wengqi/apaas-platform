@@ -140,7 +140,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   test('审批流程已发布', async () => {
     const processes = await api.get<
       Array<{ id: string; apiName: string; name: string; status: string; triggerType: string }>
-    >(`/apps/${appId}/processes`);
+    >(`/design/apps/${appId}/processes`);
     const approval = processes.find((p) => p.apiName === 'asset_borrow_approval');
     expect(approval).toBeDefined();
     expect(approval!.status).toBe('PUBLISHED');

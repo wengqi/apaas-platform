@@ -57,7 +57,7 @@ export default function ProcessMonitor() {
   const { data: instances, isLoading } = useQuery({
     queryKey: ['process-instances', processId, stateFilter],
     queryFn: () =>
-      processesApi.listInstances(processId as string, {
+      processesApi.listInstances(appId as string, processId as string, {
         state: stateFilter as never,
       }),
     enabled: !!processId,

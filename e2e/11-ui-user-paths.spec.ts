@@ -133,19 +133,22 @@ test.describe('真实 UI 用户路径', () => {
   test('流程触发器可配置 + 手动触发流程可启动（回归：UI 断链）', async ({ page }) => {
     // 需要一个已发布的手动触发流程：用 API 建最小流程定义（触发能力本身即为被测对象）
     const client = api;
-    const process = await client.post<{ id: string; apiName: string }>(`/apps/${appId}/processes`, {
-      apiName: `ui_flow_${SUFFIX}`,
-      name: 'UI 手动流程',
-      triggerType: 'MANUAL',
-      workflowSchema: {
-        nodes: [
-          { id: 'start_0', type: 'start', meta: {}, data: {} },
-          { id: 'end_0', type: 'end', meta: {}, data: {} },
-        ],
-        edges: [{ id: 'e0', sourceNodeID: 'start_0', targetNodeID: 'end_0' }],
+    const process = await client.post<{ id: string; apiName: string }>(
+      `/design/apps/${appId}/processes`,
+      {
+        apiName: `ui_flow_${SUFFIX}`,
+        name: 'UI 手动流程',
+        triggerType: 'MANUAL',
+        workflowSchema: {
+          nodes: [
+            { id: 'start_0', type: 'start', meta: {}, data: {} },
+            { id: 'end_0', type: 'end', meta: {}, data: {} },
+          ],
+          edges: [{ id: 'e0', sourceNodeID: 'start_0', targetNodeID: 'end_0' }],
+        },
       },
-    });
-    await client.post(`/processes/${process.id}/publish`, {});
+    );
+    await client.post(`/design/apps/${appId}/processes/${process.id}/publish`, {});
 
     // 流程列表应显示"启动实例"入口
     await page.goto(`/app/${appId}/processes`);

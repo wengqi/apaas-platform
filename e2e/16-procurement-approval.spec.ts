@@ -52,7 +52,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
 
     // 流程定义
     const processDefs = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${procApp!.id}/processes`,
+      `/design/apps/${procApp!.id}/processes`,
     );
     processDefId = processDefs.find((p) => p.apiName === 'contract_approval')!.id;
     expect(processDefId).toBeTruthy();
@@ -80,7 +80,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     while (Date.now() < deadline) {
       const instances = await admin.get<
         Array<{ id: string; triggerContext?: { recordId?: string | null } }>
-      >(`/processes/${processDefId}/instances`);
+      >(`/design/apps/${appId}/processes/${processDefId}/instances`);
       const hit = instances.find(
         (i) => (i.triggerContext?.recordId as string | undefined) === recordId,
       );

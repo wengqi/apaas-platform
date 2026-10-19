@@ -94,11 +94,11 @@ const TOOLS: Array<{
   },
   {
     name: 'get_process',
-    description: '获取流程定义详情（含完整 WorkflowSchema）。',
+    description: '获取流程定义详情（含完整 WorkflowSchema）。流程按应用寻址，appId 必填。',
     inputSchema: {
       type: 'object',
-      properties: { processId: { type: 'string' } },
-      required: ['processId'],
+      properties: { appId: { type: 'string' }, processId: { type: 'string' } },
+      required: ['appId', 'processId'],
       additionalProperties: false,
     },
   },
@@ -646,7 +646,7 @@ async function dispatch(
     case 'get_page':
       return svc.getPage(tenantId, str(args['appId']), str(args['pageId']));
     case 'get_process':
-      return svc.getProcess(tenantId, str(args['processId']));
+      return svc.getProcess(tenantId, str(args['appId']), str(args['processId']));
     case 'validate_schema':
       return svc.validateSchema(tenantId, str(args['kind']) as 'amis_page', args['schema']);
     case 'submit_page_draft':

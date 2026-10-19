@@ -75,8 +75,8 @@ export default function NotificationTemplateManager() {
 
   /** 更新 mutation。 */
   const updateMutation = useMutation({
-    mutationFn: (params: { id: string; data: Parameters<typeof processesApi.updateTemplate>[1] }) =>
-      processesApi.updateTemplate(params.id, params.data),
+    mutationFn: (params: { id: string; data: Parameters<typeof processesApi.updateTemplate>[2] }) =>
+      processesApi.updateTemplate(appId as string, params.id, params.data),
     onSuccess: () => {
       message.success('模版已保存');
       void queryClient.invalidateQueries({ queryKey: qk.notificationTemplates(appId!) });
@@ -87,7 +87,7 @@ export default function NotificationTemplateManager() {
 
   /** 删除 mutation。 */
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => processesApi.deleteTemplate(id),
+    mutationFn: (id: string) => processesApi.deleteTemplate(appId as string, id),
     onSuccess: () => {
       message.success('模版已删除');
       void queryClient.invalidateQueries({ queryKey: qk.notificationTemplates(appId!) });

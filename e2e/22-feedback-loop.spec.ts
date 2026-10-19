@@ -152,11 +152,11 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     expect(tenantAdminRoleId).toBeTruthy();
 
     const flows = await admin.get<Array<{ id: string; apiName: string; status?: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     let flow = flows.find((p) => p.apiName === 'feedback_approval_v2');
     if (!flow) {
-      flow = await admin.post<{ id: string; status?: string }>(`/apps/${appId}/processes`, {
+      flow = await admin.post<{ id: string; status?: string }>(`/design/apps/${appId}/processes`, {
         apiName: 'feedback_approval_v2',
         name: '反馈审批流',
         triggerType: 'RECORD_CREATED',
@@ -202,7 +202,7 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
     // CI 全新库实测"任务永不出现"的根因）。
     // 已发布则跳过（显式条件判断，不再吞错——非幂等原因的失败必须显式暴露）
     if (flow!.status !== 'PUBLISHED') {
-      await admin.post(`/processes/${flow!.id}/publish`, {});
+      await admin.post(`/design/apps/${appId}/processes/${flow!.id}/publish`, {});
     }
 
     // 发布（防碰撞：基于现有版本最大 patch 取 next——原 Date.now()%1000 会撞

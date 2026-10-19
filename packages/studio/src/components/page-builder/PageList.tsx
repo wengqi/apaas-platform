@@ -75,7 +75,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
           const schemas = await Promise.all(
             processes.map((p) =>
               processesApi
-                .get(p.id)
+                .get(appId!, p.id)
                 .then((d) => d.workflowSchema)
                 .catch(() => undefined),
             ),

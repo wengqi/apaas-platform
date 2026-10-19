@@ -93,7 +93,7 @@ export default function ProcessList() {
 
   /** 删除流程。 */
   const deleteMutation = useMutation({
-    mutationFn: (processId: string) => processesApi.delete(processId),
+    mutationFn: (processId: string) => processesApi.delete(appId as string, processId),
     onSuccess: () => {
       message.success('流程已删除');
       void queryClient.invalidateQueries({ queryKey: ['processes', appId] });

@@ -32,7 +32,7 @@ test.describe('审批页数据可见性（DOM 级）', () => {
     contractObjId = objects.find((o) => o.apiName === 'contract')!.id;
 
     const processes = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     processDefId = processes.find((p) => p.apiName === 'contract_approval')!.id;
   });
@@ -71,7 +71,7 @@ test.describe('审批页数据可见性（DOM 级）', () => {
     while (Date.now() < instDeadline && !instanceId) {
       const instances = await admin.get<
         Array<{ id: string; triggerContext?: { recordId?: string | null } }>
-      >(`/processes/${processDefId}/instances`);
+      >(`/design/apps/${appId}/processes/${processDefId}/instances`);
       instanceId =
         instances.find((i) => (i.triggerContext?.recordId as string | undefined) === rec.id)?.id ??
         '';

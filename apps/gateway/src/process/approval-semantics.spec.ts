@@ -699,7 +699,7 @@ describe('通知模版 CRUD — update/delete', () => {
   it('updateTemplate 不存在 → NotFoundException', async () => {
     prisma.notificationTemplate.findFirst.mockResolvedValue(null);
     const service = makeService();
-    await expect(service.updateTemplate('t1', 'tpl-404', { name: 'x' })).rejects.toThrow(
+    await expect(service.updateTemplate('t1', 'app-1', 'tpl-404', { name: 'x' })).rejects.toThrow(
       NotFoundException,
     );
   });
@@ -717,7 +717,10 @@ describe('通知模版 CRUD — update/delete', () => {
     };
     prisma.notificationTemplate.findFirst.mockResolvedValue(templateRow);
     const service = makeService();
-    const r = await service.updateTemplate('t1', 'tpl-1', { name: '新名', channel: 'EMAIL' });
+    const r = await service.updateTemplate('t1', 'app-1', 'tpl-1', {
+      name: '新名',
+      channel: 'EMAIL',
+    });
     expect(r.name).toBe('新名');
     expect(prisma.notificationTemplate.update).toHaveBeenCalled();
   });
@@ -725,7 +728,7 @@ describe('通知模版 CRUD — update/delete', () => {
   it('deleteTemplate 删除并返回确认', async () => {
     prisma.notificationTemplate.findFirst.mockResolvedValue({ id: 'tpl-1' });
     const service = makeService();
-    const r = await service.deleteTemplate('t1', 'tpl-1');
+    const r = await service.deleteTemplate('t1', 'app-1', 'tpl-1');
     expect(r).toEqual({ deleted: true });
     expect(prisma.notificationTemplate.delete).toHaveBeenCalledWith({ where: { id: 'tpl-1' } });
   });

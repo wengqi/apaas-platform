@@ -60,14 +60,14 @@ test.describe('开放 API（G6）', () => {
     appId = await createTestApp(api, `开放API E2E ${Date.now()}`);
 
     // 建 API 触发流程（v1 契约：taskName = 一审）
-    const proc = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const proc = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName,
       name: '开放订单流',
       triggerType: 'API',
       workflowSchema: schema('一审'),
     });
     processId = proc.id;
-    await api.post(`/processes/${processId}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${processId}/publish`);
 
     // 发布 major 1 + 创建服务身份
     await api.post(`/apps/${appId}/processes/${processId}/api-release`, { majorVersion: 1 });
@@ -122,10 +122,10 @@ test.describe('开放 API（G6）', () => {
 
   test('版本稳定性：发 major2 后，v1 钉版本仍按 v1 冻结契约执行', async () => {
     // 修改流程（updateProcess 会打回 DRAFT）→ 重新发布 → 发 major 2
-    await api.put(`/processes/${processId}`, {
+    await api.put(`/design/apps/${appId}/processes/${processId}`, {
       workflowSchema: schema('二审（新契约）'),
     });
-    await api.post(`/processes/${processId}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${processId}/publish`);
     const release = await api.post<{
       deprecatedMajors: number[];
       diff: { changeCount: number } | null;

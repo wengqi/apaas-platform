@@ -127,13 +127,15 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
 
     // 审批人 id：从既有 contract_approval 流程的冻结 schema 提取（countersign approveUsers + sequential assignee）
     const processes = await api.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     const seededFlow = await api.get<{
       workflowSchema: {
         nodes: Array<{ id: string; type: string; data?: Record<string, unknown> }>;
       };
-    }>(`/processes/${processes.find((p) => p.apiName === 'contract_approval')!.id}`);
+    }>(
+      `/design/apps/${appId}/processes/${processes.find((p) => p.apiName === 'contract_approval')!.id}`,
+    );
     const countersign = seededFlow.workflowSchema.nodes.find(
       (n) => n.id === 'user_task_countersign',
     );
@@ -429,13 +431,13 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     await api.post(`/apps/${appId}/reviews/${submission!.id}/approve`, {});
 
     const processes = await api.get<Array<{ id: string; apiName: string; status: string }>>(
-      `/apps/${appId}/processes`,
+      `/design/apps/${appId}/processes`,
     );
     const flow = processes.find((p) => p.apiName === openFlowApiName)!;
     expect(flow.status).toBe('DRAFT');
     openFlowId = flow.id;
 
-    await api.post(`/processes/${flow.id}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/publish`);
 
     // 发布为开放 API（major1 冻结契约）+ 服务身份
     await api.post(`/apps/${appId}/processes/${flow.id}/api-release`, { majorVersion: 1 });
@@ -555,11 +557,13 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     // 修改 schema（任务改名）→ 重新发布 → major2
     const flowDetail = await api.get<{
       workflowSchema: { nodes: Array<{ id: string; data?: Record<string, unknown> }> };
-    }>(`/processes/${flow.id}`);
+    }>(`/design/apps/${appId}/processes/${flow.id}`);
     const node = flowDetail.workflowSchema.nodes.find((n) => n.id === 'ut_cs');
     if (node?.data) node.data['taskName'] = '开放会签（v2）';
-    await api.put(`/processes/${flow.id}`, { workflowSchema: flowDetail.workflowSchema });
-    await api.post(`/processes/${flow.id}/publish`);
+    await api.put(`/design/apps/${appId}/processes/${flow.id}`, {
+      workflowSchema: flowDetail.workflowSchema,
+    });
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/publish`);
     await api.post(`/apps/${appId}/processes/${flow.id}/api-release`, { majorVersion: 2 });
 
     const record = await api.post<{ id: string }>(`/objects/${contractObjId}/records`, {

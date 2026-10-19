@@ -264,46 +264,49 @@ export function createEmptyWorkflowSchema(): WorkflowSchema {
 // API
 // ---------------------------------------------------------------------------
 
+/** 设计面流程路由前缀（ADR-0005：流程定义/模版全部嵌套在应用下）。 */
+const designBase = (appId: string) => `/api/design/apps/${appId}`;
+
 export const processesApi = {
-  // —— 流程定义 CRUD ——
-  /** 流程列表 */
+  // —— 流程定义 CRUD（设计面）——
+  /** 流程列表（含草稿） */
   list: (appId: string) =>
     client
-      .get<ApiResponse<ProcessDef[]>>(`/api/apps/${appId}/processes`)
+      .get<ApiResponse<ProcessDef[]>>(`${designBase(appId)}/processes`)
       .then((res) => res.data.data as ProcessDef[]),
 
   /** 流程详情 */
-  get: (processId: string) =>
+  get: (appId: string, processId: string) =>
     client
-      .get<ApiResponse<ProcessDef>>(`/api/processes/${processId}`)
+      .get<ApiResponse<ProcessDef>>(`${designBase(appId)}/processes/${processId}`)
       .then((res) => res.data.data as ProcessDef),
 
   /** 创建流程 */
   create: (appId: string, data: CreateProcessRequest) =>
     client
-      .post<ApiResponse<ProcessDef>>(`/api/apps/${appId}/processes`, data)
+      .post<ApiResponse<ProcessDef>>(`${designBase(appId)}/processes`, data)
       .then((res) => res.data.data as ProcessDef),
 
   /** 更新流程(草稿保存) */
-  update: (processId: string, data: UpdateProcessRequest) =>
+  update: (appId: string, processId: string, data: UpdateProcessRequest) =>
     client
-      .put<ApiResponse<ProcessDef>>(`/api/processes/${processId}`, data)
+      .put<ApiResponse<ProcessDef>>(`${designBase(appId)}/processes/${processId}`, data)
       .then((res) => res.data.data as ProcessDef),
 
   /** 删除流程 */
-  delete: (processId: string) =>
+  delete: (appId: string, processId: string) =>
     client
-      .delete<ApiResponse<{ deleted: boolean }>>(`/api/processes/${processId}`)
+      .delete<ApiResponse<{ deleted: boolean }>>(`${designBase(appId)}/processes/${processId}`)
       .then((res) => res.data.data as { deleted: boolean }),
 
   /** 发布流程(version+1, status=PUBLISHED) */
-  publish: (processId: string) =>
+  publish: (appId: string, processId: string) =>
     client
-      .post<ApiResponse<ProcessDef>>(`/api/processes/${processId}/publish`)
+      .post<ApiResponse<ProcessDef>>(`${designBase(appId)}/processes/${processId}/publish`)
       .then((res) => res.data.data as ProcessDef),
 
   // —— 流程实例 / 监控 ——
-  /** 效率分析（平均耗时/完成率/超时数；appId 不传=全租户汇总，素蓝首页指标用） */
+  /** 效率分析（平均耗时/完成率/超时数；appId 不传=全租户汇总，素蓝首页指标用；租户级治理读） */
   analytics: (appId?: string) =>
     client
       .get<ApiResponse<ProcessAnalyticsResult>>(`/api/processes/analytics`, {
@@ -311,18 +314,19 @@ export const processesApi = {
       })
       .then((res) => res.data.data as ProcessAnalyticsResult),
 
-  /** 启动流程实例 */
+  /** 启动流程实例（运行面：手动发起） */
   start: (processId: string, triggerContext: StartProcessRequest) =>
     client
       .post<ApiResponse<ProcessInstance>>(`/api/processes/${processId}/start`, triggerContext)
       .then((res) => res.data.data as ProcessInstance),
 
-  /** 实例列表 */
-  listInstances: (processId: string, params?: ListInstancesParams) =>
+  /** 实例列表（设计面监控） */
+  listInstances: (appId: string, processId: string, params?: ListInstancesParams) =>
     client
-      .get<ApiResponse<ProcessInstance[]>>(`/api/processes/${processId}/instances`, {
-        params: { state: params?.state },
-      })
+      .get<ApiResponse<ProcessInstance[]>>(
+        `${designBase(appId)}/processes/${processId}/instances`,
+        { params: { state: params?.state } },
+      )
       .then((res) => res.data.data as ProcessInstance[]),
 
   /** 实例详情(含节点执行状态)。
@@ -407,28 +411,33 @@ export const processesApi = {
       } satisfies DelegateTaskRequest)
       .then((res) => res.data.data as UserTask),
 
-  // —— 通知模版 ——
+  // —— 通知模版（设计面）——
   /** 模版列表 */
   listTemplates: (appId: string) =>
     client
-      .get<ApiResponse<NotificationTemplate[]>>(`/api/apps/${appId}/notification-templates`)
+      .get<ApiResponse<NotificationTemplate[]>>(`${designBase(appId)}/notification-templates`)
       .then((res) => res.data.data as NotificationTemplate[]),
 
   /** 创建模版 */
   createTemplate: (appId: string, data: CreateTemplateRequest) =>
     client
-      .post<ApiResponse<NotificationTemplate>>(`/api/apps/${appId}/notification-templates`, data)
+      .post<ApiResponse<NotificationTemplate>>(`${designBase(appId)}/notification-templates`, data)
       .then((res) => res.data.data as NotificationTemplate),
 
   /** 更新模版 */
-  updateTemplate: (templateId: string, data: UpdateTemplateRequest) =>
+  updateTemplate: (appId: string, templateId: string, data: UpdateTemplateRequest) =>
     client
-      .put<ApiResponse<NotificationTemplate>>(`/api/notification-templates/${templateId}`, data)
+      .put<ApiResponse<NotificationTemplate>>(
+        `${designBase(appId)}/notification-templates/${templateId}`,
+        data,
+      )
       .then((res) => res.data.data as NotificationTemplate),
 
   /** 删除模版 */
-  deleteTemplate: (templateId: string) =>
+  deleteTemplate: (appId: string, templateId: string) =>
     client
-      .delete<ApiResponse<{ deleted: boolean }>>(`/api/notification-templates/${templateId}`)
+      .delete<ApiResponse<{ deleted: boolean }>>(
+        `${designBase(appId)}/notification-templates/${templateId}`,
+      )
       .then((res) => res.data.data as { deleted: boolean }),
 };

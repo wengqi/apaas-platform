@@ -405,8 +405,8 @@ export class McpService {
     return { ok: true, page };
   }
 
-  async getProcess(tenantId: string, processId: string): Promise<McpToolResult> {
-    const process = await this.processService.getProcess(tenantId, processId);
+  async getProcess(tenantId: string, appId: string, processId: string): Promise<McpToolResult> {
+    const process = await this.processService.getProcess(tenantId, appId, processId);
     return { ok: true, process };
   }
 

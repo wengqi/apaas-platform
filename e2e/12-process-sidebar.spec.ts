@@ -23,7 +23,7 @@ test.describe('流程配置侧栏交互（BUG-05 回归）', () => {
     const token = await loginViaApi();
     api = createApiClient(token);
     appId = await createTestApp(api);
-    const process = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const process = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: 'bug05_sidebar_flow',
       name: '侧栏交互流程',
       triggerType: 'MANUAL',

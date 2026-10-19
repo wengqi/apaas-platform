@@ -22,7 +22,7 @@ test.describe('流程引擎', () => {
   });
 
   test('创建流程定义并发布', async () => {
-    const process = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const process = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: 'test_process',
       name: '测试流程',
       triggerType: 'MANUAL',
@@ -37,16 +37,18 @@ test.describe('流程引擎', () => {
     expect(process.id).toBeTruthy();
 
     // 发布流程
-    const published = await api.post(`/processes/${process.id}/publish`);
+    const published = await api.post(`/design/apps/${appId}/processes/${process.id}/publish`);
     expect(published).toBeTruthy();
 
     // 验证状态已变更
-    const detail = await api.get<{ status: string }>(`/processes/${process.id}`);
+    const detail = await api.get<{ status: string }>(
+      `/design/apps/${appId}/processes/${process.id}`,
+    );
     expect(detail.status).toBe('PUBLISHED');
   });
 
   test('启动流程实例', async () => {
-    const process = await api.post<{ id: string }>(`/apps/${appId}/processes`, {
+    const process = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {
       apiName: 'test_instance_process',
       name: '测试实例流程',
       triggerType: 'MANUAL',
@@ -59,7 +61,7 @@ test.describe('流程引擎', () => {
       },
     });
 
-    await api.post(`/processes/${process.id}/publish`);
+    await api.post(`/design/apps/${appId}/processes/${process.id}/publish`);
 
     // 启动实例
     const instance = await api.post<{ id: string; status?: string }>(

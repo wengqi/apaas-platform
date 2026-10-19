@@ -115,7 +115,9 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     const apps = await api.get<Array<{ id: string; apiName: string }>>('/design/apps');
     appId = apps.find((a) => a.apiName === 'procurement')!.id;
 
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     contractObjId = objects.find((o) => o.apiName === 'contract')!.id;
 
     const pages = await api.get<Array<{ id: string; apiName?: string; slug?: string }>>(

@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Divider, Form, Input, InputNumber, Select, Switch, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
@@ -126,6 +127,8 @@ export default function UserTaskConfigForm({
   objectOptions = [],
   triggerObjectId,
 }: UserTaskConfigFormProps) {
+  // 回写对象按应用寻址（ADR-0005）；流程编辑器路由 /app/:appId/processes/:id
+  const { appId } = useParams<{ appId: string }>();
   const update = (patch: Partial<UserTaskConfigData>) => onChange({ ...data, ...patch });
 
   // --- 审批结果回写：对象选择仅用于列出候选字段（引擎只消费 field 名，记录对象
@@ -135,7 +138,7 @@ export default function UserTaskConfigForm({
   );
   const { data: wbObject } = useQuery({
     queryKey: qk.object(wbObjectId!),
-    queryFn: () => objectsApi.get(wbObjectId!),
+    queryFn: () => objectsApi.get(appId as string, wbObjectId!),
     enabled: !!data.writeback && !!wbObjectId,
   });
   const wbFields = (wbObject?.fields ?? []).filter((f) => !f.isSystem);

@@ -41,11 +41,11 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
 
     // 对象（创建与字段分离）+ status 单选（writeback 目标）+ item 文本
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     let obj = objects.find((o) => o.apiName === 'feedback_item');
     if (!obj) {
-      obj = await admin.post<{ id: string }>(`/apps/${appId}/objects`, {
+      obj = await admin.post<{ id: string }>(`/design/apps/${appId}/objects`, {
         apiName: 'feedback_item',
         name: '反馈条目',
       });
@@ -65,7 +65,7 @@ test.describe('运行态业务用户反馈环（驳回+回写+通知）', () => 
         },
       ];
       for (const f of fields) {
-        await admin.post(`/objects/${obj!.id}/fields`, f);
+        await admin.post(`/design/apps/${appId}/objects/${obj!.id}/fields`, f);
       }
     }
     objectId = obj!.id;

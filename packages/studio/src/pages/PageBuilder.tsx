@@ -157,7 +157,7 @@ export default function PageBuilder() {
           // fetchQuery 与 ObjectDesigner 等共用 qk.object 缓存键（staleTime 内不重复请求）
           const obj = await queryClient.fetchQuery({
             queryKey: qk.object(objectId),
-            queryFn: () => objectsApi.get(objectId),
+            queryFn: () => objectsApi.get(appId as string, objectId),
             staleTime: 5 * 60 * 1000,
           });
           objects[objectId] = (obj.fields ?? []).map((f) => ({

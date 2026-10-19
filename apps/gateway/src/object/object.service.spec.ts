@@ -112,7 +112,7 @@ describe('ObjectService', () => {
       );
 
       const { service } = createService();
-      const result = await service.get('tenant-001', 'obj-001');
+      const result = await service.get('tenant-001', 'app-001', 'obj-001');
 
       expect(result.id).toBe('obj-001');
       expect(result.fields).toHaveLength(1);
@@ -122,7 +122,9 @@ describe('ObjectService', () => {
       prisma.objectMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.get('tenant-001', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.get('tenant-001', 'app-001', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -174,7 +176,7 @@ describe('ObjectService', () => {
         .mockResolvedValueOnce(makeObject({ name: 'Updated' }));
 
       const { service } = createService();
-      await service.update('tenant-001', 'obj-001', { name: 'Updated' });
+      await service.update('tenant-001', 'app-001', 'obj-001', { name: 'Updated' });
 
       expect(prisma.objectMeta.update).toHaveBeenCalledWith({
         where: { id: 'obj-001' },
@@ -186,9 +188,9 @@ describe('ObjectService', () => {
       prisma.objectMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.update('tenant-001', 'missing', { name: 'X' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.update('tenant-001', 'app-001', 'missing', { name: 'X' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -205,7 +207,9 @@ describe('ObjectService', () => {
       prisma.record.count.mockResolvedValue(5);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'obj-001')).rejects.toThrow(BadRequestException);
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('校验2 — 有页面引用时拒绝删除', async () => {
@@ -213,7 +217,9 @@ describe('ObjectService', () => {
       prisma.pageMeta.count.mockResolvedValue(3);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'obj-001')).rejects.toThrow(BadRequestException);
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('校验3 — 有流程触发器引用时拒绝删除', async () => {
@@ -222,7 +228,9 @@ describe('ObjectService', () => {
       prisma.processDef.count.mockResolvedValue(2);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'obj-001')).rejects.toThrow(BadRequestException);
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('校验4 — 有权限规则引用时拒绝删除', async () => {
@@ -232,7 +240,9 @@ describe('ObjectService', () => {
       prisma.permissionRule.count.mockResolvedValue(1);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'obj-001')).rejects.toThrow(BadRequestException);
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('无引用时正常删除 + 记录 ChangeLog', async () => {
@@ -243,7 +253,7 @@ describe('ObjectService', () => {
       prisma.objectMeta.delete.mockResolvedValue({});
 
       const { service, changeLogService } = createService();
-      await service.delete('tenant-001', 'obj-001');
+      await service.delete('tenant-001', 'app-001', 'obj-001');
 
       expect(prisma.objectMeta.delete).toHaveBeenCalledWith({ where: { id: 'obj-001' } });
       expect(changeLogService.log).toHaveBeenCalledWith(
@@ -255,7 +265,9 @@ describe('ObjectService', () => {
       prisma.objectMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.delete('tenant-001', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.delete('tenant-001', 'app-001', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -269,7 +281,7 @@ describe('ObjectService', () => {
       prisma.objectMeta.update.mockResolvedValue(makeObject());
 
       const { service } = createService();
-      const result = await service.addField('tenant-001', 'obj-001', {
+      const result = await service.addField('tenant-001', 'app-001', 'obj-001', {
         apiName: 'amount',
         label: '金额',
         type: 'number',
@@ -287,7 +299,7 @@ describe('ObjectService', () => {
 
       const { service } = createService();
       await expect(
-        service.addField('tenant-001', 'obj-001', {
+        service.addField('tenant-001', 'app-001', 'obj-001', {
           apiName: 'created_by',
           label: '重复',
           type: 'text',
@@ -300,7 +312,7 @@ describe('ObjectService', () => {
 
       const { service } = createService();
       await expect(
-        service.addField('tenant-001', 'missing', {
+        service.addField('tenant-001', 'app-001', 'missing', {
           apiName: 'x',
           label: 'X',
           type: 'text',
@@ -318,7 +330,7 @@ describe('ObjectService', () => {
       prisma.objectMeta.update.mockResolvedValue(makeObject());
 
       const { service } = createService();
-      const result = await service.updateField('tenant-001', 'obj-001', 'field-amount', {
+      const result = await service.updateField('tenant-001', 'app-001', 'obj-001', 'field-amount', {
         label: '总金额',
       });
 
@@ -334,7 +346,7 @@ describe('ObjectService', () => {
 
       const { service } = createService();
       await expect(
-        service.updateField('tenant-001', 'obj-001', 'field-1', { apiName: 'name' }),
+        service.updateField('tenant-001', 'app-001', 'obj-001', 'field-1', { apiName: 'name' }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -343,7 +355,7 @@ describe('ObjectService', () => {
 
       const { service } = createService();
       await expect(
-        service.updateField('tenant-001', 'obj-001', 'missing-field', { label: 'X' }),
+        service.updateField('tenant-001', 'app-001', 'obj-001', 'missing-field', { label: 'X' }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -356,7 +368,7 @@ describe('ObjectService', () => {
 
       const { service } = createService();
       await expect(
-        service.deleteField('tenant-001', 'obj-001', 'field-created_by'),
+        service.deleteField('tenant-001', 'app-001', 'obj-001', 'field-created_by'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -366,7 +378,7 @@ describe('ObjectService', () => {
       prisma.objectMeta.update.mockResolvedValue(makeObject());
 
       const { service } = createService();
-      await service.deleteField('tenant-001', 'obj-001', 'field-amount');
+      await service.deleteField('tenant-001', 'app-001', 'obj-001', 'field-amount');
 
       expect(prisma.objectMeta.update).toHaveBeenCalled();
       const updateCall = prisma.objectMeta.update.mock.calls[0]![0];
@@ -377,9 +389,9 @@ describe('ObjectService', () => {
       prisma.objectMeta.findFirst.mockResolvedValue(makeObject({ fields: [] }));
 
       const { service } = createService();
-      await expect(service.deleteField('tenant-001', 'obj-001', 'missing')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.deleteField('tenant-001', 'app-001', 'obj-001', 'missing'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -393,7 +405,7 @@ describe('ObjectService', () => {
       prisma.view.findMany.mockResolvedValue([makeView()]);
 
       const { service } = createService();
-      const result = await service.listViews('tenant-001', 'obj-001');
+      const result = await service.listViews('tenant-001', 'app-001', 'obj-001');
 
       expect(result).toHaveLength(1);
       expect(result[0]!.name).toBe('All Records');
@@ -403,7 +415,9 @@ describe('ObjectService', () => {
       prisma.objectMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.listViews('tenant-001', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(service.listViews('tenant-001', 'app-001', 'missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -413,7 +427,7 @@ describe('ObjectService', () => {
       prisma.view.create.mockResolvedValue(makeView({ name: 'My View' }));
 
       const { service } = createService();
-      const result = await service.createView('tenant-001', 'obj-001', {
+      const result = await service.createView('tenant-001', 'app-001', 'obj-001', {
         name: 'My View',
         type: 'LIST',
       });
@@ -427,19 +441,19 @@ describe('ObjectService', () => {
 
       const { service } = createService();
       await expect(
-        service.createView('tenant-001', 'missing', { name: 'V', type: 'LIST' }),
+        service.createView('tenant-001', 'app-001', 'missing', { name: 'V', type: 'LIST' }),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('updateView', () => {
     it('正常更新视图（两步租户校验通过）', async () => {
-      prisma.view.findUnique.mockResolvedValue(makeView());
+      prisma.view.findFirst.mockResolvedValue(makeView());
       prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
       prisma.view.update.mockResolvedValue(makeView({ name: 'Updated View' }));
 
       const { service } = createService();
-      const result = await service.updateView('tenant-001', 'view-001', {
+      const result = await service.updateView('tenant-001', 'app-001', 'obj-001', 'view-001', {
         name: 'Updated View',
       });
 
@@ -447,42 +461,45 @@ describe('ObjectService', () => {
     });
 
     it('视图不存在时抛出 NotFoundException', async () => {
-      prisma.view.findUnique.mockResolvedValue(null);
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
+      prisma.view.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.updateView('tenant-001', 'missing', { name: 'X' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.updateView('tenant-001', 'app-001', 'obj-001', 'missing', { name: 'X' }),
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('视图存在但对象不属于当前租户时抛出 NotFoundException', async () => {
-      prisma.view.findUnique.mockResolvedValue(makeView());
+    it('对象不属于该应用（跨应用 ID）时抛出 NotFoundException，不查视图', async () => {
       prisma.objectMeta.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.updateView('tenant-001', 'view-001', { name: 'X' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.updateView('tenant-001', 'app-001', 'obj-001', 'view-001', { name: 'X' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('deleteView', () => {
     it('正常删除视图', async () => {
-      prisma.view.findUnique.mockResolvedValue(makeView());
+      prisma.view.findFirst.mockResolvedValue(makeView());
       prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
       prisma.view.delete.mockResolvedValue({});
 
       const { service } = createService();
-      await service.deleteView('tenant-001', 'view-001');
+      await service.deleteView('tenant-001', 'app-001', 'obj-001', 'view-001');
 
       expect(prisma.view.delete).toHaveBeenCalledWith({ where: { id: 'view-001' } });
     });
 
     it('视图不存在时抛出 NotFoundException', async () => {
-      prisma.view.findUnique.mockResolvedValue(null);
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
+      prisma.view.findFirst.mockResolvedValue(null);
 
       const { service } = createService();
-      await expect(service.deleteView('tenant-001', 'missing')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.deleteView('tenant-001', 'app-001', 'obj-001', 'missing'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

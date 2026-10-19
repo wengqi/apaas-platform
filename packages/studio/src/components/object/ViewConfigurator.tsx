@@ -1,5 +1,6 @@
 import { TOKENS as T } from '@apaas/shared/design';
 import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Button, Checkbox, Divider, Drawer, Empty, Space, Tag, Typography, message } from 'antd';
 import {
   PlusOutlined,
@@ -51,6 +52,7 @@ interface ViewConfiguratorProps {
  *   fields:  [{ fieldId, order }]
  */
 export default function ViewConfigurator({ open, view, fields, onClose }: ViewConfiguratorProps) {
+  const { appId } = useParams<{ appId: string }>();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<object | null>(null);
   const [sorts, setSorts] = useState<ViewSortConfig[]>([]);
@@ -85,7 +87,7 @@ export default function ViewConfigurator({ open, view, fields, onClose }: ViewCo
   const saveMutation = useMutation({
     mutationFn: (config: ViewConfig) => {
       if (!view) throw new Error('视图不存在');
-      return objectsApi.updateView(view.id, { config });
+      return objectsApi.updateView(appId as string, view.objectId, view.id, { config });
     },
     onSuccess: () => {
       message.success('视图配置已保存');

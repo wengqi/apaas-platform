@@ -29,20 +29,20 @@ test.describe('记录业务字段排序（A-H1 回归）', () => {
     api = createApiClient(token);
     appId = await createTestApp(api);
 
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'sort_spec_object',
       name: '排序验证',
       icon: 'bar_chart',
     });
     objectId = obj.id;
 
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'amount',
       label: '金额',
       type: 'number',
       config: {},
     });
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'status',
       label: '状态',
       type: 'single_select',

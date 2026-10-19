@@ -27,7 +27,7 @@ test.describe('审批页数据可见性（DOM 级）', () => {
     appId = apps.find((a) => a.apiName === 'procurement')!.id;
 
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     contractObjId = objects.find((o) => o.apiName === 'contract')!.id;
 

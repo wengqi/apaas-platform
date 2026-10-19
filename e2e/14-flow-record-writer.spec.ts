@@ -43,32 +43,32 @@ test.describe('流程写库复用记录写内核（P1-5 回归）', () => {
     api = createApiClient(token);
     appId = await createTestApp(api);
 
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'writer_spec_object',
       name: '写内核验证',
       icon: 'box',
     });
     objectId = obj.id;
 
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'code',
       label: '编号',
       type: 'auto_number',
       config: { autoNumber: { format: 'ORD-{seq:0000}' } },
     });
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'qty',
       label: '数量',
       type: 'number',
       config: {},
     });
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'price',
       label: '单价',
       type: 'number',
       config: {},
     });
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'total',
       label: '总额',
       type: 'formula',

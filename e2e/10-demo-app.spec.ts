@@ -93,7 +93,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
 
   test('3 个业务对象存在', async () => {
     const objects = await api.get<Array<{ id: string; apiName: string; name: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     const apiNames = objects.map((o) => o.apiName);
     expect(apiNames).toContain('asset');
@@ -108,7 +108,7 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
         apiName: string;
         fields: Array<{ apiName: string; type: string; label: string }>;
       }>
-    >(`/apps/${appId}/objects`);
+    >(`/design/apps/${appId}/objects`);
     const asset = objects.find((o) => o.apiName === 'asset');
     expect(asset).toBeDefined();
     const fieldApiNames = asset!.fields.map((f) => f.apiName);
@@ -148,7 +148,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   });
 
   test('资产记录存在（15 条）', async () => {
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     const asset = objects.find((o) => o.apiName === 'asset');
     expect(asset).toBeDefined();
     const records = await api.get<{
@@ -165,7 +167,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   });
 
   test('资产分类记录存在（4 条）', async () => {
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     const category = objects.find((o) => o.apiName === 'asset_category');
     expect(category).toBeDefined();
     const records = await api.get<{ items: unknown[]; total: number }>(
@@ -175,7 +179,9 @@ test.describe('Phase 10.4 — Demo 应用（资产管理系统）', () => {
   });
 
   test('领用申请记录存在（5 条）', async () => {
-    const objects = await api.get<Array<{ id: string; apiName: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string; apiName: string }>>(
+      `/design/apps/${appId}/objects`,
+    );
     const borrow = objects.find((o) => o.apiName === 'borrow_request');
     expect(borrow).toBeDefined();
     const records = await api.get<{ items: unknown[]; total: number }>(

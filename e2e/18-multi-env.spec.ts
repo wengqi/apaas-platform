@@ -20,12 +20,12 @@ test.describe('多环境（R1.4）', () => {
     pageApiName = `multi_env_page_${Date.now()}`;
 
     // 建对象 + 页面（v1：标题"第一版"）
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: `multi_env_obj_${Date.now()}`,
       name: '多环境对象',
       icon: 'box',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'title',
       label: '标题',
       type: 'text',
@@ -149,7 +149,7 @@ test.describe('多环境（R1.4）', () => {
 
   test('prod 回滚到 v1.0.0：指针回切 + Deployment 历史 + 记录不回滚', async () => {
     // prod 写一条记录（回滚后应仍在）
-    const objects = await api.get<Array<{ id: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string }>>(`/design/apps/${appId}/objects`);
     await api.post(`/objects/${objects[0]!.id}/records`, { title: '回滚不删我' });
 
     const versions = await api.get<Array<{ id: string; versionNumber: string }>>(
@@ -181,7 +181,7 @@ test.describe('多环境（R1.4）', () => {
   });
 
   test('dev/prod 记录隔离：同对象各自环境的数据互不可见', async () => {
-    const objects = await api.get<Array<{ id: string }>>(`/apps/${appId}/objects`);
+    const objects = await api.get<Array<{ id: string }>>(`/design/apps/${appId}/objects`);
     const objectId = objects[0]!.id;
 
     // env=dev 上下文写记录（运行时读写 API 经 ?env= 透传）

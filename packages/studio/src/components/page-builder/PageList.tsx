@@ -86,7 +86,7 @@ export default function PageList({ appId: propAppId }: PageListProps = {}) {
         }
       }
       if (data.objectId && supportsTemplate(data.type)) {
-        obj = await objectsApi.get(data.objectId);
+        obj = await objectsApi.get(appId!, data.objectId);
         schema = buildPageTemplate(data.type, obj, data.name, {
           excludeFields,
           // 列表页必含回写状态列（表单页的 includeFields 不生效，由其分支忽略）

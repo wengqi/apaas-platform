@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ObjectService } from './object.service.js';
-import { ObjectController } from './object.controller.js';
+import { DesignObjectController } from './design-object.controller.js';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../auth/jwt.strategy.js';
@@ -27,7 +27,7 @@ import { ChangeLogModule } from '../application/changelog.module.js';
     PermissionModule,
     ChangeLogModule,
   ],
-  controllers: [ObjectController],
+  controllers: [DesignObjectController],
   providers: [ObjectService, JwtStrategy],
   exports: [ObjectService],
 })

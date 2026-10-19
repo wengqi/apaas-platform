@@ -7,6 +7,7 @@
  */
 
 import { useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { Form, Select } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@apaas/shared/stores';
@@ -46,6 +47,8 @@ const AGGREGATE_OPTIONS = [
 ];
 
 export default function RollupConfigForm({ value, onChange, objectId }: RollupConfigFormProps) {
+  // 对象按应用寻址（ADR-0005 设计面嵌套路由）；lookup 目标对象限同应用
+  const { appId } = useParams<{ appId: string }>();
   const aggregate = value?.aggregate ?? 'sum';
   const relationFieldId = value?.relationFieldId;
   const targetFieldId = value?.targetFieldId;
@@ -53,7 +56,7 @@ export default function RollupConfigForm({ value, onChange, objectId }: RollupCo
   /** 当前对象字段（查 lookup / sub_form 关系字段候选）。 */
   const { data: currentObject } = useQuery({
     queryKey: qk.object(objectId),
-    queryFn: () => objectsApi.get(objectId),
+    queryFn: () => objectsApi.get(appId as string, objectId),
     enabled: !!objectId,
   });
 
@@ -72,7 +75,7 @@ export default function RollupConfigForm({ value, onChange, objectId }: RollupCo
   /** 目标对象字段（聚合目标候选）。 */
   const { data: targetObject } = useQuery({
     queryKey: qk.object(targetObjectId!),
-    queryFn: () => objectsApi.get(targetObjectId!),
+    queryFn: () => objectsApi.get(appId as string, targetObjectId!),
     enabled: !!targetObjectId,
   });
 

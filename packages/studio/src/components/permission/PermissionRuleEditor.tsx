@@ -91,8 +91,8 @@ export default function PermissionRuleEditor({
   // 加载选中对象的字段（用于 QueryBuilderPanel）
   const { data: selectedObject } = useQuery({
     queryKey: qk.object(selectedObjectId!),
-    queryFn: () => objectsApi.get(selectedObjectId!),
-    enabled: !!selectedObjectId,
+    queryFn: () => objectsApi.get(contextAppId!, selectedObjectId!),
+    enabled: !!contextAppId && !!selectedObjectId,
   });
 
   // 加载应用页面列表（用于 PAGE 权限的目标选择）

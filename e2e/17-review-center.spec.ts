@@ -50,13 +50,13 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     api = createApiClient(token);
     appId = await createTestApp(api, `审核中心 E2E ${Date.now()}`);
 
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: `review_spec_object_${Date.now()}`,
       name: '审核验证对象',
       icon: 'box',
     });
     objectId = obj.id;
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'title',
       label: '标题',
       type: 'text',
@@ -175,7 +175,7 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     await api.post(`/apps/${appId}/reviews/submit`, { module: 'OBJECT', entityId: objectId });
 
     // 2. 人工修改（新增字段）→ 活表漂移
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: `extra_${Date.now()}`,
       label: '临时字段',
       type: 'text',
@@ -198,7 +198,9 @@ test.describe('审核中心与版本模型（R1.2）', () => {
     await expect
       .poll(
         async () => {
-          const obj = await api.get<{ fields: Array<{ apiName: string }> }>(`/objects/${objectId}`);
+          const obj = await api.get<{ fields: Array<{ apiName: string }> }>(
+            `/design/apps/${appId}/objects/${objectId}`,
+          );
           return obj.fields.some((f) => f.apiName.startsWith('extra_'));
         },
         { timeout: 15_000 },

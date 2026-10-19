@@ -24,13 +24,13 @@ test.describe('应用级审计日志（ROADMAP 9.9 回归）', () => {
     api = createApiClient(token);
     appId = await createTestApp(api);
 
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'audit_spec_object',
       name: '审计验证',
       icon: 'box',
     });
     objectId = obj.id;
-    await api.post(`/objects/${objectId}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
       apiName: 'name',
       label: '名称',
       type: 'text',

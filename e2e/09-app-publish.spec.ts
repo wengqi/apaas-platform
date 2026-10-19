@@ -28,13 +28,13 @@ test.describe('应用发布与版本管理', () => {
 
   test('应用预检 + 发布 + 版本列表', async () => {
     // 开发：添加对象 + 页面
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_publish_obj',
       name: '发布测试对象',
       icon: 'box',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'name',
       label: '名称',
       type: 'TEXT',
@@ -79,13 +79,13 @@ test.describe('应用发布与版本管理', () => {
 
   test('运行态验证 — 发布后通过 slug 访问页面', async () => {
     // 确保有对象和页面（上一个测试已创建，但 E2E 测试间数据可能不共享——这里自建）
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_runtime_obj',
       name: '运行态测试对象',
       icon: 'box',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'title',
       label: '标题',
       type: 'TEXT',
@@ -117,13 +117,13 @@ test.describe('应用发布与版本管理', () => {
 
   test('版本回滚', async () => {
     // 确保有内容
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_rollback_obj',
       name: '回滚测试对象',
       icon: 'box',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'name',
       label: '名称',
       type: 'TEXT',

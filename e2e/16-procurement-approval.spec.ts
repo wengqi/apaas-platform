@@ -45,7 +45,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
 
     // 合同对象 id（通过应用详情或对象列表；此处走对象列表端点）
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${procApp!.id}/objects`,
+      `/design/apps/${procApp!.id}/objects`,
     );
     contractApiName = objects.find((o) => o.apiName === 'contract')!.id;
     expect(contractApiName).toBeTruthy();

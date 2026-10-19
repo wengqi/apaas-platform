@@ -44,18 +44,18 @@ test.describe('数据集与数据流', () => {
 
   test('创建数据流 + 预览（单表 + 分组汇总）', async () => {
     // 创建对象 + 字段 + 记录
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_orders',
       name: 'E2E 订单',
       icon: 'shopping_cart',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'category',
       label: '类别',
       type: 'TEXT',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'amount',
       label: '金额',
       type: 'NUMBER',
@@ -104,18 +104,18 @@ test.describe('数据集与数据流', () => {
   });
 
   test('执行数据流 + 查询数据集行', async () => {
-    const obj = await api.post<{ id: string }>(`/apps/${appId}/objects`, {
+    const obj = await api.post<{ id: string }>(`/design/apps/${appId}/objects`, {
       apiName: 'e2e_sales',
       name: 'E2E 销售',
       icon: 'bar_chart',
     });
 
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'region',
       label: '区域',
       type: 'TEXT',
     });
-    await api.post(`/objects/${obj.id}/fields`, {
+    await api.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
       apiName: 'revenue',
       label: '收入',
       type: 'NUMBER',

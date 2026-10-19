@@ -38,20 +38,20 @@ test.describe('J8 数据集报表旅程（物化→图表消费端）', () => {
 
     // 2. 幂等建对象+字段（对象与字段分离端点）
     const objects = await admin.get<Array<{ id: string; apiName: string }>>(
-      `/apps/${appId}/objects`,
+      `/design/apps/${appId}/objects`,
     );
     let obj = objects.find((o) => o.apiName === 'chart_sales');
     if (!obj) {
-      obj = await admin.post<{ id: string }>(`/apps/${appId}/objects`, {
+      obj = await admin.post<{ id: string }>(`/design/apps/${appId}/objects`, {
         apiName: 'chart_sales',
         name: '销售记录',
       });
-      await admin.post(`/objects/${obj.id}/fields`, {
+      await admin.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
         apiName: 'region',
         label: '区域',
         type: 'text',
       });
-      await admin.post(`/objects/${obj.id}/fields`, {
+      await admin.post(`/design/apps/${appId}/objects/${obj.id}/fields`, {
         apiName: 'amount',
         label: '金额',
         type: 'currency',

@@ -116,7 +116,7 @@ test.describe('多环境（R1.4）', () => {
     const latest = versions.find((v) => v.versionNumber === '1.0.1')!.id;
 
     const blocked = await fetch(
-      `http://localhost:3000/api/v1/apps/${appId}/environments/dev/publish`,
+      `http://localhost:3000/api/v1/design/apps/${appId}/environments/dev/publish`,
       {
         method: 'POST',
         headers: {

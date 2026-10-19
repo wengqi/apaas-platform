@@ -115,9 +115,12 @@ test.describe('真实 UI 用户路径', () => {
     await expect
       .poll(
         async () => {
-          const res = await fetch(`http://localhost:3000/api/v1/pages/${pageMeta.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const res = await fetch(
+            `http://localhost:3000/api/v1/design/apps/${appId}/pages/${pageMeta.id}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          );
           const json = (await res.json()) as { data?: { schema?: { body?: unknown[] } } };
           const body = json.data?.schema?.body ?? [];
           return body.some(

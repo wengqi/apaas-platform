@@ -307,7 +307,7 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     );
     const currentVersionId = envsNow.find((e) => e.key === 'prod')!.currentVersionId!;
 
-    const blocked = await fetch(`${API_BASE}/apps/${appId}/environments/dev/publish`, {
+    const blocked = await fetch(`${API_BASE}/design/apps/${appId}/environments/dev/publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.token}` },
       body: JSON.stringify({ versionId: currentVersionId }),
@@ -496,10 +496,9 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     expect(taskDetail.instance.variables['amount']).toBe(1280000);
     expect(taskDetail.instance.variables['recordId']).toBe(record.id);
 
-    const runtimePageRes = await fetch(
-      `${API_BASE}/apps/${appId}/pages/runtime/${approvalPageId}`,
-      { headers: { Authorization: `Bearer ${api.token}` } },
-    );
+    const runtimePageRes = await fetch(`${API_BASE}/apps/${appId}/pages/${approvalPageId}`, {
+      headers: { Authorization: `Bearer ${api.token}` },
+    });
     expect(runtimePageRes.status).toBe(200);
     const runtimePage = (await runtimePageRes.json()) as {
       ok: boolean;

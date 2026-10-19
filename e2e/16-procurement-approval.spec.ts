@@ -22,6 +22,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
   let contractApiName = '';
   let processDefId = '';
   let approvalPageId = '';
+  let appId = '';
 
   test.beforeAll(async () => {
     const adminToken = await loginViaApi();
@@ -33,6 +34,7 @@ test.describe('采购合同审批全链路（R1.5 验收）', () => {
     const apps = await admin.get<Array<{ id: string; apiName: string }>>('/design/apps');
     const procApp = apps.find((a) => a.apiName === 'procurement');
     expect(procApp, '种子应用 procurement 不存在——请先跑 pnpm db:seed').toBeTruthy();
+    appId = procApp!.id;
 
     const pages = await admin.get<Array<{ id: string; slug?: string; apiName?: string }>>(
       `/design/apps/${procApp!.id}/pages`,

@@ -697,6 +697,57 @@ describe('ProcessEngine', () => {
   // cancelProcess
   // =========================================================================
 
+  it('P1-14：依次审批第 2..N 环任务生成后重挂超时 job（S1 通道）', async () => {
+    // 缺陷：第 1 环完成时 remainingPending=0 触发 cancelTaskTimeout 移除批次 job，
+    // 随后 sequential 分支直连 create 下一环任务（不经执行器）→ 2..N 环零超时覆盖。
+    // 修复契约：下一环任务生成后按节点 dueDate/dueUnit/timeoutAction 重挂同批次 job。
+    const schema = makeSimpleSchema({
+      nodes: [
+        makeNode('node-task', 'user_task', {
+          approvalMode: 'sequential',
+          approveUsers: ['u1', 'u2'],
+          dueDate: 15,
+          dueUnit: 'SECONDS',
+          timeoutAction: 'AUTO_APPROVE',
+        }),
+        makeNode('node-end', 'end'),
+      ],
+      edges: [{ sourceNodeID: 'node-task', targetNodeID: 'node-end' }],
+    });
+    const instance = makeProcessInstance({
+      activeNodeIds: ['node-task'],
+      variables: { 'node-task': { sequentialIndex: 0 } },
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'node-task', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.count.mockResolvedValue(0);
+    prisma.processTask.findMany.mockResolvedValue([task]);
+    prisma.processTask.create.mockResolvedValue({ ...task, id: 'task-002' });
+
+    const { engine, delayQueue } = createEngine();
+    await engine.completeTask('task-001', 'u1', 'approve', undefined, undefined);
+
+    // 下一环任务已生成
+    expect(prisma.processTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignee: 'u2', status: 'PENDING' }),
+      }),
+    );
+    // 超时 job 重挂（同 nodeExecutionId 幂等 jobId，delay=15s）
+    expect(delayQueue.add).toHaveBeenCalledWith(
+      'task_timeout',
+      {
+        kind: 'task_timeout',
+        instanceId: 'pi-001',
+        nodeId: 'node-task',
+        nodeExecutionId: 'ne-001',
+      },
+      expect.objectContaining({ delay: 15_000, jobId: 'task-timeout-ne-001' }),
+    );
+  });
+
   describe('cancelProcess', () => {
     it('实例不存在时抛出 NotFoundException', async () => {
       prisma.processInstance.findFirst.mockResolvedValue(null);
@@ -797,6 +848,45 @@ describe('ProcessEngine', () => {
   // =========================================================================
 
   describe('executeNode error handling', () => {
+    it('P1-15：error 出边 label 归一匹配（大小写/首尾空白不敏感，双 error 边取第一条并留痕）', async () => {
+      // 缺陷：label 按 === 'error' | '失败' 字面首匹配——'Error'/'ERROR'/' Error ' 均
+      // 不命中 → 实例静默 FAILED。修复契约：trim + 小写归一后匹配。
+      const schema = makeSimpleSchema({
+        nodes: [makeNode('node-start', 'start'), makeNode('node-notify', 'notification')],
+        edges: [{ sourceNodeID: 'node-start', targetNodeID: 'node-notify', label: ' Error ' }],
+      });
+      const failingExecutor = createMockExecutor('start', async () => {
+        throw new Error('Executor boom');
+      });
+
+      const instance = makeInstanceRow({
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.nodeExecution.create.mockResolvedValue(makeNodeExecution());
+
+      const { engine } = createEngine([failingExecutor]);
+      const result = await engine.executeNode(
+        instance,
+        makeNode('node-start', 'start'),
+        schema,
+        {},
+      );
+
+      expect(result.result.nextNodeIds).toEqual(['node-notify']);
+      expect((result.result.output as Record<string, unknown>)._errorRouted).toBe('Executor boom');
+      // 路由留痕：NodeExecution FAILED 行带 _routing
+      const failedUpdate = prisma.nodeExecution.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(failedUpdate).toBeDefined();
+      expect(failedUpdate![0]!.data.output).toEqual(
+        expect.objectContaining({
+          _routing: { nextNodeIds: ['node-notify'], at: expect.any(String) },
+        }),
+      );
+    });
+
     it('节点执行抛出异常时标记 FAILED', async () => {
       const schema = makeSimpleSchema();
       const failingExecutor = createMockExecutor('start', async () => {

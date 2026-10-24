@@ -58,7 +58,8 @@ export interface WebhookConnectorConfig {
   verifyHeader?: string;
   /**
    * HMAC-SHA256 签名密钥（可选，评审 M-5）。
-   * 配置后，入站请求必须携带 X-Apaas-Signature: hex(hmac-sha256(rawBody, secret))
+   * 配置后，入站请求必须携带 X-Apaas-Timestamp（毫秒）与 X-Apaas-Signature:
+   * hex(hmac-sha256(`${timestamp}.${rawBody}`, secret))——时间戳纳入签名（P1-12 防重放）
    * 并通过校验，同时拒绝 5 分钟外的时间戳重放。
    */
   webhookSecret?: string;
@@ -121,6 +122,8 @@ export interface Connector {
   status: ConnectorStatus;
   /** Webhook 专用：入站验证 token */
   webhookToken?: string;
+  /** Webhook 绑定（P1-16）：WEBHOOK 型连接器触发的目标流程 ID（未绑定=null，不回退广播） */
+  processDefId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,6 +152,8 @@ export interface CreateConnectorRequest {
   baseUrl?: string;
   config?: Record<string, unknown>;
   credentialId?: string;
+  /** Webhook 绑定（P1-16）：WEBHOOK 类型可选绑定目标流程（校验：同应用 + WEBHOOK 触发） */
+  processDefId?: string;
 }
 
 /** 更新连接器请求。 */
@@ -159,6 +164,8 @@ export interface UpdateConnectorRequest {
   config?: Record<string, unknown>;
   credentialId?: string;
   status?: ConnectorStatus;
+  /** Webhook 绑定（P1-16）：null=解绑；字符串=绑定/改绑（校验：同应用 + WEBHOOK 触发） */
+  processDefId?: string | null;
 }
 
 /** 创建凭证请求。 */

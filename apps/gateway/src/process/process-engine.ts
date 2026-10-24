@@ -508,9 +508,14 @@ export class ProcessEngine {
       // S2 失败处理（错误出口路由）：节点有 label 为 error/失败 的出边时，
       // 令牌路由到该分支（补偿/通知/回写由搭建者显式画节点），实例不失败；
       // NodeExecution 仍留痕 FAILED（错误信息不因路由掩盖）。无 error 出边时维持实例 FAILED。
-      const errorEdge = schema.edges.find(
-        (e) => e.sourceNodeID === node.id && (e.label === 'error' || e.label === '失败'),
-      );
+      // P1-15（对抗审查 R2-correctness-05）：label 归一匹配（trim+小写）——此前
+      // 'Error'/'ERROR'/' Error ' 均字面不命中 → 实例静默 FAILED；多条 error 出边
+      // 歧义由发布硬闸（collectErrorEdgeConflicts）前置拦截，引擎取首条保持可运行。
+      const errorEdge = schema.edges.find((e) => {
+        if (e.sourceNodeID !== node.id) return false;
+        const label = (e.label ?? '').trim().toLowerCase();
+        return label === 'error' || e.label?.trim() === '失败';
+      });
       if (errorEdge) {
         this.logger.warn(
           `实例 ${instance.id} 节点 ${node.id} 失败已路由到 error 分支 ${errorEdge.targetNodeID}`,
@@ -749,7 +754,7 @@ export class ProcessEngine {
                 } as Prisma.InputJsonValue,
               },
             });
-            await prisma.processTask.create({
+            const nextTask = await prisma.processTask.create({
               data: {
                 tenantId: task.tenantId,
                 instanceId: task.instanceId,
@@ -764,6 +769,11 @@ export class ProcessEngine {
             this.logger.log(
               `依次审批节点 ${task.nodeId} 进入第 ${nextIndex + 1}/${approveUsers.length} 人`,
             );
+            // P1-14（对抗审查 R1-correctness-03）：第 2..N 环补挂超时 job。
+            // 第 1 环完成时 remainingPending=0 已触发 cancelTaskTimeout 移除批次 job，
+            // 下一环任务直连 create 不经执行器——不重挂则超时动作对 2..N 环静默失效。
+            // 与 user-task 执行器同口径（dueDate×dueUnit→delayMs，jobId 按批次幂等）。
+            await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextTask.id);
             return;
           }
           // 最后一人 approved → 落到下方正常推进
@@ -1254,6 +1264,34 @@ export class ProcessEngine {
     );
     this.logger.log(
       `实例 ${instanceId} 节点 ${nodeId} 任务批次 ${nodeExecutionId} 超时动作已调度（${Math.round(delayMs / 1000)}s）`,
+    );
+  }
+
+  /**
+   * 依次审批 2..N 环超时重挂（P1-14）：按节点 dueDate/dueUnit/timeoutAction 计算 delay，
+   * 与 user-task 执行器同口径；仅 dueDate>0 且配置动作时调度。jobId 按批次幂等。
+   */
+  private async rescheduleSequentialTaskTimeout(
+    task: { instanceId: string; nodeId: string; nodeExecutionId: string },
+    nodeData: Record<string, unknown>,
+    _nextTaskId: string,
+  ): Promise<void> {
+    const dueAmount = Number(nodeData['dueDate'] ?? 0);
+    const dueUnit = String(nodeData['dueUnit'] ?? 'HOURS').toUpperCase();
+    const unitMs: Record<string, number> = {
+      SECONDS: 1_000,
+      MINUTES: 60_000,
+      HOURS: 3_600_000,
+      DAYS: 86_400_000,
+    };
+    const timeoutAction = nodeData['timeoutAction'];
+    if (!Number.isFinite(dueAmount) || dueAmount <= 0 || !timeoutAction) return;
+    if (!task.nodeExecutionId) return;
+    await this.scheduleTaskTimeout(
+      task.instanceId,
+      task.nodeId,
+      task.nodeExecutionId,
+      dueAmount * (unitMs[dueUnit] ?? 3_600_000),
     );
   }
 

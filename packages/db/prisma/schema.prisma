@@ -597,6 +597,7 @@ model ProcessDef {
 
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   application Application       @relation(fields: [appId], references: [id], onDelete: Cascade)
+  connectors  Connector[]
   instances   ProcessInstance[]
 
   @@unique([appId, apiName, version])
@@ -918,6 +919,10 @@ model Connector {
   tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   app        Application          @relation(fields: [appId], references: [id], onDelete: Cascade)
   credential ConnectorCredential? @relation(fields: [credentialId], references: [id])
+  // Webhook 绑定（P1-16）：WEBHOOK 型连接器触发的目标流程；SetNull=流程删除时解绑
+  //（webhook 到达时按「未绑定」处理，不回退应用级广播）
+  processDef ProcessDef?           @relation(fields: [processDefId], references: [id], onDelete: SetNull)
+  processDefId String?            @map("process_def_id")
 
   @@unique([tenantId, appId, apiName])
   @@index([tenantId])

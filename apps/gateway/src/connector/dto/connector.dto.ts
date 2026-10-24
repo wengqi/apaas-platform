@@ -46,6 +46,13 @@ export class CreateConnectorDto {
   @IsOptional()
   @IsString()
   credentialId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Webhook 绑定（仅 WEBHOOK 类型）：触发的目标流程 ID（校验同应用 + WEBHOOK 触发）',
+  })
+  @IsOptional()
+  @IsString()
+  processDefId?: string;
 }
 
 export class UpdateConnectorDto {
@@ -83,6 +90,17 @@ export class UpdateConnectorDto {
   @IsOptional()
   @IsEnum(['ACTIVE', 'INACTIVE'] satisfies readonly ConnectorStatus[])
   status?: ConnectorStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Webhook 绑定（仅 WEBHOOK 类型）：null=解绑；字符串=绑定/改绑（校验同应用 + WEBHOOK 触发）',
+    nullable: true,
+    oneOf: [{ type: 'string' }, { type: 'null' }],
+  })
+  // class-validator 0.15：IsOptional 对 null 与 undefined 均跳过校验（可空解绑语义）
+  @IsOptional()
+  @IsString()
+  processDefId?: string | null;
 }
 
 export class InvokeConnectorDto {

@@ -69,6 +69,14 @@ export class ConnectorService {
     // Webhook 类型自动生成 token
     const webhookToken = data.type === 'WEBHOOK' ? randomBytes(16).toString('hex') : null;
 
+    // Webhook 绑定校验（P1-16）：目标流程必须同应用且为 WEBHOOK 触发
+    if (data.processDefId) {
+      if (data.type !== 'WEBHOOK') {
+        throw new BadRequestException('仅 WEBHOOK 类型连接器可绑定流程');
+      }
+      await this.requireBindableProcess(tenantId, appId, data.processDefId);
+    }
+
     const connector = await prisma.connector.create({
       data: {
         tenantId,
@@ -81,6 +89,7 @@ export class ConnectorService {
         config: (data.config ?? {}) as object,
         credentialId: data.credentialId,
         webhookToken,
+        processDefId: data.processDefId,
       },
     });
 
@@ -111,6 +120,20 @@ export class ConnectorService {
     });
     if (!existing) throw new NotFoundException('连接器不存在');
 
+    // Webhook 绑定（P1-16）：undefined=不动；null=解绑；字符串=绑定/改绑
+    let processDefId: string | null | undefined = undefined;
+    if (data.processDefId !== undefined) {
+      if (data.processDefId === null) {
+        processDefId = null;
+      } else {
+        if (existing.type !== 'WEBHOOK') {
+          throw new BadRequestException('仅 WEBHOOK 类型连接器可绑定流程');
+        }
+        await this.requireBindableProcess(tenantId, appId, data.processDefId);
+        processDefId = data.processDefId;
+      }
+    }
+
     const connector = await prisma.connector.update({
       where: { id: connectorId },
       data: {
@@ -120,6 +143,7 @@ export class ConnectorService {
         config: data.config as object | undefined,
         credentialId: data.credentialId,
         status: data.status,
+        processDefId,
       },
     });
 
@@ -188,6 +212,22 @@ export class ConnectorService {
     return this.callService.invoke(connector, params);
   }
 
+  /** 校验可绑定的 WEBHOOK 触发流程（同应用 + WEBHOOK + 存在；草稿亦可绑——先绑后发）。 */
+  private async requireBindableProcess(
+    tenantId: string,
+    appId: string,
+    processDefId: string,
+  ): Promise<void> {
+    const def = await prisma.processDef.findFirst({
+      where: { id: processDefId, tenantId, appId },
+      select: { id: true, triggerType: true },
+    });
+    if (!def) throw new BadRequestException('绑定的流程不存在或不属于当前应用');
+    if (def.triggerType !== 'WEBHOOK') {
+      throw new BadRequestException('仅 WEBHOOK 触发类型的流程可被连接器绑定');
+    }
+  }
+
   /** 通过 webhookToken 查找连接器（供 WebhookController 使用）。 */
   async findByWebhookToken(token: string) {
     const connector = await prisma.connector.findFirst({
@@ -210,6 +250,7 @@ export class ConnectorService {
     credentialId: string | null;
     status: string;
     webhookToken: string | null;
+    processDefId: string | null;
     createdAt: Date;
     updatedAt: Date;
   }): Connector {
@@ -226,6 +267,7 @@ export class ConnectorService {
       credentialId: c.credentialId ?? undefined,
       status: c.status as ConnectorStatus,
       webhookToken: c.webhookToken ?? undefined,
+      processDefId: c.processDefId,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     };

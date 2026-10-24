@@ -3,7 +3,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { collectNodeIssues, isNodeIncomplete, nodeIncompleteReason } from './node-check.js';
+import {
+  collectNodeIssues,
+  isNodeIncomplete,
+  nodeIncompleteReason,
+  collectErrorEdgeConflicts,
+} from './node-check.js';
 
 describe('isNodeIncomplete', () => {
   it('user_task：审批人与审批模式齐备才算完成', () => {
@@ -82,5 +87,54 @@ describe('user_task INITIATOR（发起人审批，专题 R1-A1）', () => {
     expect(
       isNodeIncomplete('user_task', { assigneeType: 'INITIATOR', approvalMode: 'SINGLE' }),
     ).toBe(false);
+  });
+});
+
+describe('collectErrorEdgeConflicts — S2 歧义检测（P1-15）', () => {
+  it('同节点双 error 出边 → error 级冲突', () => {
+    const issues = collectErrorEdgeConflicts([
+      { sourceNodeID: 'a', targetNodeID: 'b', label: 'error' },
+      { sourceNodeID: 'a', targetNodeID: 'c', label: 'Error' },
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toEqual(
+      expect.objectContaining({
+        sourceNodeId: 'a',
+        severity: 'error',
+        conflictingTargets: ['b', 'c'],
+      }),
+    );
+  });
+
+  it("归一匹配：trim/大小写差异也算 error 边（'Error ' 与 error 冲突）", () => {
+    const issues = collectErrorEdgeConflicts([
+      { sourceNodeID: 'a', targetNodeID: 'b', label: 'error' },
+      { sourceNodeID: 'a', targetNodeID: 'c', label: ' Error ' },
+    ]);
+    expect(issues).toHaveLength(1);
+  });
+
+  it('中文「失败」出边同样纳入归一口径', () => {
+    const issues = collectErrorEdgeConflicts([
+      { sourceNodeID: 'a', targetNodeID: 'b', label: '失败' },
+      { sourceNodeID: 'a', targetNodeID: 'c', label: '失败' },
+    ]);
+    expect(issues).toHaveLength(1);
+  });
+
+  it('单 error 边与普通条件边 → 无冲突', () => {
+    const issues = collectErrorEdgeConflicts([
+      { sourceNodeID: 'a', targetNodeID: 'b', label: 'error' },
+      { sourceNodeID: 'a', targetNodeID: 'c', label: '通过' },
+    ]);
+    expect(issues).toEqual([]);
+  });
+
+  it('不同节点的 error 边互不冲突', () => {
+    const issues = collectErrorEdgeConflicts([
+      { sourceNodeID: 'a', targetNodeID: 'b', label: 'error' },
+      { sourceNodeID: 'x', targetNodeID: 'c', label: 'error' },
+    ]);
+    expect(issues).toEqual([]);
   });
 });

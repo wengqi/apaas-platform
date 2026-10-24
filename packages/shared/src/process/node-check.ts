@@ -123,3 +123,41 @@ export function collectNodeIssues(
   }
   return issues;
 }
+
+/** S2 error 出边歧义（P1-15）：同一节点的归一化 error/失败 出边多于一条时无法判定路由。 */
+export interface ErrorEdgeConflictIssue {
+  sourceNodeId: string;
+  /** 冲突的 error 边目标节点 */
+  conflictingTargets: string[];
+  severity: 'error';
+}
+
+/** error 出边的归一口径（与引擎侧路由匹配同源：trim + 小写；中文「失败」单独判等）。 */
+export function isErrorEdgeLabel(label: string | undefined): boolean {
+  if (!label) return false;
+  const trimmed = label.trim();
+  return trimmed.toLowerCase() === 'error' || trimmed === '失败';
+}
+
+/**
+ * 收集 error 出边歧义（P1-15）：双 error 边在引擎侧按首条路由，语义不可预期——
+ * 发布硬闸与「检查」按钮消费本函数以 error 级拦截，强制搭建者改到唯一。
+ */
+export function collectErrorEdgeConflicts(
+  edges: Array<{ sourceNodeID: string; targetNodeID: string; label?: string }>,
+): ErrorEdgeConflictIssue[] {
+  const bySource = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!isErrorEdgeLabel(e.label)) continue;
+    const bucket = bySource.get(e.sourceNodeID) ?? [];
+    bucket.push(e.targetNodeID);
+    bySource.set(e.sourceNodeID, bucket);
+  }
+  const issues: ErrorEdgeConflictIssue[] = [];
+  for (const [sourceNodeId, targets] of bySource) {
+    if (targets.length > 1) {
+      issues.push({ sourceNodeId, conflictingTargets: targets, severity: 'error' });
+    }
+  }
+  return issues;
+}

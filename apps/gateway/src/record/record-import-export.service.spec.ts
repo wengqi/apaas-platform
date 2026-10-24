@@ -58,6 +58,51 @@ describe('RecordImportExportService', () => {
   // exportToCsv
   // =========================================================================
 
+  it('P1-13：以 = + - @ 开头的单元格导出时中和（防 Excel 公式注入 CWE-1236）', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(
+      makeObjectWithFields([{ apiName: 'note', type: FieldType.Text }]),
+    );
+    const { service, recordService } = createService();
+    recordService.query.mockResolvedValue({
+      total: 3,
+      items: [
+        { id: 'r1', data: { note: '=cmd|/C calc!A1' } },
+        { id: 'r2', data: { note: '@SUM(1)' } },
+        { id: 'r3', data: { note: '+1-1' } },
+      ],
+    });
+
+    const csv = await service.exportToCsv('tenant-001', 'obj-001', {});
+
+    expect(csv).toContain("'=cmd|/C calc!A1");
+    expect(csv).toContain("'@SUM(1)");
+    expect(csv).toContain("'+1-1");
+    // 原样裸输出不得出现
+    expect(csv).not.toContain('\n=cmd');
+    expect(csv).not.toContain('\n@SUM');
+  });
+
+  it('P1-13：以 - 开头的数字单元格同样中和，普通文本不受影响', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(
+      makeObjectWithFields([{ apiName: 'note', type: FieldType.Text }]),
+    );
+    const { service, recordService } = createService();
+    recordService.query.mockResolvedValue({
+      total: 2,
+      items: [
+        { id: 'r1', data: { note: '-1+cmd|/C calc!A0' } },
+        { id: 'r2', data: { note: '普通文本' } },
+      ],
+    });
+
+    const csv = await service.exportToCsv('tenant-001', 'obj-001', {});
+
+    expect(csv).toContain("'-1+cmd");
+    expect(csv).toContain('普通文本');
+    // 空值/普通值不加前缀
+    expect(csv).not.toContain("'普通文本");
+  });
+
   describe('exportToCsv', () => {
     it('导出 CSV 含正确列头和数据', async () => {
       prisma.objectMeta.findFirst.mockResolvedValue(
@@ -154,6 +199,31 @@ describe('RecordImportExportService', () => {
   // =========================================================================
 
   describe('importFromCsv', () => {
+    it('P1-13：导出时中和的前缀在导入时还原（round-trip 不损坏数据）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectWithFields([
+          { apiName: 'name', type: FieldType.Text },
+          { apiName: 'amount', type: FieldType.Number },
+        ]),
+      );
+
+      const { service, recordService } = createService();
+      recordService.batchCreate.mockResolvedValue({ created: 2, errors: [] });
+
+      // "'=cmd" / "'-100" 是导出中和后的形态——导入应剥掉中和前缀
+      const csv = "name,amount\n'=cmd,-100";
+      const result = await service.importFromCsv('tenant-001', 'obj-001', 'user-001', csv);
+
+      expect(result.errors).toHaveLength(0);
+      expect(recordService.batchCreate).toHaveBeenCalledWith(
+        'tenant-001',
+        'obj-001',
+        'user-001',
+        expect.arrayContaining([expect.objectContaining({ name: '=cmd', amount: '-100' })]),
+        undefined,
+      );
+    });
+
     it('正常解析并导入 CSV', async () => {
       prisma.objectMeta.findFirst.mockResolvedValue(
         makeObjectWithFields([

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { collectNodeIssues } from '@apaas/shared';
+import { collectErrorEdgeConflicts, collectNodeIssues } from '@apaas/shared';
 import { prisma } from '@apaas/db';
 import type { AppSnapshot, CheckResult } from '@apaas/shared';
 import { SnapshotService } from './snapshot.service.js';
@@ -179,6 +179,23 @@ export class CheckService {
             entityName: proc.name,
             message: `流程「${proc.name}」节点「${ni.nodeTitle}」${ni.reason}`,
             suggestion: '请在流程编辑器中补全该节点配置',
+          });
+        }
+      }
+
+      // error 出边歧义（P1-15）：同一节点多条 error/失败 出边 → 引擎首条路由语义不可预期
+      const edges = (schema as { edges?: unknown }).edges;
+      if (Array.isArray(edges)) {
+        for (const conflict of collectErrorEdgeConflicts(
+          edges as Array<{ sourceNodeID: string; targetNodeID: string; label?: string }>,
+        )) {
+          issues.push({
+            level: 'ERROR',
+            module: 'PROCESS',
+            entityId: proc.id,
+            entityName: proc.name,
+            message: `流程「${proc.name}」存在 error 出边歧义：节点 ${conflict.sourceNodeId} 有 ${conflict.conflictingTargets.length} 条 error/失败 出边（→ ${conflict.conflictingTargets.join('、')}），失败时无法判定路由`,
+            suggestion: '请只保留一条 error/失败 出边，其余改用条件分支表达',
           });
         }
       }

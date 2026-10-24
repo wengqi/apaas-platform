@@ -9,6 +9,9 @@
  */
 
 import { lookup } from 'node:dns/promises';
+// undici 必须锁 7.x：与 Node 24 内置 undici 同大版本（全局 fetch 只接受其 dispatcher），
+// v8 起 Dispatcher API 断代（onRequestStart）混用即 "invalid onRequestStart method"。
+import { Agent } from 'undici';
 
 /** 允许的出站协议 */
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
@@ -72,8 +75,10 @@ function allowPrivate(): boolean {
   );
 }
 
-/** 校验 URL 协议与解析出的全部 IP 是否安全，返回规范化 URL。 */
-export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
+/** 校验 URL 协议与解析出的全部 IP 是否安全，返回规范化 URL 与解析结果（供钉连接）。 */
+export async function assertSafeOutboundUrl(
+  rawUrl: string,
+): Promise<{ url: URL; addresses: Array<{ address: string; family: number }> }> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -85,7 +90,7 @@ export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
     throw new OutboundUrlBlockedError(`出站协议被拒绝: ${url.protocol}`);
   }
 
-  if (allowPrivate()) return url; // 仅开发/联调环境显式放开
+  if (allowPrivate()) return { url, addresses: [] }; // 仅开发/联调环境显式放开（不钉定）
 
   let addresses: Array<{ address: string; family: number }>;
   try {
@@ -99,12 +104,49 @@ export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
       throw new OutboundUrlBlockedError(`出站目标解析到受限地址 ${address}（SSRF 防护）`);
     }
   }
-  return url;
+  return { url, addresses };
+}
+
+/**
+ * 构建钉定解析结果的 undici Agent（P1-11 DNS TOCTOU 修复）。
+ *
+ * 校验阶段解析到的 IP 直接作为 connect.lookup 的应答——fetch 建连不再二次解析，
+ * 权威 DNS 两次应答不同 IP 的穿透路径被消除（校验用 IP == 连接用 IP）。
+ * lookup 回调同时兼容 all:true（地址数组）与单地址两种 dns.lookup 契约；
+ * 非钉定主机名（不应发生，URL 主机固定）回退真实解析。
+ */
+export function buildPinnedDispatcher(
+  pinnedHostname: string,
+  pinnedAddresses: Array<{ address: string; family: number }>,
+): Agent {
+  return new Agent({
+    connect: {
+      lookup: (hostname, options, callback) => {
+        if (hostname !== pinnedHostname) {
+          lookup(hostname, options as never)
+            .then((result) => {
+              const list = Array.isArray(result) ? result : [result];
+              if (options.all) callback(null, list as never);
+              else callback(null, list[0]!.address as never, list[0]!.family as never);
+            })
+            .catch((err: Error) => callback(err as never, '', 0));
+          return;
+        }
+        const list = pinnedAddresses.map((a) => ({ address: a.address, family: a.family }));
+        if (options.all) {
+          callback(null, list as never);
+        } else {
+          const pick = list.find((a) => a.family === (options.family ?? a.family)) ?? list[0]!;
+          callback(null, pick.address as never, pick.family as never);
+        }
+      },
+    },
+  });
 }
 
 /**
  * SSRF 安全的 fetch：手动跟随重定向并对每一跳复检目标地址。
- * 超时由调用方通过 signal 传入（默认 OUTBOUND_HTTP_TIMEOUT_MS）。
+ * 非 allowPrivate 时按已解析 IP 钉定连接（P1-11），超时由调用方通过 signal 传入。
  */
 export async function safeFetch(
   rawUrl: string,
@@ -114,8 +156,16 @@ export async function safeFetch(
   let currentUrl = rawUrl;
 
   for (let hop = 0; hop <= maxRedirects; hop++) {
-    const url = await assertSafeOutboundUrl(currentUrl);
-    const response = await fetch(url.toString(), { ...rest, redirect: 'manual' });
+    const { url, addresses } = await assertSafeOutboundUrl(currentUrl);
+    // 钉定：校验用 IP == 连接用 IP（undici Agent connect.lookup 固定应答）。
+    // allowPrivate（开发/测试）路径不钉定——spec 以 mock fetch 断言调用参数，
+    // 真实出站经全局 fetch 默认 dispatcher。
+    const dispatcher = allowPrivate() ? undefined : buildPinnedDispatcher(url.hostname, addresses);
+    const response = await fetch(url.toString(), {
+      ...rest,
+      redirect: 'manual',
+      ...(dispatcher ? { dispatcher } : {}),
+    } as RequestInit);
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');

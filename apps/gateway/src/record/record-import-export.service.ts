@@ -37,6 +37,31 @@ interface ObjectField {
   config: unknown;
 }
 
+/**
+ * CSV 公式注入中和（P1-13，CWE-1236）：= + - @ 开头（及制表/回车）的单元格
+ * 在 Excel/LibreOffice 中会被当公式求值（含 DDE `=cmd|'…'!A0` 形态可执行命令）。
+ * 导出统一前缀 `'` 中和；导入按同规则剥离，保证 round-trip 不损坏数据。
+ */
+const CSV_FORMULA_PREFIXES = ['=', '+', '-', '@', '\t', '\r'] as const;
+
+export function neutralizeCsvCell(value: string): string {
+  if (value.length > 0 && (CSV_FORMULA_PREFIXES as readonly string[]).includes(value[0]!)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
+export function unneutralizeCsvCell(value: string): string {
+  if (
+    value.length > 1 &&
+    value[0] === "'" &&
+    (CSV_FORMULA_PREFIXES as readonly string[]).includes(value[1]!)
+  ) {
+    return value.slice(1);
+  }
+  return value;
+}
+
 @Injectable()
 export class RecordImportExportService {
   constructor(private readonly recordService: RecordService) {}
@@ -89,9 +114,9 @@ export class RecordImportExportService {
         const row = headers.map((h) => {
           const val = record.data[h];
           if (val === null || val === undefined) return '';
-          if (Array.isArray(val)) return val.join(',');
-          if (typeof val === 'object') return JSON.stringify(val);
-          return String(val);
+          if (Array.isArray(val)) return neutralizeCsvCell(val.join(','));
+          if (typeof val === 'object') return neutralizeCsvCell(JSON.stringify(val));
+          return neutralizeCsvCell(String(val));
         });
         rows.push(row);
       }
@@ -160,12 +185,14 @@ export class RecordImportExportService {
       }
 
       // 构建记录数据（跳过只读字段和未知字段）
+      // P1-13：导出侧的中和前缀在此剥离，round-trip 不损坏数据
       const data: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(record)) {
         if (!fieldApiNames.has(key)) continue;
         const field = fields.find((f) => f.apiName === key);
         if (field && READONLY_FIELD_TYPES.has(field.type)) continue;
-        data[key] = value === '' ? null : value;
+        const cell = typeof value === 'string' ? unneutralizeCsvCell(value) : value;
+        data[key] = cell === '' ? null : cell;
       }
 
       records.push(data);

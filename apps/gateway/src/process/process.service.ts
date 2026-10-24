@@ -18,7 +18,7 @@ import {
   Logger,
   ForbiddenException,
 } from '@nestjs/common';
-import { collectNodeIssues } from '@apaas/shared';
+import { collectErrorEdgeConflicts, collectNodeIssues } from '@apaas/shared';
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
@@ -253,7 +253,7 @@ export class ProcessService {
   async publishProcess(tenantId: string, appId: string, processId: string, userId?: string) {
     const existing = await this.requireProcessDef(tenantId, appId, processId);
 
-    const schema = existing.workflowSchema as { nodes?: unknown[] } | null;
+    const schema = existing.workflowSchema as { nodes?: unknown[]; edges?: unknown[] } | null;
     if (!schema || !Array.isArray(schema.nodes) || schema.nodes.length === 0) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
@@ -272,6 +272,22 @@ export class ProcessService {
           .map((i) => `「${i.nodeTitle}」${i.reason}`)
           .join('；')}。请在流程编辑器补全后重试。`,
         issues: nodeIssues as never,
+      });
+    }
+
+    // error 出边歧义硬闸（P1-15）：双 error 边在引擎侧按首条路由——发布前强制唯一
+    const edgeConflicts = collectErrorEdgeConflicts(
+      (schema.edges ?? []) as Array<{ sourceNodeID: string; targetNodeID: string; label?: string }>,
+    );
+    if (edgeConflicts.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: `流程存在 error 出边歧义，无法发布：${edgeConflicts
+          .map(
+            (c) =>
+              `节点 ${c.sourceNodeId} 有 ${c.conflictingTargets.length} 条 error/失败 出边（→ ${c.conflictingTargets.join('、')}）`,
+          )
+          .join('；')}。请只保留一条 error/失败 出边。`,
       });
     }
 

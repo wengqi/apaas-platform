@@ -63,6 +63,34 @@ describe('ProcessService deleteProcess（P1-30）', () => {
     expect(prisma.processDef.delete).not.toHaveBeenCalled();
   });
 
+  it('P1-15：发布硬闸拦截双 error 出边歧义（error 级，同一节点）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'DRAFT',
+      workflowSchema: {
+        nodes: [
+          { id: 'n1', type: 'start', data: { title: '开始' } },
+          { id: 'n2', type: 'end', data: { title: '结束' } },
+        ],
+        edges: [
+          { sourceNodeID: 'n1', targetNodeID: 'n2', label: 'error' },
+          { sourceNodeID: 'n1', targetNodeID: 'n2', label: 'Error' },
+        ],
+      },
+    });
+
+    const { service } = createService();
+    const err = (await service.publishProcess('t1', 'app-1', 'pd-1').catch((e: unknown) => e)) as {
+      getResponse: () => { message: string };
+    };
+    expect(err.getResponse()).toEqual(
+      expect.objectContaining({ message: expect.stringContaining('error 出边歧义') }),
+    );
+    expect(prisma.processDef.update).not.toHaveBeenCalled();
+  });
+
   it('P1-30：删除流程时级联处置该流程的全部 API release 行', async () => {
     prisma.processDef.findFirst.mockResolvedValue({
       id: 'pd-1',

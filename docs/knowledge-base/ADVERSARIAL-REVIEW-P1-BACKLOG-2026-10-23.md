@@ -38,12 +38,12 @@
 
 | # | 缺陷 | 位置 | 裁决号 | 修法方向 | 需裁决 | 状态 |
 |---|---|---|---|---|---|---|
-| P1-11 | safeFetch DNS 二次解析 TOCTOU：校验后 fetch 重新解析，权威 DNS 谎报端到端穿透实证（127.0.0.1 收包） | ssrf-guard.ts:90-118 | R1-security-05〔H〕→R2-security-08〔M〕 | 校验后按已解析 IP 钉连接（undici custom Agent/dispatcher，lookup 固定） | | ⬜ |
-| P1-12 | Webhook 防重放时间戳未纳入 HMAC 签名：捕获一次合法签名后刷新时间戳头无限重放（实测启动第二实例） | webhook.controller.ts:64-76 | R2-security-02 | 签名输入改 `${ts}.${rawBody}`；未上线零兼容可直接改契约（含文档与 QA-PLAN） | | ⬜ |
-| P1-13 | CSV 导出公式注入（CWE-1236）：=+−@ 开头单元格原样输出，活体复现 | record-import-export.service.ts:88-102 | R1-security-06 | 单元格前缀中和（`'` 前缀），导入路径同步评估 | | ⬜ |
-| P1-14 | 依次审批第 2..N 环超时动作静默失效：completeTask 直连 createTask 不经执行器，超时 job 上一环节完成时已取消（实测 15s deadline 27s 仍 PENDING） | process-engine.ts:752-767 | R1-correctness-03 | sequential 下一任务生成后补 scheduleTaskTimeout（复用 S1 通道） | | ⬜ |
-| P1-15 | S2 error 出边按 label 字面首匹配：无 case 归一无歧义检测，双 error 边只走首条、label='Error' 不命中→实例静默 FAILED（实测） | process-engine.ts:511-513 | R2-correctness-05 | 归一匹配（trim+lowercase）+ G3 校验器补歧义规则（双 error 边 error 级） | | ⬜ |
-| P1-16 | Webhook 应用级广播：连接器与流程无绑定，新增第二个 WEBHOOK 流程后存量 URL 静默多触发（四步复现） | webhook.controller.ts:82-120、schema Connector 仅 webhookToken | R1-compat-02 | 建立绑定关系（流程触发配置带 connectorId 或 schema 加列+回填） | ◆ 绑定形态 | ⬜ |
+| P1-11 | safeFetch DNS 二次解析 TOCTOU：校验后 fetch 重新解析，权威 DNS 谎报端到端穿透实证（127.0.0.1 收包） | ssrf-guard.ts:90-118 | R1-security-05〔H〕→R2-security-08〔M〕 | 校验后按已解析 IP 钉连接（undici custom Agent/dispatcher，lookup 固定） | | ✅ TC-214（buildPinnedDispatcher 钉定 lookup；真实 undici 回环集成实证契约；undici 锁 7.x 与 Node 24 内置同大版本） |
+| P1-12 | Webhook 防重放时间戳未纳入 HMAC 签名：捕获一次合法签名后刷新时间戳头无限重放（实测启动第二实例） | webhook.controller.ts:64-76 | R2-security-02 | 签名输入改 `${ts}.${rawBody}`；未上线零兼容可直接改契约（含文档与 QA-PLAN） | | ✅ TC-215（webhook.controller.spec 3 例；shared JSDoc 同步；破坏性变更已标注） |
+| P1-13 | CSV 导出公式注入（CWE-1236）：=+−@ 开头单元格原样输出，活体复现 | record-import-export.service.ts:88-102 | R1-security-06 | 单元格前缀中和（`'` 前缀），导入路径同步评估 | | ✅ TC-216（导出中和=+-@ 与制表/回车，导入同规则剥离 round-trip 无损；record-import-export.spec 3 例） |
+| P1-14 | 依次审批第 2..N 环超时动作静默失效：completeTask 直连 createTask 不经执行器，超时 job 上一环节完成时已取消（实测 15s deadline 27s 仍 PENDING） | process-engine.ts:752-767 | R1-correctness-03 | sequential 下一任务生成后补 scheduleTaskTimeout（复用 S1 通道） | | ✅ TC-217（rescheduleSequentialTaskTimeout 与执行器同口径；根因=第 1 环完成触发 cancelTaskTimeout 后下一环直连 create） |
+| P1-15 | S2 error 出边按 label 字面首匹配：无 case 归一无歧义检测，双 error 边只走首条、label='Error' 不命中→实例静默 FAILED（实测） | process-engine.ts:511-513 | R2-correctness-05 | 归一匹配（trim+lowercase）+ G3 校验器补歧义规则（双 error 边 error 级） | | ✅ TC-218（引擎归一+shared collectErrorEdgeConflicts 5 例；检查服务与发布硬闸两处接线 error 级） |
+| P1-16 | Webhook 应用级广播：连接器与流程无绑定，新增第二个 WEBHOOK 流程后存量 URL 静默多触发（四步复现） | webhook.controller.ts:82-120、schema Connector 仅 webhookToken | R1-compat-02 | 建立绑定关系（流程触发配置带 connectorId 或 schema 加列+回填） | ◆ 绑定形态 → ✅ 裁决=Connector 加列+回填 | ✅ TC-219（迁移 20261024150705+幂等回填；DTO/service 校验同应用+WEBHOOK；未绑定不回退广播） |
 
 ## 波次③ 性能（8 条）
 

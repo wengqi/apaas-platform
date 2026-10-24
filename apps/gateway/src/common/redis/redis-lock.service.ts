@@ -9,9 +9,11 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
-const LOCK_TTL_MS = 30_000;
 const LOCK_RETRY_DELAY_MS = 50;
-const LOCK_MAX_WAIT_MS = 10_000;
+
+/** Lua 比较续期：只延长自己持有的锁（他人持有/已过期则返回 0，不误续）。 */
+const RENEW_SCRIPT =
+  'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pexpire", KEYS[1], ARGV[2]) else return 0 end';
 
 /** 简易进程内互斥（Redis 不可用时的降级 + 同进程二次防抖） */
 const localLocks = new Map<string, Promise<unknown>>();
@@ -21,6 +23,11 @@ export class RedisLockService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisLockService.name);
   private readonly client: Redis | null;
   private degradedWarned = false;
+  // 实例级读取（P1-07 测试可经 env 覆写；模块级常量在 import 时固化会吞掉 stub）
+  private readonly lockTtlMs = Number(process.env.REDIS_LOCK_TTL_MS) || 30_000;
+  private readonly maxWaitMs = Number(process.env.REDIS_LOCK_MAX_WAIT_MS) || 10_000;
+  /** 看门狗续期周期 = TTL/3：任一周期续期失败仍有 ≥2 次机会在 TTL 过期前重试 */
+  private readonly renewIntervalMs = Math.floor(this.lockTtlMs / 3);
 
   constructor() {
     const url = process.env.REDIS_URL;
@@ -57,10 +64,10 @@ export class RedisLockService implements OnModuleDestroy {
       return this.withLocalLock(key, fn);
     }
 
-    const deadline = Date.now() + LOCK_MAX_WAIT_MS;
+    const deadline = Date.now() + this.maxWaitMs;
     let acquired = false;
     while (Date.now() < deadline) {
-      const result = await this.client.set(lockKey, token, 'PX', LOCK_TTL_MS, 'NX');
+      const result = await this.client.set(lockKey, token, 'PX', this.lockTtlMs, 'NX');
       if (result === 'OK') {
         acquired = true;
         break;
@@ -71,9 +78,32 @@ export class RedisLockService implements OnModuleDestroy {
       throw new Error(`获取分布式锁超时: ${lockKey}`);
     }
 
+    // P1-07（对抗审查 R1-scale-07/R2-scale-02）看门狗续期：临界区（流程执行可达
+    // 数十秒）超过固定 TTL 时互斥被破（实测 32s 临界区竞争者 30.0s 获锁）。
+    // 持锁期间按 TTL/3 周期续期；进程存活即续，进程死亡无续期 → 锁按 TTL 自然过期。
+    let watchdogActive = true;
+    const renew = (): Promise<void> =>
+      (this.client
+        ?.eval(RENEW_SCRIPT, 1, lockKey, token, String(this.lockTtlMs))
+        .catch(() => {})
+        .then(() => {}) as Promise<void>) ?? Promise.resolve();
+    const scheduleRenew = (): void => {
+      // 锁 TTL 维护定时器，非状态同步轮询（项目禁令针对数据刷新/事件监听的轮询）；
+      // 递归自调度在 finally 清零后自然终止。
+
+      setTimeout(() => {
+        if (!watchdogActive) return;
+        void renew().then(() => {
+          if (watchdogActive) scheduleRenew();
+        });
+      }, this.renewIntervalMs);
+    };
+    scheduleRenew();
+
     try {
       return await fn();
     } finally {
+      watchdogActive = false;
       await this.release(lockKey, token);
     }
   }

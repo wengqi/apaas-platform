@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ProcessEngine } from './process-engine.js';
 import type { NodeExecutor } from './types.js';
 import type { WorkflowSchema, WorkflowNode } from '@apaas/shared';
@@ -697,6 +697,51 @@ describe('ProcessEngine', () => {
   // cancelProcess
   // =========================================================================
 
+  it('P1-06：实例已取消时 sequential 推进被拒绝（锁内状态校验，不产生幽灵任务）', async () => {
+    // 缺陷：sequential 推进（读进度→写变量→create 下一环任务）在实例锁外直连——
+    // 与 cancelProcess 并发时实例已 TERMINATED 仍生成 PENDING 任务（实测 7/20 幽灵）。
+    // 修复契约：推进包 withInstanceLock 且锁内校验实例状态（对齐主审批路径 P1-2/B2）。
+    const schema = makeSimpleSchema({
+      nodes: [
+        makeNode('node-task', 'user_task', {
+          approvalMode: 'sequential',
+          approveUsers: ['u1', 'u2'],
+        }),
+        makeNode('node-end', 'end'),
+      ],
+      edges: [{ sourceNodeID: 'node-task', targetNodeID: 'node-end' }],
+    });
+    const instance = makeProcessInstance({
+      activeNodeIds: ['node-task'],
+      status: 'RUNNING',
+      variables: { 'node-task': { sequentialIndex: 0 } },
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'node-task', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.count.mockResolvedValue(0);
+    prisma.processTask.findMany.mockResolvedValue([task]);
+    // 锁内重载：实例已被取消
+    prisma.processInstance.findFirst.mockResolvedValue({
+      ...instance,
+      status: 'TERMINATED',
+    });
+
+    const { engine } = createEngine();
+    await expect(
+      engine.completeTask('task-001', 'u1', 'approve', undefined, undefined),
+    ).rejects.toThrow(ConflictException);
+
+    // 不得创建下一环任务、不得推进 sequentialIndex
+    expect(prisma.processTask.create).not.toHaveBeenCalled();
+    const varUpdate = prisma.processInstance.update.mock.calls.find(
+      (call: { data: Record<string, unknown> }[]) =>
+        'variables' in (call[0]!.data as Record<string, unknown>),
+    );
+    expect(varUpdate).toBeUndefined();
+  });
+
   it('P1-14：依次审批第 2..N 环任务生成后重挂超时 job（S1 通道）', async () => {
     // 缺陷：第 1 环完成时 remainingPending=0 触发 cancelTaskTimeout 移除批次 job，
     // 随后 sequential 分支直连 create 下一环任务（不经执行器）→ 2..N 环零超时覆盖。
@@ -725,6 +770,8 @@ describe('ProcessEngine', () => {
     prisma.processTask.count.mockResolvedValue(0);
     prisma.processTask.findMany.mockResolvedValue([task]);
     prisma.processTask.create.mockResolvedValue({ ...task, id: 'task-002' });
+    // P1-06：锁内重载实例（状态正常）
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
 
     const { engine, delayQueue } = createEngine();
     await engine.completeTask('task-001', 'u1', 'approve', undefined, undefined);

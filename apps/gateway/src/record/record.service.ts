@@ -513,23 +513,23 @@ export class RecordService {
         );
       }
 
-      // 2. 计算 Formula 字段（基于已含自动编号的 data）
-      const formulaResults = this.formulaEngine.computeRecordFields(
-        fields as unknown as import('@apaas/shared').Field[],
-        computedData,
-      );
-      Object.assign(computedData, formulaResults);
-
-      // 3. Lookup 写约束：引用的目标记录必须存在且属于配置的目标对象
+      // 2. Lookup 写约束：引用的目标记录必须存在且属于配置的目标对象
       await this.rollupService.validateLookupWrites(tenantId, fields, computedData);
 
-      // 4. 计算 Rollup 字段（lookup 关系此时即可算；sub_form 子记录尚不存在，写入后异步补算）
+      // 3. 计算 Rollup 字段（P1-10：rollup 先于 formula——公式可引用 rollup 字段新值）
       const rollupResults = await this.rollupService.computeRollupFields(
         tenantId,
         fields,
         computedData,
       );
       Object.assign(computedData, rollupResults);
+
+      // 4. 计算 Formula 字段（基于已含 rollup 值的 data）
+      const formulaResults = this.formulaEngine.computeRecordFields(
+        fields as unknown as import('@apaas/shared').Field[],
+        computedData,
+      );
+      Object.assign(computedData, formulaResults);
 
       return tx.record.create({
         data: {
@@ -654,14 +654,8 @@ export class RecordService {
       excludeRecordId: recordId,
     });
 
-    // 2. 重新计算 Formula 字段
-    const formulaResults = this.formulaEngine.computeRecordFields(
-      fields as unknown as import('@apaas/shared').Field[],
-      mergedData,
-    );
-    Object.assign(mergedData, formulaResults);
-
     // Lookup 写约束 + Rollup 重算（update 时 sub_form 子记录已存在，可同步算全）
+    // P1-10：rollup 先于 formula——公式引用 rollup 字段时用本次新值
     await this.rollupService.validateLookupWrites(tenantId, fields, mergedData);
     const rollupResults = await this.rollupService.computeRollupFields(
       tenantId,
@@ -671,13 +665,28 @@ export class RecordService {
     );
     Object.assign(mergedData, rollupResults);
 
-    const record = await prisma.record.update({
-      where: { id: recordId },
+    // 重新计算 Formula 字段（基于已含 rollup 值的 data）
+    const formulaResults = this.formulaEngine.computeRecordFields(
+      fields as unknown as import('@apaas/shared').Field[],
+      mergedData,
+    );
+    Object.assign(mergedData, formulaResults);
+
+    // 乐观锁（P1-02，用户裁决=version 列条件更新）：WHERE version=读时值，
+    // 并发他人先写则命中 0 行 → 409 提示刷新重试——消除 read-merge-write 丢失更新。
+    const updated = await prisma.record.updateMany({
+      where: { id: recordId, version: existing.version },
       data: {
         data: mergedData as Prisma.InputJsonValue,
+        version: { increment: 1 },
         updatedBy: userId,
       },
     });
+    if (updated.count === 0) {
+      throw new ConflictException('记录已被其他人修改（版本冲突），请刷新后重试');
+    }
+    const record = await prisma.record.findUnique({ where: { id: recordId } });
+    if (!record) throw new NotFoundException('记录不存在');
 
     // 评审整改：业务动作级审计
     writeAudit({

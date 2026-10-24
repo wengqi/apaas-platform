@@ -17,6 +17,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMockPrisma } from '../test/test-helpers.js';
 import { TriggerService } from './trigger.service.js';
+import { RedisLockService } from '../common/redis/redis-lock.service.js';
+
+// P1-04：账本 client mock（TriggerService 内部 new Redis(url) 获得）
+const redisMock = {
+  connect: vi.fn().mockResolvedValue(undefined),
+  hset: vi.fn().mockResolvedValue(1),
+  hgetall: vi.fn().mockResolvedValue({}),
+  hdel: vi.fn().mockResolvedValue(1),
+  on: vi.fn(),
+};
+vi.mock('ioredis', () => ({
+  default: class MockRedis {
+    constructor() {
+      return redisMock;
+    }
+  },
+}));
 
 const TENANT = 'tenant-1';
 const APP = 'app-1';
@@ -229,16 +246,109 @@ describe('TriggerService.rebuildForEnvironment — 定时注册读活表+触发�
     );
   });
 
-  it('清理仅匹配本环境前缀且属于本应用的旧注册', async () => {
-    queue.getRepeatableJobs.mockResolvedValue([
-      { key: 'scheduled:dev:proc-old' },
-      { key: 'scheduled:prod:proc-x' },
-      { key: 'other:dev:proc-y' },
-    ]);
+  it('P1-04：清理经注册账本反查（BullMQ 5.81 repeatable key 为纯 md5 哈希，旧前缀过滤是死代码）', async () => {
+    // 账本：本环境本应用一条（应清）、本环境他应用一条（不清）、他环境一条（不清）
+    redisMock.hgetall.mockResolvedValue({
+      'dev:proc-old': '746fbc82c2b883f823bd0fa0d9a08001',
+      'dev:proc-x': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'prod:proc-old': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    });
     // 第一次调用 = 清理集查询（本应用全部流程 id）
     prisma.processDef.findMany.mockResolvedValue([{ id: 'proc-old' }]);
-    await makeService().rebuildForEnvironment(TENANT, APP, 'dev');
+    queue.add.mockResolvedValue({ repeatJobKey: 'cccccccccccccccccccccccccccccccc' });
+
+    // 跨测试的 afterEach restoreAllMocks 会清掉 mock implementations——
+    // 本测试显式重设全部所需实现（全跑/单跑行为一致）
+    redisMock.connect.mockResolvedValue(undefined);
+    redisMock.hgetall.mockResolvedValue({
+      'dev:proc-old': '746fbc82c2b883f823bd0fa0d9a08001',
+      'dev:proc-x': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'prod:proc-old': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    });
+    redisMock.hdel.mockResolvedValue(1);
+    queue.removeRepeatableByKey.mockResolvedValue(undefined);
+
+    await new TriggerService(
+      engine as never,
+      queue as never,
+      undefined,
+      redisMock as never,
+    ).rebuildForEnvironment(TENANT, APP, 'dev');
+
     expect(queue.removeRepeatableByKey).toHaveBeenCalledTimes(1);
-    expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('scheduled:dev:proc-old');
+    expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('746fbc82c2b883f823bd0fa0d9a08001');
+    // 清理后从账本摘除
+    expect(redisMock.hdel).toHaveBeenCalledWith('apaas:trigger-registry', 'dev:proc-old');
+  });
+
+  it('P1-04：注册成功后把 repeatJobKey 写入账本', async () => {
+    // afterEach restoreAllMocks 会清 implementations——显式重设（跨测试一致）
+    redisMock.hset.mockResolvedValue(1);
+    redisMock.connect.mockResolvedValue(undefined);
+    redisMock.hgetall.mockResolvedValue({});
+    queue.add.mockResolvedValue({ repeatJobKey: 'repeat-mock-key' });
+    queue.removeRepeatable.mockResolvedValue(undefined);
+    const flow = {
+      id: 'proc-ledger',
+      apiName: 'ledger_flow',
+      name: '账本流',
+      triggerType: 'SCHEDULED',
+      cron: '0 0 * * *',
+      workflowSchema: {
+        nodes: [
+          {
+            id: 'trigger_1',
+            type: 'trigger',
+            data: { triggerType: 'SCHEDULED', cron: '0 0 * * *' },
+          },
+        ],
+        edges: [],
+      },
+    };
+    prisma.processDef.findMany.mockResolvedValue([flow]);
+
+    await new TriggerService(
+      engine as never,
+      queue as never,
+      undefined,
+      redisMock as never,
+    ).rebuildForEnvironment(TENANT, APP, 'dev');
+
+    expect(redisMock.hset).toHaveBeenCalledWith(
+      'apaas:trigger-registry',
+      'dev:proc-ledger',
+      'repeat-mock-key',
+    );
+  });
+
+  it('P1-04：注册与重建经 RedisLock 串行化（消除 remove+add 窗口的双 cron 竞态）', async () => {
+    const withLock = vi.fn((_key: string, fn: () => Promise<unknown>) => fn());
+    const lock = { withLock } as unknown as RedisLockService;
+    const flow = {
+      id: 'proc-lock',
+      apiName: 'lock_flow',
+      name: '锁流',
+      triggerType: 'SCHEDULED',
+      cron: '0 1 * * *',
+      workflowSchema: {
+        nodes: [
+          {
+            id: 'trigger_1',
+            type: 'trigger',
+            data: { triggerType: 'SCHEDULED', cron: '0 1 * * *' },
+          },
+        ],
+        edges: [],
+      },
+    };
+    prisma.processDef.findMany.mockResolvedValue([flow]);
+
+    await new TriggerService(engine as never, queue as never, lock).rebuildForEnvironment(
+      TENANT,
+      APP,
+      'dev',
+    );
+
+    expect(withLock).toHaveBeenCalledWith('trigger-register:dev', expect.any(Function));
   });
 });

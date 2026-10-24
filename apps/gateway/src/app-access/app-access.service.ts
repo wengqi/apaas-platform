@@ -141,9 +141,18 @@ export class AppAccessService {
     return new Map(rows.map((r) => [r.appId, r.role === 'OWNER' ? 'owner' : 'member']));
   }
 
-  /** 创建应用时写 OWNER 行（MCP create_application 同路径）。 */
-  async grantOwner(tenantId: string, appId: string, userId: string): Promise<void> {
-    await prisma.applicationMember.create({
+  /**
+   * 创建应用时写 OWNER 行（MCP create_application 同路径）。
+   * P1-08：可传事务客户端与应用创建同事务（不传则独立写，MCP 等既有调用点不变）。
+   */
+  async grantOwner(
+    tenantId: string,
+    appId: string,
+    userId: string,
+    tx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  ): Promise<void> {
+    const client = tx ?? prisma;
+    await client.applicationMember.create({
       data: { tenantId, appId, userId, role: 'OWNER', addedBy: null },
     });
   }

@@ -32,6 +32,13 @@ export function getMockQueryRawUnsafe(): ReturnType<typeof vi.fn> {
 }
 
 /**
+ * 获取 $executeRawUnsafe mock（P1-01：unique 字段 DDL 管理，索引标识符不可参数化）。
+ */
+export function getMockExecuteRawUnsafe(): ReturnType<typeof vi.fn> {
+  return (globalThis as Record<string, unknown>).__mockExecuteRawUnsafe as ReturnType<typeof vi.fn>;
+}
+
+/**
  * 创建一个 mock BullMQ Queue（用于 process-engine 测试）。
  * 返回 { add: vi.fn() }，模拟 BullMQ Queue 的 add 方法。
  */

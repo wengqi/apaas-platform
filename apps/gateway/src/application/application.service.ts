@@ -294,23 +294,27 @@ export class ApplicationService {
   async create(tenantId: string, createdBy: string, req: CreateAppRequest): Promise<Application> {
     const apiName = req.apiName || this.generateApiName();
 
-    const app = await prisma.application.create({
-      data: {
-        tenantId,
-        apiName,
-        name: req.name,
-        description: req.description,
-        icon: req.icon,
-        color: req.color,
-        group: req.group,
-        status: 'DRAFT',
-        version: 0,
-        createdBy,
-      },
+    // P1-08（对抗审查 R1-devil-03，ADR-0005 决策 7）：应用创建与 OWNER 行授予
+    // 同事务——此前非事务，故障窗口产生的应用无主（创建者本人 403）。
+    const app = await prisma.$transaction(async (tx) => {
+      const created = await tx.application.create({
+        data: {
+          tenantId,
+          apiName,
+          name: req.name,
+          description: req.description,
+          icon: req.icon,
+          color: req.color,
+          group: req.group,
+          status: 'DRAFT',
+          version: 0,
+          createdBy,
+        },
+      });
+      // ADR-0005：创建人即应用 OWNER（归属以成员表为准，createdBy 仅保留历史创建人语义）
+      await this.appAccess.grantOwner(tenantId, created.id, createdBy, tx);
+      return created;
     });
-
-    // ADR-0005：创建人即应用 OWNER（归属以成员表为准，createdBy 仅保留历史创建人语义）
-    await this.appAccess.grantOwner(tenantId, app.id, createdBy);
 
     // 记录变更日志
     await this.changeLogService.log({

@@ -426,8 +426,26 @@ describe('ApplicationService', () => {
       expect(changeLogService.log).toHaveBeenCalledWith(
         expect.objectContaining({ changeType: 'CREATE' }),
       );
-      // ADR-0005：创建人即 OWNER（MCP create_application 同路径）
-      expect(appAccess.grantOwner).toHaveBeenCalledWith('tenant-001', 'app-001', 'user-001');
+      // ADR-0005：创建人即 OWNER（MCP create_application 同路径）；P1-08 起第 4 参传事务客户端
+      expect(appAccess.grantOwner).toHaveBeenCalledWith(
+        'tenant-001',
+        'app-001',
+        'user-001',
+        expect.anything(),
+      );
+    });
+
+    it('P1-08：应用创建与 OWNER 行授予同事务（故障窗口不产生无主应用）', async () => {
+      prisma.application.create.mockResolvedValue(makeApp());
+      prisma.application.findFirst.mockResolvedValue(makeApp());
+
+      const { service, appAccess } = createService();
+      await service.create('tenant-001', 'user-001', { name: 'X', apiName: 'tx_app' });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      const txOrder = prisma.$transaction.mock.invocationCallOrder[0]!;
+      expect(prisma.application.create.mock.invocationCallOrder[0]!).toBeGreaterThan(txOrder);
+      expect(appAccess.grantOwner.mock.invocationCallOrder[0]!).toBeGreaterThan(txOrder);
     });
 
     it('未传 apiName 时自动生成', async () => {

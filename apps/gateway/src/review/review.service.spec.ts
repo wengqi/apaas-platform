@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ReviewService, collectRefTokens, replaceRefTokens } from './review.service.js';
 import { ReviewSnapshotService } from './review-snapshot.service.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
@@ -221,6 +221,31 @@ describe('批准（approve）', () => {
     await expect(svc.approve(TENANT, APP, 'sub-1', 'reviewer-1')).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  it('P1-03：并发审批原子认领失败（claim 命中 0 行）→ 409 且不落地快照', async () => {
+    // 双审并发：两人同时读到 PENDING，只有先到者 claim 成功（UPDATE WHERE status=PENDING）
+    const { svc, prisma, snapshotService } = makeService();
+    arrangeHappyPath(prisma, liveSnapshot);
+    prisma.resourceVersion.updateMany.mockResolvedValue({ count: 0 }); // 后到者认领失败
+
+    await expect(svc.approve(TENANT, APP, 'sub-1', 'reviewer-2')).rejects.toThrow(
+      ConflictException,
+    );
+    expect(snapshotService.applySnapshot).not.toHaveBeenCalled();
+  });
+
+  it('P1-03：批准前先原子认领（UPDATE ... WHERE status=PENDING，期待 1 行）', async () => {
+    const { svc, prisma } = makeService();
+    arrangeHappyPath(prisma, liveSnapshot);
+    prisma.resourceVersion.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.approve(TENANT, APP, 'sub-1', 'reviewer-1', { comment: '通过' });
+
+    expect(prisma.resourceVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: 'sub-1', tenantId: TENANT, appId: APP, status: 'PENDING' },
+      data: { status: 'APPROVING' },
+    });
   });
 });
 

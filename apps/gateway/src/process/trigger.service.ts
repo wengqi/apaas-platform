@@ -21,11 +21,13 @@
  * 设计为非阻塞——触发失败仅记日志，不影响记录操作本身。
  */
 
-import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { prisma, runWithEnv } from '@apaas/db';
 import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import type { EnvironmentKey } from '@apaas/shared';
 import { ProcessEngine } from './process-engine.js';
+import { RedisLockService } from '../common/redis/redis-lock.service.js';
 import { PROCESS_QUEUE } from '../queue/queue.constants.js';
 
 /** 记录事件类型 → 触发类型映射（与 TriggerType 枚举值对齐）。 */
@@ -37,6 +39,8 @@ const EVENT_TO_TRIGGER: Record<string, string> = {
 
 /** BullMQ repeatable job 的 key 前缀，用于区分定时触发 job（含环境维度）。 */
 const SCHEDULED_JOB_PREFIX = 'scheduled:';
+/** P1-04 注册账本（Redis hash）：定时注册的 repeatJobKey 反查表 */
+const TRIGGER_REGISTRY_KEY = 'apaas:trigger-registry';
 
 /** 从流程定义提取出的触发信息（schema 触发节点为 SSOT，顶层列为回退）。 */
 interface TriggerInfo {
@@ -82,10 +86,30 @@ export function extractTriggerInfo(
 export class TriggerService implements OnModuleInit {
   private readonly logger = new Logger(TriggerService.name);
 
+  /**
+   * P1-04 注册账本：field=`<envKey>:<processDefId>` → value=BullMQ repeatJobKey
+   * （BullMQ 5.81 repeatable key 为纯 md5 哈希，无法从 getRepeatableJobs 反查）。
+   * registryClient 可注入（测试）；未注入且配置 REDIS_URL 时自建惰性客户端——
+   * Redis 不可用时清理降级为告警（单副本开发可接受，多副本部署必配 Redis）。
+   */
+  private registry: Redis | null;
+
   constructor(
     private readonly engine: ProcessEngine,
     @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
-  ) {}
+    @Optional() private readonly redisLock?: RedisLockService,
+    @Optional() registryClient?: Redis | null,
+  ) {
+    this.registry =
+      registryClient !== undefined
+        ? registryClient
+        : process.env.REDIS_URL
+          ? new Redis(process.env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 }).on(
+              'error',
+              () => {},
+            )
+          : null;
+  }
 
   /**
    * 模块初始化：按环境重建全部定时触发注册。
@@ -152,7 +176,10 @@ export class TriggerService implements OnModuleInit {
     envKey: EnvironmentKey,
   ): Promise<void> {
     try {
-      // 1) 清空该环境现有注册（该应用全部流程 × 本环境维度）
+      // 1) 清空该环境现有注册（该应用全部流程 × 本环境维度）。
+      // P1-04：按注册账本反查——BullMQ 5.81 getRepeatableJobs 的 key 是纯 md5
+      // 哈希（无 jobId 可读段），旧实现按 'scheduled:' 前缀过滤永假=死代码，
+      // 串行换 cron 时旧注册永不被清 → 双 cron 并存。
       const appProcessIds = new Set(
         (
           await prisma.processDef.findMany({
@@ -161,13 +188,19 @@ export class TriggerService implements OnModuleInit {
           })
         ).map((p) => p.id),
       );
-      const repeatables = await this.processQueue.getRepeatableJobs();
-      for (const job of repeatables) {
-        if (!job.key?.startsWith(`${SCHEDULED_JOB_PREFIX}${envKey}:`)) continue;
-        const defId = job.key.slice(`${SCHEDULED_JOB_PREFIX}${envKey}:`.length);
-        if (appProcessIds.has(defId)) {
-          await this.processQueue.removeRepeatableByKey(job.key);
+      if (this.registry) {
+        await this.registry.connect().catch(() => {});
+        const registryMap = await this.registry.hgetall(TRIGGER_REGISTRY_KEY).catch(() => ({}));
+        const envPrefix = `${envKey}:`;
+        for (const [field, repeatJobKey] of Object.entries(registryMap)) {
+          if (!field.startsWith(envPrefix)) continue;
+          const defId = field.slice(envPrefix.length);
+          if (!appProcessIds.has(defId)) continue;
+          await this.processQueue.removeRepeatableByKey(repeatJobKey).catch(() => {});
+          await this.registry.hdel(TRIGGER_REGISTRY_KEY, field).catch(() => {});
         }
+      } else {
+        this.logger.warn('Redis 账本不可用，定时注册清理跳过（多副本部署需配置 REDIS_URL）');
       }
 
       // 2) 注册集 = 活表 PUBLISHED（流程级发布语义，与记录触发同语义源）
@@ -220,28 +253,48 @@ export class TriggerService implements OnModuleInit {
   ): Promise<void> {
     const jobId = `${SCHEDULED_JOB_PREFIX}${envKey}:${processDefId}`;
 
-    try {
-      // 先精确移除本 job 的旧注册（pattern + jobId 组合匹配）
-      await this.processQueue.removeRepeatable('scheduled-trigger', {
-        pattern: cron,
-        jobId,
-      });
-
-      // 注册新的 repeatable job（job data 携带 envKey，触发时直达对应环境）
-      await this.processQueue.add(
-        'scheduled-trigger',
-        { processDefId, type: 'scheduled', envKey },
-        {
+    // P1-04：注册按环境串行化——removeRepeatable 与 add 之间窗口内并发注册
+    // 同一流程会双 cron 并存（串行换 cron 即双注册竞态，实测 49/50 吞注册）
+    const register = async (): Promise<void> => {
+      try {
+        // 先精确移除本 job 的旧注册（pattern + jobId 组合匹配）
+        await this.processQueue.removeRepeatable('scheduled-trigger', {
+          pattern: cron,
           jobId,
-          repeat: { pattern: cron },
-        },
-      );
+        });
 
-      this.logger.log(`定时触发已注册: ${apiName} (env=${envKey} cron=${cron})`);
-    } catch (err) {
-      this.logger.error(
-        `注册定时触发 ${apiName} 失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
+        // 注册新的 repeatable job（job data 携带 envKey，触发时直达对应环境）
+        const job = await this.processQueue.add(
+          'scheduled-trigger',
+          { processDefId, type: 'scheduled', envKey },
+          {
+            jobId,
+            repeat: { pattern: cron },
+          },
+        );
+
+        // 登记账本：BullMQ 5.81 的 repeatable key 是纯 md5 哈希（实测
+        // '746fbc82...'，无 jobId 可读段），removeRepeatableByKey 需要——
+        // 不登记则清理阶段无法定位旧注册（死代码根源）
+        const repeatJobKey = (job as { repeatJobKey?: string } | undefined)?.repeatJobKey;
+        if (repeatJobKey && this.registry) {
+          await this.registry
+            .hset(TRIGGER_REGISTRY_KEY, `${envKey}:${processDefId}`, repeatJobKey)
+            .catch(() => {});
+        }
+
+        this.logger.log(`定时触发已注册: ${apiName} (env=${envKey} cron=${cron})`);
+      } catch (err) {
+        this.logger.error(
+          `注册定时触发 ${apiName} 失败: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    };
+
+    if (this.redisLock) {
+      await this.redisLock.withLock(`trigger-register:${envKey}`, register);
+    } else {
+      await register();
     }
   }
 

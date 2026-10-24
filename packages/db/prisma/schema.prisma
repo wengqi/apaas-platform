@@ -507,6 +507,8 @@ model Record {
   environmentId String @default("prod") @map("environment_id")
   // 业务数据 JSONB：{ "field_api_name": value, ... }
   data      Json     @default("{}")
+  // 乐观锁（P1-02，用户裁决）：条件更新 WHERE version=旧值，冲突 409 提示重试
+  version   Int      @default(1)
   // 创建/更新审计（记录级，data 内不重复存）
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
@@ -843,6 +845,8 @@ model ResourceVersion {
 
 enum ResourceVersionStatus {
   PENDING
+  // P1-03 原子认领中间态：双审并发时后到者 409；落地失败回滚 PENDING 可重试
+  APPROVING
   APPROVED
   REJECTED
   SUPERSEDED

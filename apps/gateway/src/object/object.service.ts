@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { randomUUID } from 'node:crypto';
 import { ChangeLogService } from '../application/changelog.service.js';
@@ -88,6 +88,7 @@ export interface UpdateViewInput {
  */
 @Injectable()
 export class ObjectService {
+  private readonly logger = new Logger(ObjectService.name);
   constructor(private readonly changeLogService: ChangeLogService) {}
 
   // ===========================================================================
@@ -449,6 +450,13 @@ export class ObjectService {
       data: { fields: fields as unknown as object[] },
     });
 
+    // P1-01（对抗审查 R2-correctness-02）：unique 字段建 partial unique index——
+    // 应用层 check-then-write 查重在并发下有竞态窗口（6 并发实测 6×201 全落库），
+    // DB 约束是不变量兜底；P2002 → 409 由全局 PrismaExceptionFilter 翻译。
+    if (newField.unique) {
+      await this.ensureUniqueFieldIndex(objectId, newField.apiName, 'create');
+    }
+
     return newField;
   }
 
@@ -479,6 +487,21 @@ export class ObjectService {
       throw new BadRequestException(`字段 API 名称 "${data.apiName}" 已存在`);
     }
 
+    // P1-09（对抗审查 R1-compat-04，用户裁决=全硬拦）：改名/改类型被引用即 400——
+    // 字段引用以 apiName/字段 id 字符串散落（页面 schema/流程 writeback/权限
+    // condition/其他字段 rollup·sub_form），无传播机制，静默变更即破坏
+    const renaming = data.apiName !== undefined && data.apiName !== existing.apiName;
+    const retyping = data.type !== undefined && data.type !== existing.type;
+    if (renaming || retyping) {
+      await this.assertFieldNotReferenced(
+        tenantId,
+        appId,
+        obj,
+        existing,
+        renaming ? (data.apiName as string) : undefined,
+      );
+    }
+
     const updated: StoredField = {
       ...existing,
       apiName: data.apiName ?? existing.apiName,
@@ -499,6 +522,13 @@ export class ObjectService {
       where: { id: objectId },
       data: { fields: fields as unknown as object[] },
     });
+
+    // P1-01：unique 标志翻转时同步 DDL（false→true 建，true→false 删）
+    if (!existing.unique && updated.unique) {
+      await this.ensureUniqueFieldIndex(objectId, updated.apiName, 'create');
+    } else if (existing.unique && !updated.unique) {
+      await this.ensureUniqueFieldIndex(objectId, updated.apiName, 'drop');
+    }
 
     return updated;
   }
@@ -522,12 +552,130 @@ export class ObjectService {
       throw new BadRequestException('系统字段不可删除');
     }
 
+    // P1-09：删除前引用扫描（rollup/sub_form 按 fieldId、页面/流程/权限按 apiName）
+    await this.assertFieldNotReferenced(tenantId, appId, obj, field, undefined);
+
     const filtered = fields.filter((f) => f.id !== fieldId);
+
+    if (field.unique) {
+      await this.ensureUniqueFieldIndex(objectId, field.apiName, 'drop');
+    }
 
     await prisma.objectMeta.update({
       where: { id: objectId },
       data: { fields: filtered as unknown as object[] },
     });
+  }
+
+  /**
+   * 字段引用扫描（P1-09）：命中任一引用即 400 并列出清单——先改引用再改字段。
+   * 扫描面：① 同对象/其他对象字段 config 的 fieldId 引用（rollup.relationFieldId/
+   * rollup.targetFieldId/sub_form.parentFieldId）；② 页面 schema 文本含 `"apiName"`；
+   * ③ 流程 workflowSchema 文本（writeback/条件/通知插值）；④ 权限 condition 文本。
+   * 文本含词匹配（带引号）避免同名子串误报；字段变更是低频操作，全量扫描可接受。
+   *
+   * @param newApiName 改名场景的新 apiName——同时检查新名与既有字段的 apiName 冲突
+   */
+  private async assertFieldNotReferenced(
+    tenantId: string,
+    appId: string,
+    object: { id: string; fields: unknown },
+    field: { id: string; apiName: string; label: string },
+    newApiName: string | undefined,
+  ): Promise<void> {
+    const refs: string[] = [];
+
+    // ① 字段 config 的 fieldId 引用（同对象其他字段 + 全应用其他对象）
+    const scanFields = (
+      ownerName: string,
+      fields: Array<{ id: string; label?: string; apiName: string; config: unknown }>,
+    ) => {
+      for (const f of fields) {
+        if (f.id === field.id) continue;
+        const cfg = (f.config ?? {}) as {
+          rollup?: { relationFieldId?: string; targetFieldId?: string };
+          subForm?: { parentFieldId?: string };
+        };
+        if (
+          cfg.rollup &&
+          (cfg.rollup.relationFieldId === field.id || cfg.rollup.targetFieldId === field.id)
+        ) {
+          refs.push(`对象「${ownerName}」字段「${f.label || f.apiName}」（rollup 聚合引用）`);
+        }
+        if (cfg.subForm?.parentFieldId === field.id) {
+          refs.push(`对象「${ownerName}」字段「${f.label || f.apiName}」（子表父字段）`);
+        }
+      }
+    };
+    scanFields('本对象', this.parseFields(object.fields));
+    const siblings = await prisma.objectMeta.findMany({
+      where: { tenantId, appId, id: { not: object.id } },
+      select: { id: true, name: true, fields: true },
+    });
+    for (const s of siblings) {
+      scanFields(s.name, this.parseFields(s.fields));
+    }
+
+    // ② 页面 schema / ③ 流程 writeback / ④ 权限 condition：按 apiName 文本含词匹配
+    const needle = `"${field.apiName}"`;
+    const pages = await prisma.pageMeta.findMany({
+      where: { tenantId, appId },
+      select: { id: true, name: true, schema: true },
+    });
+    for (const p of pages) {
+      if (JSON.stringify(p.schema ?? {}).includes(needle)) {
+        refs.push(`页面「${p.name}」`);
+      }
+    }
+    const procs = await prisma.processDef.findMany({
+      where: { tenantId, appId, status: { not: 'ARCHIVED' } },
+      select: { id: true, name: true, workflowSchema: true },
+    });
+    for (const p of procs) {
+      if (JSON.stringify(p.workflowSchema ?? {}).includes(needle)) {
+        refs.push(`流程「${p.name}」`);
+      }
+    }
+    const rules = await prisma.permissionRule.findMany({
+      where: { tenantId },
+      select: { id: true, type: true, targetId: true, condition: true },
+    });
+    for (const r of rules) {
+      if (JSON.stringify(r.condition ?? {}).includes(needle)) {
+        refs.push(`权限规则（${r.type}/${r.targetId ?? '租户级'}）`);
+      }
+    }
+
+    if (refs.length > 0) {
+      throw new BadRequestException(
+        `字段「${field.label}」（${field.apiName}）被 ${refs.length} 处引用，无法${newApiName !== undefined ? '改名' : '删除/变更'}：${refs.join('；')}。请先解除这些引用后再操作。`,
+      );
+    }
+  }
+
+  /**
+   * 维护 unique 字段的 partial unique index（P1-01）。
+   *
+   * 形态：records (tenant_id, object_id, (data->>'<apiName>')) 唯一，
+   * WHERE 字段值非空——多值可空、租户与对象域内唯一。
+   * 索引标识符不可参数化，经 $executeRawUnsafe 拼接：objectId 为系统 cuid、
+   * apiName 经 ^[a-z0-9_]+$ 白名单校验（与字段创建校验同口径），两者均无注入面。
+   */
+  private async ensureUniqueFieldIndex(
+    objectId: string,
+    apiName: string,
+    action: 'create' | 'drop',
+  ): Promise<void> {
+    if (!/^[a-z0-9_]+$/.test(apiName)) {
+      this.logger.warn(`apiName 不符合索引标识符白名单，跳过 unique 索引维护: ${apiName}`);
+      return;
+    }
+    const indexName = `records_uq_${objectId}_${apiName}`;
+    const sql =
+      action === 'create'
+        ? `CREATE UNIQUE INDEX IF NOT EXISTS "${indexName}" ON records (tenant_id, object_id, (data->>'${apiName}')) WHERE (data->>'${apiName}') IS NOT NULL`
+        : `DROP INDEX IF EXISTS "${indexName}"`;
+    await prisma.$executeRawUnsafe(sql);
   }
 
   // ===========================================================================

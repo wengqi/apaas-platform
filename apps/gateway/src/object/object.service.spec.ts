@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ObjectService } from './object.service.js';
-import { getMockPrisma } from '../test/test-helpers.js';
+import { getMockPrisma, getMockExecuteRawUnsafe } from '../test/test-helpers.js';
 
 function createMockChangeLogService() {
   return { log: vi.fn().mockResolvedValue(undefined) };
@@ -197,6 +197,167 @@ describe('ObjectService', () => {
   // =========================================================================
   // delete — 4 道引用校验
   // =========================================================================
+
+  it('P1-01：unique 字段新增时建 partial unique index（check-then-write 竞态的 DB 兜底）', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
+    const { service } = createService();
+
+    await service.addField('tenant-001', 'app-001', 'obj-001', {
+      apiName: 'email',
+      label: '邮箱',
+      type: 'text',
+      unique: true,
+    } as never);
+
+    const raw = getMockExecuteRawUnsafe();
+    expect(raw).toHaveBeenCalledTimes(1);
+    const text = String(raw.mock.calls[0]![0]);
+    expect(text).toContain('CREATE UNIQUE INDEX IF NOT EXISTS');
+    expect(text).toContain("data->>'email'");
+    expect(text).toContain('IS NOT NULL');
+  });
+
+  it('P1-01：unique 撤销（true→false）时删索引', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(
+      makeObject({
+        fields: [
+          {
+            id: 'f1',
+            apiName: 'email',
+            label: '邮箱',
+            type: 'text',
+            unique: true,
+            config: {},
+            isSystem: false,
+          },
+        ],
+      }),
+    );
+    const { service } = createService();
+
+    await service.updateField('tenant-001', 'app-001', 'obj-001', 'f1', { unique: false });
+
+    const raw = getMockExecuteRawUnsafe();
+    expect(raw).toHaveBeenCalledTimes(1);
+    expect(String(raw.mock.calls[0]![0])).toContain('DROP INDEX IF EXISTS');
+  });
+
+  it('P1-01：非 unique 字段零 DDL', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
+    const { service } = createService();
+
+    await service.addField('tenant-001', 'app-001', 'obj-001', {
+      apiName: 'note',
+      label: '备注',
+      type: 'text',
+    } as never);
+
+    expect(getMockExecuteRawUnsafe()).not.toHaveBeenCalled();
+  });
+
+  it('P1-09：改名被页面 schema 引用时硬拦并列出引用', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(
+      makeObject({
+        fields: [
+          {
+            id: 'f1',
+            apiName: 'old_name',
+            label: '旧名',
+            type: 'text',
+            config: {},
+            isSystem: false,
+          },
+        ],
+      }),
+    );
+    prisma.pageMeta.findMany.mockResolvedValue([
+      {
+        id: 'page-1',
+        name: '台账页',
+        schema: { fields: ['old_name'], columns: [{ dataIndex: 'old_name' }] },
+      },
+    ]);
+
+    const { service } = createService();
+    await expect(
+      service.updateField('tenant-001', 'app-001', 'obj-001', 'f1', { apiName: 'new_name' }),
+    ).rejects.toThrow(/台账页/);
+    // 硬拦后元数据不得变更
+    expect(prisma.objectMeta.update).not.toHaveBeenCalled();
+  });
+
+  it('P1-09：删除字段被同对象 rollup 引用时硬拦', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(
+      makeObject({
+        fields: [
+          {
+            id: 'f-rel',
+            apiName: 'items_ref',
+            label: '明细引用',
+            type: 'lookup',
+            config: { lookup: { targetObjectId: 'x' } },
+            isSystem: false,
+          },
+          {
+            id: 'f-rollup',
+            apiName: 'total',
+            label: '合计',
+            type: 'rollup',
+            config: { rollup: { relationFieldId: 'f-rel', aggregate: 'sum' } },
+            isSystem: false,
+          },
+          {
+            id: 'f-target',
+            apiName: 'plain',
+            label: '普通',
+            type: 'text',
+            config: {},
+            isSystem: false,
+          },
+        ],
+      }),
+    );
+    prisma.pageMeta.findMany.mockResolvedValue([]);
+
+    const { service } = createService();
+    await expect(service.deleteField('tenant-001', 'app-001', 'obj-001', 'f-rel')).rejects.toThrow(
+      /rollup/,
+    );
+    expect(prisma.objectMeta.update).not.toHaveBeenCalled();
+
+    // 无引用字段正常删除
+    await expect(
+      service.deleteField('tenant-001', 'app-001', 'obj-001', 'f-target'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('P1-09：改名被流程 writeback/权限 condition 引用时硬拦（列出来源）', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue(
+      makeObject({
+        fields: [
+          { id: 'f1', apiName: 'status', label: '状态', type: 'text', config: {}, isSystem: false },
+        ],
+      }),
+    );
+    prisma.pageMeta.findMany.mockResolvedValue([]);
+    prisma.processDef.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        name: '审批流',
+        workflowSchema: {
+          nodes: [{ id: 'n1', type: 'user_task', data: { writeback: { field: 'status' } } }],
+        },
+      },
+    ]);
+    prisma.permissionRule.findMany.mockResolvedValue([
+      { id: 'r1', name: '行级规则', condition: { '==': [{ var: 'status' }, 'approved'] } },
+    ]);
+
+    const { service } = createService();
+    await expect(
+      service.updateField('tenant-001', 'app-001', 'obj-001', 'f1', { apiName: 'state' }),
+    ).rejects.toThrow(/审批流|行级规则/);
+  });
 
   describe('delete', () => {
     beforeEach(() => {

@@ -731,51 +731,70 @@ export class ProcessEngine {
           // 依次审批任一环节拒绝：直接按驳回推进
           this.logger.log(`依次审批节点 ${task.nodeId} 发生拒绝，驳回`);
         } else {
-          // 进度真值 = 节点变量 sequentialIndex（当前完成人的下标+1 指向下一位），
-          // 不用任务行计数（驳回重跳/加签会产生历史任务导致计数失真）。
-          // 语义：sequentialIndex 指向"当前在审/刚审完"的人；approve 后 +1 指向下一人。
-          const nodeScope =
-            ((task.instance.variables as Record<string, unknown> | null)?.[task.nodeId] as
-              Record<string, unknown> | undefined) ?? {};
-          const currentIdx =
-            typeof nodeScope['sequentialIndex'] === 'number'
-              ? (nodeScope['sequentialIndex'] as number)
-              : 0;
-          const nextIndex = currentIdx + 1;
-          if (nextIndex < approveUsers.length) {
-            // 未到最后一人：推进进度下标，生成下一人任务
-            const seqVars = (task.instance.variables as Record<string, unknown>) ?? {};
-            await prisma.processInstance.update({
-              where: { id: task.instance.id },
-              data: {
-                variables: {
-                  ...seqVars,
-                  [task.nodeId]: { ...nodeScope, sequentialIndex: nextIndex },
-                } as Prisma.InputJsonValue,
-              },
-            });
-            await prisma.processTask.create({
-              data: {
-                tenantId: task.tenantId,
-                instanceId: task.instanceId,
-                nodeExecutionId: task.nodeExecutionId,
-                nodeId: task.nodeId,
-                taskName: task.taskName,
-                assignee: approveUsers[nextIndex]!,
-                candidateGroups: [],
-                status: 'PENDING',
-              },
-            });
-            this.logger.log(
-              `依次审批节点 ${task.nodeId} 进入第 ${nextIndex + 1}/${approveUsers.length} 人`,
-            );
-            // P1-14（对抗审查 R1-correctness-03）：第 2..N 环补挂超时 job。
-            // 第 1 环完成时 remainingPending=0 已触发 cancelTaskTimeout 移除批次 job，
-            // 下一环任务直连 create 不经执行器——不重挂则超时动作对 2..N 环静默失效。
-            // 与 user-task 执行器同口径（dueDate×dueUnit→delayMs，jobId 按批次幂等）。
-            await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextIndex);
-            return;
-          }
+          // P1-06（对抗审查 R1-correctness-09）：推进动作入实例锁——此前读进度、
+          // 写变量、create 下一环任务全部锁外直连，与 cancelProcess 并发时对已
+          // TERMINATED 实例仍生成 PENDING 任务（实测 7/20 幽灵任务）。
+          // 对齐主审批路径：withInstanceLock + 锁内重载实例（B2）+ 状态校验（P1-2）。
+          const progressed = await this.withInstanceLock(
+            task.instance.id,
+            async (): Promise<boolean> => {
+              const fresh = await prisma.processInstance.findFirst({
+                where: { id: task.instance.id },
+              });
+              if (!fresh) throw new NotFoundException('流程实例不存在或已被删除');
+              if (fresh.status !== 'RUNNING' && fresh.status !== 'WAITING_USER_TASK') {
+                await prisma.processTask
+                  .updateMany({
+                    where: { id: taskId, status: taskStatus },
+                    data: { status: 'CANCELLED', completedAt: new Date() },
+                  })
+                  .catch(() => {});
+                throw new ConflictException(
+                  `流程实例已${fresh.status === 'TERMINATED' ? '取消' : '结束'}，任务作废`,
+                );
+              }
+
+              // 进度真值 = 节点变量 sequentialIndex（当前完成人的下标+1 指向下一位），
+              // 不用任务行计数（驳回重跳/加签会产生历史任务导致计数失真）。
+              const seqVars = (fresh.variables as Record<string, unknown>) ?? {};
+              const nodeScope = (seqVars[task.nodeId] as Record<string, unknown> | undefined) ?? {};
+              const currentIdx =
+                typeof nodeScope['sequentialIndex'] === 'number'
+                  ? (nodeScope['sequentialIndex'] as number)
+                  : 0;
+              const nextIndex = currentIdx + 1;
+              if (nextIndex >= approveUsers.length) return false; // 最后一人 → 落到主推进
+
+              await prisma.processInstance.update({
+                where: { id: task.instance.id },
+                data: {
+                  variables: {
+                    ...seqVars,
+                    [task.nodeId]: { ...nodeScope, sequentialIndex: nextIndex },
+                  } as Prisma.InputJsonValue,
+                },
+              });
+              await prisma.processTask.create({
+                data: {
+                  tenantId: task.tenantId,
+                  instanceId: task.instanceId,
+                  nodeExecutionId: task.nodeExecutionId,
+                  nodeId: task.nodeId,
+                  taskName: task.taskName,
+                  assignee: approveUsers[nextIndex]!,
+                  candidateGroups: [],
+                  status: 'PENDING',
+                },
+              });
+              this.logger.log(
+                `依次审批节点 ${task.nodeId} 进入第 ${nextIndex + 1}/${approveUsers.length} 人`,
+              );
+              // P1-14（对抗审查 R1-correctness-03）：第 2..N 环补挂超时 job（环号代次）。
+              await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextIndex);
+              return true;
+            },
+          );
+          if (progressed) return;
           // 最后一人 approved → 落到下方正常推进
           this.logger.log(`依次审批节点 ${task.nodeId} 全部 ${approveUsers.length} 人通过`);
         }

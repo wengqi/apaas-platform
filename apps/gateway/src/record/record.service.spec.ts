@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { FieldType } from '@apaas/shared';
 import { RecordService } from './record.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
@@ -385,6 +385,38 @@ describe('RecordService', () => {
       expect(result.data.total).toBe(300);
     });
 
+    it('P1-10：计算顺序按依赖方向——Rollup 先于 Formula（公式可引用 rollup 字段）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f-rollup',
+              apiName: 'total_amount',
+              type: FieldType.Rollup,
+              config: {
+                rollup: { relationFieldId: 'f-rel', targetFieldId: 'x', aggregate: 'sum' },
+              },
+            },
+            {
+              id: 'f-formula',
+              apiName: 'tax',
+              type: FieldType.Formula,
+              config: { formula: '{{total_amount * 0.1}}', returnType: 'Number' },
+            },
+          ],
+        }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service, formulaEngine, rollupService } = createService();
+
+      await service.create('tenant-001', 'obj-001', 'user-001', {});
+
+      // rollup 计算必须先于 formula 计算（formula 引用 rollup 字段才拿得到新值）
+      const rollupOrder = rollupService.computeRollupFields.mock.invocationCallOrder[0]!;
+      const formulaOrder = formulaEngine.computeRecordFields.mock.invocationCallOrder[0]!;
+      expect(rollupOrder).toBeLessThan(formulaOrder);
+    });
+
     it('创建后触发 onRecordEvent(created)', async () => {
       prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta());
       prisma.record.create.mockResolvedValue(makeRecord());
@@ -557,6 +589,41 @@ describe('RecordService', () => {
   // =========================================================================
 
   describe('update', () => {
+    it('P1-02：更新走乐观锁条件更新（WHERE version=旧值 + version 递增）', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: '旧名' }, version: 3, object: { fields: [] } }),
+      );
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(makeRecord({ data: { name: '新名' } }));
+
+      const { service } = createService();
+      await service.update('tenant-001', 'rec-001', 'user-001', { name: '新名' });
+
+      expect(prisma.record.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: 'rec-001', version: 3 }),
+          data: expect.objectContaining({ version: { increment: 1 } }),
+        }),
+      );
+    });
+
+    it('P1-02：版本冲突（updateMany 命中 0 行）→ 409 提示刷新重试', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: '旧名' }, version: 3, object: { fields: [] } }),
+      );
+      // 他人先一步更新，version 已推进 → 条件更新命中 0 行
+      prisma.record.updateMany.mockResolvedValue({ count: 0 });
+
+      const { service } = createService();
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { name: '新名' }),
+      ).rejects.toThrow(ConflictException);
+
+      // 冲突时不得以陈旧快照覆盖写入
+      expect(prisma.record.update).not.toHaveBeenCalled();
+    });
+
     it('记录不存在时抛出 NotFoundException', async () => {
       prisma.record.findFirst.mockResolvedValue(null);
       const { service } = createService();
@@ -601,7 +668,8 @@ describe('RecordService', () => {
       prisma.record.findFirst.mockResolvedValue(
         makeRecord({ data: {}, object: { fields } }), // 历史数据缺 name
       );
-      prisma.record.update.mockResolvedValue(makeRecord({ data: { remark: 'x' } }));
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(makeRecord({ data: { remark: 'x' } }));
       const { service } = createService();
 
       await expect(
@@ -616,7 +684,8 @@ describe('RecordService', () => {
       prisma.record.findFirst
         .mockResolvedValueOnce(makeRecord({ data: { name: '我自己的名字' }, object: { fields } })) // 取 existing
         .mockResolvedValueOnce(null); // unique 查重 → 无重复
-      prisma.record.update.mockResolvedValue(makeRecord({ data: { name: '我自己的名字' } }));
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(makeRecord({ data: { name: '我自己的名字' } }));
       const { service } = createService();
 
       await service.update('tenant-001', 'rec-001', 'user-001', { name: '我自己的名字' });
@@ -634,7 +703,8 @@ describe('RecordService', () => {
           },
         }),
       );
-      prisma.record.update.mockResolvedValue(
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(
         makeRecord({ data: { name: 'New', order_no: 'ORD-0001' } }),
       );
 
@@ -664,7 +734,7 @@ describe('RecordService', () => {
       // order_no 应保持原值
       expect(result.data.order_no).toBe('ORD-0001');
       // update 调用中的 data 不应包含 order_no=ORD-9999
-      const updateCall = prisma.record.update.mock.calls[0]![0];
+      const updateCall = prisma.record.updateMany.mock.calls[0]![0];
       expect((updateCall.data.data as Record<string, unknown>).order_no).not.toBe('ORD-9999');
     });
 
@@ -675,7 +745,8 @@ describe('RecordService', () => {
           object: { fields: [] },
         }),
       );
-      prisma.record.update.mockResolvedValue(makeRecord({ data: { name: 'New' } }));
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(makeRecord({ data: { name: 'New' } }));
 
       const { service, triggerService } = createService();
       await service.update('tenant-001', 'rec-001', 'user-001', { name: 'New' });
@@ -706,7 +777,8 @@ describe('RecordService', () => {
           },
         }),
       );
-      prisma.record.update.mockResolvedValue(
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(
         makeRecord({ data: { price: 100, quantity: 5, total: 500 } }),
       );
 
@@ -725,7 +797,8 @@ describe('RecordService', () => {
       prisma.record.findFirst.mockResolvedValue(
         makeRecord({ data: { name: 'Old' }, object: { fields: [] } }),
       );
-      prisma.record.update.mockResolvedValue(makeRecord({ data: { name: 'New' } }));
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(makeRecord({ data: { name: 'New' } }));
 
       const { service } = createService();
       const permissionContext = {
@@ -745,7 +818,8 @@ describe('RecordService', () => {
       prisma.record.findFirst.mockResolvedValue(
         makeRecord({ data: { name: 'Old', status: 'active' }, object: { fields: [] } }),
       );
-      prisma.record.update.mockResolvedValue(
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(
         makeRecord({ data: { name: 'New', status: 'active' } }),
       );
 
@@ -764,7 +838,7 @@ describe('RecordService', () => {
       );
 
       // status 不在 fieldScope 内，不应被写入
-      const updateCall = prisma.record.update.mock.calls[0]![0];
+      const updateCall = prisma.record.updateMany.mock.calls[0]![0];
       const writtenData = updateCall.data.data as Record<string, unknown>;
       expect(writtenData.name).toBe('New');
       expect(writtenData.status).toBe('active');

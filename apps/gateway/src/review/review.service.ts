@@ -11,7 +11,13 @@
  * - 批/驳全量审计 + 通知（待审→审核者；批/驳→提交者）
  */
 
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { prisma } from '@apaas/db';
 import type {
   ResourceDiff,
@@ -550,62 +556,72 @@ export class ReviewService {
       }
     }
 
-    const appliedEntityId = await this.snapshotService.applySnapshot(
-      tenantId,
-      appId,
-      module,
-      snapshot,
-      row.entityId,
-      `review:${reviewerId}`,
-    );
+    await this.claimPending(tenantId, appId, row.id);
 
-    // 基线归一化（实测缺陷 2026-10-05）：落地时解析了 @ref: 令牌（活表存真实 ID），
-    // 若基线快照保留令牌形态，同资源二次 AI 提交的漂移检查必然误报
-    // （活表真实 ID ≠ 基线令牌）。基线必须等于落地形态：重新提取活表回写快照。
     try {
-      const applied = await this.snapshotService.extractLive(
+      const appliedEntityId = await this.snapshotService.applySnapshot(
         tenantId,
         appId,
         module,
-        appliedEntityId,
+        snapshot,
+        row.entityId,
+        `review:${reviewerId}`,
       );
-      if (applied) {
-        await prisma.resourceVersion.update({
-          where: { id: row.id },
-          data: { snapshot: applied.snapshot as object },
-        });
-        row.snapshot = applied.snapshot as ResourceVersionRow['snapshot'];
+
+      // 基线归一化（实测缺陷 2026-10-05）：落地时解析了 @ref: 令牌（活表存真实 ID），
+      // 若基线快照保留令牌形态，同资源二次 AI 提交的漂移检查必然误报
+      // （活表真实 ID ≠ 基线令牌）。基线必须等于落地形态：重新提取活表回写快照。
+      try {
+        const applied = await this.snapshotService.extractLive(
+          tenantId,
+          appId,
+          module,
+          appliedEntityId,
+        );
+        if (applied) {
+          await prisma.resourceVersion.update({
+            where: { id: row.id },
+            data: { snapshot: applied.snapshot as object },
+          });
+          row.snapshot = applied.snapshot as ResourceVersionRow['snapshot'];
+        }
+      } catch (err) {
+        this.logger.warn(`基线归一化失败（不影响批准结果）: ${row.id} ${(err as Error).message}`);
       }
+
+      const updated = await prisma.resourceVersion.update({
+        where: { id: row.id },
+        data: {
+          status: 'APPROVED',
+          entityId: appliedEntityId,
+          reviewedBy: reviewerId,
+          reviewedAt: new Date(),
+          reviewComment: opts?.comment ?? null,
+        },
+      });
+
+      writeAudit({
+        tenantId,
+        userId: reviewerId,
+        action: 'REVIEW_APPROVE',
+        resource: module,
+        resourceId: row.id,
+        appId,
+        detail: {
+          apiName: row.apiName,
+          source: row.source,
+          versionNumber: row.versionNumber,
+          forced: opts?.force === true,
+        },
+      });
+      return this.toDto(updated as ResourceVersionRow, null);
     } catch (err) {
-      this.logger.warn(`基线归一化失败（不影响批准结果）: ${row.id} ${(err as Error).message}`);
+      // P1-03：落地失败回滚认领态，提交单可重试（APPROVING 卡死比失败更糟）
+      await prisma.resourceVersion
+        .updateMany({ where: { id: row.id, status: 'APPROVING' }, data: { status: 'PENDING' } })
+        .catch(() => {});
+      throw err;
     }
-
-    const updated = await prisma.resourceVersion.update({
-      where: { id: row.id },
-      data: {
-        status: 'APPROVED',
-        entityId: appliedEntityId,
-        reviewedBy: reviewerId,
-        reviewedAt: new Date(),
-        reviewComment: opts?.comment ?? null,
-      },
-    });
-
-    writeAudit({
-      tenantId,
-      userId: reviewerId,
-      action: 'REVIEW_APPROVE',
-      resource: module,
-      resourceId: row.id,
-      appId,
-      detail: {
-        apiName: row.apiName,
-        source: row.source,
-        versionNumber: row.versionNumber,
-        forced: opts?.force === true,
-      },
-    });
-    return this.toDto(updated as ResourceVersionRow, null);
   }
 
   /** 驳回：意见必填，回传提交者（agent 自修正闭环的人类反馈入口）。 */
@@ -1057,6 +1073,21 @@ export class ReviewService {
       throw new BadRequestException(`提交单已处理（${row.status}），不能重复审批`);
     }
     return row;
+  }
+
+  /**
+   * 原子认领 PENDING 提交单（P1-03，对抗审查 R1-correctness-10/R2-correctness-04）：
+   * UPDATE ... WHERE status='PENDING' 期待 1 行——双审并发时只有先到者拿到，
+   * 后到者 409，不再双 201 双审计。认领态 APPROVING：落地失败时回滚 PENDING 可重试。
+   */
+  private async claimPending(tenantId: string, appId: string, submissionId: string): Promise<void> {
+    const claimed = await prisma.resourceVersion.updateMany({
+      where: { id: submissionId, tenantId, appId, status: 'PENDING' },
+      data: { status: 'APPROVING' },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException('提交单已被处理（并发审批），请刷新后查看结果');
+    }
   }
 
   private async createVersion(

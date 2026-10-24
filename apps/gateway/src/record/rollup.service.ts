@@ -17,6 +17,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { FieldType } from '@apaas/shared';
+import { FormulaEngine } from '../object/formula-engine.js';
 
 /** Rollup 字段配置（与 @apaas/shared FieldConfig 的 Rollup 分支一致）。 */
 interface RollupFieldConfig {
@@ -46,6 +47,8 @@ interface FieldView {
 
 @Injectable()
 export class RollupService {
+  constructor(private readonly formulaEngine: FormulaEngine) {}
+
   private readonly logger = new Logger(RollupService.name);
 
   // ===========================================================================
@@ -375,8 +378,16 @@ export class RollupService {
     return rows.map((r) => r.id);
   }
 
-  /** 重算单条父记录的全部 Rollup 字段并持久化。 */
-  private async recomputeOneParent(
+  /**
+   * 重算单条父记录的计算字段（Rollup + Formula）并定向持久化。
+   *
+   * P1-05（用户裁决=字段定向写）：只 merge 计算字段（`data = data || $1::jsonb`），
+   * 永不整份写回——旧实现以读时快照整份 update，并发人工修改的业务字段会被
+   * 「业务字段陈旧 + 聚合字段新鲜」的混合副本无痕覆盖。
+   * P1-10：rollup 先算，随后在同一份视图上补 formula 重算——公式引用 rollup
+   * 字段时不再滞后一拍。
+   */
+  async recomputeOneParent(
     tenantId: string,
     parentObjectId: string,
     parentFields: FieldView[],
@@ -397,12 +408,22 @@ export class RollupService {
     );
     if (Object.keys(rollupResults).length === 0) return;
 
-    const mergedData = { ...recordData, ...rollupResults };
-    const updated = await prisma.record.updateMany({
-      where: { id: parentRecordId, tenantId },
-      data: { data: mergedData as Prisma.InputJsonValue },
-    });
-    if (updated.count === 0) {
+    const mergedView = { ...recordData, ...rollupResults };
+    const formulaResults = this.formulaEngine.computeRecordFields(
+      parentFields as unknown as import('@apaas/shared').Field[],
+      mergedView,
+    );
+
+    // 定向 patch：仅计算字段（rollup ∪ formula），不含任何业务字段
+    const patch = { ...rollupResults, ...formulaResults };
+    const updated = await prisma.$executeRaw`
+      UPDATE records SET data = data || ${JSON.stringify(patch)}::jsonb
+      WHERE id = ${parentRecordId} AND tenant_id = ${tenantId}
+    `;
+    // $executeRaw 返回受影响行数（number）；兼容对象形态防御
+    const affected =
+      typeof updated === 'number' ? updated : ((updated as { count?: number }).count ?? 0);
+    if (affected === 0) {
       this.logger.warn(`父记录 ${parentRecordId} Rollup 重算回写失败（记录不存在）`);
     }
   }

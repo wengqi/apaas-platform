@@ -79,11 +79,17 @@ const delegates: Record<string, Record<string, ReturnType<typeof vi.fn>>> = {};
 const queryRawUnsafeFn = vi.fn();
 /** $queryRaw mock（tagged template 参数化 raw SQL；对抗审查 P0-8 跨环境守卫统计消费） */
 const queryRawFn = vi.fn().mockResolvedValue([{ count: 0 }]);
+/** $executeRawUnsafe mock（P1-01 unique 字段 DDL 管理：索引标识符不可参数化） */
+const executeRawUnsafeFn = vi.fn().mockResolvedValue(0);
+/** $executeRaw mock（tagged template 参数化 SQL；P1-05 Rollup 字段定向写消费） */
+const executeRawFn = vi.fn().mockResolvedValue({ count: 1 });
 
 const mockPrisma = new Proxy({} as Record<string, unknown>, {
   get(_target, prop: string) {
     if (prop === '$transaction') return transactionFn;
     if (prop === '$queryRawUnsafe') return queryRawUnsafeFn;
+    if (prop === '$executeRawUnsafe') return executeRawUnsafeFn;
+    if (prop === '$executeRaw') return executeRawFn;
     if (prop === '$queryRaw') return queryRawFn;
     if (!delegates[prop]) delegates[prop] = createDelegate(prop);
     return delegates[prop]!;
@@ -127,6 +133,8 @@ const slowQueryHandlers = new Set<(info: unknown) => void>();
 (globalThis as Record<string, unknown>).__mockPrisma = mockPrisma;
 (globalThis as Record<string, unknown>).__mockTransactionFn = transactionFn;
 (globalThis as Record<string, unknown>).__mockQueryRawUnsafe = queryRawUnsafeFn;
+(globalThis as Record<string, unknown>).__mockExecuteRawUnsafe = executeRawUnsafeFn;
+(globalThis as Record<string, unknown>).__mockExecuteRaw = executeRawFn;
 (globalThis as Record<string, unknown>).__mockQueryRaw = queryRawFn;
 
 // ---------------------------------------------------------------------------
@@ -141,6 +149,12 @@ beforeEach(() => {
   }
   // 重置 $queryRawUnsafe（G5 数据流 SQL 路径）
   queryRawUnsafeFn.mockReset();
+  // 重置 $executeRawUnsafe（P1-01 unique 字段 DDL 路径）
+  executeRawUnsafeFn.mockReset();
+  executeRawUnsafeFn.mockResolvedValue(0);
+  // 重置 $executeRaw（P1-05 字段定向写路径）
+  executeRawFn.mockReset();
+  executeRawFn.mockResolvedValue({ count: 1 });
   // 重置 $queryRaw 并恢复默认（无记录）
   queryRawFn.mockReset();
   queryRawFn.mockResolvedValue([{ count: 0 }]);

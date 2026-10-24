@@ -375,6 +375,18 @@
 | TC-231 | ProcessTask 查询索引 | P1 | process_tasks 表有量级 | ① 任务中心按 candidateGroups 过滤 ② 超时路径按 nodeExecutionId 查 ③ EXPLAIN | ①③ GIN(candidateGroups) + b-tree(node_execution_id) 命中（旧 schema 仅 4 索引，两查询全租户/全表扫） | 迁移 20261024164942（schema 声明一致） | P1-20（R2-scale-07）：纯索引迁移，行为零变化 |
 | TC-232 | 权限决策缓存与失效 | P1 | 用户角色映射已缓存 | ① 同用户重复决策 ② 角色绑定变更后 ③ 组织/授权变更后 ④ TTL 过期 ⑤ 对照：PERMISSION_CACHE_TTL_MS=0 | ① 角色查询只发一次 DB ② 该用户缓存失效重查（撤权即时生效）③ 租户级失效全部重查 ④ 过期重查 ⑤ 等价零缓存 | permission.service.spec.ts（4 例：命中/单用户失效/租户失效/TTL） | P1-21（R2-scale-05，用户裁决=TTL+主动失效）：进程内缓存，多副本失效窗口=TTL 收敛（注释声明语义边界）；失效接线 role/user/org/tenant/directory-sync 五写路径 |
 
+### U. 对抗审查 P1 波次③第二批 性能（TC-233~237，2026-10-25）
+
+> 来源：P1 工单波次③第二批。裁决：P1-17/18/24 三处 SQL 下推全做。
+
+| 编号 | 用例标题 | 优先级 | 前置条件 | 测试步骤 | 预期结果 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-233 | 图表聚合 SQL 下推 | P1 | 对象源 >1 万行 | ① sum 标量聚合 ② 按 categoryField 分组 count ③ filter 下推 ④ ABAC 条件/时间分桶/dataset 源对照 | ① DB 内聚合（GROUP BY+守卫 cast+COUNT OVER 全量），不再拉 1 万行内存（旧 take 无 orderBy 截断——实测 sum=10000/真值 12000）② 分组精确 ③ filter 可译则 WHERE ④ 保留内存路径（权限语义优先/时间分桶/数据集体量受物化约束） | chart-data.service.spec.ts（5 例：SQL 形态/适配/filter/三保留路径）+ 端到端实测（sum=995 与 PG 真值精确吻合） | P1-17（R1-scale-05+R2-scale-08，用户裁决=SQL 下推）；**实测踩坑两枚**：tenantId 内联被 PG 当列名 42703（值一律参数绑定）、标量 GROUP BY 常量 42601（无 categoryField 省 GROUP BY）——单测 mock 咬不出，端到端实测必做 |
+| TC-234 | 业务字段排序 SQL 下推 | P1 | 业务字段排序 + filter/ABAC 条件 | ① filter 含比较（不可 containment）排序查询 ② keyword 搜索排序对照 ③ 深翻页 | ① filter+ABAC 的 JsonLogic 原文经 translateJsonLogicToSql 下推——ORDER BY cast+LIMIT/OFFSET+COUNT 全 DB 完成（旧回退只取最新 5000 候选，6003 条实测 1003 条不可达且 total 谎报）② keyword（Prisma contains 形态）保底内存候选 ③ 全量可达 | record.service.spec.ts（2 例：SQL 形态+keyword 保底）+ 端到端实测（total=251、desc 首 5=7） | P1-18（R1-scale-04+R2-scale-06，用户裁决=排序下推）；域过滤 $1/$2/$3 参数化，filter/cond 翻译参数位顺延 |
+| TC-235 | rollup 数值聚合 SQL 下推 | P1 | 父对象 rollup 字段引用子记录数值字段 | ① B 记录引用 3 条 A（amount 7×3）创建 ② A 行 7→1 变更 | ① B.total_amount=21（SQL SUM 守卫 cast+id ANY，不再拉子记录行——旧 44→99ms@3000 行线性劣化、批量导入 O(N²)）② 反算 B=15（7+7+1）精确；SQL 失败回退内存路径 | rollup.service.spec.ts（3 例：lookup SUM/sub_form COUNT/回退防御）+ 端到端实测（21/15 精确） | P1-24（R2-scale-03，用户裁决=数值聚合下推）：空组语义与内存一致（count/sum→0，avg/min/max→null） |
+| TC-236 | CSV 导出 total 一次算+游标分页 | P1 | 对象 250 行 | ① 导出计时 ② 观察查询模式 | ① 首页 query 含唯一一次 count，后续页 queryCursorPage 游标取行（id>，零 count）——O(N²/100) 消除；分块 stringify 降峰值 ② 250+1 行完整（实测 0.05s） | record-import-export.service.spec.ts（P1-22：query×1+cursor×2 断言） | P1-22（R2-scale-09）导出侧；导入侧并行由 TC-237 batchCreate 覆盖 |
+| TC-237 | batchCreate 有界并行+后台预算 | P1 | 批量导入 250 行 | ① batch-create 250 行计时 ② 错误行对照 | ① 并发峰值 ∈（1,4]（BATCH_CREATE_CONCURRENCY 预算，每行仍独立事务），250 行实测 0.6s ② 单行失败不阻断他行、行号准确；每行 fire-and-forget（触发器+rollup 反算）入后台预算队列（并发 8，满载 FIFO 排队）——不再每行甩 2 个无背压任务 | record.service.spec.ts（2 例：峰值有界/错误行号）+ 端到端实测（250 行 0.6s 零错） | P1-23（R1-scale-02）：mapWithConcurrency 手写有界并发（零新依赖）；与 P1-30 元数据缓存联动收益翻倍（工单原文） |
+
 ---
 
 
@@ -418,6 +430,7 @@
 | 2026-10-19 | v2.8 | 应用归属与双命名空间轮（ADR-0005）：新增 TC-196「设计面归属可见集与非成员深链 403」/ TC-197「协作者权限边界与所有权转移」/ TC-198「运行面不受归属影响」/ TC-199「design/runtime 双命名空间与 ?runtime=1 退役」；既有 92 例 e2e 的设计面引用全部迁移 /design/apps 嵌套路径 | 用户裁决（应用可见性 grilling：方案 b 所有权+协作成员表 + /design 前缀一次到位） |
 | 2026-10-23 | v2.9 | 对抗审查修复轮启动：新增 TC-200「通知节点 WEBHOOK 渠道 SSRF 防护」（security-01 高危修复回归：出站改经 safeFetch+超时，4 例单测钉住不变量）；QA-PLAN notification 节点行同步补 SSRF 锚点；两轮裁决并集与 P0/P1/P2 排期落档 docs/knowledge-base/ADVERSARIAL-REVIEW-2026-10-23.md | 对抗审查（全局 workflow apaas-adversarial-review 两轮，76 条确认并集） |
 | 2026-10-23 | v3.0 | 对抗审查 P0 批次第二波：新增 TC-201「服务身份应用作用域」/ TC-202「G4 硬闸：页面引用敏感环境变量拒绝发布」/ TC-203「运行面页面读端点可见性门」/ TC-204「数据端点双门（DRAFT 应用不再供数）」；P0-2/6/9/10 四项修复落地（gateway 935 全绿）；同日 P0-3/4/5/7/8 收口（TC-205~207：云函数异步 run+槽位守恒+日志上限/生产 seed 开关/删对象跨环境守卫，gateway 940 全绿）；ADR-0005 补勘误（决策 10 非语义豁免） | 对抗审查 P0 批次（用户裁决：P0-6 G4 硬闸+否决服务端代理；P0-9 双门判定） |
+| 2026-10-25 | v3.5 | 对抗审查 P1 波次③第二批（收官）：新增 U 节 TC-233「图表聚合 SQL 下推」/ TC-234「业务字段排序 SQL 下推」/ TC-235「rollup 数值聚合下推」/ TC-236「CSV 导出游标分页」/ TC-237「batchCreate 有界并行+后台预算」——**P1 专项 30/30 全清** | 对抗审查 P1 专项（工单波次③第二批） |
 | 2026-10-25 | v3.4 | 对抗审查 P1 波次③第一批：新增 T 节 TC-230「JSONB 等值查询 @> 形态」/ TC-231「ProcessTask 查询索引」/ TC-232「权限决策缓存与失效」（用户裁决=TTL+主动失效）；QA-PLAN v1.0.19 同步 | 对抗审查 P1 专项（工单波次③第一批） |
 | 2026-10-25 | v3.3 | 对抗审查 P1 波次①（并发/事务十项）：新增 S 节 TC-220「unique 字段 partial unique index」/ TC-221「记录更新乐观锁」/ TC-222「审批单原子认领」/ TC-223「定时触发注册账本与串行化」/ TC-224「Rollup 字段定向写」/ TC-225「依次审批环实例锁」/ TC-226「分布式锁看门狗续期」/ TC-227「应用创建同事务」/ TC-228「字段变更引用硬拦」/ TC-229「计算顺序」；**契约变更**：Record 加 version 列、ResourceVersionStatus 加 APPROVING、审批并发后到者 409、字段引用存在时改名/改类型/删除 400 | 对抗审查 P1 专项（工单波次①） |
 | 2026-10-24 | v3.2 | 对抗审查 P1 波次②（流程引擎与出站安全六项）：新增 R 节 TC-214「safeFetch 校验后钉连接（DNS TOCTOU）」/ TC-215「Webhook HMAC 纳入时间戳」/ TC-216「CSV 导出公式注入中和」/ TC-217「依次审批第 2..N 环超时」/ TC-218「S2 error 出边归一与歧义硬闸」/ TC-219「Webhook 绑定触发」；**契约变更**：webhook 入站签名输入改 `${ts}.${rawBody}`（旧格式拒绝，破坏性变更零兼容）；连接器新增 processDefId（迁移回填幂等） | 对抗审查 P1 专项（工单波次②） |

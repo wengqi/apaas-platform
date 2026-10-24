@@ -20,6 +20,8 @@ import { getMockPrisma } from '../test/test-helpers.js';
 function createMockRecordService() {
   return {
     query: vi.fn(),
+    // P1-22：游标续页通道（默认空——具体用例按需 mock）
+    queryCursorPage: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -167,24 +169,21 @@ describe('RecordImportExportService', () => {
         id: `r${i}`,
         data: { name: `A${i}` },
       }));
-      recordService.query
-        .mockResolvedValueOnce({
-          items: page1Records,
-          total: 101,
-          page: 1,
-          pageSize: 100,
-        })
-        .mockResolvedValueOnce({
-          items: [{ id: 'r100', data: { name: 'B100' } }],
-          total: 101,
-          page: 2,
-          pageSize: 100,
-        });
+      recordService.query.mockResolvedValueOnce({
+        items: page1Records,
+        total: 101,
+        page: 1,
+        pageSize: 100,
+      });
+      // P1-22：第二页经游标通道（零 count）
+      recordService.queryCursorPage.mockResolvedValue([{ id: 'r100', data: { name: 'B100' } }]);
 
       const csv = await service.exportToCsv('tenant-001', 'obj-001', {});
       const lines = csv.trim().split('\n');
       expect(lines.length).toBe(102); // header + 101 rows
-      expect(recordService.query).toHaveBeenCalledTimes(2);
+      // query 仅首页一次（含唯一 count），续页走游标
+      expect(recordService.query).toHaveBeenCalledTimes(1);
+      expect(recordService.queryCursorPage).toHaveBeenCalledTimes(1);
     });
 
     it('对象不存在时报错', async () => {
@@ -197,6 +196,39 @@ describe('RecordImportExportService', () => {
   // =========================================================================
   // importFromCsv
   // =========================================================================
+
+  describe('P1-22 导出 total 一次计算 + 游标分页', () => {
+    it('total 只查一次（首页 query），后续页走游标取行（零 count）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectWithFields([{ apiName: 'name', type: FieldType.Text }]),
+      );
+      const all = Array.from({ length: 250 }, (_, i) => ({
+        id: `r${String(i).padStart(4, '0')}`,
+        data: { name: `n${i}` },
+      }));
+      const { service, recordService } = createService();
+
+      // 首页 query（内含一次 count）；后续页 = queryCursorPage 游标（findMany，无 count）
+      recordService.query.mockResolvedValue({
+        total: 250,
+        items: all.slice(0, 100),
+        page: 1,
+        pageSize: 100,
+      });
+      recordService.queryCursorPage = vi.fn(async (_t: string, _o: string, cursorId: string) => {
+        const idx = all.findIndex((r) => r.id === cursorId);
+        return all.slice(idx + 1, idx + 1 + 100);
+      });
+      prisma.record.count.mockResolvedValue(250);
+
+      const csv = await service.exportToCsv('tenant-001', 'obj-001', {});
+
+      expect(csv.split('\n').length).toBeGreaterThanOrEqual(251); // 表头 + 250 行
+      // O(N²/100) 根因消除：query（含 count）仅首页一次；后续页游标取行零 count
+      expect(recordService.query).toHaveBeenCalledTimes(1);
+      expect(recordService.queryCursorPage).toHaveBeenCalledTimes(2); // 100+100+50 → 两轮游标
+    });
+  });
 
   describe('importFromCsv', () => {
     it('P1-13：导出时中和的前缀在导入时还原（round-trip 不损坏数据）', async () => {

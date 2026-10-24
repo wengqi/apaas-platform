@@ -18,6 +18,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import { FieldType } from '@apaas/shared';
 import { FormulaEngine } from '../object/formula-engine.js';
+import { NUMERIC_TEXT_RE } from '../dataset/jsonlogic-to-sql.js';
 
 /** Rollup 字段配置（与 @apaas/shared FieldConfig 的 Rollup 分支一致）。 */
 interface RollupFieldConfig {
@@ -199,18 +200,22 @@ export class RollupService {
     const relation = this.resolveRelationField(fields, config.relationFieldId);
     if (!relation) return null;
 
-    // 解析关联记录
-    let relatedData: Record<string, unknown>[];
+    // 解析聚合目标字段的 apiName（位于关联目标对象上；count 聚合可省略）
+    const targetApiName = config.targetFieldId
+      ? await this.resolveFieldApiName(tenantId, relation.targetObjectId, config.targetFieldId)
+      : null;
+
+    // 关联范围（SQL WHERE 片段的参数形态）
+    let scope: { ids: string[] } | { parentEquals: { apiName: string; recordId: string } } | null =
+      null;
     if (relation.type === 'lookup') {
-      // lookup 值 = 目标记录 ID（单值或数组）
       const value = recordData[relation.apiName];
       const ids = (Array.isArray(value) ? value : [value]).filter(
         (v): v is string => typeof v === 'string' && v.length > 0,
       );
       if (ids.length === 0) return config.aggregate === 'count' ? 0 : null;
-      relatedData = await this.fetchRecordsData(tenantId, relation.targetObjectId, { in: ids });
+      scope = { ids };
     } else {
-      // sub_form：子记录中 parentField 值 == 本记录 ID
       if (!recordId || !relation.parentFieldId) {
         return config.aggregate === 'count' ? 0 : null;
       }
@@ -220,22 +225,43 @@ export class RollupService {
         relation.parentFieldId,
       );
       if (!parentApiName) return config.aggregate === 'count' ? 0 : null;
+      scope = { parentEquals: { apiName: parentApiName, recordId } };
+    }
+
+    // P1-24（用户裁决=数值聚合下推）：DB 内聚合（SUM/AVG/MIN/MAX 守卫 cast + COUNT），
+    // 不再拉子记录全行内存归约——写延迟实测 44→99ms@3000 行线性劣化、批量导入 O(N²)。
+    // SQL 失败（含 targetApiName 缺失的非 count 聚合）回退内存路径（防御兜底）。
+    if ((config.aggregate === 'count' || targetApiName) && scope) {
+      try {
+        return await this.aggregateRelatedSql(
+          tenantId,
+          relation.targetObjectId,
+          config.aggregate,
+          targetApiName,
+          scope,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Rollup SQL 聚合下推失败，回退内存路径: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // 内存回退：拉子记录行后归约（语义与 SQL 路径一致：非数值不参与，空组 null/0）
+    let relatedData: Record<string, unknown>[];
+    if ('ids' in scope!) {
       relatedData = await this.fetchRecordsData(tenantId, relation.targetObjectId, {
-        equals: recordId,
-        path: parentApiName,
+        in: scope.ids,
+      });
+    } else {
+      relatedData = await this.fetchRecordsData(tenantId, relation.targetObjectId, {
+        equals: scope.parentEquals.recordId,
+        path: scope.parentEquals.apiName,
       });
     }
 
     if (config.aggregate === 'count') return relatedData.length;
-    if (relatedData.length === 0) return null;
-
-    // 解析聚合目标字段的 apiName（位于关联目标对象上）
-    const targetApiName = await this.resolveFieldApiName(
-      tenantId,
-      relation.targetObjectId,
-      config.targetFieldId!,
-    );
-    if (!targetApiName) return null;
+    if (relatedData.length === 0 || !targetApiName) return null;
 
     const values = relatedData
       .map((d) => d[targetApiName])
@@ -253,6 +279,75 @@ export class RollupService {
       default:
         return null;
     }
+  }
+
+  /**
+   * 关联记录的 DB 内聚合（P1-24）。守卫 cast 与 G5 metricInnerColumns 同款
+   * （CASE WHEN data->>'f' ~ 数值正则 THEN ::numeric）——非数值不参与。
+   * 空组语义：count→0，sum→0（内存版 values.reduce 空数组=0），avg/min/max→null。
+   */
+  private async aggregateRelatedSql(
+    tenantId: string,
+    objectId: string,
+    aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max',
+    targetApiName: string | null,
+    scope: { ids: string[] } | { parentEquals: { apiName: string; recordId: string } },
+  ): Promise<number | null> {
+    // 字段名内联 SQL 前白名单校验（元数据产物防御——与 record-query 同口径）
+    const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+    if (targetApiName && !FIELD_NAME_RE.test(targetApiName)) {
+      throw new Error(`聚合目标字段名不合法: ${targetApiName}`);
+    }
+    if ('parentEquals' in scope && !FIELD_NAME_RE.test(scope.parentEquals.apiName)) {
+      throw new Error(`父字段名不合法: ${scope.parentEquals.apiName}`);
+    }
+    const guarded = targetApiName
+      ? `(CASE WHEN r.data->>'${targetApiName}' ~ '${NUMERIC_TEXT_RE}' THEN (r.data->>'${targetApiName}')::numeric END)`
+      : null;
+    let aggExpr: string;
+    switch (aggregate) {
+      case 'count':
+        aggExpr = 'COUNT(*)';
+        break;
+      case 'sum':
+        aggExpr = `COALESCE(SUM(${guarded}), 0)`;
+        break;
+      case 'avg':
+        aggExpr = `SUM(${guarded}) / NULLIF(COUNT(${guarded}), 0)`;
+        break;
+      case 'min':
+        aggExpr = `MIN(${guarded})`;
+        break;
+      default:
+        aggExpr = `MAX(${guarded})`;
+        break;
+    }
+
+    if ('ids' in scope) {
+      const rows = await prisma.$queryRaw<Array<{ value: number | null }>>`
+        SELECT ${Prisma.raw(aggExpr)} AS value FROM records r
+        WHERE r.tenant_id = ${tenantId} AND r.object_id = ${objectId}
+          AND r.id = ANY(${scope.ids}::text[])`;
+      return this.coerceAggValue(rows[0]?.value ?? null, aggregate);
+    }
+
+    const containment = JSON.stringify({
+      [scope.parentEquals.apiName]: scope.parentEquals.recordId,
+    });
+    const rows = await prisma.$queryRaw<Array<{ value: number | null }>>`
+      SELECT ${Prisma.raw(aggExpr)} AS value FROM records r
+      WHERE r.tenant_id = ${tenantId} AND r.object_id = ${objectId}
+        AND r.data @> ${containment}::jsonb`;
+    return this.coerceAggValue(rows[0]?.value ?? null, aggregate);
+  }
+
+  /** DB 聚合值的空组语义适配（与内存路径一致）。 */
+  private coerceAggValue(
+    value: number | null,
+    aggregate: 'sum' | 'avg' | 'count' | 'min' | 'max',
+  ): number | null {
+    if (value !== null && Number.isFinite(Number(value))) return Number(value);
+    return aggregate === 'count' || aggregate === 'sum' ? 0 : null;
   }
 
   /** 按条件取关联记录的 data（仅 select data，减小载荷）。 */

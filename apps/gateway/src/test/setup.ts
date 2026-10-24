@@ -99,9 +99,11 @@ const mockPrisma = new Proxy({} as Record<string, unknown>, {
 // 全局 mock @apaas/db — 所有 import { prisma } from '@apaas/db' 将获得 mockPrisma
 vi.mock('@apaas/db', () => ({
   prisma: mockPrisma,
-  // Prisma namespace 仅用于 TypeScript 类型（as Prisma.InputJsonValue 等），
-  // 运行时不被访问，提供空对象即可。
-  Prisma: {},
+  // Prisma namespace：类型用途 + Prisma.raw（tagged template 内联 SQL 片段，
+  // 如 ORDER BY/聚合表达式；mock 返回带标记的对象，raw SQL 直接进 mock 调用参数）
+  Prisma: {
+    raw: (sql: string) => ({ __prismaRaw: sql }),
+  },
   // 租户上下文函数 — 使用真实实现（纯 ALS，不依赖 Prisma）
   runWithTenant: <T>(tenantId: string, fn: () => T): T => fn(),
   runAsSystem: <T>(fn: () => T): T => fn(),
@@ -147,8 +149,9 @@ beforeEach(() => {
     fn.mockReset();
     applyDefaultImplementation(key.split('.')[1] ?? '', fn);
   }
-  // 重置 $queryRawUnsafe（G5 数据流 SQL 路径）
+  // 重置 $queryRawUnsafe（G5 数据流 SQL 路径）——默认空结果防 undefined 崩
   queryRawUnsafeFn.mockReset();
+  queryRawUnsafeFn.mockResolvedValue([]);
   // 重置 $executeRawUnsafe（P1-01 unique 字段 DDL 路径）
   executeRawUnsafeFn.mockReset();
   executeRawUnsafeFn.mockResolvedValue(0);

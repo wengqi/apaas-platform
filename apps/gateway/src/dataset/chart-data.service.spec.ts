@@ -30,10 +30,16 @@ describe('ChartDataService', () => {
     return { data };
   }
 
+  /** P1-17：mock SQL 聚合行（DB 侧 GROUP BY 结果直返）。 */
+  function mockSqlRows(rows: Array<{ category: string; value: number; total: number }>) {
+    prisma.$queryRawUnsafe.mockResolvedValue(rows);
+  }
+
   beforeEach(() => {
-    // 默认返回空数组，每个 test 按需 mock
+    // 默认返回空数组，每个 test 按需 mock（SQL 路径默认空聚合行）
     prisma.record.findMany.mockResolvedValue([]);
     prisma.datasetRow.findMany.mockResolvedValue([]);
+    prisma.$queryRawUnsafe.mockResolvedValue([]);
     // 归属校验默认通过（安全测试单独覆盖拒绝场景）
     prisma.objectMeta.findFirst.mockResolvedValue({ id: OBJECT_ID });
     prisma.dataset.findFirst.mockResolvedValue({ id: DATASET_ID });
@@ -43,11 +49,10 @@ describe('ChartDataService', () => {
   // 基础聚合函数
   // ---------------------------------------------------------------------------
 
-  it('sum 聚合：按 categoryField 分组求和', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ status: 'open', amount: 100 }),
-      makeRecordData({ status: 'open', amount: 200 }),
-      makeRecordData({ status: 'closed', amount: 50 }),
+  it('sum 聚合：按 categoryField 分组求和（P1-17 SQL 下推，DB 聚合行直返）', async () => {
+    mockSqlRows([
+      { category: 'open', value: 300, total: 3 },
+      { category: 'closed', value: 50, total: 3 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -63,11 +68,10 @@ describe('ChartDataService', () => {
     expect(result.data).toContainEqual({ category: 'closed', value: 50 });
   });
 
-  it('count 聚合：按 categoryField 分组计数', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ status: 'open', amount: 100 }),
-      makeRecordData({ status: 'open', amount: 200 }),
-      makeRecordData({ status: 'closed', amount: 50 }),
+  it('count 聚合：按 categoryField 分组计数（P1-17 SQL）', async () => {
+    mockSqlRows([
+      { category: 'open', value: 2, total: 3 },
+      { category: 'closed', value: 1, total: 3 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -81,11 +85,10 @@ describe('ChartDataService', () => {
     expect(result.data).toContainEqual({ category: 'closed', value: 1 });
   });
 
-  it('avg 聚合：按分组求平均值', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ group: 'A', score: 80 }),
-      makeRecordData({ group: 'A', score: 90 }),
-      makeRecordData({ group: 'B', score: 100 }),
+  it('avg 聚合：按分组求平均值（P1-17 SQL）', async () => {
+    mockSqlRows([
+      { category: 'A', value: 85, total: 3 },
+      { category: 'B', value: 100, total: 3 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -100,11 +103,10 @@ describe('ChartDataService', () => {
     expect(result.data).toContainEqual({ category: 'B', value: 100 });
   });
 
-  it('max 聚合：取分组内最大值', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ group: 'A', score: 80 }),
-      makeRecordData({ group: 'A', score: 120 }),
-      makeRecordData({ group: 'B', score: 50 }),
+  it('max 聚合：取分组内最大值（P1-17 SQL）', async () => {
+    mockSqlRows([
+      { category: 'A', value: 120, total: 3 },
+      { category: 'B', value: 50, total: 3 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -119,11 +121,10 @@ describe('ChartDataService', () => {
     expect(result.data).toContainEqual({ category: 'B', value: 50 });
   });
 
-  it('min 聚合：取分组内最小值', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ group: 'A', score: 80 }),
-      makeRecordData({ group: 'A', score: 120 }),
-      makeRecordData({ group: 'B', score: 50 }),
+  it('min 聚合：取分组内最小值（P1-17 SQL）', async () => {
+    mockSqlRows([
+      { category: 'A', value: 80, total: 3 },
+      { category: 'B', value: 50, total: 3 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -142,12 +143,8 @@ describe('ChartDataService', () => {
   // 标量聚合（指标卡用 — 无 categoryField）
   // ---------------------------------------------------------------------------
 
-  it('标量聚合：无 categoryField 时返回单值', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ amount: 100 }),
-      makeRecordData({ amount: 200 }),
-      makeRecordData({ amount: 300 }),
-    ]);
+  it('标量聚合：无 categoryField 时返回单值（P1-17 SQL）', async () => {
+    mockSqlRows([{ category: '_total', value: 600, total: 3 }]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
@@ -161,12 +158,8 @@ describe('ChartDataService', () => {
     expect(result.categories).toHaveLength(1);
   });
 
-  it('标量 count 聚合：无 categoryField + 无 valueField 返回记录总数', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ foo: 1 }),
-      makeRecordData({ bar: 2 }),
-      makeRecordData({ baz: 3 }),
-    ]);
+  it('标量 count 聚合：无 categoryField + 无 valueField 返回记录总数（P1-17 SQL）', async () => {
+    mockSqlRows([{ category: '_total', value: 3, total: 3 }]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
@@ -183,11 +176,10 @@ describe('ChartDataService', () => {
   // count 聚合不要求 valueField
   // ---------------------------------------------------------------------------
 
-  it('count 聚合不要求 valueField', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ region: 'east' }),
-      makeRecordData({ region: 'west' }),
-      makeRecordData({ region: 'east' }),
+  it('count 聚合不要求 valueField（P1-17 SQL）', async () => {
+    mockSqlRows([
+      { category: 'east', value: 2, total: 3 },
+      { category: 'west', value: 1, total: 3 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -325,12 +317,8 @@ describe('ChartDataService', () => {
   // 筛选条件（JsonLogic filter）
   // ---------------------------------------------------------------------------
 
-  it('filter 筛选：只聚合满足条件的记录', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ status: 'open', amount: 100 }),
-      makeRecordData({ status: 'closed', amount: 200 }),
-      makeRecordData({ status: 'open', amount: 50 }),
-    ]);
+  it('filter 筛选：只聚合满足条件的记录（P1-17 SQL——filter 下推 WHERE 后 DB 聚合）', async () => {
+    mockSqlRows([{ category: 'open', value: 150, total: 2 }]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
@@ -346,11 +334,10 @@ describe('ChartDataService', () => {
     expect(result.data[0]).toEqual({ category: 'open', value: 150 });
   });
 
-  it('filter 筛选：数值比较', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ group: 'A', amount: 50 }),
-      makeRecordData({ group: 'A', amount: 150 }),
-      makeRecordData({ group: 'B', amount: 200 }),
+  it('filter 筛选：数值比较（P1-17 SQL）', async () => {
+    mockSqlRows([
+      { category: 'A', value: 150, total: 2 },
+      { category: 'B', value: 200, total: 2 },
     ]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
@@ -428,11 +415,8 @@ describe('ChartDataService', () => {
     expect(result.values).toEqual(result.data.map((d) => d.value));
   });
 
-  it('缺失值的记录按 0 处理', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      makeRecordData({ status: 'open', amount: 100 }),
-      makeRecordData({ status: 'open' }), // 无 amount
-    ]);
+  it('缺失值的记录按 0 处理（P1-17 SQL——DB 守卫 cast 缺失值不参与，组聚合=100）', async () => {
+    mockSqlRows([{ category: 'open', value: 100, total: 2 }]);
 
     const result = await service.aggregate(TENANT_ID, APP_ID, {
       sourceType: 'object',
@@ -557,7 +541,7 @@ describe('ChartDataService', () => {
   });
 
   it('安全: fieldScope=null 不限制字段', async () => {
-    prisma.record.findMany.mockResolvedValue([makeRecordData({ status: 'open', salary: 999 })]);
+    mockSqlRows([{ category: 'open', value: 999, total: 1 }]);
 
     const result = await service.aggregate(
       TENANT_ID,
@@ -573,5 +557,112 @@ describe('ChartDataService', () => {
     );
 
     expect(result.totalRecords).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P1-17：object 源聚合 SQL 下推（GROUP BY + 守卫 cast，全量行 DB 内聚合）
+// ---------------------------------------------------------------------------
+
+describe('P1-17 图表聚合 SQL 下推', () => {
+  const prisma = getMockPrisma();
+  const service = new ChartDataService();
+  const makeRecordData = (data: Record<string, unknown>): { data: Record<string, unknown> } => ({
+    data,
+  });
+
+  beforeEach(() => {
+    prisma.objectMeta.findFirst.mockResolvedValue({ id: 'obj-1' });
+    prisma.record.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockReset();
+  });
+
+  it('object 源（无 ABAC/无时间分桶）→ raw SQL 聚合：GROUP BY + 守卫 cast + 全量 COUNT，不再拉行', async () => {
+    prisma.$queryRawUnsafe.mockResolvedValue([
+      { category: 'open', value: 300, total: 2 },
+      { category: 'closed', value: 50, total: 2 },
+    ]);
+
+    const result = await service.aggregate('tenant-1', 'app-1', {
+      sourceType: 'object',
+      sourceId: 'obj-1',
+      categoryField: 'status',
+      valueField: 'amount',
+      aggregation: 'sum',
+    });
+
+    // 不再拉原始行（旧实现 take 10000 无 orderBy 静默截断 + totalRecords 谎报）
+    expect(prisma.record.findMany).not.toHaveBeenCalled();
+    const sql = String(prisma.$queryRawUnsafe.mock.calls[0]![0]).toLowerCase();
+    expect(sql).toContain('group by');
+    expect(sql).toContain('data->>');
+    expect(sql).not.toContain(' limit 10000');
+    // 守卫 cast（G5 同款：非数值不参与）
+    expect(sql).toContain('~');
+    expect(sql).toContain('::numeric');
+    // 适配输出
+    expect(result.data).toEqual([
+      { category: 'open', value: 300 },
+      { category: 'closed', value: 50 },
+    ]);
+    expect(result.totalRecords).toBe(2); // 满足 filter 的行数（DB 全量，非截断计数）
+  });
+
+  it('filter（JsonLogic 可翻译）下推 WHERE', async () => {
+    prisma.$queryRawUnsafe.mockResolvedValue([{ category: '_total', value: 5, __total: 5 }]);
+    await service.aggregate('tenant-1', 'app-1', {
+      sourceType: 'object',
+      sourceId: 'obj-1',
+      valueField: 'amount',
+      aggregation: 'sum',
+      filter: { '==': [{ var: 'status' }, 'open'] },
+    });
+    expect(String(prisma.$queryRawUnsafe.mock.calls[0]![0]).toLowerCase()).toContain('where');
+  });
+
+  it('timeGranularity 时间分桶保留内存路径（裁决：非数值/时间分桶不下推）', async () => {
+    prisma.record.findMany.mockResolvedValue([
+      makeRecordData({ d: '2026-10-01', amount: 1 }),
+      makeRecordData({ d: '2026-10-02', amount: 2 }),
+    ]);
+    const result = await service.aggregate('tenant-1', 'app-1', {
+      sourceType: 'object',
+      sourceId: 'obj-1',
+      categoryField: 'd',
+      valueField: 'amount',
+      aggregation: 'sum',
+      timeGranularity: 'day',
+    });
+    expect(prisma.record.findMany).toHaveBeenCalled();
+    expect(result.values).toEqual([1, 2]);
+  });
+
+  it('ABAC 行级条件存在时保留内存路径（权限语义优先，防旁路）', async () => {
+    prisma.record.findMany.mockResolvedValue([makeRecordData({ amount: 7 })]);
+    const result = await service.aggregate(
+      'tenant-1',
+      'app-1',
+      {
+        sourceType: 'object',
+        sourceId: 'obj-1',
+        valueField: 'amount',
+        aggregation: 'sum',
+      },
+      { condition: { '==': [{ var: 'owner' }, 'u1'] }, currentUserId: 'u1' } as never,
+    );
+    expect(prisma.record.findMany).toHaveBeenCalled();
+    expect(result.data[0]!.value).toBe(7);
+  });
+
+  it('dataset 源保留内存路径（DatasetRow 不在本次下推范围）', async () => {
+    prisma.dataset.findFirst.mockResolvedValue({ id: 'ds-1' });
+    prisma.datasetRow.findMany.mockResolvedValue([makeRecordData({ amount: 3 })]);
+    await service.aggregate('tenant-1', 'app-1', {
+      sourceType: 'dataset',
+      sourceId: 'ds-1',
+      valueField: 'amount',
+      aggregation: 'sum',
+    });
+    expect(prisma.datasetRow.findMany).toHaveBeenCalled();
   });
 });

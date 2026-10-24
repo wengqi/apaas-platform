@@ -179,6 +179,62 @@ describe('RecordService', () => {
       expect(data.secret).toBeUndefined();
     });
 
+    it('P1-18：业务字段排序回退升级 SQL 下推（filter/ABAC 可译时 ORDER BY cast + 分页，不再 5000 候选截断）', async () => {
+      // 触发回退升级路径：filter 含 >（比较，不可 containment 下推）但可 SQL 翻译
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [{ id: 'f1', apiName: 'amount', type: FieldType.Number, config: {} }],
+        }),
+      );
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([{ id: 'rec-2' }, { id: 'rec-1' }]) // 排序 id 集
+        .mockResolvedValueOnce([{ count: 2 }]); // total
+      prisma.record.findMany.mockResolvedValue([
+        makeRecord({ id: 'rec-1' }),
+        makeRecord({ id: 'rec-2' }),
+      ]); // 按 id 取回
+      const { service } = createService();
+
+      const result = await service.query('tenant-001', 'obj-001', {
+        sort: 'amount:desc',
+        filter: JSON.stringify({ '>': [{ var: 'amount' }, 100] }),
+      });
+
+      // SQL 形态：ORDER BY cast 排序 + LIMIT/OFFSET + COUNT；无 5000 候选截断
+      const rawCalls = prisma.$queryRawUnsafe.mock.calls as unknown as Array<
+        [string, ...unknown[]]
+      >;
+      expect(rawCalls).toHaveLength(2);
+      const orderSql = String(rawCalls[0]![0]);
+      expect(orderSql).toMatch(/order by/i);
+      expect(orderSql).toContain('LIMIT');
+      // 取回按排序 id 序
+      expect(result.items.map((i) => i.id)).toEqual(['rec-2', 'rec-1']);
+      expect(result.total).toBe(2);
+    });
+
+    it('P1-18：keyword 搜索存在时保底内存候选路径（keyword 为 Prisma contains 形态，不可 SQL 翻译）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            { id: 'f1', apiName: 'amount', type: FieldType.Number, config: { searchable: true } },
+          ],
+        }),
+      );
+      prisma.record.findMany.mockResolvedValue([makeRecord({ id: 'rec-1', data: { amount: 5 } })]);
+      prisma.record.count.mockResolvedValue(1);
+      const { service } = createService();
+
+      const result = await service.query('tenant-001', 'obj-001', {
+        sort: 'amount:desc',
+        keyword: 'foo',
+      });
+
+      // 走内存候选路径（有界回退仍在）：findMany 被候选查询消费
+      expect(prisma.record.findMany).toHaveBeenCalled();
+      expect(result.items.length).toBe(1);
+    });
+
     it('排序 — 系统字段 createdAt:desc（默认）', async () => {
       prisma.record.findMany.mockResolvedValue([]);
       prisma.record.count.mockResolvedValue(0);
@@ -593,6 +649,50 @@ describe('RecordService', () => {
   // =========================================================================
   // update
   // =========================================================================
+
+  describe('batchCreate — P1-23 有界并行 + 后台任务预算', () => {
+    it('并行度有界（并发峰值 ≤ 预算），全部行完成且行号错误保留', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta());
+      prisma.record.create.mockImplementation(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return makeRecord();
+      });
+      let inFlight = 0;
+      let peak = 0;
+
+      const { service } = createService();
+      const rows = Array.from({ length: 12 }, (_, i) => ({ name: `r${i}` }));
+      const result = await service.batchCreate('tenant-001', 'obj-001', 'user-001', rows);
+
+      expect(result.created).toBe(12);
+      expect(result.errors).toHaveLength(0);
+      expect(peak).toBeGreaterThan(1); // 确实并行了
+      expect(peak).toBeLessThanOrEqual(4); // 有界（默认预算 4）
+    });
+
+    it('单行失败不阻断其他行，错误行号准确', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta());
+      prisma.record.create.mockImplementation(
+        async (args: { data: { data: Record<string, unknown> } }) => {
+          if (args.data.data['name'] === 'bad') throw new Error('字段「名称」为必填项');
+          return makeRecord();
+        },
+      );
+
+      const { service } = createService();
+      const result = await service.batchCreate('tenant-001', 'obj-001', 'user-001', [
+        { name: 'a' },
+        { name: 'bad' },
+        { name: 'c' },
+      ]);
+
+      expect(result.created).toBe(2);
+      expect(result.errors).toEqual([{ row: 2, message: '字段「名称」为必填项' }]);
+    });
+  });
 
   describe('update', () => {
     it('P1-02：更新走乐观锁条件更新（WHERE version=旧值 + version 递增）', async () => {

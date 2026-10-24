@@ -13,14 +13,23 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { prisma, Prisma } from '@apaas/db';
+import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
 import jsonLogic from 'json-logic-js';
 import type { ChartAggregation, TimeGranularity } from '@apaas/shared';
 import { translateCondition } from '../permission/condition-translator.js';
+import { NUMERIC_TEXT_RE, translateJsonLogicToSql } from './jsonlogic-to-sql.js';
 import type { PermissionContext } from '../auth/authenticated-request.js';
 
 /** 后端聚合最大加载行数（防御性，避免全表加载）。 */
 const CHART_DATA_MAX_ROWS = 10000;
+
+/** 字段名白名单（内联 SQL 前必须通过——与 record-query/jsonlogic-to-sql 同口径） */
+const FIELD_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/** 当前请求环境键（raw SQL 显式过滤用；与 GIN 下推路径同口径）。 */
+function envOfRequest(): string {
+  return (getEnvironmentId as (() => string | null) | undefined)?.() ?? 'prod';
+}
 
 /** 标量聚合（无分类字段时）的默认分组标签。 */
 const SCALAR_CATEGORY = '_total';
@@ -83,6 +92,17 @@ export class ChartDataService {
 
     this.assertFieldsInScope(request, permissionContext);
 
+    // P1-17（用户裁决=SQL 下推）：object 源 + 无 ABAC 行级条件 + 无时间分桶时，
+    // 聚合整体下推 DB（GROUP BY + 守卫 cast + 全量 COUNT OVER）——旧实现拉 1 万行
+    // 进内存且 take 无 orderBy 静默截断（实测 sum=10000/真值 12000）。
+    // 保留内存路径：ABAC 条件（权限语义优先不可旁路）/ timeGranularity（时间分桶
+    // 语义复杂）/ dataset 源（DatasetRow 不在本次下推范围）。
+    const canPushDown =
+      request.sourceType === 'object' && !permissionContext?.condition && !request.timeGranularity;
+    if (canPushDown) {
+      return this.aggregateViaSql(tenantId, appId, request);
+    }
+
     let records = await this.loadSourceData(tenantId, appId, request, permissionContext);
 
     if (request.filter) {
@@ -102,6 +122,113 @@ export class ChartDataService {
       categories: aggregated.map((d) => d.category),
       values: aggregated.map((d) => d.value),
       totalRecords: records.length,
+    };
+  }
+
+  /**
+   * object 源聚合的 SQL 下推（P1-17）。
+   *
+   * SQL 形态：域过滤（tenant/object/env）+ filter 可译则 WHERE + GROUP BY 分类键
+   * （COALESCE 空值 '未知'，与内存 resolveCategory 对齐）+ 守卫 cast 聚合
+   * （G5 同款 CASE WHEN ~ 数值正则；count 用 COUNT(*)）+ COUNT(*) OVER () 全量计数。
+   * filter 不可翻译时回退内存路径（既有上限保护）。
+   */
+  private async aggregateViaSql(
+    tenantId: string,
+    appId: string,
+    request: ChartDataRequest,
+  ): Promise<ChartDataResult> {
+    // 归属校验与内存路径同门
+    const obj = await prisma.objectMeta.findFirst({
+      where: { id: request.sourceId, tenantId, appId },
+      select: { id: true },
+    });
+    if (!obj) throw new NotFoundException('数据源对象不存在或不属于当前应用');
+
+    // 域过滤参数位先行（$1 tenant/$2 object/$3 env），filter 翻译参数顺延
+    const sqlValues: unknown[] = [tenantId, request.sourceId, envOfRequest()];
+    const filterFrag = request.filter
+      ? translateJsonLogicToSql(request.filter, 'r.data', sqlValues.length)
+      : null;
+    if (filterFrag) sqlValues.push(...filterFrag.params);
+    if (request.filter && !filterFrag) {
+      // filter 不可翻译 → 内存路径兜底（拉行上限保护）
+      const records = await this.loadSourceData(tenantId, appId, request, undefined);
+      const filtered = records.filter((r) => jsonLogic.apply(request.filter!, r) === true);
+      const aggregated = this.executeAggregation(
+        filtered,
+        request.categoryField,
+        request.valueField,
+        request.aggregation,
+        request.timeGranularity,
+      );
+      return {
+        data: aggregated,
+        categories: aggregated.map((d) => d.category),
+        values: aggregated.map((d) => d.value),
+        totalRecords: filtered.length,
+      };
+    }
+
+    // P1-17 安全：字段名内联 SQL 前白名单校验（用户可控——防标识符注入）
+    for (const f of [request.categoryField, request.valueField]) {
+      if (f && !FIELD_NAME_RE.test(f)) {
+        throw new BadRequestException(`字段名不合法: ${f}`);
+      }
+    }
+    const category = request.categoryField
+      ? `COALESCE(NULLIF(r.data->>'${request.categoryField}', ''), '未知')`
+      : `'${SCALAR_CATEGORY}'`;
+    const guarded = request.valueField
+      ? `(CASE WHEN r.data->>'${request.valueField}' ~ '${NUMERIC_TEXT_RE}' THEN (r.data->>'${request.valueField}')::numeric END)`
+      : null;
+    let aggExpr: string;
+    switch (request.aggregation) {
+      case 'count':
+        aggExpr = 'COUNT(*)';
+        break;
+      case 'avg':
+        aggExpr = `ROUND(COALESCE(SUM(${guarded}) / NULLIF(COUNT(${guarded}), 0), 0), 2)`;
+        break;
+      case 'max':
+        aggExpr = `ROUND(COALESCE(MAX(${guarded}), 0), 2)`;
+        break;
+      case 'min':
+        aggExpr = `ROUND(COALESCE(MIN(${guarded}), 0), 2)`;
+        break;
+      case 'sum':
+      default:
+        aggExpr = `ROUND(COALESCE(SUM(${guarded}), 0), 2)`;
+        break;
+    }
+
+    // raw SQL 不经 $extends，显式过滤环境（与 GIN 下推路径同口径）；值一律参数绑定
+    const whereParts = ['r.tenant_id = $1', 'r.object_id = $2', 'r.environment_id = $3'];
+    if (filterFrag) whereParts.push(`(${filterFrag.text})`);
+
+    // 标量聚合（category 为常量）不能 GROUP BY 常量（PG 42601）——整表单组省 GROUP BY
+    const groupByClause = request.categoryField ? `GROUP BY ${category}` : '';
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{ category: string; value: number; total: number }>
+    >(
+      `SELECT ${category} AS category, ${aggExpr}::float8 AS value,
+              COUNT(*) OVER (PARTITION BY TRUE)::int AS total
+       FROM records r
+       WHERE ${whereParts.join(' AND ')}
+       ${groupByClause}
+       ORDER BY category`,
+      ...sqlValues,
+    );
+
+    const data = rows.map((row) => ({
+      category: row.category,
+      value: Math.round(Number(row.value) * 100) / 100,
+    }));
+    return {
+      data,
+      categories: data.map((d) => d.category),
+      values: data.map((d) => d.value),
+      totalRecords: rows[0]?.total ?? 0,
     };
   }
 

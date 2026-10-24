@@ -105,11 +105,8 @@ describe('RollupService — 聚合计算', () => {
     });
   });
 
-  it('sum：聚合关联记录的目标字段值', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      { data: { amount: 100 } },
-      { data: { amount: 250 } },
-    ]);
+  it('sum：聚合关联记录的目标字段值（P1-24 SQL 下推：DB 聚合值直返）', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ value: 350 }]);
     const result = await service.computeRollupFields(
       't-1',
       makeParentFields(),
@@ -117,6 +114,8 @@ describe('RollupService — 聚合计算', () => {
       'parent-1',
     );
     expect(result['total_amount']).toBe(350);
+    // 不再拉子记录全行
+    expect(prisma.record.findMany).not.toHaveBeenCalled();
   });
 
   it('lookup 值为空：count 返回 0，sum 返回 null', async () => {
@@ -135,11 +134,17 @@ describe('RollupService — 聚合计算', () => {
   });
 
   it('avg / min / max', async () => {
-    prisma.record.findMany.mockResolvedValue([
-      { data: { amount: 10 } },
-      { data: { amount: 20 } },
-      { data: { amount: 30 } },
-    ]);
+    // P1-24 SQL 下推：按聚合表达式（插值对象 __prismaRaw）分流返回 DB 聚合值
+    prisma.$queryRaw.mockImplementation((...args: unknown[]) => {
+      const raw = args.find((a) => (a as { __prismaRaw?: string })?.__prismaRaw) as
+        { __prismaRaw: string } | undefined;
+      const expr = raw?.__prismaRaw ?? '';
+      if (expr.includes('NULLIF(COUNT')) return Promise.resolve([{ value: 20 }]); // avg
+      if (expr.startsWith('SUM')) return Promise.resolve([{ value: 60 }]);
+      if (expr.startsWith('MIN')) return Promise.resolve([{ value: 10 }]);
+      if (expr.startsWith('MAX')) return Promise.resolve([{ value: 30 }]);
+      return Promise.resolve([{ value: null }]);
+    });
     const mkFields = (aggregate: string) =>
       makeParentFields().map((f) =>
         f.id === ROLLUP_FIELD_ID
@@ -196,9 +201,15 @@ describe('RollupService — 子记录反向重算', () => {
       { id: 'obj-asset', fields: makeParentFields() },
       { id: 'obj-category', fields: makeChildFields() },
     ]);
-    // P1-19：反查走 $queryRaw @>（返回两个父记录）；后续 findMany=子记录聚合读取
-    prisma.$queryRaw.mockResolvedValue([{ id: 'parent-1' }, { id: 'parent-2' }]);
-    prisma.record.findMany.mockResolvedValue([{ data: { amount: 50 } }]);
+    // P1-19/P1-24：反查（SELECT id）与聚合（SELECT value）分流 mock
+    prisma.$queryRaw.mockImplementation((...args: unknown[]) => {
+      const strings = args[0] as TemplateStringsArray;
+      const sql = strings.join(' ? ');
+      if (sql.includes('SELECT id')) {
+        return Promise.resolve([{ id: 'parent-1' }, { id: 'parent-2' }]);
+      }
+      return Promise.resolve([{ value: 50 }]); // 聚合值 50（两父记录同值）
+    });
     // 读取父记录当前 data（findFirst）
     prisma.objectMeta.findFirst.mockResolvedValue({
       id: 'obj-category',
@@ -238,6 +249,120 @@ function createRollupService() {
   const service = new RollupService(formulaEngine as never);
   return { service, formulaEngine };
 }
+
+describe('P1-24 rollup 数值聚合 SQL 下推', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => vi.clearAllMocks());
+
+  function makeParentFields() {
+    return [
+      {
+        id: 'fld-rel',
+        apiName: 'items_ref',
+        label: '明细',
+        type: 'lookup',
+        config: { lookup: { targetObjectId: 'child-obj', relationType: 'one_to_many' } },
+      },
+      { id: 'fld-amt', apiName: 'amount', label: '金额', type: 'number', config: {} },
+      {
+        id: 'fld-rollup',
+        apiName: 'total',
+        label: '合计',
+        type: 'rollup',
+        config: {
+          rollup: { relationFieldId: 'fld-rel', targetFieldId: 'fld-amt', aggregate: 'sum' },
+        },
+      },
+    ];
+  }
+
+  it('lookup 关系 sum 聚合走 SQL（SUM 守卫 cast + id IN），不再拉子记录行', async () => {
+    // resolveFieldApiName 查目标对象字段
+    prisma.objectMeta.findFirst.mockResolvedValue({
+      fields: [{ id: 'fld-amt', apiName: 'amount', label: '金额', type: 'number', config: {} }],
+    });
+    prisma.$queryRaw.mockResolvedValue([{ value: 150 }]);
+    const { service } = createRollupService();
+
+    const result = await service.computeRollupFields(
+      't-1',
+      makeParentFields(),
+      { items_ref: ['c1', 'c2'] },
+      'p1',
+    );
+
+    expect(result['total']).toBe(150);
+    // 不再拉子记录全行
+    expect(prisma.record.findMany).not.toHaveBeenCalled();
+    const call = prisma.$queryRaw.mock.calls.at(-1) as unknown as [
+      TemplateStringsArray,
+      ...unknown[],
+    ];
+    const raw = call!.slice(1).find((v) => (v as { __prismaRaw?: string })?.__prismaRaw) as {
+      __prismaRaw: string;
+    };
+    expect(raw.__prismaRaw).toContain('SUM');
+    expect(raw.__prismaRaw).toContain('::numeric');
+    expect(call![0].join(' ? ')).toContain('= ANY(');
+  });
+
+  it('sub_form 关系 count 聚合走 SQL COUNT(*)（@> 父引用）', async () => {
+    const fields = [
+      {
+        id: 'fld-items',
+        apiName: 'items',
+        label: '明细',
+        type: 'sub_form',
+        config: { subForm: { childObjectId: 'child-obj', parentFieldId: 'fld-p' } },
+      },
+      { id: 'fld-p', apiName: 'parent', label: '父', type: 'text', config: {} },
+      {
+        id: 'fld-cnt',
+        apiName: 'cnt',
+        label: '计数',
+        type: 'rollup',
+        config: { rollup: { relationFieldId: 'fld-items', aggregate: 'count' } },
+      },
+    ];
+    prisma.objectMeta.findFirst.mockResolvedValue({ fields });
+    prisma.$queryRaw.mockResolvedValue([{ value: 3 }]);
+    const { service } = createRollupService();
+
+    const result = await service.computeRollupFields('t-1', fields, {}, 'parent-1');
+
+    expect(result['cnt']).toBe(3);
+    const call = prisma.$queryRaw.mock.calls.at(-1) as unknown as [
+      TemplateStringsArray,
+      ...unknown[],
+    ];
+    const raw = call!.slice(1).find((v) => (v as { __prismaRaw?: string })?.__prismaRaw) as {
+      __prismaRaw: string;
+    };
+    expect(raw.__prismaRaw).toContain('COUNT(*)');
+    expect(call![0].join(' ? ')).toContain('@>');
+  });
+
+  it('SQL 聚合失败/空组回退内存路径（防御）', async () => {
+    prisma.objectMeta.findFirst.mockResolvedValue({
+      fields: [{ id: 'fld-amt', apiName: 'amount', label: '金额', type: 'number', config: {} }],
+    });
+    // SQL 抛错 → 回退内存（拉行聚合）
+    prisma.$queryRaw.mockRejectedValueOnce(new Error('db down'));
+    prisma.record.findMany.mockResolvedValue([{ data: { amount: 10 } }, { data: { amount: 20 } }]);
+    const { service } = createRollupService();
+
+    const result = await service.computeRollupFields(
+      't-1',
+      makeParentFields(),
+      { items_ref: ['c1'] },
+      'p1',
+    );
+
+    expect(result['total']).toBe(30);
+    expect(prisma.record.findMany).toHaveBeenCalled();
+  });
+});
 
 describe('P1-19 反查与条件查询走 @>（GIN）', () => {
   const prisma = getMockPrisma();

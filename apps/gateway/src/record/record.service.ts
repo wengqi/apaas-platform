@@ -31,6 +31,7 @@ import {
 } from './record-query.js';
 import type { PermissionContext } from '../auth/authenticated-request.js';
 import { writeAudit } from '../common/audit.js';
+import { translateJsonLogicToSql } from '../dataset/jsonlogic-to-sql.js';
 
 /**
  * 存储在 ObjectMeta.fields JSON 数组中的字段定义（与 object.service.ts 的 StoredField 一致）。
@@ -131,6 +132,32 @@ const SYSTEM_SORT_FIELDS = new Set(['id', 'createdAt', 'updatedAt', 'createdBy',
  */
 const RAW_SORT_CANDIDATE_CAP = 5000;
 
+/**
+ * P1-23（对抗审查 R1-scale-02）：批量创建有界并行预算——事务/AutoNumber 计数器
+ * 与触发器侧 BullMQ 均为共享资源，无界并发会打满连接池与队列。
+ */
+const BATCH_CREATE_CONCURRENCY = 4;
+/** P1-23：单行 create 的 fire-and-forget 后台任务（触发器+rollup 反算）并发预算 */
+const BACKGROUND_TASK_CONCURRENCY = 8;
+
+/** 有界并发映射（保持输入序返回；单条失败不阻断他条，错误交调用方聚合）。 */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!, i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 /** 自动编号配置的最小结构。 */
 interface AutoNumberFieldConfig {
   autoNumber?: { format?: string };
@@ -149,6 +176,33 @@ interface AutoNumberFieldConfig {
  */
 @Injectable()
 export class RecordService {
+  /**
+   * P1-23 后台任务预算：create/update 的触发器与 rollup 反算 fire-and-forget
+   * 从此排队（有界并发）——批量导入时不再每行立即甩出 2 个无背压任务
+   * （触发器全量 schema 拉取 + rollup 全对象扫描）。
+   */
+  private backgroundActive = 0;
+  private readonly backgroundWaiters: Array<() => void> = [];
+
+  /** fire-and-forget 任务入预算队列：满载时挂起，槽位释放按 FIFO 唤醒。 */
+  private submitBackground(task: () => Promise<unknown>, onError: (err: unknown) => void): void {
+    const run = async (): Promise<void> => {
+      if (this.backgroundActive >= BACKGROUND_TASK_CONCURRENCY) {
+        await new Promise<void>((resolve) => this.backgroundWaiters.push(resolve));
+      }
+      this.backgroundActive++;
+      try {
+        await task();
+      } catch (err) {
+        onError(err);
+      } finally {
+        this.backgroundActive--;
+        this.backgroundWaiters.shift()?.();
+      }
+    };
+    void run();
+  }
+
   private readonly logger = new Logger(RecordService.name);
 
   constructor(
@@ -286,6 +340,8 @@ export class RecordService {
           filterRule: this.parseFilterRule(params.filter),
           sortSpec: sortSpec!,
           hasPermissionCondition: Boolean(this.buildConditionWhere(permissionContext)),
+          permissionCondition: permissionContext?.condition ?? undefined,
+          hasKeyword: Boolean(params.keyword?.trim()),
           page,
           pageSize,
           fieldScope: permissionContext?.fieldScope,
@@ -298,6 +354,37 @@ export class RecordService {
       page,
       pageSize,
     };
+  }
+
+  /**
+   * 导出游标分页（P1-22）：按 id 升序、id > cursorId 取一页原始行（零 count）。
+   * where 构建与 query 同源（filter/keyword/ABAC condition），排序固定 id 序
+   * 保证游标单调；EXPORT_PAGE_SIZE 由调用方控制。
+   */
+  async queryCursorPage(
+    tenantId: string,
+    objectId: string,
+    cursorId: string | null,
+    params: RecordQueryParams,
+    permissionContext?: PermissionContext,
+    pageSize = 100,
+  ): Promise<Prisma.RecordGetPayload<Record<string, never>>[]> {
+    const where: Prisma.RecordWhereInput = { tenantId, objectId };
+    const filterWhere = this.parseFilter(params.filter);
+    const parts: Prisma.RecordWhereInput[] = [];
+    if (filterWhere) parts.push(filterWhere);
+    const keywordWhere = await this.buildKeywordWhere(tenantId, objectId, params.keyword);
+    if (keywordWhere) parts.push(keywordWhere);
+    const conditionWhere = this.buildConditionWhere(permissionContext);
+    if (conditionWhere) parts.push(conditionWhere);
+    if (parts.length > 0) where.AND = parts;
+    if (cursorId) where.id = { gt: cursorId };
+
+    return prisma.record.findMany({
+      where,
+      orderBy: { id: 'asc' },
+      take: pageSize,
+    });
   }
 
   /** 关键词搜索 where（环境感知取字段定义后委托纯函数）。 */
@@ -347,6 +434,10 @@ export class RecordService {
     filterRule: unknown;
     sortSpec: SortSpec;
     hasPermissionCondition: boolean;
+    /** ABAC 行级条件的 JsonLogic 原文（SQL 下推用；翻译后 Prisma where 不可逆） */
+    permissionCondition?: unknown;
+    /** 关键词搜索存在时（Prisma contains 形态不可 SQL 翻译 → 保底内存候选） */
+    hasKeyword?: boolean;
     page: number;
     pageSize: number;
     fieldScope?: string[] | null;
@@ -361,6 +452,8 @@ export class RecordService {
       filterRule,
       sortSpec,
       hasPermissionCondition,
+      permissionCondition,
+      hasKeyword,
       page,
       pageSize,
     } = params;
@@ -408,7 +501,55 @@ export class RecordService {
       }
     }
 
-    // 回退：Prisma 取候选（有界）→ 按字段类型内存排序 → 分页
+    // P1-18（用户裁决=排序 SQL 下推）：containment 下推不可行时，先尝试
+    // filter + ABAC 条件的 JsonLogic 原文经 translateJsonLogicToSql 下推——
+    // ORDER BY cast + LIMIT/OFFSET + COUNT 全在 DB 完成。旧回退只取最新 5000 条
+    // 候选，旧记录任何页不可达且 total 谎报（6003 条实测 1003 条不可达）。
+    // keyword 搜索（Prisma contains 形态）不可翻译 → 保底内存候选路径。
+    if (!hasKeyword) {
+      // 域过滤先行参数化（$1/$2/$3），filter/ABAC 翻译的参数位顺延——
+      // 标识符以外的值一律绑定参数（实测踩坑：tenantId 内联会被 PG 当列名 42703）
+      const sqlValues: unknown[] = [tenantId, objectId, getEnvironmentId() ?? 'prod'];
+      const domainWhere = ['r.tenant_id = $1', 'r.object_id = $2', 'r.environment_id = $3'];
+      const filterFrag = filterRule
+        ? translateJsonLogicToSql(filterRule, 'r.data', sqlValues.length)
+        : null;
+      if (filterFrag) sqlValues.push(...filterFrag.params);
+      const condFrag = permissionCondition
+        ? translateJsonLogicToSql(permissionCondition, 'r.data', sqlValues.length)
+        : null;
+      if (condFrag) sqlValues.push(...condFrag.params);
+      // filter 存在但不可译 → 无法下推（保持精确过滤语义），走内存保底
+      const filterTranslatable = !filterRule || Boolean(filterFrag);
+      const condTranslatable = !permissionCondition || Boolean(condFrag);
+      const orderSql = buildFieldOrderSql([sortSpec], fields);
+      if (filterTranslatable && condTranslatable && orderSql) {
+        const whereParts = [...domainWhere];
+        if (filterFrag) whereParts.push(`(${filterFrag.text})`);
+        if (condFrag) whereParts.push(`(${condFrag.text})`);
+        const whereSql = whereParts.join(' AND ');
+        const offset = (page - 1) * pageSize;
+        const ids = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+          `SELECT r.id FROM records r WHERE ${whereSql} ORDER BY ${orderSql} LIMIT ${pageSize} OFFSET ${offset}`,
+          ...sqlValues,
+        );
+        const countRows = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
+          `SELECT COUNT(*)::int AS count FROM records r WHERE ${whereSql}`,
+          ...sqlValues,
+        );
+        const orderedIds = ids.map((r) => r.id);
+        const rows = orderedIds.length
+          ? await prisma.record.findMany({ where: { id: { in: orderedIds }, tenantId, objectId } })
+          : [];
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        return {
+          records: orderedIds.map((id) => byId.get(id)).filter(Boolean) as typeof rows,
+          total: Number(countRows[0]?.count ?? 0),
+        };
+      }
+    }
+
+    // 保底回退：Prisma 取候选（有界）→ 按字段类型内存排序 → 分页
     const candidates = await prisma.record.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -557,28 +698,43 @@ export class RecordService {
     });
 
     // 触发记录创建事件（非阻塞）；created_by 供流程通知等节点引用（系统字段，置于展开后保证不被业务数据覆盖）
+    // P1-23：fire-and-forget 入后台预算队列（批量导入不再每行甩 2 个无背压任务）
     const result = this.toResult(record);
-    void this.triggerService.onRecordEvent(
-      tenantId,
-      obj.appId,
-      objectId,
-      'created',
-      {
-        id: record.id,
-        ...(record.data as Record<string, unknown>),
-        created_by: userId,
-      },
-      getEnvironmentId() ?? 'prod',
+    this.submitBackground(
+      () =>
+        this.triggerService.onRecordEvent(
+          tenantId,
+          obj.appId,
+          objectId,
+          'created',
+          {
+            id: record.id,
+            ...(record.data as Record<string, unknown>),
+            created_by: userId,
+          },
+          getEnvironmentId() ?? 'prod',
+        ),
+      (err) =>
+        this.logger.error(
+          `记录创建事件触发失败: ${err instanceof Error ? err.message : String(err)}`,
+        ),
     );
 
     // 本记录可能作为子记录被其他对象的 Rollup 聚合（异步反向重算，非阻塞）
-    void this.rollupService
-      .recomputeParentsForChildRecord(tenantId, obj.appId, objectId, record.id, computedData)
-      .catch((err) =>
+    this.submitBackground(
+      () =>
+        this.rollupService.recomputeParentsForChildRecord(
+          tenantId,
+          obj.appId,
+          objectId,
+          record.id,
+          computedData,
+        ),
+      (err) =>
         this.logger.error(
           `Rollup 父记录重算失败: ${err instanceof Error ? err.message : String(err)}`,
         ),
-      );
+    );
 
     return result;
   }
@@ -829,17 +985,20 @@ export class RecordService {
     const errors: ImportError[] = [];
     let created = 0;
 
-    for (let i = 0; i < records.length; i++) {
-      try {
-        await this.create(tenantId, objectId, userId, records[i]!, permissionContext);
-        created++;
-      } catch (err) {
-        errors.push({
-          row: i + 1,
-          message: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    // P1-23：串行 O(N) 放大为有界并行（预算 BATCH_CREATE_CONCURRENCY）——
+    // 每行仍独立事务（AutoNumber 计数器原子性），单行失败不阻断他行，行号即 CSV 行号
+    const outcomes = await mapWithConcurrency(records, BATCH_CREATE_CONCURRENCY, (row, i) =>
+      this.create(tenantId, objectId, userId, row, permissionContext)
+        .then(() => true)
+        .catch((err: unknown) => {
+          errors.push({
+            row: i + 1,
+            message: err instanceof Error ? err.message : String(err),
+          });
+          return false;
+        }),
+    );
+    created = outcomes.filter(Boolean).length;
 
     return { created, errors };
   }

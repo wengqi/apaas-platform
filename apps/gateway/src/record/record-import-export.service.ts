@@ -96,35 +96,60 @@ export class RecordImportExportService {
 
     const headers = visibleFields.map((f) => f.apiName);
 
-    // 分页查询所有记录
-    const rows: string[][] = [headers];
-    let page = 1;
-    let total = 0;
+    // P1-22（对抗审查 R2-scale-09）：首页 query 拿 total（唯一一次 count），
+    // 后续页游标取行（id > cursor，零 count）——旧实现每页重算 count（O(N²/100)）。
+    // 行按 id 升序游标推进，分块 stringify 后拼接（降低整表字符串峰值）。
+    const chunks: string[] = [];
+    let headerEmitted = false;
+    let cursorId: string | null = null;
 
-    do {
-      const result = await this.recordService.query(
+    // 首页（含 total）
+    const firstPage = await this.recordService.query(
+      tenantId,
+      objectId,
+      { ...params, page: 1, pageSize: EXPORT_PAGE_SIZE },
+      permissionContext,
+    );
+    const total = firstPage.total;
+    let emitted = 0;
+    const pushRows = (records: Array<{ id: string; data: Record<string, unknown> }>): void => {
+      if (records.length === 0) return;
+      const rows: string[][] = headerEmitted ? [] : [headers];
+      headerEmitted = true;
+      for (const record of records) {
+        rows.push(
+          headers.map((h) => {
+            const val = record.data[h];
+            if (val === null || val === undefined) return '';
+            if (Array.isArray(val)) return neutralizeCsvCell(val.join(','));
+            if (typeof val === 'object') return neutralizeCsvCell(JSON.stringify(val));
+            return neutralizeCsvCell(String(val));
+          }),
+        );
+      }
+      chunks.push(stringify(rows));
+      emitted += records.length;
+    };
+
+    pushRows(firstPage.items as Array<{ id: string; data: Record<string, unknown> }>);
+    cursorId = firstPage.items.at(-1)?.id ?? null;
+
+    // 游标续页（零 count）
+    while (cursorId && emitted < total) {
+      const pageRows = await this.recordService.queryCursorPage(
         tenantId,
         objectId,
-        { ...params, page, pageSize: EXPORT_PAGE_SIZE },
+        cursorId,
+        params,
         permissionContext,
+        EXPORT_PAGE_SIZE,
       );
-      total = result.total;
+      if (pageRows.length === 0) break;
+      pushRows(pageRows as Array<{ id: string; data: Record<string, unknown> }>);
+      cursorId = pageRows.at(-1)!.id;
+    }
 
-      for (const record of result.items) {
-        const row = headers.map((h) => {
-          const val = record.data[h];
-          if (val === null || val === undefined) return '';
-          if (Array.isArray(val)) return neutralizeCsvCell(val.join(','));
-          if (typeof val === 'object') return neutralizeCsvCell(JSON.stringify(val));
-          return neutralizeCsvCell(String(val));
-        });
-        rows.push(row);
-      }
-
-      page++;
-    } while ((page - 1) * EXPORT_PAGE_SIZE < total);
-
-    return stringify(rows);
+    return chunks.join('');
   }
 
   /**

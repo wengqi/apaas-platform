@@ -55,6 +55,7 @@
 | [RUNTIME-JOURNEY-P0-2026-10-04](./RUNTIME-JOURNEY-P0-2026-10-04.md) | 2026-10-04 | 运行态业务用户旅程 P0（主线切至 C 申请人/D 审批人）——反馈环三断全修：审批结果自动回写（引擎 writeback + RecordService 写内核）/表单页成对生成台账页（单选列 mapping 中文标签）/审批人体验（formKey→pageId 契约断裂修复+变量折叠+创建人姓名）；端到端实测回写闭环 |
 | [ROLEPLAY-NEWBIE-JOURNEY-2026-10-03](./ROLEPLAY-NEWBIE-JOURNEY-2026-10-03.md) | 2026-10-03 | 零知识用户 A/B 旅程两轮:①纯 UI 建应用闭环(修 5);②流程画布全链路——审批流+条件分支+状态回写运行时闭环(修 7:H1b toast/fieldMapping→inputsValues 契约/extInfo 并入导出/FieldMapper 死循环/角色审批四连根因/转草稿入口);遗留 #8 可发现性/#15 审批页模板/#16 驳回按钮;extInfo 不进 toJSON 等工程坑 |
 | [ADVERSARIAL-REVIEW-2026-10-23](./ADVERSARIAL-REVIEW-2026-10-23.md) | 2026-10-23 | **全项目对抗审查两轮裁决汇总与修复排期**（6 路红队+独立裁判四步盲审重验；两轮并集去重 76 条确认[9H/31M/36L]+降级 5+驳回 7；P0 安全 10 条/P1 四波次 30 条/P2 登记 36 条；裁判复现夹具残留实查清单；P0-1 WEBHOOK SSRF 已修复） |
+| [ADVERSARIAL-REVIEW-P1-BACKLOG-2026-10-23](./ADVERSARIAL-REVIEW-P1-BACKLOG-2026-10-23.md) | 2026-10-23 | **对抗审查 P1 专项工单**（30 条 medium 四波次：并发/事务 10+流程引擎 6+性能 8+治理 6；逐项裁决号/位置/修法/需裁决标记/状态；开工前一次性收集 8 项设计裁决；P0 十项已于 a03bdc2 全清） |
 
 ## 文档维护规则
 

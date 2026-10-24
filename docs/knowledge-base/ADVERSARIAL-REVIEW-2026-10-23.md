@@ -42,13 +42,8 @@
 
 ## 四、P1：一致性与性能（30 条 medium，四波次）
 
-**波次①并发/事务（10 条）**：unique 查重竞态且 DB 无唯一约束（R2-correctness-02，6 并发实测 6×201 全落库→按字段 partial unique index，A-H1 先例）；lost update 无锁 read-merge-write（R1-correctness-05，25/25 命中）；applyApproved 无事务并发双落地（R1-correctness-10 + R2-correctness-04，实测双审计行）；定时触发注册 remove+add 窗口（R2-correctness-07，实测串行换 cron 即双 cron 并存）；Rollup 重算覆盖并发人工修改（R1-correctness-07↓ + R2-correctness-06）；sequential 幽灵任务（R1-correctness-09，7/20 命中）；Redis 锁 30s TTL 无续期（R1-scale-07↓ + R2-scale-02，锁级实测互斥被打破）；OWNER 行与应用创建非事务（R1-devil-03）；字段改名/改类型/删字段零引用防护（R1-compat-04）；Formula/Rollup 计算顺序违反依赖方向（R1-correctness-06，派生值恒滞后一拍）。
-
-**波次②流程引擎与出站安全（6 条）**：safeFetch DNS 二次解析 TOCTOU（R1-security-05〔H〕→R2-security-08〔M〕，端到端穿透实证→按已解析 IP 钉连接）；webhook HMAC 不含时间戳可无限重放（R2-security-02，实测刷新时间戳头启动第二实例）；CSV 导出公式注入 CWE-1236（R1-security-06）；依次审批第 2..N 环超时动作静默失效（R1-correctness-03）；S2 error 边 label 字面首匹配无归一无歧义（R2-correctness-05，实测 'Error' 大写不命中→静默 FAILED）；webhook 应用级广播（R1-compat-02，新增第二个 WEBHOOK 流程后存量 URL 静默多触发）。
-
-**波次③性能（8 条）**：图表聚合 1 万行静默截断且 totalRecords 同谎报（R1-scale-05 + R2-scale-08，实测 sum=10000/真值 12000→复用 G5 SQL 下推）；业务字段排序 5000 窗口旧记录不可达（R1-scale-04 + R2-scale-06，6003 条实测 1003 条任何页不可达）；JSONB path+equals 写路径不走 GIN（R1-scale-03，20 万行实测 Seq Scan 55ms vs 5ms，且 record.service:939 注释与 record-query.ts:6 矛盾需勘误）；ProcessTask candidateGroups hasSome 无 GIN（R2-scale-07）；权限决策零缓存每请求 ~8-9 条语句（R2-scale-05，log 实测）；CSV 导出每页重算 count O(N²)/导入 5000 行 ≈3.5 万串行往返（R2-scale-09）；batchCreate 串行 O(N) 放大+每行 2 个无背压后台任务（R1-scale-02）；Rollup/sub_form 全量内存聚合写延迟线性劣化（R2-scale-03，实测 44→99ms@3000 行）。
-
-**波次④治理与运维（6 条）**：归属闸 403 零审计或反记 ALLOWED（R1-engineering-01 + R2-engineering-03，实测 403 在审计里显示「权限检查通过」）；删用户级联孤儿化应用零守卫（R2-engineering-06，实测 OWNER 行级联消失）；依赖监控三缺（R1-engineering-05，实弹 pnpm audit 143 条含 3 critical→dependabot+CI audit 步骤，半小时事项建议先做）；AutoNumber 创建失败泄漏跳号（R2-correctness-01，实测 22→25）；删对象不扫 lookup/sub_form/rollup 引用致写路径 400 卡死（R1-correctness-02）；删流程不清理 API release 行继续 advertise（R1-compat-07）。
+> **已展开为可执行工单档**（逐项带状态/裁决号/修法/需裁决标记/推进顺序建议）：
+> `ADVERSARIAL-REVIEW-P1-BACKLOG-2026-10-23.md`。P1 专项修复以工单档为起跑线与状态跟踪处，本节不再重复维护。
 
 ## 五、P2：卫生与前瞻（36 条 low，登记观察不排期）
 

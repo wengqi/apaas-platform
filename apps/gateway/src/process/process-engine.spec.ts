@@ -744,7 +744,7 @@ describe('ProcessEngine', () => {
         nodeId: 'node-task',
         nodeExecutionId: 'ne-001',
       },
-      expect.objectContaining({ delay: 15_000, jobId: 'task-timeout-ne-001' }),
+      expect.objectContaining({ delay: 15_000, jobId: 'task-timeout-ne-001-seq1' }),
     );
   });
 

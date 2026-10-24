@@ -754,7 +754,7 @@ export class ProcessEngine {
                 } as Prisma.InputJsonValue,
               },
             });
-            const nextTask = await prisma.processTask.create({
+            await prisma.processTask.create({
               data: {
                 tenantId: task.tenantId,
                 instanceId: task.instanceId,
@@ -773,7 +773,7 @@ export class ProcessEngine {
             // 第 1 环完成时 remainingPending=0 已触发 cancelTaskTimeout 移除批次 job，
             // 下一环任务直连 create 不经执行器——不重挂则超时动作对 2..N 环静默失效。
             // 与 user-task 执行器同口径（dueDate×dueUnit→delayMs，jobId 按批次幂等）。
-            await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextTask.id);
+            await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextIndex);
             return;
           }
           // 最后一人 approved → 落到下方正常推进
@@ -1256,11 +1256,20 @@ export class ProcessEngine {
     nodeId: string,
     nodeExecutionId: string,
     delayMs: number,
+    jobIdSuffix = '',
   ): Promise<void> {
     await this.delayQueue.add(
       'task_timeout',
       { kind: 'task_timeout', instanceId, nodeId, nodeExecutionId },
-      { delay: delayMs, jobId: ProcessEngine.taskTimeoutJobId(nodeExecutionId) },
+      {
+        delay: delayMs,
+        // jobId 后缀（P1-14 实测踩坑）：BullMQ 同 jobId 的 job 即使已 completed
+        // 再次 add 仍返回旧 job（实测 probe-x 双 add 同 id）——依次审批 2..N 环
+        // 重挂若复用基础 jobId 会被首挂 job 的尸体静默去重，超时覆盖再度丢失。
+        // 环号代次（seq<N>）保证每环 job id 唯一；残留 delayed job 到点由
+        // handleTaskTimeout 的幂等兜底空跑，无害。
+        jobId: ProcessEngine.taskTimeoutJobId(nodeExecutionId) + jobIdSuffix,
+      },
     );
     this.logger.log(
       `实例 ${instanceId} 节点 ${nodeId} 任务批次 ${nodeExecutionId} 超时动作已调度（${Math.round(delayMs / 1000)}s）`,
@@ -1274,7 +1283,7 @@ export class ProcessEngine {
   private async rescheduleSequentialTaskTimeout(
     task: { instanceId: string; nodeId: string; nodeExecutionId: string },
     nodeData: Record<string, unknown>,
-    _nextTaskId: string,
+    nextIndex: number,
   ): Promise<void> {
     const dueAmount = Number(nodeData['dueDate'] ?? 0);
     const dueUnit = String(nodeData['dueUnit'] ?? 'HOURS').toUpperCase();
@@ -1292,6 +1301,7 @@ export class ProcessEngine {
       task.nodeId,
       task.nodeExecutionId,
       dueAmount * (unitMs[dueUnit] ?? 3_600_000),
+      `-seq${nextIndex}`,
     );
   }
 

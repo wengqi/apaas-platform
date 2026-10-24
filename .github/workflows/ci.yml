@@ -11,6 +11,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  audit:
+    name: Dependency Audit (critical gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # pnpm audit 有通告时退出码 1，此处只采集；阻断判定在闸脚本
+      - name: Collect critical advisories
+        run: pnpm audit --audit-level critical --json > /tmp/audit.json || true
+
+      # P1-27 critical 阻断策略：基线外新 critical → 红；已知项在
+      # .github/audit-baseline.json 显式登记（chain 归因即 P2-devil-04 联动工件）
+      - name: Gate on new criticals
+        run: node scripts/audit-gate.mjs /tmp/audit.json .github/audit-baseline.json
+
   static:
     name: Lint + Typecheck
     runs-on: ubuntu-latest

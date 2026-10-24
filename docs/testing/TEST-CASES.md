@@ -321,7 +321,22 @@
 | TC-206 | 生产 seed 不覆盖运行期修改 | P0 | 一次性 PG：NODE_ENV=production + SEED_BOOTSTRAP_PASSWORD 已设；首次 seed 后对采购验收应用注入运行期修改标记 | ① 重跑 seed ② 查三处标记（对象字段/页面 schema/流程定义）与应用发布态 | ① demo/采购内容默认跳过（SEED_DEMO_CONTENT 未开）② 三标记保留、发布态不变；SEED_DEMO_CONTENT=true 显式开启时才重建。另：seed 真实失败时容器启动即终止（entrypoint 不再吞错伪装「已存在或跳过」） | 手工/API 走查（seed 为脚本无单测）；DEPLOY 文档同步 SEED_DEMO_CONTENT | 对抗审查 engineering-01（R2 高危）：生产重启重跑 demo seed 静默回滚运行期修改并重置已发布态 |
 | TC-207 | 删对象守卫跨环境统计 | P0 | 对象在 dev 环境有记录、prod 环境无记录（经 X-Env: dev 写入） | ① 以 prod 上下文（缺省）DELETE 该对象 ② 清空 dev 记录后重删 | ① 400「对象下存在 1 条业务记录」（旧实现 count 经 $extends 只数 prod=0 → 放行 → FK 级联清空 dev 数据）② 删除成功 | object.service.spec（$queryRaw SQL 不含 environment_id 过滤 + 原 4 道校验回归） | 对抗审查 correctness-01（R1 高危）：守卫只数当前环境而 FK 级联删全部环境，dev 业务数据被静默清空且不可恢复 |
 
+### Q. 对抗审查 P1 波次④ 治理与运维（TC-208~213，2026-10-24）
+
+> 来源：对抗审查 P1 工单波次④六项（`docs/knowledge-base/ADVERSARIAL-REVIEW-P1-BACKLOG-2026-10-23.md`）。
+> 裁决：P1-26 删用户=阻断（要求先转移所有权）。
+
+| 编号 | 用例标题 | 优先级 | 前置条件 | 测试步骤 | 预期结果 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-208 | 归属闸 403 审计补齐（PERMISSION_DENIED） | P1 | builder 账号 + admin 新建的、builder 非成员的应用；END_USER-only 账号 | ① builder 深链 GET /design/apps/:adminAppId ② END_USER 调任一 /design/apps/:appId 路由 ③ 查审计页（分类=访问与权限）④ 对照：成员正常访问不产生拒绝审计 | ①② 403 且各写一条 action=PERMISSION_DENIED（ACCESS 类）审计，detail.reason 分别为 DESIGN_ACCESS_DENIED / STUDIO_ACCESS_DENIED，含 appId ③ 审计页可按 ACCESS 分类筛出该拒绝记录（旧实现 403 零审计且 PermissionGuard 先行写 ALLOWED 误导取证）④ 放行路径零 PERMISSION_DENIED 噪音 | design-access.guard.spec.ts（3 例：两级拒绝各一 + 放行零噪音） | P1-25（R1-engineering-01 + R2-engineering-03）：守卫写审计走 writeAudit 静态通道，不透 reason 之外的所有者身份（对齐决策 12） |
+| TC-209 | 删用户 OWNER 应用阻断 | P1 | 用户名下有 1+ 个 OWNER 应用（seed builder 即夹具）；对照用户仅 MEMBER 协作 | ① DELETE /users/:builderId ② 响应体 ③ 改为仅 MEMBER 协作用户重删 ④ 转移所有权后重删原用户 | ① 400「该用户是 N 个应用的所有者，无法删除…」② 提示先转移所有权或移除协作者 ③ 删除成功 ④ 转移后 OWNER 计数=0，删除成功（旧实现 OWNER 行随用户级联消失=无主应用） | user.service.spec.ts（3 例：404/阻断不执行删除且按 role=OWNER 精确统计/仅 MEMBER 放行） | P1-26（R2-engineering-06，用户裁决=阻断）；成员管理入口在应用「成员」页转移所有权 |
+| TC-210 | 依赖审计闸（critical 基线外阻断） | P1 | .github/audit-baseline.json 基线（当前 7 条已知 critical）；dependabot.yml 已配置 | ① 本地跑 `pnpm audit --audit-level critical --json` + `node scripts/audit-gate.mjs` ② 从基线摘除任一条重跑 ③ 引入一个基线外的新 critical 依赖后重跑 | ① 通过（7 条全部在基线内，基线条目带 chain 归因：amis/dev/prod）② exit 1 阻断并给出该条路径示例与「显式登记基线」指引 ③ exit 1 阻断 | scripts/audit-gate.mjs 正负两向实测 + CI audit job（static/test/build 之外的独立 job） | P1-27（R1-engineering-05）：dependabot 周更（root+5 manifest+actions，分组打包）；基线 chain=amis 条目即 P2-devil-04（amis fork 决策）联动工件；expr-eval 无补丁版本单独标注需缓解评估 |
+| TC-211 | AutoNumber 计数器事务化（失败不跳号） | P1 | 对象含 AutoNumber 字段（格式 ORD-{seq:0000}）；该对象有 lookup 字段指向另一对象 | ① 缺 lookup 目标记录时创建记录（lookup 校验 400 路径）② 查计数器表 ③ 正常创建 ④ 修复目标记录后重创建 | ① 400 拒绝 ② 计数器不递增（旧实现 upsert 先于 lookup 校验，失败路径永久跳号——实测 22→25）③ 创建成功编号 ORD-0001 ④ 下一编号紧接不跳号 | record.service.spec.ts（P1-28：$transaction 调用 + generate/create 均在事务回调内 + 5 参 tx 传入）+ 既有 generate 断言更新 | P1-28（R2-correctness-01）：计数器递增与记录写入同事务（tx 客户端透传 autoNumber.nextSeq），中间环节抛错随事务回滚；跳号本身业界通行，缺陷在结构性无原子性 |
+| TC-212 | 删对象第五类守卫（跨对象引用字段） | P1 | 对象 A 被对象 B 的 lookup 字段引用；另一场景 B 的 sub_form 字段 childObjectId=A | ① DELETE 对象 A（有 lookup 引用）② DELETE（有 sub_form 引用）③ 错误信息 ④ B 的 lookup 改指其他对象后重删 ⑤ 对照：引用字段指向别的对象时删 A 不误伤 | ① 400 ② 400 ③ 「有 N 个跨对象引用字段指向此对象…」并列出 对象.字段（关联/子表）④ 删除成功 ⑤ 正常删除 | object.service.spec.ts（3 例：lookup 拒删/sub_form 拒删/指向其他对象不误伤） | P1-29（R1-correctness-02）：旧实现 4 类守卫不含跨对象字段引用，删除后引用方存量写路径被 validateLookupWrites 400 永久卡死、rollup 静默归 null；rollup 经 relationFieldId 间接引用已被本扫描覆盖 |
+| TC-213 | 删流程级联处置 API release 行 | P1 | 流程曾发布为开放 API（release 行存在）后归档；发现端点可见该 API | ① DELETE /design/apps/:appId/processes/:pid ② GET /open/apps/:appId/processes（发现端点）③ 引擎调用该 apiName | ① 删除成功且同事务 deleteMany 该流程全部 release 行 ② 已删流程的 API 不再 advertise ③ 无悬空调用（旧实现 processDefId 无 FK，release 残留 → 发现端点继续通告、调用引擎层 400） | process.service.spec.ts（级联 deleteMany 断言）+ process-api-release.service.spec.ts（listByApp 存活过滤 2 例） | P1-30（R1-compat-07）：级联删为裁决形态（未上线零兼容，状态枚举无 ARCHIVED 不新增）；listByApp 存活校验为防御纵深（兜住其余删除面） |
+
 ---
+
 
 ## 变更记录
 
@@ -363,3 +378,4 @@
 | 2026-10-19 | v2.8 | 应用归属与双命名空间轮（ADR-0005）：新增 TC-196「设计面归属可见集与非成员深链 403」/ TC-197「协作者权限边界与所有权转移」/ TC-198「运行面不受归属影响」/ TC-199「design/runtime 双命名空间与 ?runtime=1 退役」；既有 92 例 e2e 的设计面引用全部迁移 /design/apps 嵌套路径 | 用户裁决（应用可见性 grilling：方案 b 所有权+协作成员表 + /design 前缀一次到位） |
 | 2026-10-23 | v2.9 | 对抗审查修复轮启动：新增 TC-200「通知节点 WEBHOOK 渠道 SSRF 防护」（security-01 高危修复回归：出站改经 safeFetch+超时，4 例单测钉住不变量）；QA-PLAN notification 节点行同步补 SSRF 锚点；两轮裁决并集与 P0/P1/P2 排期落档 docs/knowledge-base/ADVERSARIAL-REVIEW-2026-10-23.md | 对抗审查（全局 workflow apaas-adversarial-review 两轮，76 条确认并集） |
 | 2026-10-23 | v3.0 | 对抗审查 P0 批次第二波：新增 TC-201「服务身份应用作用域」/ TC-202「G4 硬闸：页面引用敏感环境变量拒绝发布」/ TC-203「运行面页面读端点可见性门」/ TC-204「数据端点双门（DRAFT 应用不再供数）」；P0-2/6/9/10 四项修复落地（gateway 935 全绿）；同日 P0-3/4/5/7/8 收口（TC-205~207：云函数异步 run+槽位守恒+日志上限/生产 seed 开关/删对象跨环境守卫，gateway 940 全绿）；ADR-0005 补勘误（决策 10 非语义豁免） | 对抗审查 P0 批次（用户裁决：P0-6 G4 硬闸+否决服务端代理；P0-9 双门判定） |
+| 2026-10-24 | v3.1 | 对抗审查 P1 波次④（治理与运维六项）：新增 Q 节 TC-208「归属闸 403 审计补齐」/ TC-209「删用户 OWNER 应用阻断」/ TC-210「依赖审计闸」/ TC-211「AutoNumber 计数器事务化」/ TC-212「删对象第五类守卫」/ TC-213「删流程级联处置 release 行」；8 项 ◆ 设计裁决已收齐落档工单档（见 ADVERSARIAL-REVIEW-P1-BACKLOG-2026-10-23） | 对抗审查 P1 专项（工单波次④：审计/阻断/dependabot+audit 闸/事务化/第五类守卫/级联处置） |

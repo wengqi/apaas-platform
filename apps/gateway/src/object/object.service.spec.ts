@@ -258,6 +258,89 @@ describe('ObjectService', () => {
       );
     });
 
+    it('校验5（P1-29）— 其他对象 lookup 字段引用此对象时拒绝删除', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      prisma.pageMeta.count.mockResolvedValue(0);
+      prisma.processDef.count.mockResolvedValue(0);
+      prisma.permissionRule.count.mockResolvedValue(0);
+      prisma.objectMeta.findMany.mockResolvedValue([
+        makeObject({
+          id: 'obj-002',
+          name: 'Order',
+          fields: [
+            {
+              id: 'fld-lookup',
+              apiName: 'customer_ref',
+              label: '客户',
+              type: 'lookup',
+              config: { lookup: { targetObjectId: 'obj-001', relationType: 'one_to_many' } },
+            },
+          ],
+        }),
+      ]);
+
+      const { service } = createService();
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.objectMeta.delete).not.toHaveBeenCalled();
+    });
+
+    it('校验5（P1-29）— 其他对象 sub_form 字段引用此对象时拒绝删除', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      prisma.pageMeta.count.mockResolvedValue(0);
+      prisma.processDef.count.mockResolvedValue(0);
+      prisma.permissionRule.count.mockResolvedValue(0);
+      prisma.objectMeta.findMany.mockResolvedValue([
+        makeObject({
+          id: 'obj-003',
+          name: 'OrderMain',
+          fields: [
+            {
+              id: 'fld-subform',
+              apiName: 'items',
+              label: '明细',
+              type: 'sub_form',
+              config: { subForm: { childObjectId: 'obj-001', parentFieldId: 'fld-parent' } },
+            },
+          ],
+        }),
+      ]);
+
+      const { service } = createService();
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.objectMeta.delete).not.toHaveBeenCalled();
+    });
+
+    it('校验5（P1-29）— 引用字段指向其他对象时不误伤，正常删除', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
+      prisma.pageMeta.count.mockResolvedValue(0);
+      prisma.processDef.count.mockResolvedValue(0);
+      prisma.permissionRule.count.mockResolvedValue(0);
+      prisma.objectMeta.findMany.mockResolvedValue([
+        makeObject({
+          id: 'obj-002',
+          name: 'Order',
+          fields: [
+            {
+              id: 'fld-lookup',
+              apiName: 'other_ref',
+              label: '其他引用',
+              type: 'lookup',
+              config: { lookup: { targetObjectId: 'obj-009', relationType: 'one_to_many' } },
+            },
+          ],
+        }),
+      ]);
+      prisma.objectMeta.delete.mockResolvedValue({});
+
+      const { service } = createService();
+      await expect(service.delete('tenant-001', 'app-001', 'obj-001')).resolves.toBeUndefined();
+      expect(prisma.objectMeta.delete).toHaveBeenCalledWith({ where: { id: 'obj-001' } });
+    });
+
     it('无引用时正常删除 + 记录 ChangeLog', async () => {
       prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
       prisma.pageMeta.count.mockResolvedValue(0);

@@ -225,7 +225,14 @@ export class ProcessService {
       });
     }
 
-    await prisma.processDef.delete({ where: { id: processId } });
+    // 级联处置该流程的 API release 行（P1-30）：processDefId 无 FK，残留行会让
+    // 发现端点继续 advertise 已删流程、调用引擎层 400 悬空——同事务级联删除。
+    await prisma.$transaction([
+      prisma.processApiRelease.deleteMany({
+        where: { tenantId, appId, processDefId: processId },
+      }),
+      prisma.processDef.delete({ where: { id: processId } }),
+    ]);
 
     await this.changeLogService.log({
       tenantId,

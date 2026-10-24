@@ -22,6 +22,29 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@apaas/db';
 
+/**
+ * 事务客户端最小结构（P1-28）：生成器仅消费 autoNumberCounter.upsert。
+ * 结构化声明而非 Prisma.TransactionClient——@apaas/db 的 prisma 经 $extends 包装，
+ * 其 $transaction 回调客户端类型无法赋给基础 TransactionClient（findUnique 签名不兼容）。
+ */
+export interface AutoNumberCounterClient {
+  autoNumberCounter: {
+    upsert: (args: {
+      where: {
+        objectId_prefix_environmentId: { objectId: string; prefix: string; environmentId: string };
+      };
+      update: { counter: { increment: number } };
+      create: {
+        tenantId: string;
+        objectId: string;
+        prefix: string;
+        environmentId: string;
+        counter: number;
+      };
+    }) => Promise<{ counter: number }>;
+  };
+}
+
 /** 占位符正则：{name} 或 {name:spec}。 */
 const PLACEHOLDER = /\{(\w+)(?::([^}]+))?\}/g;
 
@@ -98,6 +121,8 @@ export class AutoNumberGenerator {
    * @param objectId 所属对象 ID（序号计数范围）
    * @param tenantId 租户 ID（计数器行归属）
    * @param envKey   环境 key（R1.4：dev/prod 序列独立，缺省 prod）
+   * @param tx       可选事务客户端（P1-28：传入时计数器递增加入调用方事务，
+   *                 记录写入失败即随事务回滚，不再产生结构性跳号）
    * @returns 生成的编号字符串
    */
   async generate(
@@ -105,11 +130,12 @@ export class AutoNumberGenerator {
     objectId: string,
     tenantId: string,
     envKey = 'prod',
+    tx?: AutoNumberCounterClient,
   ): Promise<string> {
     const now = new Date();
 
     // 计算下一个序号：计数器表原子自增
-    const seq = await this.nextSeq(format, objectId, tenantId, now, envKey);
+    const seq = await this.nextSeq(format, objectId, tenantId, now, envKey, tx);
 
     return renderFormat(format, seq, now);
   }
@@ -126,13 +152,15 @@ export class AutoNumberGenerator {
     tenantId: string,
     now: Date,
     envKey = 'prod',
+    tx?: AutoNumberCounterClient,
   ): Promise<number> {
     // 若格式不含序号占位符，直接返回 0（渲染时不会有 seq）
     if (!format.includes('{seq')) return 0;
 
     const prefix = resolvePrefixBeforeSeq(format, now);
 
-    const counter = await prisma.autoNumberCounter.upsert({
+    const client = tx ?? prisma;
+    const counter = await client.autoNumberCounter.upsert({
       where: { objectId_prefix_environmentId: { objectId, prefix, environmentId: envKey } },
       update: { counter: { increment: 1 } },
       create: { tenantId, objectId, prefix, environmentId: envKey, counter: 1 },

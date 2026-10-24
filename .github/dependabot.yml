@@ -1,0 +1,89 @@
+# Dependabot 依赖监控（P1-27，对抗审查 R1-engineering-05）。
+#
+# pnpm workspace：每个含业务依赖的 manifest 单独登记（npm 生态 + pnpm lockfile 支持）；
+# groups 将同目录的更新打包为单个 PR，控制单人维护者的 PR 压力。
+# 骨架包（meta-svc / process-svc / runtime-svc 仅 devDeps）不单独登记，随根/共享包升级覆盖。
+# amis 族从分组排除：上游冻结（14 个月零发布），大版本随升必炸 CI 且连累同组安全补丁
+# 合入——amis 升级路径单列，随 P2-devil-04（fork 决策）处置。
+version: 2
+
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ['*']
+        exclude-patterns:
+          - 'amis*'
+          - 'amis-editor*'
+
+  - package-ecosystem: 'npm'
+    directory: '/apps/gateway'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ['*']
+        exclude-patterns:
+          - 'amis*'
+          - 'amis-editor*'
+
+  - package-ecosystem: 'npm'
+    directory: '/packages/shared'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ['*']
+        exclude-patterns:
+          - 'amis*'
+          - 'amis-editor*'
+
+  - package-ecosystem: 'npm'
+    directory: '/packages/db'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ['*']
+        exclude-patterns:
+          - 'amis*'
+          - 'amis-editor*'
+
+  - package-ecosystem: 'npm'
+    directory: '/packages/studio'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ['*']
+        exclude-patterns:
+          - 'amis*'
+          - 'amis-editor*'
+
+  - package-ecosystem: 'npm'
+    directory: '/packages/runtime-ui'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    groups:
+      all-updates:
+        patterns: ['*']
+        exclude-patterns:
+          - 'amis*'
+          - 'amis-editor*'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      all-updates:
+        patterns: ['*']

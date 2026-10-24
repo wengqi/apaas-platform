@@ -296,10 +296,11 @@ export class ObjectService {
    * 删除对象（校验引用关系）。
    *
    * 阻断性校验（有则拒绝删除）：
-   *   1. 对象下有业务记录
+   *   1. 对象下有业务记录（跨全部环境统计）
    *   2. 有页面引用此对象
    *   3. 有流程引用此对象（RECORD_CREATED/RECORD_UPDATED 触发器）
    *   4. 有权限规则引用此对象（DATA_MODEL/RECORD 类型的 targetId）
+   *   5. 其他对象的 lookup / sub_form 字段引用此对象（P1-29）
    */
   async delete(
     tenantId: string,
@@ -360,6 +361,34 @@ export class ObjectService {
     if (ruleCount > 0) {
       throw new BadRequestException(
         `有 ${ruleCount} 条权限规则引用了此对象，无法删除。请先删除相关权限规则后再删除对象。`,
+      );
+    }
+
+    // 5. 校验其他对象的 lookup / sub_form 字段是否引用此对象（对抗审查 P1-29）：
+    // 字段以 apiName/id 字符串引用、无 FK 可拦截，删对象后引用方存量记录写路径
+    // 会被 validateLookupWrites 400 永久卡死、rollup 静默归 null。rollup 经
+    // relationFieldId 间接指向本对象的 lookup/sub_form 字段，已被本扫描覆盖。
+    const siblings = await prisma.objectMeta.findMany({
+      where: { tenantId, appId: existing.appId, id: { not: objectId } },
+      select: { id: true, name: true, fields: true },
+    });
+    const referencing: string[] = [];
+    for (const sibling of siblings) {
+      for (const field of this.parseFields(sibling.fields)) {
+        const config = (field.config ?? {}) as {
+          lookup?: { targetObjectId?: string };
+          subForm?: { childObjectId?: string };
+        };
+        if (config.lookup?.targetObjectId === objectId) {
+          referencing.push(`${sibling.name}.${field.label || field.apiName}（关联）`);
+        } else if (config.subForm?.childObjectId === objectId) {
+          referencing.push(`${sibling.name}.${field.label || field.apiName}（子表）`);
+        }
+      }
+    }
+    if (referencing.length > 0) {
+      throw new BadRequestException(
+        `有 ${referencing.length} 个跨对象引用字段指向此对象，无法删除：${referencing.join('、')}。请先删除或改向这些字段后再删除对象。`,
       );
     }
 

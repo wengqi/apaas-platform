@@ -83,4 +83,47 @@ describe('DesignAccessGuard', () => {
     const { ctx } = makeContext(makeUser(), { appId: 'app-other' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });
+
+  // =========================================================================
+  // P1-25 归属闸 403 审计（对抗审查 R1-engineering-01 + R2-engineering-03）：
+  // 归属闸拒绝此前零审计，且 PermissionGuard 已先行写入「PERMISSION_CHECK
+  // ALLOWED」——取证视角出现 403 请求对应「权限检查通过」的误导记录。
+  // 修复契约：两级拒绝（studio 纵深 / 应用归属）统一补写 PERMISSION_DENIED（ACCESS 类）。
+  // =========================================================================
+
+  it('P1-25：END_USER 无 studio 权被拒 → 补写 PERMISSION_DENIED 审计（reason=STUDIO_ACCESS_DENIED）', async () => {
+    const { ctx } = makeContext(makeUser({ roleCodes: ['END_USER'] }), { appId: 'app-001' });
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+    const arg = prisma.auditLog.create.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(arg.data.action).toBe('PERMISSION_DENIED');
+    expect(arg.data.tenantId).toBe('tenant-001');
+    expect(arg.data.userId).toBe('user-001');
+    expect(arg.data.appId).toBe('app-001');
+    expect((arg.data.detail as Record<string, unknown>).reason).toBe('STUDIO_ACCESS_DENIED');
+  });
+
+  it('P1-25：非成员深链他人应用被拒 → 补写 PERMISSION_DENIED 审计（reason=DESIGN_ACCESS_DENIED）', async () => {
+    prisma.applicationMember.findFirst.mockResolvedValue(null);
+    const { ctx } = makeContext(makeUser(), { appId: 'app-other' });
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+    const arg = prisma.auditLog.create.mock.calls[0]![0] as {
+      data: Record<string, unknown>;
+    };
+    expect(arg.data.action).toBe('PERMISSION_DENIED');
+    expect(arg.data.appId).toBe('app-other');
+    expect((arg.data.detail as Record<string, unknown>).reason).toBe('DESIGN_ACCESS_DENIED');
+  });
+
+  it('P1-25：放行路径零 PERMISSION_DENIED 审计写入（不制造噪音）', async () => {
+    prisma.applicationMember.findFirst.mockResolvedValue({ role: 'MEMBER' });
+    const { ctx } = makeContext(makeUser(), { appId: 'app-001' });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
 });

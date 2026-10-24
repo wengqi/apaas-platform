@@ -1,0 +1,55 @@
+{
+  "updatedAt": "2026-10-24",
+  "note": "P1-27 critical 审计基线——不在本表的新 critical 将阻断 CI；条目修复后应修剪",
+  "entries": [
+    {
+      "ghsa": "GHSA-23hp-3jrh-7fpw",
+      "module": "tar",
+      "chain": "amis",
+      "fixAvailable": ">=7.5.19",
+      "reason": "amis@6.13 传递链：上游 14 个月零发布无法随升，随 P2-devil-04（fork/迁移决策）统一处置"
+    },
+    {
+      "ghsa": "GHSA-5gmw-xhrv-c9v3",
+      "module": "tinypool",
+      "chain": "dev",
+      "fixAvailable": ">=2.1.1",
+      "reason": "纯开发工具链（不进生产产物）：随开发依赖升级移除"
+    },
+    {
+      "ghsa": "GHSA-85c8-ppgw-ccpr",
+      "module": "tinypool",
+      "chain": "dev",
+      "fixAvailable": ">=2.1.2",
+      "reason": "纯开发工具链（不进生产产物）：随开发依赖升级移除"
+    },
+    {
+      "ghsa": "GHSA-5xrq-8626-4rwp",
+      "module": "vitest",
+      "chain": "dev",
+      "fixAvailable": ">=3.2.6",
+      "reason": "纯开发工具链（不进生产产物）：随开发依赖升级移除"
+    },
+    {
+      "ghsa": "GHSA-cg2g-xh64-v4q7",
+      "module": "dompurify",
+      "chain": "prod",
+      "fixAvailable": ">=3.4.17",
+      "reason": "生产链可达、补丁版本可用：待 dependabot 升级 PR 合入后从基线移除"
+    },
+    {
+      "ghsa": "GHSA-q9v2-7m5w-4693",
+      "module": "expr-eval",
+      "chain": "prod",
+      "fixAvailable": "<0.0.0",
+      "reason": "无补丁版本可用（上游未修复）：需评估替换或缓解措施（单独裁决），不入常规升级轨道"
+    },
+    {
+      "ghsa": "GHSA-jqcg-44mw-7w3h",
+      "module": "proxy-addr",
+      "chain": "prod",
+      "fixAvailable": ">=2.0.8",
+      "reason": "生产链可达、补丁版本可用：待 dependabot 升级 PR 合入后从基线移除"
+    }
+  ]
+}

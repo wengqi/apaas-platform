@@ -4,6 +4,11 @@
 > 本档是 P1 专项修复的**起跑线工单**（取代主档第四节 prose 形态，逐项带状态跟踪）；
 > 裁决原文与证据链见 `ADVERSARIAL-REVIEW-2026-10-23.md`，对话结论以两档并读为准。
 > P0 十项已于 a03bdc2 全清推送；P2（36 条 low）另行登记不排期。
+>
+> **◆ 裁决已全部收齐（2026-10-24）**：P1-02 乐观锁（version 列条件更新，冲突 409）/
+> P1-05 字段定向写（只 merge rollup 字段）/ P1-07 看门狗续期 / P1-09 全硬拦（列引用清单）/
+> P1-16 Connector 加列 processDefId + 存量回填 / P1-17+18+24 三处 SQL 下推全做（非数值聚合保留内存）/
+> P1-21 短 TTL（30s）+ 四类写路径主动失效 / P1-26 阻断（要求先转移所有权）。
 
 ## 执行约定（专项会话开跑前读）
 
@@ -57,12 +62,12 @@
 
 | # | 缺陷 | 位置 | 裁决号 | 修法方向 | 需裁决 | 状态 |
 |---|---|---|---|---|---|---|
-| P1-25 | 归属闸 403 零审计或反记 ALLOWED：实测 403 在审计里显示「权限检查通过」（误导取证） | design-access.guard.ts:38-42、app-access.service.ts:45,56、all-exceptions.filter.ts:34-42 | R1-engineering-01 + R2-engineering-03 | 两级闸拒绝统一写 PERMISSION_DENIED（ACCESS 类）；无 @RequirePermission 的设计路由补审计面 | | ⬜ |
-| P1-26 | 删用户级联孤儿化应用：OWNER 行级联消失，应用从非管理员视角消失零告警（实测；admin 可转移救回） | user.service.ts:164-169（membership.user Cascade） | R2-engineering-06 | 删除前置守卫：名下有 OWNER 应用 → 阻断（要求先转移）或自动转 admin + 审计 | ◆ 阻断 vs 自动转移 | ⬜ |
-| P1-27 | 依赖监控三缺：无 dependabot、CI 无 audit；实弹 143 条通告含 3 critical（markdown-it@12.3.2 经 amis@6.13 进 runtime-ui 渲染链 GHSA-vfgh-jcmw-g37q） | .github/（仅 pr template+ci.yml） | R1-engineering-05 | dependabot.yml + CI audit 步骤（critical 阻断策略）；critical 项与 P2-devil-04（amis fork 决策）联动评估 | | ⬜ |
-| P1-28 | AutoNumber 计数器创建失败泄漏跳号：计数器递增在 lookup 校验/create 之前、无事务无回收（实测 22→25 永久跳号） | record.service.ts:496-537、auto-number.ts:135-139 | R2-correctness-01 | 计数器递增与记录写入同事务（或失败路径回收）；注意跳号本身业界通行，缺陷在结构性无原子性 | | ⬜ |
-| P1-29 | 删对象不扫其他对象 lookup/sub_form/rollup 字段引用：删除后引用方存量记录写路径被 400 永久卡死、rollup 静默归 null（实测） | object.service.ts:304-359（对照既有四类检查） | R1-correctness-02 | 守卫补第五类检查：扫描全应用 fields config 中的 lookup.targetObjectId / sub_form.childObjectId / rollup 关系字段 | | ⬜ |
-| P1-30 | 删流程不清理 API release 行：发现端点继续 advertise 已删流程、调用引擎层 400 悬空（实测；processDefId 无 FK） | schema.prisma:1108、design-process.controller.ts:110-116、process-api-release.service.ts:118-124 | R1-compat-07 | 删除流程时级联处置 release 行（置 ARCHIVED 或级联删）+ listByApp 校验 processDef 存活 | | ⬜ |
+| P1-25 | 归属闸 403 零审计或反记 ALLOWED：实测 403 在审计里显示「权限检查通过」（误导取证） | design-access.guard.ts:38-42、app-access.service.ts:45,56、all-exceptions.filter.ts:34-42 | R1-engineering-01 + R2-engineering-03 | 两级闸拒绝统一写 PERMISSION_DENIED（ACCESS 类）；无 @RequirePermission 的设计路由补审计面 | | ✅ TC-208（design-access.guard.spec 3 例；writeAudit 静态通道，gate=DESIGN_ACCESS） |
+| P1-26 | 删用户级联孤儿化应用：OWNER 行级联消失，应用从非管理员视角消失零告警（实测；admin 可转移救回） | user.service.ts:164-169（membership.user Cascade） | R2-engineering-06 | 删除前置守卫：名下有 OWNER 应用 → 阻断（要求先转移）或自动转 admin + 审计 | ◆ 阻断 vs 自动转移 → ✅ 裁决=阻断 | ✅ TC-209（user.service.spec 3 例；按 role=OWNER 精确统计） |
+| P1-27 | 依赖监控三缺：无 dependabot、CI 无 audit；实弹 143 条通告含 3 critical（markdown-it@12.3.2 经 amis@6.13 进 runtime-ui 渲染链 GHSA-vfgh-jcmw-g37q） | .github/（仅 pr template+ci.yml） | R1-engineering-05 | dependabot.yml + CI audit 步骤（critical 阻断策略）；critical 项与 P2-devil-04（amis fork 决策）联动评估 | | ✅ TC-210（dependabot.yml 周更 + scripts/audit-gate.mjs + .github/audit-baseline.json 基线 7 条带 chain 归因 + CI audit job；正负两向实测） |
+| P1-28 | AutoNumber 计数器创建失败泄漏跳号：计数器递增在 lookup 校验/create 之前、无事务无回收（实测 22→25 永久跳号） | record.service.ts:496-537、auto-number.ts:135-139 | R2-correctness-01 | 计数器递增与记录写入同事务（或失败路径回收）；注意跳号本身业界通行，缺陷在结构性无原子性 | | ✅ TC-211（create 全链入 $transaction + tx 客户端透传 auto-number；record.service.spec 钉事务内序） |
+| P1-29 | 删对象不扫其他对象 lookup/sub_form/rollup 字段引用：删除后引用方存量记录写路径被 400 永久卡死、rollup 静默归 null（实测） | object.service.ts:304-359（对照既有四类检查） | R1-correctness-02 | 守卫补第五类检查：扫描全应用 fields config 中的 lookup.targetObjectId / sub_form.childObjectId / rollup 关系字段 | | ✅ TC-212（object.service.spec 3 例；rollup 经 relationFieldId 间接引用被扫描覆盖） |
+| P1-30 | 删流程不清理 API release 行：发现端点继续 advertise 已删流程、调用引擎层 400 悬空（实测；processDefId 无 FK） | schema.prisma:1108、design-process.controller.ts:110-116、process-api-release.service.ts:118-124 | R1-compat-07 | 删除流程时级联处置 release 行（置 ARCHIVED 或级联删）+ listByApp 校验 processDef 存活 | | ✅ TC-213（级联删=$transaction[deleteMany+delete]；listByApp 存活过滤兜底；状态枚举无 ARCHIVED 故选级联删） |
 
 ## 建议推进顺序
 
@@ -71,6 +76,8 @@
 3. **然后波次①**（并发/事务 10 条：P1-01/03/08 无裁决直接做；P1-02/05/07/09 带 ◆ 先收裁决）；
 4. **最后波次③**（性能 8 条：P1-19/20 纯索引/形态改先做；P1-17/18/24 三个 ◆ 下推范围一次裁决；P1-23 与 P1-30 联动做收益最大）。
 
-## 开工前一次性收集的裁决清单（7 项 ◆）
+## 开工前一次性收集的裁决清单（8 项 ◆，2026-10-24 已全部裁决）
 
 P1-02 锁策略（乐观锁 vs 行锁）/ P1-05 Rollup 写回策略（字段定向 vs 串行化）/ P1-07 看门狗实现形态 / P1-09 字段变更硬拦 vs 警告 / P1-16 webhook 绑定形态 / P1-17+18+24 SQL 下推范围（一次裁决）/ P1-21 权限缓存失效粒度 / P1-26 删用户阻断 vs 自动转移。
+
+裁决结果：P1-02=**乐观锁**（version 列条件更新，冲突 409 提示重试）；P1-05=**字段定向写**（只 merge rollup 字段，不触碰其他字段）；P1-07=**看门狗续期**（持锁周期续 TTL）；P1-09=**全硬拦**（命中任一引用即 400 并列出引用清单，与删对象守卫先例一致）；P1-16=**Connector 加列 processDefId**（+存量回填）；P1-17/18/24=**三处全做**（图表聚合/业务字段排序/rollup 数值聚合下推，非数值聚合保留内存路径）；P1-21=**短 TTL（30s）+ 主动失效**（角色/成员/组织/授权四类写路径清租户级键）；P1-26=**阻断**（名下有 OWNER 应用即 400，要求先转移所有权）。

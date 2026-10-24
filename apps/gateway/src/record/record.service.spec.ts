@@ -323,7 +323,37 @@ describe('RecordService', () => {
         'obj-001',
         'tenant-001',
         'prod',
+        expect.anything(), // P1-28：事务客户端（计数器递增加入创建事务）
       );
+    });
+
+    it('P1-28：AutoNumber 生成与记录写入同事务（计数器递增在 $transaction 回调内，失败可回滚防结构性跳号）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [
+            {
+              id: 'f1',
+              apiName: 'order_no',
+              type: FieldType.AutoNumber,
+              config: { autoNumber: { format: 'ORD-{seq:0000}' } },
+            },
+          ],
+        }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+
+      const { service, autoNumberGenerator } = createService();
+      await service.create('tenant-001', 'obj-001', 'user-001', { name: 'Test' });
+
+      // 编号生成与记录写入必须发生在同一 $transaction 回调内——中间环节
+      // （lookup 校验 400 / create 失败）抛错时计数器随事务回滚，不再永久跳号
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      const txOrder = prisma.$transaction.mock.invocationCallOrder[0]!;
+      expect(autoNumberGenerator.generate.mock.invocationCallOrder[0]!).toBeGreaterThan(txOrder);
+      expect(prisma.record.create.mock.invocationCallOrder[0]!).toBeGreaterThan(txOrder);
+      // 事务客户端传入生成器（计数器 upsert 消费同一事务连接）
+      const genArgs = autoNumberGenerator.generate.mock.calls[0]! as unknown[];
+      expect(genArgs[4]).toBeDefined();
     });
 
     it('Formula 字段自动计算', async () => {

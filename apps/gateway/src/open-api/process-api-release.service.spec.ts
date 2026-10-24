@@ -174,3 +174,56 @@ describe('resolve（调用解析）', () => {
     await expect(svc.resolve(TENANT, APP, 'ghost', 1)).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('listByApp（发现端点，P1-30）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('P1-30：processDef 已删除的 release 行不再 advertise（存活校验过滤）', async () => {
+    const { svc, prisma } = makeService();
+    prisma.processApiRelease.findMany.mockResolvedValue([
+      {
+        id: 'rel-alive',
+        appId: APP,
+        processDefId: 'pd-1',
+        apiName: 'order_flow',
+        majorVersion: 1,
+        status: 'ACTIVE',
+        triggerType: 'API',
+        releasedBy: 'u1',
+        createdAt: new Date('2026-10-01'),
+      },
+      {
+        id: 'rel-dead',
+        appId: APP,
+        processDefId: 'pd-dead',
+        apiName: 'ghost_flow',
+        majorVersion: 1,
+        status: 'ACTIVE',
+        triggerType: 'API',
+        releasedBy: 'u1',
+        createdAt: new Date('2026-10-01'),
+      },
+    ]);
+    prisma.processDef.findMany.mockResolvedValue([{ id: 'pd-1' }]);
+
+    const rows = await svc.listByApp(TENANT, APP);
+
+    expect(rows.map((r) => (r as { id: string }).id)).toEqual(['rel-alive']);
+    // 存活校验按应用域查询（不跨应用扫全租户）
+    expect(prisma.processDef.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: TENANT, appId: APP }),
+      }),
+    );
+  });
+
+  it('无 release 行时直接返回空数组（不触发存活查询）', async () => {
+    const { svc, prisma } = makeService();
+    prisma.processApiRelease.findMany.mockResolvedValue([]);
+
+    const rows = await svc.listByApp(TENANT, APP);
+
+    expect(rows).toEqual([]);
+    expect(prisma.processDef.findMany).not.toHaveBeenCalled();
+  });
+});

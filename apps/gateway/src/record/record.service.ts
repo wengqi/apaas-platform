@@ -492,48 +492,55 @@ export class RecordService {
       data: filteredData,
     });
 
-    // 1. 生成 AutoNumber 字段编号
-    for (const field of fields) {
-      if (field.type !== FieldType.AutoNumber) continue;
-      const config = field.config as AutoNumberFieldConfig | undefined;
-      const format = config?.autoNumber?.format;
-      if (!format) continue;
-      // 用户即便传了该字段值也以系统生成为准（自动编号由系统掌控）
-      computedData[field.apiName] = await this.autoNumberGenerator.generate(
-        format,
-        objectId,
-        tenantId,
-        getEnvironmentId() ?? 'prod',
+    // 1-4 与写入同事务（P1-28）：AutoNumber 计数器递增与记录写入原子化——
+    // 中间环节（lookup 校验 400 / create 失败）抛错时计数器随事务回滚，
+    // 不再产生结构性跳号。Formula 为纯内存计算、lookup/rollup 为只读校验，
+    // 消费同一 computedData，一并置于回调内保持计算→写入的原子边界。
+    const record = await prisma.$transaction(async (tx) => {
+      // 1. 生成 AutoNumber 字段编号（tx 客户端：计数器递增加入本事务）
+      for (const field of fields) {
+        if (field.type !== FieldType.AutoNumber) continue;
+        const config = field.config as AutoNumberFieldConfig | undefined;
+        const format = config?.autoNumber?.format;
+        if (!format) continue;
+        // 用户即便传了该字段值也以系统生成为准（自动编号由系统掌控）
+        computedData[field.apiName] = await this.autoNumberGenerator.generate(
+          format,
+          objectId,
+          tenantId,
+          getEnvironmentId() ?? 'prod',
+          tx,
+        );
+      }
+
+      // 2. 计算 Formula 字段（基于已含自动编号的 data）
+      const formulaResults = this.formulaEngine.computeRecordFields(
+        fields as unknown as import('@apaas/shared').Field[],
+        computedData,
       );
-    }
+      Object.assign(computedData, formulaResults);
 
-    // 2. 计算 Formula 字段（基于已含自动编号的 data）
-    const formulaResults = this.formulaEngine.computeRecordFields(
-      fields as unknown as import('@apaas/shared').Field[],
-      computedData,
-    );
-    Object.assign(computedData, formulaResults);
+      // 3. Lookup 写约束：引用的目标记录必须存在且属于配置的目标对象
+      await this.rollupService.validateLookupWrites(tenantId, fields, computedData);
 
-    // 3. Lookup 写约束：引用的目标记录必须存在且属于配置的目标对象
-    await this.rollupService.validateLookupWrites(tenantId, fields, computedData);
-
-    // 4. 计算 Rollup 字段（lookup 关系此时即可算；sub_form 子记录尚不存在，写入后异步补算）
-    const rollupResults = await this.rollupService.computeRollupFields(
-      tenantId,
-      fields,
-      computedData,
-    );
-    Object.assign(computedData, rollupResults);
-
-    const record = await prisma.record.create({
-      data: {
+      // 4. 计算 Rollup 字段（lookup 关系此时即可算；sub_form 子记录尚不存在，写入后异步补算）
+      const rollupResults = await this.rollupService.computeRollupFields(
         tenantId,
-        appId: obj.appId,
-        objectId,
-        data: computedData as Prisma.InputJsonValue,
-        createdBy: userId,
-        updatedBy: userId,
-      },
+        fields,
+        computedData,
+      );
+      Object.assign(computedData, rollupResults);
+
+      return tx.record.create({
+        data: {
+          tenantId,
+          appId: obj.appId,
+          objectId,
+          data: computedData as Prisma.InputJsonValue,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      });
     });
 
     // 评审整改：业务动作级审计

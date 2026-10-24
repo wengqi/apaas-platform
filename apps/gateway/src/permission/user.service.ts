@@ -161,10 +161,20 @@ export class UserService {
     });
   }
 
-  /** 删除用户。 */
+  /** 删除用户（P1-26：名下有 OWNER 应用时阻断——OWNER 行随用户级联删除会产生无主应用）。 */
   async delete(tenantId: string, id: string) {
     const user = await prisma.user.findFirst({ where: { id, tenantId } });
     if (!user) throw new NotFoundException('用户不存在');
+
+    const ownedAppCount = await prisma.applicationMember.count({
+      where: { tenantId, userId: id, role: 'OWNER' },
+    });
+    if (ownedAppCount > 0) {
+      throw new BadRequestException(
+        `该用户是 ${ownedAppCount} 个应用的所有者，无法删除。请先在应用成员管理中转移所有权（或移除其协作者身份）后再删除用户。`,
+      );
+    }
+
     await prisma.user.delete({ where: { id } });
   }
 

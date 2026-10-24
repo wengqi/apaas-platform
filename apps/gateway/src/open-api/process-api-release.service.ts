@@ -115,12 +115,24 @@ export class ProcessApiReleaseService {
     };
   }
 
-  /** 应用下全部流程 API 发布（开放发现用；含 DEPRECATED）。 */
+  /**
+   * 应用下全部流程 API 发布（开放发现用；含 DEPRECATED）。
+   * 存活校验（P1-30）：processDef 已删除的 release 行不再 advertise——
+   * 删除路径已级联清理，此处过滤兜底其余删除面（防悬空 400）。
+   */
   async listByApp(tenantId: string, appId: string) {
-    return prisma.processApiRelease.findMany({
+    const rows = await prisma.processApiRelease.findMany({
       where: { tenantId, appId },
       orderBy: { majorVersion: 'desc' },
     });
+    if (rows.length === 0) return rows;
+
+    const defs = await prisma.processDef.findMany({
+      where: { tenantId, appId, id: { in: rows.map((r) => r.processDefId) } },
+      select: { id: true },
+    });
+    const aliveIds = new Set(defs.map((d) => d.id));
+    return rows.filter((r) => aliveIds.has(r.processDefId));
   }
 
   /** 按流程列版本发布历史。 */

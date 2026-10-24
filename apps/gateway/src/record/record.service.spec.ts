@@ -530,14 +530,20 @@ describe('RecordService', () => {
           ],
         }),
       );
+      prisma.$queryRaw.mockResolvedValue([{ count: 1 }]);
       prisma.record.findFirst.mockResolvedValue(makeRecord());
       const { service } = createService();
 
       await expect(
         service.create('tenant-001', 'obj-001', 'user-001', { name: '重复名' }),
       ).rejects.toThrow('已存在（唯一约束）');
-      const where = prisma.record.findFirst.mock.calls[0]![0].where;
-      expect(where.data).toEqual({ path: ['name'], equals: '重复名' });
+      // P1-19：查重走 $queryRaw @>（参数含 {name:'重复名'} 包含形态）
+      const [strings, ...params] = prisma.$queryRaw.mock.calls[0] as unknown as [
+        TemplateStringsArray,
+        ...unknown[],
+      ];
+      expect(strings.join(' ? ').toLowerCase()).toContain('data @>');
+      expect(JSON.stringify(params)).toContain('重复名');
     });
 
     it('unique 校验通过（无重名）→ 正常创建', async () => {
@@ -606,6 +612,29 @@ describe('RecordService', () => {
           data: expect.objectContaining({ version: { increment: 1 } }),
         }),
       );
+    });
+
+    it('P1-19：unique 查重走 GIN 可达的 @> 形态（raw SQL，不再 path+equals Seq Scan）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({
+          fields: [{ id: 'f1', apiName: 'code', type: FieldType.Text, unique: true, config: {} }],
+        }),
+      );
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await service.create('tenant-001', 'obj-001', 'user-001', { code: 'A-1' });
+
+      const raw = prisma.$queryRaw as ReturnType<typeof vi.fn>;
+      expect(raw).toHaveBeenCalled();
+      const [strings] = raw.mock.calls[0] as unknown as [TemplateStringsArray, ...unknown[]];
+      const sql = strings.join(' ? ').toLowerCase();
+      expect(sql).toContain('data @>');
+      expect(sql).not.toContain("data->>'code'");
+      // 参数含 {code:'A-1'} 包含形态（jsonb 包含语义，命中 GIN）
+      const params = raw.mock.calls[0]!.slice(1) as unknown[];
+      expect(JSON.stringify(params)).toContain('code');
     });
 
     it('P1-02：客户端回传 version 时严格比对快照（长持快照编辑冲突检测）', async () => {
@@ -696,16 +725,21 @@ describe('RecordService', () => {
       const fields = [
         { id: 'f1', apiName: 'name', type: FieldType.Text, unique: true, config: {} },
       ];
-      prisma.record.findFirst
-        .mockResolvedValueOnce(makeRecord({ data: { name: '我自己的名字' }, object: { fields } })) // 取 existing
-        .mockResolvedValueOnce(null); // unique 查重 → 无重复
+      prisma.record.findFirst.mockResolvedValueOnce(
+        makeRecord({ data: { name: '我自己的名字' }, object: { fields } }),
+      ); // 取 existing
+      // P1-19：unique 查重走 $queryRaw → 无重复
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
       prisma.record.updateMany.mockResolvedValue({ count: 1 });
       prisma.record.findUnique.mockResolvedValue(makeRecord({ data: { name: '我自己的名字' } }));
       const { service } = createService();
 
       await service.update('tenant-001', 'rec-001', 'user-001', { name: '我自己的名字' });
-      const uniqueWhere = prisma.record.findFirst.mock.calls[1]![0].where;
-      expect(uniqueWhere.id).toEqual({ not: 'rec-001' });
+      // P1-19：排除自身经 $queryRaw SQL（id <> 占位符）
+      const excludeSelf = prisma.$queryRaw.mock.calls.some((call: unknown[]) =>
+        (call[0] as TemplateStringsArray).join(' ? ').toLowerCase().includes('id <>'),
+      );
+      expect(excludeSelf).toBe(true);
     });
 
     it('AutoNumber 字段在更新时被忽略', async () => {

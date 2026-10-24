@@ -11,9 +11,10 @@
  * - targetNodeId 过滤
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenException } from '@nestjs/common';
 import { PermissionService } from './permission.service.js';
+import { invalidatePermissionCache } from './permission-cache.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 import {
   makeUser,
@@ -30,6 +31,8 @@ describe('PermissionService', () => {
 
   beforeEach(() => {
     service = new PermissionService();
+    // P1-21：缓存跨用例必须清空（模块级缓存）
+    invalidatePermissionCache();
   });
 
   // =========================================================================
@@ -530,5 +533,63 @@ describe('PermissionService', () => {
       const where = prisma.permissionRule.findMany.mock.calls[0]![0]!.where;
       expect(where.OR).toBeUndefined();
     });
+  });
+});
+
+describe('P1-21 权限决策缓存（短 TTL + 主动失效）', () => {
+  const prisma = getMockPrisma();
+  let service: PermissionService;
+
+  beforeEach(() => {
+    vi.stubEnv('PERMISSION_CACHE_TTL_MS', '60000');
+    service = new PermissionService();
+    invalidatePermissionCache();
+  });
+
+  it('同用户重复决策命中缓存（角色查询只发一次）', async () => {
+    prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+    prisma.orgMember.findMany.mockResolvedValue([]);
+
+    await service.getUserRoleIds('user-001', 'tenant-001');
+    await service.getUserRoleIds('user-001', 'tenant-001');
+
+    expect(prisma.userRole.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidateUser 后重新查询（撤权即时生效）', async () => {
+    prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+    prisma.orgMember.findMany.mockResolvedValue([]);
+    await service.getUserRoleIds('user-001', 'tenant-001');
+
+    invalidatePermissionCache('tenant-001', 'user-001');
+    await service.getUserRoleIds('user-001', 'tenant-001');
+
+    expect(prisma.userRole.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidateTenant 清该租户全部用户缓存（组织/角色变更影响面）', async () => {
+    prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+    prisma.orgMember.findMany.mockResolvedValue([]);
+    await service.getUserRoleIds('user-001', 'tenant-001');
+    await service.getUserRoleIds('user-002', 'tenant-001');
+
+    invalidatePermissionCache('tenant-001');
+    await service.getUserRoleIds('user-001', 'tenant-001');
+
+    expect(prisma.userRole.findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it('TTL 过期后重新查询', async () => {
+    vi.useFakeTimers();
+    try {
+      prisma.userRole.findMany.mockResolvedValue([makeUserRole()]);
+      prisma.orgMember.findMany.mockResolvedValue([]);
+      await service.getUserRoleIds('user-001', 'tenant-001');
+      vi.advanceTimersByTime(61_000);
+      await service.getUserRoleIds('user-001', 'tenant-001');
+      expect(prisma.userRole.findMany).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -51,9 +51,9 @@
 |---|---|---|---|---|---|---|
 | P1-17 | 图表聚合拉 1 万行进内存且 take 无 orderBy：超限静默截断连 totalRecords 也谎报（实测 sum=10000/真值 12000） | chart-data.service.ts:23,162-171 | R1-scale-05 + R2-scale-08 | 直连对象源复用 G5 SQL 下推（dataflow-sql.ts buildPipelineSql 已有）；超限显式标记过渡方案 | ◆ 下推范围 | ⬜ |
 | P1-18 | 业务字段排序回退只取最新 5000 条：旧记录任何页不可达且 total 谎报（6003 条实测 1003 条不可达） | record.service.ts:130,409-433 | R1-scale-04 + R2-scale-06 | 业务字段排序 SQL 下推（类型 cast 排序已有先例）；无过滤裸排序同样走回退需一并处理 | ◆ 下推范围 | ⬜ |
-| P1-19 | JSONB path+equals 写路径不走 GIN：unique 查重/rollup 反查 20 万行实测 Seq Scan 55ms vs @> 5ms；record.service:939 注释「GIN 可达」与 record-query.ts:6 矛盾需勘误 | record.service.ts:985、rollup.service.ts:266,359-375 | R1-scale-03 | 等值查询改 `@>` 形态（A-H2 先例）+ 注释勘误 | | ⬜ |
-| P1-20 | ProcessTask candidateGroups hasSome 无 GIN：任务中心每请求全租户行过滤；nodeExecutionId 超时路径全表扫 | process.service.ts:619-625、schema 仅 4 索引 | R2-scale-07 | 迁移补 text[] GIN（candidateGroups）+ b-tree（node_execution_id） | | ⬜ |
-| P1-21 | 权限决策零缓存：每请求 ~8-9 条语句、组织树全量载入（log 实测，200 节点毫秒级、万节点成天花板） | permission.service.ts:72-219 | R2-scale-05 | 角色/组织映射短 TTL 缓存 + 变更失效点（角色/成员/组织/授权写路径） | ◆ 失效粒度 | ⬜ |
+| P1-19 | JSONB path+equals 写路径不走 GIN：unique 查重/rollup 反查 20 万行实测 Seq Scan 55ms vs @> 5ms；record.service:939 注释「GIN 可达」与 record-query.ts:6 矛盾需勘误 | record.service.ts:985、rollup.service.ts:266,359-375 | R1-scale-03 | 等值查询改 `@>` 形态（A-H2 先例）+ 注释勘误 | | ✅ TC-230（unique 查重/rollup 反查/condition 反查三处 raw @>；「path+equals GIN 可达」注释勘误；COUNT 形态与 mockPrisma $queryRaw 默认语义一致） |
+| P1-20 | ProcessTask candidateGroups hasSome 无 GIN：任务中心每请求全租户行过滤；nodeExecutionId 超时路径全表扫 | process.service.ts:619-625、schema 仅 4 索引 | R2-scale-07 | 迁移补 text[] GIN（candidateGroups）+ b-tree（node_execution_id） | | ✅ TC-231（迁移 20261024164942：GIN+btree，已应用） |
+| P1-21 | 权限决策零缓存：每请求 ~8-9 条语句、组织树全量载入（log 实测，200 节点毫秒级、万节点成天花板） | permission.service.ts:72-219 | R2-scale-05 | 角色/组织映射短 TTL 缓存 + 变更失效点（角色/成员/组织/授权写路径） | ◆ 失效粒度 → ✅ 裁决=TTL+主动失效 | ✅ TC-232（permission-cache.ts：进程内 TTL 30s[PERMISSION_CACHE_TTL_MS 可配]+invalidatePermissionCache 静态失效；接线 role/user/org/tenant/directory-sync 五写路径；多副本失效窗口=TTL 收敛，注释已声明） |
 | P1-22 | CSV 导出每页重算 count（O(N²/100)）+ 整表拼内存字符串；导入 5000 行 ≈3.5 万串行往返分钟级（双实测） | record-import-export.service.ts:22-102 | R2-scale-09 | 导出 total 一次计算/游标分页；导入分批并行 + 背压（与 P1-07 联动防打满） | | ⬜ |
 | P1-23 | batchCreate 串行 O(N) 放大 + 每行 2 个无背压 fire-and-forget（触发器全量 schema 拉取+同步 startProcess、rollup 全对象扫描） | record.service.ts:806-821、:552-572 | R1-scale-02 | 分批并行化 + 后台任务并发预算（pLimit/队列化）；与波次④ P1-30（元数据缓存）联动收益翻倍 | | ⬜ |
 | P1-24 | Rollup/sub_form 聚合全量内存归约：写延迟实测 44→99ms@3000 行线性劣化、批量导入 O(N²) | rollup.service.ts:256-272 | R2-scale-03 | 数值/聚合字段 SQL 下推（SUM/COUNT/AVG/MIN/MAX），非数值保留内存路径 | ◆ 下推范围 | ⬜ |
@@ -74,7 +74,7 @@
 1. **先波次④**（治理 6 条：多为小改，P1-27 dependabot+audit 半小时级；P1-25 审计补齐面小价值高）；
 2. **再波次②**（流程引擎 6 条：出站安全 TOCTOU/HMAC/CSV 注入是安全债，P1-16 需裁决先收）；
 3. **然后波次①**（并发/事务 10 条：P1-01/03/08 无裁决直接做；P1-02/05/07/09 带 ◆ 先收裁决）；
-4. **最后波次③**（性能 8 条：P1-19/20 纯索引/形态改先做；P1-17/18/24 三个 ◆ 下推范围一次裁决；P1-23 与 P1-30 联动做收益最大）。
+4. **最后波次③**（性能 8 条：P1-19/20 纯索引/形态改先做；P1-17/18/24 三个 ◆ 下推范围一次裁决；P1-23 与 P1-30 联动做收益最大）。**执行分批**：第一批 P1-19/20/21 已完成（2026-10-25）；第二批 P1-17/18/24（三处 SQL 下推）+ P1-22/23（批量背压/并行）随后续批次推进。
 
 ## 开工前一次性收集的裁决清单（8 项 ◆，2026-10-24 已全部裁决）
 

@@ -959,9 +959,10 @@ export class RecordService {
    * - required：create 对全部必填字段生效；update 仅拦"把必填字段清空"
    *   （存量历史数据缺值不阻塞无关的部分更新）。
    * - maxLength：text/long_text/rich_text 的 config.maxLength。
-   * - unique：同对象同字段等值已存在其他记录 → 409。JSONB 等值走
-   *   path+equals（GIN 可达）；应用层 check-then-write 存在并发窗口，
-   *   宽表架构无 DB 约束可用，容忍 best-effort。
+   * - unique：同对象同字段等值已存在其他记录 → 409。等值查询用 raw SQL
+   *   `data @>` 包含形态（命中 records_data_idx GIN——path+equals 编译为
+   *   data->>'f'=$ 不走 GIN，20 万行实测 Seq Scan 55ms vs @> 5ms，P1-19 勘误）；
+   *   应用层 check-then-write 的并发窗口由 P1-01 的 partial unique index 兜底。
    * - 系统字段与 AutoNumber/Formula/Rollup 系统计算字段不适用。
    */
   private async validateFieldConstraints(input: {
@@ -976,7 +977,7 @@ export class RecordService {
     /** update 场景：排除自身记录 */
     excludeRecordId?: string;
   }): Promise<void> {
-    const { tenantId, appId, objectId, fields, data } = input;
+    const { tenantId, objectId, fields, data } = input;
     const computedTypes = new Set<string>([
       FieldType.AutoNumber,
       FieldType.Formula,
@@ -1000,17 +1001,19 @@ export class RecordService {
         );
       }
       if (field.unique && !isEmpty) {
-        const dup = await prisma.record.findFirst({
-          where: {
-            tenantId,
-            appId,
-            objectId,
-            ...(input.excludeRecordId ? { id: { not: input.excludeRecordId } } : {}),
-            data: { path: [field.apiName], equals: value } as Prisma.JsonFilter,
-          },
-          select: { id: true },
-        });
-        if (dup) {
+        // P1-19（对抗审查 R1-scale-03）：@> 包含形态命中 GIN（path+equals 为 Seq Scan）
+        const containment = JSON.stringify({ [field.apiName]: value });
+        const dupRows = input.excludeRecordId
+          ? await prisma.$queryRaw<Array<{ count: number }>>`
+              SELECT COUNT(*)::int AS count FROM records
+              WHERE tenant_id = ${tenantId} AND object_id = ${objectId}
+                AND id <> ${input.excludeRecordId}
+                AND data @> ${containment}::jsonb`
+          : await prisma.$queryRaw<Array<{ count: number }>>`
+              SELECT COUNT(*)::int AS count FROM records
+              WHERE tenant_id = ${tenantId} AND object_id = ${objectId}
+                AND data @> ${containment}::jsonb`;
+        if ((dupRows[0]?.count ?? 0) > 0) {
           throw new ConflictException(`字段「${label}」的值「${String(value)}」已存在（唯一约束）`);
         }
       }

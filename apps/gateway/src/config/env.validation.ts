@@ -76,6 +76,11 @@ export const envValidation = Joi.object({
   OUTBOUND_HTTP_TIMEOUT_MS: Joi.number().default(10_000),
   // 允许出站访问私网地址（仅限开发/联调，生产必须为 false）
   OUTBOUND_ALLOW_PRIVATE: Joi.boolean().default(false),
+  // P1-07 分布式锁看门狗（可选）
+  REDIS_LOCK_TTL_MS: Joi.number().integer().min(1000).default(30000),
+  REDIS_LOCK_MAX_WAIT_MS: Joi.number().integer().min(100).default(10000),
+  // P1-21 权限决策缓存 TTL（可选；0=禁用缓存语义）
+  PERMISSION_CACHE_TTL_MS: Joi.number().integer().min(0).default(30000),
 
   // ---- 记录批量操作 / 导入导出 ----
   BATCH_MAX_ROWS: Joi.number().default(500),

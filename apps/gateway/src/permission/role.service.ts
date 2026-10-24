@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
+import { invalidatePermissionCache } from './permission-cache.js';
 
 /**
  * 角色管理服务 — 角色 CRUD、用户分配、权限规则管理。
@@ -22,7 +23,10 @@ export class RoleService {
   }
 
   /** 创建角色。 */
-  async create(tenantId: string, data: { name: string; code: string; description?: string; appId?: string }) {
+  async create(
+    tenantId: string,
+    data: { name: string; code: string; description?: string; appId?: string },
+  ) {
     const exists = await prisma.role.findFirst({
       where: { tenantId, code: data.code },
     });
@@ -74,6 +78,7 @@ export class RoleService {
         throw new BadRequestException('部分用户不存在或不属于当前租户');
       }
     }
+    invalidatePermissionCache(tenantId);
     await prisma.userRole.createMany({
       data: userIds.map((userId) => ({ userId, roleId })),
       skipDuplicates: true,

@@ -365,6 +365,16 @@
 | TC-228 | 字段变更引用硬拦（四面扫描） | P1 | 字段被页面 schema/流程 writeback/权限 condition/其他字段 rollup·sub_form 引用 | ① 改名被页面引用 ② 删除被 rollup 引用（同对象）③ 改名被流程 writeback+权限 condition 引用 ④ 无引用字段改名/删除 ⑤ 改类型有引用 | ① 400 列出「页面「台账页」」② 400 列出 rollup 聚合引用 ③ 400 列出流程+权限规则来源 ④ 正常放行 ⑤ 400 列出引用（裁决=全硬拦，改名/改类型/删除全覆盖） | object.service.spec.ts（3 例） | P1-09（R1-compat-04，用户裁决=全硬拦）：文本含词匹配（带引号）防同名子串误报；先改引用再改字段 |
 | TC-229 | Formula/Rollup 计算顺序 | P1 | 对象含 rollup 字段 R + 引用 R 的 formula 字段 F | ① 新建记录 ② 更新记录 ③ 父记录 rollup 重算 ④ 查 F 值 | ①② F=基于本次 R 新值（旧实现 F 恒滞后一拍、新建为 null——实测 F=200 vs R=150）③ 父重算后 F 同步补算 ④ F 与 R 一致 | record.service.spec.ts（顺序 invocationCallOrder）+ rollup.service.spec.ts（父重算补算） | P1-10（R1-correctness-06）：依赖方向 rollup→formula；recomputeOneParent 补 formula 重算 |
 
+### T. 对抗审查 P1 波次③第一批 性能（TC-230~232，2026-10-25）
+
+> 来源：P1 工单波次③。裁决：P1-21=TTL+主动失效。剩余 P1-17/18/24/22/23 为第二批。
+
+| 编号 | 用例标题 | 优先级 | 前置条件 | 测试步骤 | 预期结果 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-230 | JSONB 等值查询 @> 形态（GIN） | P1 | 表 20 万行级（或 EXPLAIN 观测） | ① unique 查重触发 ② rollup 反查触发 ③ EXPLAIN 查询计划 | ①② 查询走 raw SQL `data @> $::jsonb`（不再 path+equals Seq Scan）③ Bitmap Index Scan on records_data_idx（@> 命中 GIN；20 万行实测 Seq Scan 55ms vs @> 5ms） | record.service.spec.ts（1 例）+ rollup.service.spec.ts（1 例） | P1-19（R1-scale-03）：三处（unique 查重/findParentsReferencing/condition 反查）；record.service 失实注释「path+equals GIN 可达」已勘误；COUNT 形态与 $queryRaw 默认 mock 语义一致 |
+| TC-231 | ProcessTask 查询索引 | P1 | process_tasks 表有量级 | ① 任务中心按 candidateGroups 过滤 ② 超时路径按 nodeExecutionId 查 ③ EXPLAIN | ①③ GIN(candidateGroups) + b-tree(node_execution_id) 命中（旧 schema 仅 4 索引，两查询全租户/全表扫） | 迁移 20261024164942（schema 声明一致） | P1-20（R2-scale-07）：纯索引迁移，行为零变化 |
+| TC-232 | 权限决策缓存与失效 | P1 | 用户角色映射已缓存 | ① 同用户重复决策 ② 角色绑定变更后 ③ 组织/授权变更后 ④ TTL 过期 ⑤ 对照：PERMISSION_CACHE_TTL_MS=0 | ① 角色查询只发一次 DB ② 该用户缓存失效重查（撤权即时生效）③ 租户级失效全部重查 ④ 过期重查 ⑤ 等价零缓存 | permission.service.spec.ts（4 例：命中/单用户失效/租户失效/TTL） | P1-21（R2-scale-05，用户裁决=TTL+主动失效）：进程内缓存，多副本失效窗口=TTL 收敛（注释声明语义边界）；失效接线 role/user/org/tenant/directory-sync 五写路径 |
+
 ---
 
 
@@ -408,6 +418,7 @@
 | 2026-10-19 | v2.8 | 应用归属与双命名空间轮（ADR-0005）：新增 TC-196「设计面归属可见集与非成员深链 403」/ TC-197「协作者权限边界与所有权转移」/ TC-198「运行面不受归属影响」/ TC-199「design/runtime 双命名空间与 ?runtime=1 退役」；既有 92 例 e2e 的设计面引用全部迁移 /design/apps 嵌套路径 | 用户裁决（应用可见性 grilling：方案 b 所有权+协作成员表 + /design 前缀一次到位） |
 | 2026-10-23 | v2.9 | 对抗审查修复轮启动：新增 TC-200「通知节点 WEBHOOK 渠道 SSRF 防护」（security-01 高危修复回归：出站改经 safeFetch+超时，4 例单测钉住不变量）；QA-PLAN notification 节点行同步补 SSRF 锚点；两轮裁决并集与 P0/P1/P2 排期落档 docs/knowledge-base/ADVERSARIAL-REVIEW-2026-10-23.md | 对抗审查（全局 workflow apaas-adversarial-review 两轮，76 条确认并集） |
 | 2026-10-23 | v3.0 | 对抗审查 P0 批次第二波：新增 TC-201「服务身份应用作用域」/ TC-202「G4 硬闸：页面引用敏感环境变量拒绝发布」/ TC-203「运行面页面读端点可见性门」/ TC-204「数据端点双门（DRAFT 应用不再供数）」；P0-2/6/9/10 四项修复落地（gateway 935 全绿）；同日 P0-3/4/5/7/8 收口（TC-205~207：云函数异步 run+槽位守恒+日志上限/生产 seed 开关/删对象跨环境守卫，gateway 940 全绿）；ADR-0005 补勘误（决策 10 非语义豁免） | 对抗审查 P0 批次（用户裁决：P0-6 G4 硬闸+否决服务端代理；P0-9 双门判定） |
+| 2026-10-25 | v3.4 | 对抗审查 P1 波次③第一批：新增 T 节 TC-230「JSONB 等值查询 @> 形态」/ TC-231「ProcessTask 查询索引」/ TC-232「权限决策缓存与失效」（用户裁决=TTL+主动失效）；QA-PLAN v1.0.19 同步 | 对抗审查 P1 专项（工单波次③第一批） |
 | 2026-10-25 | v3.3 | 对抗审查 P1 波次①（并发/事务十项）：新增 S 节 TC-220「unique 字段 partial unique index」/ TC-221「记录更新乐观锁」/ TC-222「审批单原子认领」/ TC-223「定时触发注册账本与串行化」/ TC-224「Rollup 字段定向写」/ TC-225「依次审批环实例锁」/ TC-226「分布式锁看门狗续期」/ TC-227「应用创建同事务」/ TC-228「字段变更引用硬拦」/ TC-229「计算顺序」；**契约变更**：Record 加 version 列、ResourceVersionStatus 加 APPROVING、审批并发后到者 409、字段引用存在时改名/改类型/删除 400 | 对抗审查 P1 专项（工单波次①） |
 | 2026-10-24 | v3.2 | 对抗审查 P1 波次②（流程引擎与出站安全六项）：新增 R 节 TC-214「safeFetch 校验后钉连接（DNS TOCTOU）」/ TC-215「Webhook HMAC 纳入时间戳」/ TC-216「CSV 导出公式注入中和」/ TC-217「依次审批第 2..N 环超时」/ TC-218「S2 error 出边归一与歧义硬闸」/ TC-219「Webhook 绑定触发」；**契约变更**：webhook 入站签名输入改 `${ts}.${rawBody}`（旧格式拒绝，破坏性变更零兼容）；连接器新增 processDefId（迁移回填幂等） | 对抗审查 P1 专项（工单波次②） |
 | 2026-10-24 | v3.1 | 对抗审查 P1 波次④（治理与运维六项）：新增 Q 节 TC-208「归属闸 403 审计补齐」/ TC-209「删用户 OWNER 应用阻断」/ TC-210「依赖审计闸」/ TC-211「AutoNumber 计数器事务化」/ TC-212「删对象第五类守卫」/ TC-213「删流程级联处置 release 行」；8 项 ◆ 设计裁决已收齐落档工单档（见 ADVERSARIAL-REVIEW-P1-BACKLOG-2026-10-23） | 对抗审查 P1 专项（工单波次④：审计/阻断/dependabot+audit 闸/事务化/第五类守卫/级联处置） |

@@ -715,6 +715,11 @@ model ProcessTask {
   @@index([instanceId])
   @@index([assignee])
   @@index([instanceId, status])
+  // P1-20（对抗审查 R2-scale-07）：任务中心每请求按 candidateGroups 过滤（text[] 无 GIN
+  // 则全租户行过滤）+ 超时路径按 node_execution_id 全表扫
+  @@index([candidateGroups], type: Gin)
+  @@index([nodeExecutionId])
+
   @@map("process_tasks")
 }
 

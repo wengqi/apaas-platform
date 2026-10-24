@@ -10,6 +10,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { prisma } from '@apaas/db';
+import { invalidatePermissionCache } from '../permission/permission-cache.js';
 import type { DeptRecord, UserRecord } from './external-identity.types.js';
 import { LdapDirectorySource } from './sources/ldap.directory-source.js';
 import { HrApiDirectorySource } from './sources/hr-api.directory-source.js';
@@ -134,6 +135,7 @@ export class DirectorySyncService {
       const parentId = dept.parentExternalId ? (resolved.get(dept.parentExternalId) ?? null) : null;
       if (node) {
         if (node.name !== dept.name || (node.parentId ?? null) !== parentId) {
+          invalidatePermissionCache(tenantId);
           await prisma.orgNode.update({
             where: { id: node.id },
             data: { name: dept.name, parentId },
@@ -142,6 +144,7 @@ export class DirectorySyncService {
         }
         resolved.set(dept.externalId, node.id);
       } else {
+        invalidatePermissionCache(tenantId);
         const created = await prisma.orgNode.create({
           data: {
             tenantId,
@@ -276,6 +279,7 @@ export class DirectorySyncService {
       ? (orgByCode.get(user.departmentExternalId) ?? null)
       : null;
     if (orgId) {
+      invalidatePermissionCache(tenantId);
       await prisma.orgMember.create({ data: { userId: created.id, orgId } }).catch(() => undefined);
     }
     stats.users.created++;

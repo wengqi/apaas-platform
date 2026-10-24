@@ -196,12 +196,9 @@ describe('RollupService — 子记录反向重算', () => {
       { id: 'obj-asset', fields: makeParentFields() },
       { id: 'obj-category', fields: makeChildFields() },
     ]);
-    // 反查父记录
-    prisma.record.findMany
-      // 第一次调用：反查引用子记录的父记录
-      .mockResolvedValueOnce([{ id: 'parent-1' }, { id: 'parent-2' }])
-      // 后续调用：读取父记录 data + 子记录值
-      .mockResolvedValue([{ data: { amount: 50 } }]);
+    // P1-19：反查走 $queryRaw @>（返回两个父记录）；后续 findMany=子记录聚合读取
+    prisma.$queryRaw.mockResolvedValue([{ id: 'parent-1' }, { id: 'parent-2' }]);
+    prisma.record.findMany.mockResolvedValue([{ data: { amount: 50 } }]);
     // 读取父记录当前 data（findFirst）
     prisma.objectMeta.findFirst.mockResolvedValue({
       id: 'obj-category',
@@ -241,6 +238,35 @@ function createRollupService() {
   const service = new RollupService(formulaEngine as never);
   return { service, formulaEngine };
 }
+
+describe('P1-19 反查与条件查询走 @>（GIN）', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('findParentsReferencing 改 raw SQL @>（标量与数组两形态 OR）', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'parent-1' }]);
+    const { service } = createRollupService();
+
+    const ids = await (
+      service as unknown as {
+        findParentsReferencing: (t: string, o: string, f: string, r: string) => Promise<string[]>;
+      }
+    ).findParentsReferencing('t-1', 'parent-obj', 'items_ref', 'child-1');
+
+    expect(ids).toEqual(['parent-1']);
+    const [strings, ...params] = prisma.$queryRaw.mock.calls[0] as unknown as [
+      TemplateStringsArray,
+      ...unknown[],
+    ];
+    const sql = strings.join(' ? ').toLowerCase();
+    expect(sql).toContain('data @>');
+    expect(sql).toContain('or');
+    expect(JSON.stringify(params)).toContain('items_ref');
+    // 旧 findMany path 形态不再出现
+    expect(prisma.record.findMany).not.toHaveBeenCalled();
+  });
+});
 
 describe('recomputeOneParent — P1-05 字段定向写 + P1-10 formula 补算', () => {
   const prisma = getMockPrisma();

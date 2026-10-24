@@ -1,5 +1,6 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { prisma } from '@apaas/db';
+import { cacheGet, cacheSet } from './permission-cache.js';
 import type { AuthenticatedUser } from '../auth/jwt.strategy.js';
 
 /**
@@ -70,6 +71,11 @@ export class PermissionService {
   }
 
   async getUserRoleIds(userId: string, tenantId: string): Promise<string[]> {
+    // P1-21：短 TTL 缓存——每请求角色映射查询收敛为 0 次 DB（失效点见 permission-cache.ts）
+    const cacheKey = `perm:${tenantId}:${userId}`;
+    const cached = cacheGet<string[]>(cacheKey);
+    if (cached) return cached;
+
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({
         where: { userId, role: { tenantId } },
@@ -95,6 +101,7 @@ export class PermissionService {
       roleIds = [...new Set([...roleIds, ...orgGrants.map((g) => g.roleId)])];
     }
 
+    cacheSet(cacheKey, roleIds);
     return roleIds;
   }
 
@@ -106,10 +113,16 @@ export class PermissionService {
   async getEffectiveOrgIds(tenantId: string, userOrgIds: string[]): Promise<string[]> {
     if (userOrgIds.length === 0) return [];
 
-    const nodes = await prisma.orgNode.findMany({
-      where: { tenantId },
-      select: { id: true, parentId: true },
-    });
+    // P1-21：组织树快照缓存（万节点租户的全量载入不再每请求发生）
+    const treeKey = `orgtree:${tenantId}`;
+    let nodes = cacheGet<Array<{ id: string; parentId: string | null }>>(treeKey);
+    if (!nodes) {
+      nodes = await prisma.orgNode.findMany({
+        where: { tenantId },
+        select: { id: true, parentId: true },
+      });
+      cacheSet(treeKey, nodes);
+    }
 
     // childrenMap: parentId → 子节点列表
     const childrenMap = new Map<string, string[]>();

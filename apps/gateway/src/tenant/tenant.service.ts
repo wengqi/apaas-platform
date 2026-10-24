@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { prisma } from '@apaas/db';
+import { invalidatePermissionCache } from '../permission/permission-cache.js';
 import { BUILDER_RULES, END_USER_RULES } from '@apaas/shared';
 
 /**
@@ -248,6 +249,7 @@ export class TenantService {
       },
     });
 
+    invalidatePermissionCache(tenantId);
     await prisma.userRole.create({
       data: { userId: user.id, roleId: adminRole.id },
     });

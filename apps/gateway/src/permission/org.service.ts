@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { prisma } from '@apaas/db';
+import { invalidatePermissionCache } from './permission-cache.js';
 
 /**
  * 组织架构服务 — 树形组织节点 CRUD、成员管理、组织角色授权。
@@ -61,6 +62,7 @@ export class OrgService {
     const exists = await prisma.orgNode.findFirst({ where: { tenantId, code: data.code } });
     if (exists) throw new BadRequestException('组织编码已存在');
 
+    invalidatePermissionCache(tenantId);
     return prisma.orgNode.create({
       data: {
         tenantId,
@@ -82,6 +84,7 @@ export class OrgService {
     const node = await prisma.orgNode.findFirst({ where: { id, tenantId } });
     if (!node) throw new NotFoundException('组织节点不存在');
     if (data.parentId === id) throw new BadRequestException('不能将节点设为自身的子节点');
+    invalidatePermissionCache(tenantId);
     return prisma.orgNode.update({ where: { id }, data });
   }
 
@@ -89,6 +92,7 @@ export class OrgService {
   async delete(tenantId: string, id: string) {
     const node = await prisma.orgNode.findFirst({ where: { id, tenantId } });
     if (!node) throw new NotFoundException('组织节点不存在');
+    invalidatePermissionCache(tenantId);
     await prisma.orgNode.delete({ where: { id } });
   }
 
@@ -100,6 +104,7 @@ export class OrgService {
     // 校验目标父节点也属于当前租户
     const parent = await prisma.orgNode.findFirst({ where: { id: parentId, tenantId } });
     if (!parent) throw new NotFoundException('目标父节点不存在');
+    invalidatePermissionCache(tenantId);
     return prisma.orgNode.update({ where: { id }, data: { parentId } });
   }
 
@@ -122,6 +127,7 @@ export class OrgService {
     if (!org) throw new NotFoundException('组织节点不存在');
     const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('用户不存在');
+    invalidatePermissionCache(tenantId);
     await prisma.orgMember.create({ data: { orgId, userId } });
   }
 
@@ -160,6 +166,7 @@ export class OrgService {
     if (!org) throw new NotFoundException('组织节点不存在');
     const role = await prisma.role.findFirst({ where: { id: roleId, tenantId } });
     if (!role) throw new NotFoundException('角色不存在');
+    invalidatePermissionCache(tenantId);
     return prisma.orgRoleGrant.create({
       data: { tenantId, orgId, roleId, appId: appId ?? null },
     });
@@ -168,6 +175,7 @@ export class OrgService {
   /** 撤销组织角色授权。 */
   async revokeRole(tenantId: string, orgId: string, roleId: string) {
     // OrgRoleGrant 有 tenantId 列，直接在 where 中过滤
+    invalidatePermissionCache(tenantId);
     await prisma.orgRoleGrant.deleteMany({
       where: { tenantId, orgId, roleId },
     });

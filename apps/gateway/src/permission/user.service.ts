@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { prisma } from '@apaas/db';
+import { invalidatePermissionCache } from './permission-cache.js';
 
 /**
  * 用户管理服务 — 用户 CRUD、角色/组织绑定。
@@ -175,6 +176,7 @@ export class UserService {
       );
     }
 
+    invalidatePermissionCache(tenantId);
     await prisma.user.delete({ where: { id } });
   }
 
@@ -193,6 +195,7 @@ export class UserService {
         throw new BadRequestException('部分角色不存在或不属于当前租户');
       }
     }
+    invalidatePermissionCache(tenantId, userId);
     await prisma.userRole.deleteMany({ where: { userId } });
     if (roleIds.length > 0) {
       await prisma.userRole.createMany({
@@ -216,6 +219,7 @@ export class UserService {
         throw new BadRequestException('部分组织不存在或不属于当前租户');
       }
     }
+    invalidatePermissionCache(tenantId, userId);
     await prisma.orgMember.deleteMany({ where: { userId } });
     if (orgIds.length > 0) {
       await prisma.orgMember.createMany({

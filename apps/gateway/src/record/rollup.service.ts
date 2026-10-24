@@ -266,7 +266,13 @@ export class RollupService {
       where.id = { in: condition.in };
     } else if (condition.equals && condition.path) {
       // JSONB 路径等值：子记录 data[parentApiName] == 父记录 ID
-      where.data = { path: [condition.path], equals: condition.equals } as Prisma.JsonFilter;
+      // P1-19：@> 包含形态命中 GIN（path+equals 为 Seq Scan）
+      const containment = JSON.stringify({ [condition.path]: condition.equals });
+      const rows = await prisma.$queryRaw<Array<{ data: unknown }>>`
+        SELECT data FROM records
+        WHERE tenant_id = ${tenantId} AND object_id = ${objectId}
+          AND data @> ${containment}::jsonb`;
+      return rows.map((r) => (r.data as Record<string, unknown>) ?? {});
     } else {
       return [];
     }
@@ -352,29 +358,22 @@ export class RollupService {
     }
   }
 
-  /** 反查引用了指定子记录的父记录 ID（lookup 值 = 单值字符串 或 数组包含）。 */
+  /**
+   * 反查引用了指定子记录的父记录 ID（lookup 值 = 单值字符串 或 数组包含）。
+   * P1-19：raw SQL @> 两形态 OR（`{"f": id}` 单值 / `{"f": [id]}` 数组子集）命中 GIN。
+   */
   private async findParentsReferencing(
     tenantId: string,
     parentObjectId: string,
     lookupApiName: string,
     childRecordId: string,
   ): Promise<string[]> {
-    const rows = await prisma.record.findMany({
-      where: {
-        tenantId,
-        objectId: parentObjectId,
-        OR: [
-          { data: { path: [lookupApiName], equals: childRecordId } as Prisma.JsonFilter },
-          {
-            data: {
-              path: [lookupApiName],
-              array_contains: childRecordId,
-            } as Prisma.JsonFilter,
-          },
-        ],
-      },
-      select: { id: true },
-    });
+    const single = JSON.stringify({ [lookupApiName]: childRecordId });
+    const arrayForm = JSON.stringify({ [lookupApiName]: [childRecordId] });
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM records
+      WHERE tenant_id = ${tenantId} AND object_id = ${parentObjectId}
+        AND (data @> ${single}::jsonb OR data @> ${arrayForm}::jsonb)`;
     return rows.map((r) => r.id);
   }
 

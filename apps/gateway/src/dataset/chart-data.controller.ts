@@ -14,6 +14,7 @@
 import { Controller, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DataAppAccessGuard } from '../app-access/data-app-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
@@ -23,7 +24,8 @@ import { ChartDataDto } from './dto/chart-data.dto.js';
 @ApiTags('chart-data')
 @ApiBearerAuth()
 @Controller()
-@UseGuards(PermissionGuard)
+// 双门（对抗审查 devil-01/R1）：此前对 DRAFT/未发布应用照常供数，运行面 blanket 404 被本端点证伪
+@UseGuards(PermissionGuard, DataAppAccessGuard)
 export class ChartDataController {
   constructor(private readonly chartDataService: ChartDataService) {}
 

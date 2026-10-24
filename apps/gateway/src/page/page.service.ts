@@ -214,7 +214,9 @@ export class PageService {
    */
   async listRuntime(tenantId: string, appId: string): Promise<PageMeta[]> {
     const env = getEnvironmentId() ?? 'prod';
-    const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
+    const resolved = await this.environmentResolver.resolve(tenantId, appId, env, {
+      excludeSensitive: true,
+    });
     if (!resolved.bundle) return [];
     const publishedAt = resolved.bundle.meta.publishedAt;
     return resolved.bundle.pages.map((p) => {
@@ -239,7 +241,9 @@ export class PageService {
   async getPublishedBySlug(tenantId: string, appId: string, slug: string): Promise<PageMeta> {
     // R1.4：环境解析（ALS env，缺省 prod）——指针→AppVersion.bundle，未部署即 404
     const env = getEnvironmentId() ?? 'prod';
-    const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
+    const resolved = await this.environmentResolver.resolve(tenantId, appId, env, {
+      excludeSensitive: true,
+    });
     if (!resolved.bundle) throw new NotFoundException('应用尚未发布');
 
     const pageData = resolved.bundle.pages.find((p) => p.apiName === slug);
@@ -256,7 +260,9 @@ export class PageService {
    */
   async getRuntimeById(tenantId: string, appId: string, pageId: string): Promise<PageMeta> {
     const env = getEnvironmentId() ?? 'prod';
-    const resolved = await this.environmentResolver.resolve(tenantId, appId, env);
+    const resolved = await this.environmentResolver.resolve(tenantId, appId, env, {
+      excludeSensitive: true,
+    });
     const pageData = resolved.bundle?.pages.find((p) => p.id === pageId);
     if (!resolved.bundle || !pageData) {
       throw new NotFoundException('页面不存在或未发布');

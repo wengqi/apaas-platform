@@ -229,26 +229,26 @@ export class CloudFunctionService {
       this.isolateSlots -= 1;
       return;
     }
-    const start = Date.now();
     await new Promise<void>((resolve, reject) => {
       const waiter = () => {
-        if (Date.now() - start > ISOLATE_QUEUE_TIMEOUT_MS) {
-          // 超时出队
-          const idx = this.isolateWaiters.indexOf(waiter);
-          if (idx >= 0) this.isolateWaiters.splice(idx, 1);
-          reject(new Error('isolate queue timeout'));
-        } else {
-          this.isolateSlots -= 1;
-          resolve();
-        }
+        clearTimeout(timer);
+        resolve();
       };
+      // 对抗审查 scale-01 修复②：超时改主动定时器——原实现超时检查只在被 release 唤醒时
+      // 才执行（懒检查），突发后槽位泄漏致空闲进程新 invoke 永久挂起、超时永不触发。
+      const timer = setTimeout(() => {
+        const idx = this.isolateWaiters.indexOf(waiter);
+        if (idx >= 0) this.isolateWaiters.splice(idx, 1);
+        reject(new Error('isolate queue timeout'));
+      }, ISOLATE_QUEUE_TIMEOUT_MS);
       this.isolateWaiters.push(waiter);
     });
   }
 
   private releaseIsolateSlot(): void {
     const waiter = this.isolateWaiters.shift();
-    if (waiter) waiter();
+    if (waiter)
+      waiter(); // 槽位直接移交等待者：占用计数不变（对抗审查 scale-01 修复①：原实现的等待者获取路径二次扣减 + 移交不加回，每次移交净 -1，突发后槽位永久泄漏至 ≤0）
     else this.isolateSlots += 1;
   }
 
@@ -267,8 +267,12 @@ export class CloudFunctionService {
     const code = fn.code as unknown as CloudFunctionCode;
     const input = params.input ?? {};
 
-    await this.acquireIsolateSlot();
+    // acquire 放入 try（M-8 注释承诺「排队超时返回 429」此前落空：acquire 在 try 外，
+    // 超时裸 Error 直穿；acquired 标志防 finally 对未获取的槽位误释放——多还一个会放大并发额度）
+    let acquired = false;
     try {
+      await this.acquireIsolateSlot();
+      acquired = true;
       // 观测事件（P1 运维治理）：云函数执行此前零落库——耗时/成败/错误全在响应里，
       // 失败后无迹可查。此处落 FUNCTION_EXEC 事件（非阻塞）。
       const startedAt = Date.now();
@@ -312,7 +316,7 @@ export class CloudFunctionService {
       }
       throw err;
     } finally {
-      this.releaseIsolateSlot();
+      if (acquired) this.releaseIsolateSlot();
     }
   }
 

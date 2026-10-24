@@ -20,6 +20,8 @@ export interface ServiceIdentityUser {
   tenantId: string;
   isSuperAdmin: false;
   serviceIdentityId: string;
+  /** 创建时绑定的应用（开放 API 数据面作用域比对用；null = 租户级身份）。 */
+  appId: string | null;
 }
 
 function sha256(text: string): string {
@@ -108,6 +110,7 @@ export class ApiKeyService {
       tenantId: row.tenantId,
       isSuperAdmin: false,
       serviceIdentityId: row.id,
+      appId: row.appId,
     };
   }
 

@@ -23,10 +23,14 @@ function makeUser(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 
 describe('AppAccessService', () => {
   const prisma = getMockPrisma();
-  const service = new AppAccessService();
+  const permissionService = { getUserRoleIds: vi.fn().mockResolvedValue([]) };
+  const service = new AppAccessService(
+    permissionService as unknown as ConstructorParameters<typeof AppAccessService>[0],
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();
+    permissionService.getUserRoleIds.mockResolvedValue([]);
   });
 
   describe('resolveDesignRole', () => {
@@ -154,6 +158,97 @@ describe('AppAccessService', () => {
           addedBy: null,
         },
       });
+    });
+  });
+
+  // ===========================================================================
+  // 运行面可见性 + 数据面双门（对抗审查 security-01/R1、devil-01/R1，P0-9/P0-10）
+  // ===========================================================================
+
+  describe('isRuntimeVisible（运行面可见性：角色权限归纳 + 已发布）', () => {
+    it('零角色用户（默认拒绝）→ false，不查应用表', async () => {
+      permissionService.getUserRoleIds.mockResolvedValue([]);
+      expect(await service.isRuntimeVisible('tenant-001', makeUser(), 'app-001')).toBe(false);
+      expect(prisma.application.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('租户级通配 ALLOW 规则（appId=null）→ 已发布应用可见', async () => {
+      permissionService.getUserRoleIds.mockResolvedValue(['role-1']);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: null }]);
+      prisma.application.findFirst.mockResolvedValue({ id: 'app-001' });
+      expect(await service.isRuntimeVisible('tenant-001', makeUser(), 'app-001')).toBe(true);
+    });
+
+    it('应用级 ALLOW 规则命中 → 可见；未命中 → false', async () => {
+      permissionService.getUserRoleIds.mockResolvedValue(['role-1']);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: 'app-other' }]);
+      expect(await service.isRuntimeVisible('tenant-001', makeUser(), 'app-001')).toBe(false);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: 'app-001' }]);
+      prisma.application.findFirst.mockResolvedValue({ id: 'app-001' });
+      expect(await service.isRuntimeVisible('tenant-001', makeUser(), 'app-001')).toBe(true);
+    });
+
+    it('规则命中但应用未发布（DRAFT）→ false', async () => {
+      permissionService.getUserRoleIds.mockResolvedValue(['role-1']);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: 'app-001' }]);
+      prisma.application.findFirst.mockResolvedValue(null);
+      expect(await service.isRuntimeVisible('tenant-001', makeUser(), 'app-001')).toBe(false);
+    });
+
+    it('超管短路角色归纳，但仍要求应用已发布', async () => {
+      prisma.application.findFirst.mockResolvedValue(null);
+      expect(
+        await service.isRuntimeVisible('tenant-001', makeUser({ isSuperAdmin: true }), 'app-001'),
+      ).toBe(false);
+      expect(permissionService.getUserRoleIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assertDataAccess（数据面双门：设计面 OR 运行面可见）', () => {
+    it('设计面成员（MEMBER）→ 放行（不查权限规则）——保 studio 对 DRAFT 应用预览', async () => {
+      prisma.applicationMember.findFirst.mockResolvedValue({ role: 'MEMBER' });
+      await expect(
+        service.assertDataAccess('tenant-001', makeUser(), 'app-001'),
+      ).resolves.toBeUndefined();
+      expect(prisma.permissionRule.findMany).not.toHaveBeenCalled();
+    });
+
+    it('非设计面 + 运行面可见（已发布+规则命中）→ 放行——保 END_USER 消费已发布应用', async () => {
+      prisma.applicationMember.findFirst.mockResolvedValue(null);
+      permissionService.getUserRoleIds.mockResolvedValue(['role-1']);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: null }]);
+      prisma.application.findFirst.mockResolvedValue({ id: 'app-001' });
+      await expect(
+        service.assertDataAccess('tenant-001', makeUser(), 'app-001'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('非设计面 + DRAFT 应用 → 404「应用不存在」（对齐 ADR-0005 决策 12 blanket 404）', async () => {
+      prisma.applicationMember.findFirst.mockResolvedValue(null);
+      permissionService.getUserRoleIds.mockResolvedValue(['role-1']);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: null }]);
+      prisma.application.findFirst.mockResolvedValue(null);
+      await expect(service.assertDataAccess('tenant-001', makeUser(), 'app-001')).rejects.toThrow(
+        '应用不存在',
+      );
+    });
+  });
+
+  describe('assertRuntimeVisible（运行面页面读可见闸，P0-10）', () => {
+    it('不可见/未发布 → 404「应用不存在」', async () => {
+      permissionService.getUserRoleIds.mockResolvedValue([]);
+      await expect(
+        service.assertRuntimeVisible('tenant-001', makeUser(), 'app-001'),
+      ).rejects.toThrow('应用不存在');
+    });
+
+    it('已发布 + 规则命中 → 通过', async () => {
+      permissionService.getUserRoleIds.mockResolvedValue(['role-1']);
+      prisma.permissionRule.findMany.mockResolvedValue([{ appId: null }]);
+      prisma.application.findFirst.mockResolvedValue({ id: 'app-001' });
+      await expect(
+        service.assertRuntimeVisible('tenant-001', makeUser(), 'app-001'),
+      ).resolves.toBeUndefined();
     });
   });
 });

@@ -139,4 +139,42 @@ describe('ApiKeyService', () => {
       data: { status: 'REVOKED' },
     });
   });
+
+  it('verify：回传 appId（应用绑定身份，供开放 API 数据面作用域比对——对抗审查 security-03）', async () => {
+    const svc = new ApiKeyService();
+    const prisma = getMockPrisma();
+    prisma.serviceIdentity.findUnique.mockResolvedValue({
+      id: 'si-bound',
+      tenantId: TENANT,
+      appId: 'app-A',
+      name: 'bound',
+      keyPrefix: 'ak_x',
+      status: 'ACTIVE',
+      lastUsedAt: null,
+      createdBy: 'u1',
+      createdAt: new Date(),
+    });
+    prisma.serviceIdentity.update.mockResolvedValue({}); // lastUsedAt fire-and-forget
+    const user = await svc.verify('ak_valid');
+    expect(user.appId).toBe('app-A');
+  });
+
+  it('verify：租户级身份 appId=null', async () => {
+    const svc = new ApiKeyService();
+    const prisma = getMockPrisma();
+    prisma.serviceIdentity.findUnique.mockResolvedValue({
+      id: 'si-tenant',
+      tenantId: TENANT,
+      appId: null,
+      name: 'tenant-wide',
+      keyPrefix: 'ak_y',
+      status: 'ACTIVE',
+      lastUsedAt: null,
+      createdBy: 'u1',
+      createdAt: new Date(),
+    });
+    prisma.serviceIdentity.update.mockResolvedValue({}); // lastUsedAt fire-and-forget
+    const user = await svc.verify('ak_valid');
+    expect(user.appId).toBeNull();
+  });
 });

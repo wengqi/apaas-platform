@@ -71,4 +71,6 @@ export interface DeployPreflightDto {
   destructiveWarnings: string[];
   /** bundle 中 ${env.*} 引用位置清单（G1 第一版：警告级） */
   envRefWarnings: string[];
+  /** 页面（浏览器可达面）引用 sensitive 环境变量的位置（G4 error 级硬闸，对抗审查 security-02） */
+  sensitivePageRefs: string[];
 }

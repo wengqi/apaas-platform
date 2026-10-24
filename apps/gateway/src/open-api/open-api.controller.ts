@@ -10,6 +10,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -43,6 +44,19 @@ export class OpenApiController {
     private readonly engine: ProcessEngine,
   ) {}
 
+  /**
+   * 服务身份应用作用域（对抗审查 security-03）：按应用发放的 key 只能访问绑定应用的
+   * 开放 API——管理面签发/门控都按 appId，数据面此前只消费 tenantId，绑定沦为装饰。
+   * appId=null（租户级身份）不限制。
+   */
+  private assertAppScope(identity: ServiceIdentityUser, appId: string): void {
+    if (identity.appId !== null && identity.appId !== appId) {
+      throw new ForbiddenException(
+        `服务身份绑定应用 ${identity.appId}，无权访问应用 ${appId} 的开放 API`,
+      );
+    }
+  }
+
   /** 可调用流程发现（最新 major 与触发地址）。 */
   @Get('apps/:appId/processes')
   async listProcesses(
@@ -50,6 +64,7 @@ export class OpenApiController {
     @Param('appId') appId: string,
   ): Promise<{ ok: true; data: OpenApiProcessDto[] }> {
     const tenantId = req.user!.tenantId;
+    this.assertAppScope(req.user!, appId);
     return runWithTenant(tenantId, async () => {
       const releases = await this.releaseService.listByApp(tenantId, appId);
       const byApiName = new Map<string, typeof releases>();
@@ -112,6 +127,7 @@ export class OpenApiController {
   ): Promise<{ ok: true; data: OpenApiStartResult }> {
     const identity = req.user!;
     const tenantId = identity.tenantId;
+    this.assertAppScope(identity, appId);
 
     return runWithTenant(tenantId, async () => {
       const release = await this.releaseService.resolve(tenantId, appId, apiName, majorVersion);

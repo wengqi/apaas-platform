@@ -264,3 +264,59 @@ describe('CloudFunctionService', () => {
     });
   });
 });
+
+describe('isolate 信号量（对抗审查 scale-01 回归）', () => {
+  const prisma = getMockPrisma();
+
+  function getSemaphore(service: CloudFunctionService) {
+    return service as unknown as {
+      isolateSlots: number;
+      isolateWaiters: Array<() => void>;
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.cloudFunction.findFirst.mockImplementation(async () => makeFn({ status: 'PUBLISHED' }));
+  });
+
+  it('并发突发后槽位计数守恒（移交路径净泄漏回归）：多波 5 并发后 slots 回到 4', async () => {
+    const { service, runner } = createService();
+    runner.execute.mockImplementation(async () => ({
+      success: true,
+      result: null,
+      logs: [],
+      durationMs: 1,
+    }));
+    const sem = getSemaphore(service);
+    for (let wave = 0; wave < 4; wave++) {
+      await Promise.all(
+        Array.from({ length: 5 }, () => service.invoke('tenant-001', 'cf-001', {})),
+      );
+      // 旧实现：等待者获取路径二次扣减 + 移交不加回 → 每波净 -1（4→3→2→1→0）
+      expect(sem.isolateSlots).toBe(4);
+      expect(sem.isolateWaiters).toHaveLength(0);
+    }
+  });
+
+  it('排队超时主动触发：无 release 唤醒也按时拒绝（懒检查回归）', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, runner } = createService();
+      const resolvers: Array<(v: unknown) => void> = [];
+      runner.execute.mockImplementation(() => new Promise((res) => resolvers.push(res)));
+      const holders = Array.from({ length: 4 }, () => service.invoke('tenant-001', 'cf-001', {}));
+      await vi.advanceTimersByTimeAsync(0); // flush 4 个快速路径 acquire
+      const queued = service.invoke('tenant-001', 'cf-001', {});
+      const assertion = expect(queued).rejects.toThrow('排队超时');
+      await vi.advanceTimersByTimeAsync(5_001); // 主动定时器触发（旧实现此路径永不触发）
+      await assertion;
+      // 收尾：放行持槽者
+      resolvers.forEach((r) => r({ success: true, result: null, logs: [], durationMs: 1 }));
+      await Promise.allSettled(holders);
+      expect(getSemaphore(service).isolateSlots).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

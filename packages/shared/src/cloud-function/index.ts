@@ -100,6 +100,8 @@ export interface CloudFunctionCallResult {
   error?: string;
   /** 执行日志。 */
   logs: string[];
+  /** 因超出单次日志上限（200 行）被丢弃的行数（缺省=无丢弃，对抗审查 security-04/R1）。 */
+  logsTruncated?: number;
   /** 执行耗时（毫秒）。 */
   durationMs: number;
 }

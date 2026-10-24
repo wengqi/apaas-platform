@@ -21,7 +21,11 @@ vi.mock('isolated-vm', () => ({
           throw new Error('SyntaxError: Unexpected token');
         }
         return {
+          // 对抗审查 security-05/R2（P0-3）：runSync 会阻塞网关主线程，全 spec 用炸雷桩防回归
           runSync: () => {
+            throw new Error('FORBIDDEN: runSync 阻塞网关主线程，租户代码必须走异步 run（P0-3）');
+          },
+          run: async () => {
             if (code.includes('TIMEOUT_MARKER')) {
               throw new Error('Execution timed out');
             }

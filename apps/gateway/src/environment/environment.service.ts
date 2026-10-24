@@ -131,11 +131,16 @@ export class EnvironmentService {
         });
     if (!version) throw new NotFoundException('可部署的版本不存在');
 
-    // G4 预检：必填环境变量齐全
+    // G4 预检：必填环境变量齐全 + 页面不引用敏感变量
     const preflight = await this.preflight(tenantId, appId, envKey, version.id);
     if (preflight.missingRequired.length > 0) {
       throw new BadRequestException(
         `发布预检失败（G4）：必填环境变量缺失：${preflight.missingRequired.join(', ')}。请在环境管理中设置后重试。`,
+      );
+    }
+    if (preflight.sensitivePageRefs.length > 0) {
+      throw new BadRequestException(
+        `发布预检失败（G4）：页面引用敏感环境变量（浏览器侧禁止携带敏感值）：${preflight.sensitivePageRefs.join('；')}。请改用连接器保管凭据，或改用非敏感变量。`,
       );
     }
 
@@ -295,11 +300,29 @@ export class EnvironmentService {
     // 3) G1（第一版警告级）：bundle 中的 ${env.*} 引用位置清单
     const envRefWarnings = collectEnvRefPaths(version.snapshot);
 
+    // 4) G4（对抗审查 security-02，error 级硬闸）：页面（浏览器可达面）引用 sensitive 环境变量——
+    //    敏感值随页面 schema 下发浏览器即泄露，页面该走连接器取凭据；流程/节点服务端引用不受限
+    const sensitiveKeys = new Set(
+      (
+        await prisma.envVarDef.findMany({
+          where: { appId, tenantId, sensitive: true },
+          select: { key: true },
+        })
+      ).map((d) => d.key),
+    );
+    const sensitivePageRefs = envRefWarnings
+      .filter((p) => p.startsWith('$.pages'))
+      .filter((p) => {
+        const key = p.split(' → env.')[1];
+        return key !== undefined && sensitiveKeys.has(key);
+      });
+
     return {
-      ok: missingRequired.length === 0,
+      ok: missingRequired.length === 0 && sensitivePageRefs.length === 0,
       missingRequired,
       destructiveWarnings,
       envRefWarnings,
+      sensitivePageRefs,
     };
   }
 

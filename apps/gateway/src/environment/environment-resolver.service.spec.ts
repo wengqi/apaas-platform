@@ -142,3 +142,52 @@ describe('ensureEnvironments（幂等建行）', () => {
     });
   });
 });
+
+describe('resolve excludeSensitive（浏览器可达面，对抗审查 security-02）', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('excludeSensitive=true：sensitive 值不参与替换（保留 ${env.*} 占位符），非敏感正常替换', async () => {
+    const { svc, prisma } = makeService();
+    prisma.appEnvironment.findFirst.mockResolvedValue({
+      id: 'envrow-p',
+      appId: APP,
+      tenantId: TENANT,
+      key: 'prod',
+      currentVersionId: 'v-1',
+    });
+    prisma.appVersion.findFirst.mockResolvedValue({
+      id: 'v-1',
+      snapshot: { title: '${env.T}', token: '${env.S}' },
+    });
+    prisma.envVarValue.findMany.mockResolvedValue([
+      { def: { key: 'T', sensitive: false }, value: 'hello' },
+      { def: { key: 'S', sensitive: true }, value: 'enc-secret' },
+    ]);
+
+    const r = await svc.resolve(TENANT, APP, 'prod', { excludeSensitive: true });
+    expect(r.bundle).toEqual({ title: 'hello', token: '${env.S}' });
+  });
+
+  it('缺省（服务端路径）：行为不变，sensitive 正常解密替换', async () => {
+    const { svc, prisma } = makeService();
+    prisma.appEnvironment.findFirst.mockResolvedValue({
+      id: 'envrow-p',
+      appId: APP,
+      tenantId: TENANT,
+      key: 'prod',
+      currentVersionId: 'v-1',
+    });
+    prisma.appVersion.findFirst.mockResolvedValue({
+      id: 'v-1',
+      snapshot: { title: '${env.T}', token: '${env.S}' },
+    });
+    // sensitive 行在缺省路径会尝试解密；测试环境解密失败被吞（warn）→ S 不进 values
+    prisma.envVarValue.findMany.mockResolvedValue([
+      { def: { key: 'T', sensitive: false }, value: 'hello' },
+      { def: { key: 'S', sensitive: true }, value: 'enc-secret' },
+    ]);
+
+    const r = await svc.resolve(TENANT, APP, 'prod');
+    expect((r.bundle as unknown as { title: string }).title).toBe('hello');
+  });
+});

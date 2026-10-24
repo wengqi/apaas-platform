@@ -201,10 +201,23 @@ describe('ObjectService', () => {
   describe('delete', () => {
     beforeEach(() => {
       prisma.objectMeta.findFirst.mockResolvedValue(makeObject());
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
+    });
+
+    it('校验1b — 记录统计必须跨环境（对抗审查 correctness-01/R1）：$queryRaw SQL 不含 environment_id 过滤', async () => {
+      const { service } = createService();
+      await service.delete('tenant-001', 'app-001', 'obj-001');
+
+      // tagged template 调用：mock.calls[0][0] 是 SQL 字符串数组
+      const [strings] = prisma.$queryRaw.mock.calls[0] as unknown as [TemplateStringsArray];
+      const sql = strings.join(' ? ').toLowerCase();
+      expect(sql).toContain('object_id');
+      expect(sql).toContain('tenant_id');
+      expect(sql).not.toContain('environment_id');
     });
 
     it('校验1 — 有业务记录时拒绝删除', async () => {
-      prisma.record.count.mockResolvedValue(5);
+      prisma.$queryRaw.mockResolvedValue([{ count: 5 }]);
 
       const { service } = createService();
       await expect(service.delete('tenant-001', 'app-001', 'obj-001')).rejects.toThrow(
@@ -213,7 +226,7 @@ describe('ObjectService', () => {
     });
 
     it('校验2 — 有页面引用时拒绝删除', async () => {
-      prisma.record.count.mockResolvedValue(0);
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
       prisma.pageMeta.count.mockResolvedValue(3);
 
       const { service } = createService();
@@ -223,7 +236,7 @@ describe('ObjectService', () => {
     });
 
     it('校验3 — 有流程触发器引用时拒绝删除', async () => {
-      prisma.record.count.mockResolvedValue(0);
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
       prisma.pageMeta.count.mockResolvedValue(0);
       prisma.processDef.count.mockResolvedValue(2);
 
@@ -234,7 +247,7 @@ describe('ObjectService', () => {
     });
 
     it('校验4 — 有权限规则引用时拒绝删除', async () => {
-      prisma.record.count.mockResolvedValue(0);
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
       prisma.pageMeta.count.mockResolvedValue(0);
       prisma.processDef.count.mockResolvedValue(0);
       prisma.permissionRule.count.mockResolvedValue(1);
@@ -246,7 +259,7 @@ describe('ObjectService', () => {
     });
 
     it('无引用时正常删除 + 记录 ChangeLog', async () => {
-      prisma.record.count.mockResolvedValue(0);
+      prisma.$queryRaw.mockResolvedValue([{ count: 0 }]);
       prisma.pageMeta.count.mockResolvedValue(0);
       prisma.processDef.count.mockResolvedValue(0);
       prisma.permissionRule.count.mockResolvedValue(0);

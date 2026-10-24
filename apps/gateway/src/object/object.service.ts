@@ -309,10 +309,15 @@ export class ObjectService {
   ): Promise<void> {
     const existing = await this.requireObject(tenantId, appId, objectId);
 
-    // 1. 校验对象下是否有业务记录
-    const recordCount = await prisma.record.count({
-      where: { objectId, tenantId },
-    });
+    // 1. 校验对象下是否有业务记录。
+    // 对抗审查 correctness-01/R1：必须统计【全部环境】——模型查询经 @apaas/db $extends
+    // 注入 environmentId 只数当前环境，而下方 objectMeta.delete 触发的 FK 级联会删掉
+    // 全部环境的 records（实测 dev 记录被静默清空；对称场景 dev 删 prod 同理）。
+    // $queryRaw 不经 $extends 拦截，显式不过滤 environment_id（tenantId 显式参数化）。
+    const recordCountRows = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count FROM records WHERE object_id = ${objectId} AND tenant_id = ${tenantId}
+    `;
+    const recordCount = recordCountRows[0]?.count ?? 0;
     if (recordCount > 0) {
       throw new BadRequestException(
         `对象下存在 ${recordCount} 条业务记录，无法删除。请先清空数据后再删除对象。`,

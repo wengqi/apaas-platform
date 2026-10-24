@@ -166,7 +166,9 @@ describe('preflight（G4 硬闸 + 半自动警告）', () => {
         ],
       },
     });
-    prisma.envVarDef.findMany.mockResolvedValue([{ id: 'def-1', key: 'BASE', required: true }]);
+    prisma.envVarDef.findMany
+      .mockResolvedValueOnce([{ id: 'def-1', key: 'BASE', required: true }]) // ① 必填查询
+      .mockResolvedValue([]); // ② sensitive 查询（BASE 非敏感）
     prisma.envVarValue.findMany.mockResolvedValue([{ defId: 'def-1', value: 'https://x' }]);
 
     const r = await svc.preflight(TENANT, APP, 'prod', 'v-1');
@@ -174,6 +176,55 @@ describe('preflight（G4 硬闸 + 半自动警告）', () => {
     expect(r.missingRequired).toEqual([]);
     expect(r.destructiveWarnings.join()).toContain('废弃对象');
     expect(r.envRefWarnings.join()).toContain('env.BASE');
+  });
+
+  it('页面（$.pages）引用 sensitive 环境变量 → sensitivePageRefs 命中 + ok=false（G4 error 级硬闸，对抗审查 security-02）', async () => {
+    const { svc, prisma } = makeService();
+    prisma.appEnvironment.findFirst.mockResolvedValue(ENV_ROW);
+    prisma.appVersion.findFirst.mockResolvedValue({
+      id: 'v-1',
+      appId: APP,
+      tenantId: TENANT,
+      snapshot: {
+        pages: [{ schema: { api: { headers: { Authorization: 'Bearer ${env.TOKEN}' } } } }],
+        // 流程 schema 属服务端消费，引用 sensitive 不受限
+        processes: [{ workflowSchema: { headers: { Authorization: 'Bearer ${env.TOKEN}' } } }],
+      },
+      changeSet: null,
+    });
+    prisma.envVarDef.findMany.mockResolvedValue([
+      { id: 'def-1', key: 'TOKEN', required: false, sensitive: true },
+    ]);
+    prisma.envVarValue.findMany.mockResolvedValue([]);
+
+    const r = await svc.preflight(TENANT, APP, 'prod', 'v-1');
+    expect(r.sensitivePageRefs).toHaveLength(1); // 仅页面路径命中，流程侧放行
+    expect(r.sensitivePageRefs[0]).toContain('$.pages');
+    expect(r.ok).toBe(false);
+  });
+
+  it('deploy：页面引用 sensitive → 400 硬拦（不切指针）', async () => {
+    const { svc, prisma } = makeService();
+    prisma.appEnvironment.findFirst.mockResolvedValue(ENV_ROW);
+    prisma.appVersion.findFirst.mockResolvedValue({
+      id: 'v-2',
+      appId: APP,
+      tenantId: TENANT,
+      versionNumber: '1.0.1',
+      snapshot: { pages: [{ schema: { url: '${env.TOKEN}' } }] },
+      changeSet: null,
+      status: 'PUBLISHED',
+      publishedAt: new Date(),
+    });
+    prisma.envVarDef.findMany
+      .mockResolvedValueOnce([]) // ① 必填查询：无必填
+      .mockResolvedValue([{ id: 'def-1', key: 'TOKEN', required: false, sensitive: true }]); // ② sensitive 查询
+    prisma.envVarValue.findMany.mockResolvedValue([]);
+
+    await expect(svc.deploy(TENANT, APP, 'prod', 'u1', { versionId: 'v-2' })).rejects.toThrow(
+      '页面引用敏感环境变量',
+    );
+    expect(prisma.appEnvironment.update).not.toHaveBeenCalled();
   });
 
   it('必填未设值 → ok=false + missingRequired 列出 key', async () => {

@@ -10,7 +10,7 @@
  * 渠道实现：
  *   - in_app：写入 InAppMessage 表，用户在运行时前端查看
  *   - email：通过 MailService (nodemailer SMTP) 发送
- *   - webhook：HTTP POST 到 recipients[0] 指定的 URL
+ *   - webhook：HTTP POST 到 recipients[0] 指定的 URL（经 safeFetch，拦截内网/元数据地址）
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -19,6 +19,7 @@ import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../typ
 import { renderTemplateDotted } from '../process-utils.js';
 import { MailService } from '../../notification/mail.service.js';
 import { InAppMessageService } from '../../notification/in-app-message.service.js';
+import { safeFetch, outboundTimeoutMs } from '../../common/net/ssrf-guard.js';
 
 @Injectable()
 export class NotificationExecutor implements NodeExecutor {
@@ -129,14 +130,16 @@ export class NotificationExecutor implements NodeExecutor {
     };
   }
 
-  /** Webhook 渠道：HTTP POST 到 recipients[0] 指定的 URL。 */
+  /** Webhook 渠道：HTTP POST 到 recipients[0] 指定的 URL（经 safeFetch SSRF 防护）。 */
   private async sendWebhook(recipients: string[], title: string, body: string): Promise<boolean> {
     const url = recipients[0];
     if (!url) return false;
-    const resp = await fetch(url, {
+    // recipients 支持记录字段插值（终端用户可控 URL），出站必须经 SSRF 防护（对抗审查 security-01）
+    const resp = await safeFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, body, timestamp: new Date().toISOString() }),
+      signal: AbortSignal.timeout(outboundTimeoutMs()),
     });
     return resp.ok;
   }

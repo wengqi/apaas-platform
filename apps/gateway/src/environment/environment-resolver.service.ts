@@ -61,8 +61,17 @@ export class EnvironmentResolverService {
   /**
    * 解析应用在指定环境的运行时上下文。
    * 结果按 appId+env 缓存，发布/回滚后失效。
+   *
+   * opts.excludeSensitive（对抗审查 security-02）：浏览器可达面（运行面页面读）传 true，
+   * sensitive 值不参与 ${env.*} 替换（保留占位符原样）——敏感值进页面 schema 即等于下发浏览器，
+   * G4 发布预检同步以 error 拦截页面引用 sensitive（双保险）。
    */
-  async resolve(tenantId: string, appId: string, envKey: string): Promise<ResolvedEnvironment> {
+  async resolve(
+    tenantId: string,
+    appId: string,
+    envKey: string,
+    opts?: { excludeSensitive?: boolean },
+  ): Promise<ResolvedEnvironment> {
     const cacheKey = `${appId}:${envKey}`;
 
     // 解析指针 → 原始 bundle（缓存：快照不可变 + 指针切换频率低）
@@ -80,7 +89,7 @@ export class EnvironmentResolverService {
     }
 
     // bundle 模式：每次读取实时做 ${env.*} 替换（环境变量值可独立于发布变化）
-    const values = await this.loadEnvVarValues(cached.environmentId);
+    const values = await this.loadEnvVarValues(cached.environmentId, opts);
     const substituted = substituteEnvRefs(cached.rawBundle, values);
     if (substituted.warnings.length > 0) {
       this.logger.warn(
@@ -126,8 +135,11 @@ export class EnvironmentResolverService {
     return cached;
   }
 
-  /** 加载环境的变量值映射（敏感值解密；替换时统一使用明文） */
-  async loadEnvVarValues(appEnvironmentRowId: string): Promise<Record<string, string>> {
+  /** 加载环境的变量值映射（敏感值解密；替换时统一使用明文）。excludeSensitive 时 sensitive 行完全不读不解密。 */
+  async loadEnvVarValues(
+    appEnvironmentRowId: string,
+    opts?: { excludeSensitive?: boolean },
+  ): Promise<Record<string, string>> {
     const rows = await prisma.envVarValue.findMany({
       where: { environmentId: appEnvironmentRowId },
       include: { def: { select: { key: true, sensitive: true } } },
@@ -135,6 +147,7 @@ export class EnvironmentResolverService {
     const values: Record<string, string> = {};
     for (const row of rows) {
       if (row.def.sensitive) {
+        if (opts?.excludeSensitive) continue; // 浏览器可达面：敏感值不出服务端
         try {
           const { decryptJson } = await import('../connector/crypto.util.js');
           values[row.def.key] = decryptJson<string>(row.value);

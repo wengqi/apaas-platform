@@ -18,6 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { PermissionGuard } from '../permission/permission.guard.js';
+import { DataAppAccessGuard } from '../app-access/data-app-access.guard.js';
 import { RequirePermission } from '../permission/require-permission.decorator.js';
 import type { AuthenticatedRequest } from '../auth/authenticated-request.js';
 import { requireTenantId } from '../auth/tenant-context.js';
@@ -42,7 +43,8 @@ import { BatchCreateDto, BatchUpdateDto, BatchDeleteDto } from './dto/batch-reco
 @ApiTags('Record')
 @ApiBearerAuth()
 @Controller()
-@UseGuards(PermissionGuard)
+// 双门（对抗审查 devil-01/R1）：PermissionGuard（认证+RECORD:*）→ DataAppAccessGuard（应用级：设计面 OR 已发布+运行面可见）
+@UseGuards(PermissionGuard, DataAppAccessGuard)
 export class RecordController {
   constructor(
     private readonly recordService: RecordService,

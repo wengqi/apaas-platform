@@ -21,9 +21,11 @@ check();
 echo "📦 执行 Prisma 迁移..."
 pnpm --filter @apaas/db run migrate:deploy
 
-# ③ 执行种子数据（幂等，重复执行安全）
+# ③ 执行种子数据（seed 自身幂等；失败随 set -e 立即终止启动——
+#    对抗审查 engineering-02/R1-engineering-04：原 || echo 把真实失败伪装成
+#    「已存在或跳过」，容器在空库/缺夹具库上照常启动，误导排障方向）
 echo "🌱 执行种子数据..."
-pnpm --filter @apaas/db run seed || echo "⚠️  种子数据已存在或跳过"
+pnpm --filter @apaas/db run seed
 
 # ④ 启动 Gateway
 echo "🚀 启动 API Gateway..."

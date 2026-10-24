@@ -32,7 +32,9 @@ function makeContext(user: AuthenticatedUser | undefined, params: Record<string,
 
 describe('DesignAccessGuard', () => {
   const prisma = getMockPrisma();
-  const guard = new DesignAccessGuard(new AppAccessService());
+  const guard = new DesignAccessGuard(
+    new AppAccessService({ getUserRoleIds: vi.fn().mockResolvedValue([]) } as never),
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();

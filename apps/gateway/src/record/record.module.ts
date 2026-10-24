@@ -9,6 +9,7 @@ import { JwtStrategy } from '../auth/jwt.strategy.js';
 import { FormulaEngine } from '../object/formula-engine.js';
 import { AutoNumberGenerator } from '../object/auto-number.js';
 import { PermissionModule } from '../permission/permission.module.js';
+import { AppAccessModule } from '../app-access/app-access.module.js';
 import { ProcessModule } from '../process/process.module.js';
 import { EnvironmentCoreModule } from '../environment/environment-core.module.js';
 
@@ -33,6 +34,7 @@ import { EnvironmentCoreModule } from '../environment/environment-core.module.js
       }),
     }),
     PermissionModule,
+    AppAccessModule,
     forwardRef(() => ProcessModule),
   ],
   controllers: [RecordController],

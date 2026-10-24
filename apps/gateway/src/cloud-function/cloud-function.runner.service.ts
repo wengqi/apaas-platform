@@ -22,6 +22,12 @@ export const DEFAULT_FUNCTION_CODE = `async function handler(input, context) {
   return { message: 'success', input };
 }`;
 
+/** 单次调用日志行数上限（对抗审查 security-04/R1：host 侧 logs.push 无上限——isolate 的
+ * 128MB 限制管不到 host 堆，租户函数可在超时窗口内向主进程内存无限灌注，跨租户 OOM DoS）。 */
+const MAX_LOG_LINES = 200;
+/** 单条日志长度上限（防单行超长字符串撑大响应体）。 */
+const MAX_LOG_LINE_LENGTH = 2_000;
+
 @Injectable()
 export class CloudFunctionRunner {
   private readonly logger = new Logger(CloudFunctionRunner.name);
@@ -50,6 +56,8 @@ export class CloudFunctionRunner {
   ): Promise<CloudFunctionCallResult> {
     const startTime = Date.now();
     const logs: string[] = [];
+    // let 而非 const：闭包内 logFn 计数递增（PostToolUse prefer-const --fix 曾在编辑间隙静默改成 const 致运行时炸，集成测试咬出）
+    let droppedLogLines = 0;
 
     // B8 修复：将 isolate 提升到 try 之外，确保 finally 能访问并释放。
     // 此前 isolate 在 try 内 const 声明，失败路径 catch 无法 dispose → 每次失败泄漏 128MB。
@@ -63,10 +71,18 @@ export class CloudFunctionRunner {
       const contextData = { tenantId, appId };
       context.global.setSync('context', new ivm.ExternalCopy(contextData).copyInto());
 
-      // 注入 log 函数 — 使用 ivm.Reference 包装主进程函数，isolate 内通过 applySync 调用
+      // 注入 log 函数 — 使用 ivm.Reference 包装主进程函数，isolate 内通过 applySync 调用。
+      // 容量上限：超限丢弃并计数（对抗审查 security-04/R1）
       const logFn = function (...args: unknown[]) {
+        if (logs.length >= MAX_LOG_LINES) {
+          droppedLogLines += 1;
+          return;
+        }
+        const line = args
+          .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+          .join(' ');
         logs.push(
-          args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '),
+          line.length > MAX_LOG_LINE_LENGTH ? `${line.slice(0, MAX_LOG_LINE_LENGTH)}…[截断]` : line,
         );
       };
       const logRef = new ivm.Reference(logFn);
@@ -108,8 +124,11 @@ export class CloudFunctionRunner {
         rejectResult(new Error(msg));
       });
 
-      // 执行脚本（带超时）
-      script.runSync(context, { timeout: this.timeoutMs });
+      // 执行脚本（带超时）。对抗审查 security-05/R2（原 R1-scale-01）：run 是 isolated-vm
+      // 的异步 API——租户代码在 isolate 自有线程执行，不阻塞网关事件循环。此前 runSync 在
+      // 宿主主线程同步执行，单租户 4.5s 忙循环实测冻结 /health 4513ms，按限流额度
+      // ~12 次/min 可把单进程网关冻结至近 100%，跨租户全量请求受影响。
+      await script.run(context, { timeout: this.timeoutMs });
 
       // 等待异步结果（带超时保护）
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -125,6 +144,7 @@ export class CloudFunctionRunner {
         success: true,
         result: result ?? null,
         logs,
+        logsTruncated: droppedLogLines > 0 ? droppedLogLines : undefined,
         durationMs,
       };
     } catch (err) {

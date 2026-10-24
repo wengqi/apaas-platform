@@ -77,11 +77,14 @@ const delegates: Record<string, Record<string, ReturnType<typeof vi.fn>>> = {};
  */
 /** $queryRawUnsafe mock（G5 数据下沉：数据流引擎 raw SQL 路径） */
 const queryRawUnsafeFn = vi.fn();
+/** $queryRaw mock（tagged template 参数化 raw SQL；对抗审查 P0-8 跨环境守卫统计消费） */
+const queryRawFn = vi.fn().mockResolvedValue([{ count: 0 }]);
 
 const mockPrisma = new Proxy({} as Record<string, unknown>, {
   get(_target, prop: string) {
     if (prop === '$transaction') return transactionFn;
     if (prop === '$queryRawUnsafe') return queryRawUnsafeFn;
+    if (prop === '$queryRaw') return queryRawFn;
     if (!delegates[prop]) delegates[prop] = createDelegate(prop);
     return delegates[prop]!;
   },
@@ -124,6 +127,7 @@ const slowQueryHandlers = new Set<(info: unknown) => void>();
 (globalThis as Record<string, unknown>).__mockPrisma = mockPrisma;
 (globalThis as Record<string, unknown>).__mockTransactionFn = transactionFn;
 (globalThis as Record<string, unknown>).__mockQueryRawUnsafe = queryRawUnsafeFn;
+(globalThis as Record<string, unknown>).__mockQueryRaw = queryRawFn;
 
 // ---------------------------------------------------------------------------
 // 全局 mock 重置
@@ -137,6 +141,9 @@ beforeEach(() => {
   }
   // 重置 $queryRawUnsafe（G5 数据流 SQL 路径）
   queryRawUnsafeFn.mockReset();
+  // 重置 $queryRaw 并恢复默认（无记录）
+  queryRawFn.mockReset();
+  queryRawFn.mockResolvedValue([{ count: 0 }]);
   // 重置 $transaction（支持数组形式和回调形式）
   transactionFn.mockReset();
   transactionFn.mockImplementation((arg: unknown) => {

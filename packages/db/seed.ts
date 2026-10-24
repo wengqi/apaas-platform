@@ -241,8 +241,19 @@ async function main() {
   });
   console.log(`✅ 应用: ${app.name} (${app.id})`);
 
-  // 9. 填充 Demo 应用内容（对象/页面/流程/记录/发布）
-  await seedDemoContent(tenant.id, app.id, admin.id, admin.email);
+  // 9. 填充 Demo 应用内容（对象/页面/流程/记录/发布）。
+  // 对抗审查 engineering-01：生产模式重跑 seed 会以 upsert update 全量覆盖对象字段/
+  // 页面 schema/流程定义并重新发布——运行期人工改动被静默回滚（实测三标记全部归零），
+  // 「幂等重复执行安全」注释具欺骗性。生产默认跳过 demo/验收内容，显式
+  // SEED_DEMO_CONTENT=true 才执行；开发/测试模式不变。
+  const includeDemoContent = !isProduction || process.env.SEED_DEMO_CONTENT === 'true';
+  if (includeDemoContent) {
+    await seedDemoContent(tenant.id, app.id, admin.id, admin.email);
+  } else {
+    console.log(
+      'ℹ️ 生产环境默认跳过 demo 内容（避免覆盖运行期修改）。如需演示数据请设置 SEED_DEMO_CONTENT=true 后重跑。',
+    );
+  }
 
   // 10. 采购合同验收应用（R1.5：金额分支/会签/依次/审批页面绑定）
   const procurementApp = await prisma.application.upsert({
@@ -262,7 +273,9 @@ async function main() {
     },
   });
   console.log(`✅ 应用: ${procurementApp.name} (${procurementApp.id})`);
-  await seedProcurementContent(tenant.id, procurementApp.id, admin.id);
+  if (includeDemoContent) {
+    await seedProcurementContent(tenant.id, procurementApp.id, admin.id);
+  }
 
   // 11. 内部应用标记（2026-10-12 评审 P0，幂等）：E2E/QA 夹具等非业务应用
   // 打 isInternal 标，运行时门户（运行面 GET /apps）过滤后不再出现在

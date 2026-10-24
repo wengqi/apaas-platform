@@ -608,6 +608,21 @@ describe('RecordService', () => {
       );
     });
 
+    it('P1-02：客户端回传 version 时严格比对快照（长持快照编辑冲突检测）', async () => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: { name: '旧名' }, version: 7, object: { fields: [] } }),
+      );
+      prisma.record.updateMany.mockResolvedValue({ count: 0 });
+
+      const { service } = createService();
+      // 客户端持有 version=3 的旧快照（服务端已是 7）→ 严格比对 → 409
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { name: '新' }, undefined, 3),
+      ).rejects.toThrow(ConflictException);
+      const where = prisma.record.updateMany.mock.calls[0]![0]!.where as Record<string, unknown>;
+      expect(where.version).toBe(3);
+    });
+
     it('P1-02：版本冲突（updateMany 命中 0 行）→ 409 提示刷新重试', async () => {
       prisma.record.findFirst.mockResolvedValue(
         makeRecord({ data: { name: '旧名' }, version: 3, object: { fields: [] } }),

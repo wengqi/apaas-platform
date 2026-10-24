@@ -103,6 +103,8 @@ export function buildKeywordWhereFromFields(
 export interface RecordResult {
   id: string;
   tenantId: string;
+  /** 乐观锁版本（P1-02）：客户端编辑快照回传后服务端严格比对 */
+  version: number;
   appId: string;
   objectId: string;
   data: Record<string, unknown>;
@@ -594,9 +596,14 @@ export class RecordService {
     userId: string,
     data: Record<string, unknown>,
     permissionContext?: PermissionContext,
+    clientVersion?: number,
   ): Promise<RecordResult> {
+    // P1-02：body.version 为客户端编辑快照的乐观锁版本（可选）——
+    // 传入时严格比对客户端所见版本（长持快照编辑的冲突检测）；不传按服务端最新
+    const { version: _clientVersionField, ...restData } = data;
+    void _clientVersionField;
     // fieldScope 写过滤：仅允许写入规则范围内的字段
-    const writableData = this.filterWritableFields(data, permissionContext);
+    const writableData = this.filterWritableFields(restData, permissionContext);
 
     // 行级条件注入 where（不满足条件的记录对当前用户不可见 → 404）
     const conditionWhere = this.buildConditionWhere(permissionContext);
@@ -674,8 +681,9 @@ export class RecordService {
 
     // 乐观锁（P1-02，用户裁决=version 列条件更新）：WHERE version=读时值，
     // 并发他人先写则命中 0 行 → 409 提示刷新重试——消除 read-merge-write 丢失更新。
+    const expectedVersion = clientVersion ?? existing.version;
     const updated = await prisma.record.updateMany({
-      where: { id: recordId, version: existing.version },
+      where: { id: recordId, version: expectedVersion },
       data: {
         data: mergedData as Prisma.InputJsonValue,
         version: { increment: 1 },
@@ -1028,6 +1036,8 @@ export class RecordService {
     return {
       id: record.id,
       tenantId: record.tenantId,
+      // 乐观锁版本（P1-02）：客户端编辑快照回传后服务端严格比对
+      version: record.version,
       appId: record.appId,
       objectId: record.objectId,
       data,

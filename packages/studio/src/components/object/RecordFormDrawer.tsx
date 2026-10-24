@@ -78,7 +78,8 @@ export default function RecordFormDrawer({
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => {
       if (!record) throw new Error('记录不存在');
-      return objectsApi.records.update(record.id, data);
+      // P1-02：回传编辑快照 version——服务端严格比对，并发修改 409 提示刷新
+      return objectsApi.records.update(record.id, { ...data, version: record.version });
     },
     onSuccess: () => {
       message.success('记录已更新');

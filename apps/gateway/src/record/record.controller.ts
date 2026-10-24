@@ -123,12 +123,16 @@ export class RecordController {
     @Param('recordId') recordId: string,
     @Body() body: Record<string, unknown>,
   ) {
+    // P1-02：可选乐观锁版本——客户端（studio 编辑抽屉）回传其快照 version
+    const rawVersion = (body ?? {})['version'];
+    const clientVersion = typeof rawVersion === 'number' ? rawVersion : undefined;
     const record = await this.recordService.update(
       requireTenantId(req),
       recordId,
       req.user.id,
       body ?? {},
       req.permissionContext,
+      clientVersion,
     );
     return { ok: true as const, data: record };
   }

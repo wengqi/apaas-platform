@@ -233,6 +233,8 @@ export interface UpdateViewRequest {
 export interface RecordItem {
   id: string;
   objectId: string;
+  /** 乐观锁版本（P1-02）：编辑抽屉保存时回传，服务端严格比对 */
+  version?: number;
   /** 业务字段值 */
   data: Record<string, unknown>;
   createdBy: string | null;

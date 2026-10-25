@@ -212,7 +212,7 @@ export class ChartDataService {
       Array<{ category: string; value: number; total: number }>
     >(
       `SELECT ${category} AS category, ${aggExpr}::float8 AS value,
-              COUNT(*) OVER (PARTITION BY TRUE)::int AS total
+              COALESCE(SUM(COUNT(*)) OVER (), 0)::int AS total
        FROM records r
        WHERE ${whereParts.join(' AND ')}
        ${groupByClause}

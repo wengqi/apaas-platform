@@ -595,6 +595,9 @@ describe('P1-17 图表聚合 SQL 下推', () => {
     expect(prisma.record.findMany).not.toHaveBeenCalled();
     const sql = String(prisma.$queryRawUnsafe.mock.calls[0]![0]).toLowerCase();
     expect(sql).toContain('group by');
+    // total=原始行数：SUM(COUNT(*)) OVER 对各组行数求和（COUNT(*) OVER 数的是组数，
+    // CI e2e 实测 5 行 3 组得 3 的教训）
+    expect(sql).toContain('sum(count(*)) over ()');
     expect(sql).toContain('data->>');
     expect(sql).not.toContain(' limit 10000');
     // 守卫 cast（G5 同款：非数值不参与）

@@ -32,18 +32,18 @@
     "test:e2e:smoke": "playwright test e2e/01-auth.spec.ts e2e/02-object-crud.spec.ts e2e/16-procurement-approval.spec.ts e2e/22-feedback-loop.spec.ts e2e/23-ui-truthfulness.spec.ts"
   },
   "devDependencies": {
-    "@commitlint/cli": "^19.0.0",
-    "@commitlint/config-conventional": "^19.0.0",
-    "@playwright/test": "^1.62.1",
-    "eslint": "^9.0.0",
-    "eslint-config-prettier": "^9.1.0",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@playwright/test": "^1.64.1",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.35.0",
-    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "husky": "^9.1.0",
-    "lint-staged": "^15.2.0",
-    "prettier": "^3.3.3",
-    "turbo": "^2.3.3",
-    "typescript": "^5.6.3",
-    "typescript-eslint": "^8.0.0"
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "turbo": "^2.11.10",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.72.1"
   }
 }

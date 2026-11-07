@@ -53,6 +53,17 @@
 
 **iframe 嵌入集成（宿主系统集成第一轮）——✅ 2026-10-12 完成（同日二轮转正控制台）**：平台页面以干净形态（`/embed/app/:appId/p/:slug`，无页头/无页签/无登录重定向）被外部宿主系统 iframe 集成，embed protocol v1 双向通信（shared SSOT：hello-first 握手[ack 重试]/ready/route-change/query-data rpc/navigate/context/token 轮换/auth-expired/height-change/page-event[仅 embedEvent 动作出站，G3 白名单同步]）；零依赖宿主 SDK `createApaasEmbed`（`@apaas/shared/embed`）。**接入控制台**（用户裁决方案一）：studio 应用工作台「嵌入集成」页（`/app/:appId/embed`，API 密钥旁）——选页生成 Embed URL/宿主代码片段 + 真实 SDK 跨端口预览（5173→5174 真跨域实测通过，补上首轮未实测场景）+ 部署配置清单；runtime-ui 早期 `/embed-demo` 模拟器退役。三项口径用户裁决（去页签导航/只桥自定义事件/JWT 直传）；认证第一版 JWT 直传（token 交换端点留后续）；nginx 仅 `/embed/` 路由放宽 frame-ancestors 白名单。设计：docs/design/DESIGN-embed-iframe-2026-10-12.md；实现与踩坑：docs/knowledge-base/EMBED-IFRAME-2026-10-12.md；用例 TC-156~159。**SDK 交付（同日三轮）**：esbuild 双格式零依赖单文件（embed-sdk.js IIFE / embed-sdk.esm.js，`pnpm build` 自动生成）+ 控制台「获取 SDK」下载 + nginx `/embed-sdk/` 平台直链 + 片段双形态（npm/SDK 直链）——补全第三方对接断链（私有包不可达）。
 
+### 2026-11-07 方向修订（ADR-0006：页面层翻案——AI 写码 + 沙箱运行 + manifest 治理）
+
+依据 ADR-0006（grilling 两轮 13 问收官）：**页面 = AI 自由写码 + 沙箱运行**（四层防线：沙箱 iframe 无 same-origin / CSP 封外联 / scoped page token 服务端强制 / 静态扫描），治理对象改 **manifest**（字段级读/写 × 操作 + 可发起流程清单），人审 = manifest diff + 沙箱预览、代码本体不人审；**免构建受限运行时**（固定 React + antd 5 单栈 + import map，禁任意 npm，缺组件 = 组件库扩容）；审批动作归任务中心壳（completeTask 仅壳可调，延续提交路径分离语义）；存量 9 页 AI 一次性重写后同波次删设计器/AmisRenderer/amis 依赖/amis_page 校验器（零双轨）——R1.7 的页面方言成果自此进入退役轨道（历史完成状态不变）。**流程侧不翻案**：方言与全环境人审保留，AI 可控 = MCP 工具面扩全生命周期 + 流程中心补齐（通知 cc 标签 →「抄送我的」+ 转交端点）+ flowgram 保留可编辑转审阅姿态；intentSplit 并入 C8 评估。排期：
+
+| # | 轮次 | 说明 | 状态 |
+|---|------|------|------|
+| R-A | **数据面闸门（先行小轮）** | 写路径补未知字段白名单（拒绝 400 + 明确错误）+ 按字段类型校验值（number/date/select 枚举/引用格式），create/update 双接入；今天仅 D-002 三项校验（`record.service.ts:1127-1180`），schema 外字段可直写 data JSONB（`:624-686`） | ⬜ 待启动 |
+| R-B | **PE-01~31 流程引擎修缮** | 既定波次照走（对抗审查工单档），与页面轨零耦合 | ⬜ 照走 |
+| R-C | **页面新轨（下一主线大轮，2-3 波）** | ① 沙箱运行时 + scoped page token + manifest 契约（@apaas/shared）+ G3 新页面校验器（manifest 引用闭合）；② MCP 页面制品换壳（代码包+manifest）+ studio Monaco 可编辑工作台 + 草稿可改流接线（人工提交即时 APPROVED）；③ 存量 9 页 AI 一次性重写（首轮 dogfood）→ 同波次物理删除 AmisRenderer / amis-editor 画布 / amis 依赖 / amis_page 校验器 / 方言指南页面节 | ⬜ 待启动（排 R-A 后） |
+| R-D | **流程中心 AI 可控（间隙轮）** | ① MCP 流程全生命周期工具面（迭代已发布流程新版本/实例查询/取消/转交/催办/监控指标回流）；② 通知节点 cc 标签 →「抄送我的」视图（零引擎改动）+ 补转交端点；③ 审核中心默认审阅姿态 | ⬜ 间隙插入 |
+
 ---
 
 ## 总体目标

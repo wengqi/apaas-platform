@@ -88,6 +88,8 @@
 - **实现要点（立项备忘）**：新增组件暂名 `sandbox_block`，schema 携带 `{html, css, js}`；G3 追加类型与脚本字段校验；桥只暴露数据读写、不暴露平台写 API 与凭证；iframe 不给 allow-same-origin；**脚本随页面 schema 走草稿→人审→发布**（AI 生成脚本同样过 submit_draft 闸门，治理不变量保持）。
 - **待核实（实现前）**：studio amis-editor 物料暴露形态、网关 CSP 头配置。
 
+> **2026-11-07 更新（ADR-0006）**：amis 页面方言退役，`sandbox_block` 组件形态随之并入**页面沙箱运行时**（ADR-0006 §一.5-6——沙箱 iframe / CSP 封外联 / scoped page token 升为平台级防线），本节保留为裁决历史。
+
 ---
 
 ## 3. 流程引擎 × BPMN 2.0 × AI 编排
@@ -184,7 +186,8 @@ Budibase/ToolJet 健康度、NocoBase 插件架构细节、Mendix Maia、Power P
 | C6 | 节点失败处理策略轻量版（=S2） | §3.3 | S2 | 流程引擎专题 | 中（可与 C5 同批） |
 | C7 | 流程 dry-run 仿真 API（=Q10①） | §3.4 | Q10 | 流程引擎专题（仿真器）+ AI 主线（agent 消费） | **高** |
 | C8 | AI 节点（=Q10②） | §3.4 | Q10 | 流程引擎专题 | 中高（面向未来招牌） |
-| C9 | 渲染级自定义组件 `sandbox_block`（沙箱 iframe 桥接，路径 C 单选；A/B 不采纳） | §2.6 | Q6 侧聊裁决 | 平台轨（runtime-ui+studio+G3） | **已立项，待排期** |
+| C9 | 渲染级自定义组件 `sandbox_block`（沙箱 iframe 桥接，路径 C 单选；A/B 不采纳） | §2.6 | Q6 侧聊裁决 | 平台轨（runtime-ui+studio+G3） | **已被 ADR-0006 吸收（2026-11-07：页面本体 = AI 写码 + 沙箱运行，amis 组件形态随方言退役）** |
+| C10 | 流程中心 AI 可控三件（MCP 全生命周期工具面 + cc 标签「抄送我的」/转交端点 + 审阅姿态） | ADR-0006 §二 | grilling Q6/Q11 | 流程引擎专题 + runtime-ui | 待排期（间隙轮） |
 
 ---
 

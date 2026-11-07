@@ -35,6 +35,7 @@ interface ObjectField {
   apiName: string;
   type: string;
   config: unknown;
+  label?: string;
 }
 
 /**
@@ -211,16 +212,34 @@ export class RecordImportExportService {
 
       // 构建记录数据（跳过只读字段和未知字段）
       // P1-13：导出侧的中和前缀在此剥离，round-trip 不损坏数据
+      // R-A 数据面闸门配套（DESIGN-data-gate-2026-11-07 §2.4）：逐列按字段类型
+      // 强转——字符串 CSV 在进入 batchCreate 闸门前转为字段类型契约形状；
+      // 强转失败的行整行剔除并报告（不产生部分字段入库的半行）。
       const data: Record<string, unknown> = {};
+      let rowHasError = false;
       for (const [key, value] of Object.entries(record)) {
         if (!fieldApiNames.has(key)) continue;
         const field = fields.find((f) => f.apiName === key);
         if (field && READONLY_FIELD_TYPES.has(field.type)) continue;
         const cell = typeof value === 'string' ? unneutralizeCsvCell(value) : value;
-        data[key] = cell === '' ? null : cell;
+        // ''→null（空单元格归一，与 D-002 isEmpty 口径对称；先于 Number('')=0 陷阱）
+        if (cell === '' || cell === null || cell === undefined) {
+          data[key] = null;
+          continue;
+        }
+        if (field) {
+          const coerced = this.coerceCsvValue(field, cell);
+          if ('error' in coerced) {
+            errors.push({ row: totalRows, field: key, message: coerced.error });
+            rowHasError = true;
+            continue;
+          }
+          data[key] = coerced.value;
+          continue;
+        }
+        data[key] = cell;
       }
-
-      records.push(data);
+      if (!rowHasError) records.push(data);
     }
 
     if (records.length === 0) {
@@ -295,5 +314,50 @@ export class RecordImportExportService {
   private parseFields(raw: unknown): ObjectField[] {
     if (!Array.isArray(raw)) return [];
     return raw as ObjectField[];
+  }
+
+  /**
+   * R-A 数据面闸门配套：CSV 单元格按字段类型强转（DESIGN-data-gate-2026-11-07 §2.4）。
+   * 返回 { value } 或 { error }；在 ''→null 归一之后调用（空单元格不会进到这里）。
+   * 已知边界：multi_select 按逗号切分，选项 label/value 含逗号的 round-trip 不支持
+   * （导出侧 join(',') 同构限制，seed 现有选项无逗号）。
+   */
+  private coerceCsvValue(
+    field: ObjectField,
+    cell: unknown,
+  ): { value: unknown } | { error: string } {
+    const label = field.label ?? field.apiName;
+    switch (field.type) {
+      case FieldType.Number:
+      case FieldType.Currency:
+      case FieldType.Percent: {
+        const n = Number(cell);
+        if (!Number.isFinite(n)) {
+          return { error: `字段「${label}」的值「${String(cell)}」不是有效数字` };
+        }
+        return { value: n };
+      }
+      case FieldType.Checkbox: {
+        const s = String(cell).trim().toLowerCase();
+        if (s === 'true') return { value: true };
+        if (s === 'false') return { value: false };
+        return { error: `字段「${label}」的值「${String(cell)}」不是有效布尔值（true/false）` };
+      }
+      case FieldType.MultiSelect: {
+        if (Array.isArray(cell)) return { value: cell };
+        const parts = String(cell)
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p !== '');
+        return { value: parts };
+      }
+      case FieldType.Attachment:
+        // 现状是静默写 "[object Object]" 垃圾串，闸门后显式行错误优于垃圾入库
+        return { error: `字段「${label}」不支持 CSV 导入，请留空该列` };
+      default:
+        // text/long_text/rich_text/date/date_time/single_select/user/lookup
+        // 等以字符串契约存储，原样
+        return { value: cell };
+    }
   }
 }

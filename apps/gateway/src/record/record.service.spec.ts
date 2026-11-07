@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { FieldType } from '@apaas/shared';
 import { RecordService } from './record.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
@@ -367,6 +367,7 @@ describe('RecordService', () => {
                   type: FieldType.AutoNumber,
                   config: { autoNumber: { format: 'ORD-{seq:0000}' } },
                 },
+                { id: 'f2', apiName: 'name', type: FieldType.Text, config: {} },
               ],
             },
           ],
@@ -393,6 +394,7 @@ describe('RecordService', () => {
               type: FieldType.AutoNumber,
               config: { autoNumber: { format: 'ORD-{seq:0000}' } },
             },
+            { id: 'f2', apiName: 'name', type: FieldType.Text, config: {} },
           ],
         }),
       );
@@ -422,6 +424,8 @@ describe('RecordService', () => {
               type: FieldType.Formula,
               config: { formula: '{{price * quantity}}' },
             },
+            { id: 'f2', apiName: 'price', type: FieldType.Number, config: {} },
+            { id: 'f3', apiName: 'quantity', type: FieldType.Number, config: {} },
           ],
         }),
       );
@@ -808,6 +812,7 @@ describe('RecordService', () => {
           required: true,
           config: {},
         },
+        { id: 'f2', apiName: 'remark', label: '备注', type: FieldType.Text, config: {} },
       ];
       prisma.record.findFirst.mockResolvedValue(
         makeRecord({ data: {}, object: { fields } }), // 历史数据缺 name
@@ -848,7 +853,10 @@ describe('RecordService', () => {
         makeRecord({
           data: existingData,
           object: {
-            fields: [{ id: 'f1', apiName: 'order_no', type: FieldType.AutoNumber, config: {} }],
+            fields: [
+              { id: 'f1', apiName: 'order_no', type: FieldType.AutoNumber, config: {} },
+              { id: 'f2', apiName: 'name', type: FieldType.Text, config: {} },
+            ],
           },
         }),
       );
@@ -869,7 +877,10 @@ describe('RecordService', () => {
             {
               id: 'obj-001',
               apiName: 'object',
-              fields: [{ id: 'f1', apiName: 'order_no', type: FieldType.AutoNumber, config: {} }],
+              fields: [
+                { id: 'f1', apiName: 'order_no', type: FieldType.AutoNumber, config: {} },
+                { id: 'f2', apiName: 'name', type: FieldType.Text, config: {} },
+              ],
             },
           ],
         },
@@ -922,6 +933,7 @@ describe('RecordService', () => {
                 type: FieldType.Formula,
                 config: { formula: '{{price * quantity}}' },
               },
+              { id: 'f2', apiName: 'quantity', type: FieldType.Number, config: {} },
             ],
           },
         }),
@@ -1083,6 +1095,265 @@ describe('RecordService', () => {
       const { service } = createService();
 
       await expect(service.delete('tenant-001', 'rec-001')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ======================================================================
+  // R-A 数据面写路径闸门（ADR-0006 §一.2；设计 docs/design/DESIGN-data-gate-2026-11-07.md）
+  // ======================================================================
+  describe('R-A 数据面写路径闸门', () => {
+    interface GateField {
+      apiName: string;
+      [key: string]: unknown;
+    }
+    const mkField = (over: { apiName: string } & Record<string, unknown>): GateField => ({
+      id: `f-${String(over.apiName)}`,
+      label: String(over.apiName).toUpperCase(),
+      required: false,
+      config: {},
+      ...over,
+    });
+
+    // ----- create -----
+
+    it('create schema 外字段 → 400，消息含字段名/对象名/可用字段', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({ fields: [mkField({ apiName: 'name', type: FieldType.Text })] }),
+      );
+      const { service } = createService();
+
+      const err = await service
+        .create('tenant-001', 'obj-001', 'user-001', { name: 'A', ghost: 1 })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      const msg = (err as Error).message;
+      expect(msg).toContain('ghost');
+      expect(msg).toContain('Test Object');
+      expect(msg).toContain('name');
+    });
+
+    it('create 平台列名键静默剥离，不落 data JSONB', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({ fields: [mkField({ apiName: 'name', type: FieldType.Text })] }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await service.create('tenant-001', 'obj-001', 'user-001', {
+        name: 'A',
+        id: 'fake-id',
+        createdAt: '2020-01-01',
+        tenantId: 'hack',
+        version: 3,
+      });
+
+      const written = prisma.record.create.mock.calls[0]![0].data.data as Record<string, unknown>;
+      expect(written).toEqual({ name: 'A' });
+    });
+
+    it('create 平台键与业务字段同名（apiName=id）不剥离', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({ fields: [mkField({ apiName: 'id', type: FieldType.Text })] }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await service.create('tenant-001', 'obj-001', 'user-001', { id: 'biz-value' });
+
+      const written = prisma.record.create.mock.calls[0]![0].data.data as Record<string, unknown>;
+      expect(written).toEqual({ id: 'biz-value' });
+    });
+
+    it.each([
+      [
+        'number 字段传数字字符串',
+        mkField({ apiName: 'amount', type: FieldType.Number }),
+        '100',
+        '数字',
+      ],
+      [
+        'number 字段传 NaN',
+        mkField({ apiName: 'amount', type: FieldType.Number }),
+        Number.NaN,
+        '数字',
+      ],
+      ['checkbox 传字符串', mkField({ apiName: 'done', type: FieldType.Checkbox }), 'true', '布尔'],
+      ['date 传数字', mkField({ apiName: 'due', type: FieldType.Date }), 123, '日期'],
+      ['date 传乱串', mkField({ apiName: 'due', type: FieldType.Date }), 'not-a-date', '日期'],
+    ])('%s → 400', async (_name, field, badValue, word) => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta({ fields: [field] }));
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', {
+          [field.apiName]: badValue,
+        }),
+      ).rejects.toThrow(word);
+    });
+
+    it('select 值域校验：value 配置形态存 value、无 value 回退 label', async () => {
+      const field = mkField({
+        apiName: 'level',
+        type: FieldType.SingleSelect,
+        config: { options: [{ label: '高', value: 'HIGH' }, { label: '低' }] },
+      });
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta({ fields: [field] }));
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { level: 'MEDIUM' }),
+      ).rejects.toThrow('不在可选值');
+      await service.create('tenant-001', 'obj-001', 'user-001', { level: 'HIGH' });
+      await service.create('tenant-001', 'obj-001', 'user-001', { level: '低' });
+
+      const calls = prisma.record.create.mock.calls;
+      expect((calls[0]![0].data.data as Record<string, unknown>).level).toBe('HIGH');
+      expect((calls[1]![0].data.data as Record<string, unknown>).level).toBe('低');
+    });
+
+    it('multi_select：字符串 → 400；数组含非法值 → 400；合法数组通过', async () => {
+      const field = mkField({
+        apiName: 'tags',
+        type: FieldType.MultiSelect,
+        config: { options: [{ label: '红' }, { label: '蓝' }] },
+      });
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta({ fields: [field] }));
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { tags: '红' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { tags: ['红', '绿'] }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { tags: ['红', '蓝'] }),
+      ).resolves.toBeTruthy();
+    });
+
+    it("'' 对非文本类型视同空（number/select 不误 400）", async () => {
+      const fields = [
+        mkField({ apiName: 'amount', type: FieldType.Number }),
+        mkField({
+          apiName: 'level',
+          type: FieldType.SingleSelect,
+          config: { options: [{ label: '高' }] },
+        }),
+      ];
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta({ fields }));
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { amount: '', level: '' }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('计算字段（formula）用户传值不拦（现状锚定：系统计算覆盖）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({ fields: [mkField({ apiName: 'total', type: FieldType.Formula })] }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { total: 1 }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('fields 空数组（发布后新建对象的 bundle 缺失态）→ 闸门跳过不拒', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(makeObjectMeta({ fields: [] }));
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      await expect(
+        service.create('tenant-001', 'obj-001', 'user-001', { anything: 1 }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('batchCreate 行级违例进 errors 数组不抛（HTTP 200 契约）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectMeta({ fields: [mkField({ apiName: 'name', type: FieldType.Text })] }),
+      );
+      prisma.record.create.mockResolvedValue(makeRecord());
+      const { service } = createService();
+
+      const result = await service.batchCreate('tenant-001', 'obj-001', 'user-001', [
+        { name: 'A' },
+        { ghost: 1 },
+      ]);
+      expect(result.created).toBe(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]!.message).toContain('ghost');
+    });
+
+    // ----- update -----
+
+    const setupUpdate = async (fields: unknown[], existingData: Record<string, unknown>) => {
+      prisma.record.findFirst.mockResolvedValue(
+        makeRecord({ data: existingData, object: { fields } }),
+      );
+      prisma.record.updateMany.mockResolvedValue({ count: 1 });
+      prisma.record.findUnique.mockResolvedValue(makeRecord({ data: existingData }));
+    };
+
+    it('update 增量含未知字段 → 400', async () => {
+      await setupUpdate([mkField({ apiName: 'name', type: FieldType.Text })], { name: 'Old' });
+      const { service } = createService();
+
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { ghost: 1 }),
+      ).rejects.toThrow('ghost');
+    });
+
+    it('update 存量脏数据不阻塞无关更新（只校验增量）', async () => {
+      await setupUpdate(
+        [
+          mkField({ apiName: 'amount', type: FieldType.Number }),
+          mkField({ apiName: 'remark', type: FieldType.Text }),
+        ],
+        { amount: '100' }, // 存量数字字符串（CSV 导入遗留）
+      );
+      const { service } = createService();
+
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { remark: 'x' }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('update 存量值原样回显跳过类型校验；改值仍被校验', async () => {
+      await setupUpdate(
+        [
+          mkField({ apiName: 'amount', type: FieldType.Number }),
+          mkField({ apiName: 'remark', type: FieldType.Text }),
+        ],
+        { amount: '100', remark: 'x' },
+      );
+      const { service } = createService();
+
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { amount: '100', remark: 'y' }),
+      ).resolves.toBeTruthy();
+      await expect(
+        service.update('tenant-001', 'rec-001', 'user-001', { amount: '200' }),
+      ).rejects.toThrow('数字');
+    });
+
+    it('update 平台键剥离不落库', async () => {
+      await setupUpdate([mkField({ apiName: 'name', type: FieldType.Text })], { name: 'Old' });
+      const { service } = createService();
+
+      await service.update('tenant-001', 'rec-001', 'user-001', {
+        name: 'New',
+        id: 'x',
+        createdAt: '2020-01-01',
+      });
+
+      const call = prisma.record.updateMany.mock.calls[0]![0];
+      const merged = call.data.data as Record<string, unknown>;
+      expect(merged).toEqual({ name: 'New' });
     });
   });
 });

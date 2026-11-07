@@ -251,7 +251,7 @@ describe('RecordImportExportService', () => {
         'tenant-001',
         'obj-001',
         'user-001',
-        expect.arrayContaining([expect.objectContaining({ name: '=cmd', amount: '-100' })]),
+        expect.arrayContaining([expect.objectContaining({ name: '=cmd', amount: -100 })]),
         undefined,
       );
     });
@@ -278,8 +278,8 @@ describe('RecordImportExportService', () => {
         'obj-001',
         'user-001',
         expect.arrayContaining([
-          expect.objectContaining({ name: '记录1', amount: '100' }),
-          expect.objectContaining({ name: '记录2', amount: '200' }),
+          expect.objectContaining({ name: '记录1', amount: 100 }),
+          expect.objectContaining({ name: '记录2', amount: 200 }),
         ]),
         undefined, // permissionContext（导入测试不传权限上下文）
       );
@@ -324,6 +324,94 @@ describe('RecordImportExportService', () => {
       await expect(service.importFromCsv('t', 'o', 'u', 'name\nA')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    // -----------------------------------------------------------------------
+    // R-A 数据面闸门配套：CSV 逐列强转（DESIGN-data-gate-2026-11-07 §2.4）
+    // -----------------------------------------------------------------------
+
+    it('R-A：数字列字符串强转为数字；非法数字整行失败进 errors', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectWithFields([{ apiName: 'amount', type: FieldType.Number }]),
+      );
+      const { service, recordService } = createService();
+      recordService.batchCreate.mockResolvedValue({ created: 1, errors: [] });
+
+      const csv = 'amount\n100\nabc';
+      const result = await service.importFromCsv('tenant-001', 'obj-001', 'user-001', csv);
+
+      expect(recordService.batchCreate).toHaveBeenCalledWith(
+        'tenant-001',
+        'obj-001',
+        'user-001',
+        [expect.objectContaining({ amount: 100 })],
+        undefined,
+      );
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]!.message).toContain('不是有效数字');
+      expect(result.errors[0]!.row).toBe(2);
+    });
+
+    it('R-A：checkbox 列 true/false 强转为布尔；其余值行失败', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectWithFields([{ apiName: 'done', type: FieldType.Checkbox }]),
+      );
+      const { service, recordService } = createService();
+      recordService.batchCreate.mockResolvedValue({ created: 2, errors: [] });
+
+      const csv = 'done\nTRUE\nfalse\n是';
+      const result = await service.importFromCsv('tenant-001', 'obj-001', 'user-001', csv);
+
+      expect(recordService.batchCreate).toHaveBeenCalledWith(
+        'tenant-001',
+        'obj-001',
+        'user-001',
+        [expect.objectContaining({ done: true }), expect.objectContaining({ done: false })],
+        undefined,
+      );
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]!.row).toBe(3);
+    });
+
+    it("R-A：multi_select 按逗号切分为数组；空单元格为 null 不被 Number('')=0", async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectWithFields([
+          { apiName: 'tags', type: FieldType.MultiSelect },
+          { apiName: 'amount', type: FieldType.Number },
+        ]),
+      );
+      const { service, recordService } = createService();
+      recordService.batchCreate.mockResolvedValue({ created: 2, errors: [] });
+
+      const csv = 'tags,amount\n"红,蓝",10\n,20';
+      const result = await service.importFromCsv('tenant-001', 'obj-001', 'user-001', csv);
+
+      expect(result.errors).toHaveLength(0);
+      expect(recordService.batchCreate).toHaveBeenCalledWith(
+        'tenant-001',
+        'obj-001',
+        'user-001',
+        [
+          expect.objectContaining({ tags: ['红', '蓝'], amount: 10 }),
+          expect.objectContaining({ tags: null, amount: 20 }),
+        ],
+        undefined,
+      );
+    });
+
+    it('R-A：attachment 列导入行失败（替代静默写垃圾串）', async () => {
+      prisma.objectMeta.findFirst.mockResolvedValue(
+        makeObjectWithFields([{ apiName: 'files', type: FieldType.Attachment }]),
+      );
+      const { service, recordService } = createService();
+
+      const csv = 'files\nx';
+      const result = await service.importFromCsv('tenant-001', 'obj-001', 'user-001', csv);
+
+      expect(recordService.batchCreate).not.toHaveBeenCalled();
+      expect(result.success).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]!.message).toContain('不支持 CSV 导入');
     });
   });
 

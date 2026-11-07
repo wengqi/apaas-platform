@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
-import { FieldType } from '@apaas/shared';
+import { FieldType, optionStoredValue } from '@apaas/shared';
 import type {
   BatchCreateResult,
   BatchUpdateResult,
@@ -47,6 +47,45 @@ interface ObjectField {
   unique?: boolean;
   isSystem?: boolean;
 }
+
+/**
+ * R-A 数据面写路径闸门（ADR-0006 §一.2；设计 docs/design/DESIGN-data-gate-2026-11-07.md）。
+ *
+ * 平台管辖列名键（records 表列 / 平台语义键）——写入前静默剥离，不落 data JSONB
+ * （修复系统键污染）。客户端回显整记录对象是合法形态，故剥离而非报错——这是对
+ * ADR-0006「未知字段拒绝」的显式例外（业务未知字段仍一律 400）；键命中业务字段
+ * apiName 时不剥离（apiName 白名单允许 id/createdAt 等，业务字段优先防碰撞）。
+ */
+const PLATFORM_COLUMN_KEYS = new Set([
+  'id',
+  'version',
+  'createdAt',
+  'updatedAt',
+  'createdBy',
+  'updatedBy',
+  'tenantId',
+  'appId',
+  'objectId',
+  'environmentId',
+]);
+
+/** 闸门错误消息里最多列出的字段名个数。 */
+const GATE_MAX_LISTED_FIELDS = 5;
+
+/** 非文本类型（'' 对其视同空——与 D-002 isEmpty 口径、CSV ''→null 对称）。 */
+const NON_TEXT_FIELD_TYPES: ReadonlySet<string> = new Set([
+  FieldType.Number,
+  FieldType.Currency,
+  FieldType.Percent,
+  FieldType.SingleSelect,
+  FieldType.MultiSelect,
+  FieldType.Checkbox,
+  FieldType.Date,
+  FieldType.DateTime,
+  FieldType.User,
+  FieldType.Lookup,
+  FieldType.Attachment,
+]);
 
 /** 查询记录参数。 */
 export interface RecordQueryParams {
@@ -224,29 +263,36 @@ export class RecordService {
   ): Promise<{
     appId: string;
     apiName: string;
+    name: string;
     fields: unknown;
     live: { appId: string; apiName: string; fields: unknown } | null;
   }> {
     const live = await prisma.objectMeta.findFirst({
       where: { id: objectId, tenantId },
-      select: { appId: true, apiName: true, fields: true },
+      select: { appId: true, apiName: true, name: true, fields: true },
     });
     if (!live) {
-      return { appId: '', apiName: '', fields: [], live: null };
+      return { appId: '', apiName: '', name: '', fields: [], live: null };
     }
     const env = getEnvironmentId() ?? 'prod';
     const resolved = await this.environmentResolver.resolve(tenantId, live.appId, env);
     if (resolved.bundle) {
       const bundled = resolved.bundle.objects.find((o) => o.id === objectId);
       if (bundled) {
-        return { appId: live.appId, apiName: bundled.apiName, fields: bundled.fields, live };
+        return {
+          appId: live.appId,
+          apiName: bundled.apiName,
+          name: live.name,
+          fields: bundled.fields,
+          live,
+        };
       }
       // bundle 中不存在该对象（发布后新建的活表对象）→ 视为未发布，按空字段处理
-      return { appId: live.appId, apiName: live.apiName, fields: [], live };
+      return { appId: live.appId, apiName: live.apiName, name: live.name, fields: [], live };
     }
     // 搭建期语义（非兼容兜底）：应用未部署到当前环境时，运行时"不可变快照"尚不存在，
     // 字段定义取活表——支撑建对象后、发布前的记录试录（AutoNumber/Formula/校验）。
-    return { appId: live.appId, apiName: live.apiName, fields: live.fields, live };
+    return { appId: live.appId, apiName: live.apiName, name: live.name, fields: live.fields, live };
   }
   // ===========================================================================
   // 查询
@@ -281,6 +327,162 @@ export class RecordService {
       if (allowed.has(key)) filtered[key] = value;
     }
     return filtered;
+  }
+
+  /**
+   * R-A 数据面闸门之一：剥离平台管辖列名键（命中业务字段 apiName 的不剥）。
+   * 返回新对象，不修改入参。设计: docs/design/DESIGN-data-gate-2026-11-07.md §2.3
+   */
+  private stripPlatformColumnKeys(
+    data: Record<string, unknown>,
+    fieldApiNames: ReadonlySet<string>,
+  ): Record<string, unknown> {
+    const stripped: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (PLATFORM_COLUMN_KEYS.has(key) && !fieldApiNames.has(key)) continue;
+      stripped[key] = value;
+    }
+    return stripped;
+  }
+
+  /**
+   * R-A 数据面闸门之二：未知字段拒绝 + 按字段类型校验值（ADR-0006 §一.2）。
+   *
+   * - fields 为空（发布后新建对象的 bundle 缺失态，resolveObject/update 双路径可达）
+   *   → 跳过校验并 warn 留观测，与 D-002「空 fields 自然跳过」同构；
+   *   「未发布对象禁止写数」是产品语义变更，不在此顺手做（设计 §2.2）。
+   * - existingData（update 通道）提供存量回显豁免：与旧值深相等的键跳过类型校验
+   *   （studio 编辑抽屉全量回显，存量 CSV 脏形状不得阻塞合法编辑）；未知字段检查
+   *   不做回显豁免。
+   */
+  private validateRecordWriteShape(input: {
+    objectName: string;
+    fields: ObjectField[];
+    data: Record<string, unknown>;
+    existingData?: Record<string, unknown>;
+  }): void {
+    const { objectName, fields, data, existingData } = input;
+    if (fields.length === 0) {
+      this.logger.warn(
+        `[数据闸门] 对象「${objectName}」字段定义为空（bundle 缺失态），跳过写路径校验`,
+      );
+      return;
+    }
+
+    const fieldByName = new Map(fields.map((f) => [f.apiName, f]));
+
+    // A. 未知字段拒绝
+    const unknownKeys = Object.keys(data).filter((k) => !fieldByName.has(k));
+    if (unknownKeys.length > 0) {
+      const listed = unknownKeys.slice(0, GATE_MAX_LISTED_FIELDS).join(', ');
+      const available = fields
+        .slice(0, GATE_MAX_LISTED_FIELDS)
+        .map((f) => f.apiName)
+        .join(', ');
+      const ellipsis = fields.length > GATE_MAX_LISTED_FIELDS ? '…' : '';
+      throw new BadRequestException(
+        `以下字段不是对象「${objectName}」的已定义字段: ${listed}` +
+          `。可用字段(共 ${fields.length} 个): ${available}${ellipsis}`,
+      );
+    }
+
+    // B. 按类型校验值（豁免序：undefined/null → '' 非文本视同空 → 存量回显）
+    for (const field of fields) {
+      const value = data[field.apiName];
+      if (value === undefined || value === null) continue;
+      if (value === '' && NON_TEXT_FIELD_TYPES.has(field.type)) continue;
+      if (existingData && this.isSameWriteValue(existingData[field.apiName], value)) continue;
+      this.validateFieldValue(field, value);
+    }
+  }
+
+  /** 按字段类型校验单个非空值（AutoNumber/Formula/Rollup/SubForm 由系统管理不校验）。 */
+  private validateFieldValue(field: ObjectField, value: unknown): void {
+    const label = field.label ?? field.apiName;
+    const typeMismatch = (expected: string): BadRequestException =>
+      new BadRequestException(`字段「${label}」类型错误：期望${expected}`);
+
+    switch (field.type) {
+      case FieldType.Text:
+      case FieldType.LongText:
+      case FieldType.RichText:
+        if (typeof value !== 'string') throw typeMismatch('文本，实际收到非字符串值');
+        return;
+      case FieldType.Number:
+      case FieldType.Currency:
+      case FieldType.Percent: {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+          const kind = value === null ? 'null' : typeof value;
+          throw typeMismatch(`数字，实际收到${kind}「${String(value)}」`);
+        }
+        return;
+      }
+      case FieldType.SingleSelect: {
+        const options = this.selectStoredValues(field);
+        if (typeof value !== 'string' || !options.has(value)) {
+          throw new BadRequestException(`字段「${label}」的值「${String(value)}」不在可选值范围`);
+        }
+        return;
+      }
+      case FieldType.MultiSelect: {
+        const options = this.selectStoredValues(field);
+        const invalid =
+          !Array.isArray(value) ||
+          value.some((v) => typeof v !== 'string' || !options.has(v as string));
+        if (invalid) {
+          throw new BadRequestException(
+            `字段「${label}」的值「${String(value)}」不在可选值范围（期望选项字符串数组）`,
+          );
+        }
+        return;
+      }
+      case FieldType.Checkbox:
+        if (typeof value !== 'boolean') throw typeMismatch('布尔值');
+        return;
+      case FieldType.Date:
+      case FieldType.DateTime:
+        // 刻意宽松：Date.parse 可解析即过（ISO/YYYY-MM-DD 均过），设计 §2.1 注明
+        if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
+          throw typeMismatch('日期字符串（ISO 格式）');
+        }
+        return;
+      case FieldType.User:
+        if (typeof value !== 'string' || value === '') throw typeMismatch('用户 ID 字符串');
+        return;
+      case FieldType.Attachment:
+        if (!Array.isArray(value)) throw typeMismatch('文件数组');
+        return;
+      case FieldType.Lookup:
+        // 引用存在性由 validateLookupWrites 管，此处仅格式
+        if (typeof value !== 'string' && !this.isStringArray(value)) {
+          throw typeMismatch('记录 ID 或其数组');
+        }
+        return;
+      default:
+        // AutoNumber/Formula/Rollup（系统计算，用户传值不落库——create 覆盖/update 剥离）
+        // 与 SubForm（子记录独立存储经 parentFieldId 关联）不校验，设计 §2.1 表
+        return;
+    }
+  }
+
+  /** 取 select 类字段的全部合法存储值（optionStoredValue：value 优先回退 label）。 */
+  private selectStoredValues(field: ObjectField): Set<string> {
+    const config = field.config as
+      { options?: Array<{ label: string; value?: string }> } | undefined;
+    return new Set((config?.options ?? []).map((o) => optionStoredValue(o)));
+  }
+
+  private isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((v) => typeof v === 'string');
+  }
+
+  /** 标量 === / 数组逐项比较（存量回显豁免用）。 */
+  private isSameWriteValue(oldValue: unknown, newValue: unknown): boolean {
+    if (oldValue === newValue) return true;
+    if (Array.isArray(oldValue) && Array.isArray(newValue)) {
+      return oldValue.length === newValue.length && oldValue.every((v, i) => v === newValue[i]);
+    }
+    return false;
   }
 
   /**
@@ -623,8 +825,14 @@ export class RecordService {
     // 因为 AutoNumber/Formula 是系统计算字段，不受用户 fieldScope 限制）
     const filteredData = this.filterWritableFields(data, permissionContext);
 
+    // R-A 数据面闸门（ADR-0006 §一.2）：平台键剥离 → 未知字段拒绝 + 按类型校验，
+    // 先于 D-002 约束校验。设计: docs/design/DESIGN-data-gate-2026-11-07.md
+    const fieldApiNames = new Set(fields.map((f) => f.apiName));
+    const cleanData = this.stripPlatformColumnKeys(filteredData, fieldApiNames);
+    this.validateRecordWriteShape({ objectName: obj.name, fields, data: cleanData });
+
     // 复制过滤后的 data，避免修改调用方传入的对象
-    const computedData: Record<string, unknown> = { ...filteredData };
+    const computedData: Record<string, unknown> = { ...cleanData };
 
     // 0. 服务端字段约束校验（QA D-002：required/maxLength/unique）
     await this.validateFieldConstraints({
@@ -632,7 +840,7 @@ export class RecordService {
       appId: obj.appId,
       objectId,
       fields,
-      data: filteredData,
+      data: cleanData,
     });
 
     // 1-4 与写入同事务（P1-28）：AutoNumber 计数器递增与记录写入原子化——
@@ -769,7 +977,7 @@ export class RecordService {
         tenantId,
         ...(conditionWhere ? { AND: [conditionWhere] } : {}),
       },
-      include: { object: { select: { fields: true, appId: true } } },
+      include: { object: { select: { fields: true, appId: true, name: true } } },
     });
     if (!existing) throw new NotFoundException('记录不存在');
 
@@ -799,10 +1007,22 @@ export class RecordService {
       }
     }
 
+    // R-A 数据面闸门（ADR-0006 §一.2）：平台键剥离 → 未知字段拒绝 + 按类型校验增量
+    // （只校验本次增量，存量合并数据可能含历史脏形状，不得阻塞无关更新）；
+    // existing.data 作存量回显豁免源（studio 编辑抽屉为全量回显，见设计 §2.2）。
+    const fieldApiNames = new Set(fields.map((f) => f.apiName));
+    const cleanIncoming = this.stripPlatformColumnKeys(incoming, fieldApiNames);
+    this.validateRecordWriteShape({
+      objectName: existing.object?.name ?? existing.objectId,
+      fields,
+      data: cleanIncoming,
+      existingData: existing.data as Record<string, unknown>,
+    });
+
     // 部分更新：合并旧数据与新数据
     const mergedData: Record<string, unknown> = {
       ...(existing.data as Record<string, unknown>),
-      ...incoming,
+      ...cleanIncoming,
     };
 
     // 1.5 服务端字段约束校验（QA D-002）：required 只拦"本次把必填字段清空"，
@@ -813,7 +1033,7 @@ export class RecordService {
       objectId: existing.objectId,
       fields,
       data: mergedData,
-      incomingKeys: new Set(Object.keys(incoming)),
+      incomingKeys: new Set(Object.keys(cleanIncoming)),
       excludeRecordId: recordId,
     });
 

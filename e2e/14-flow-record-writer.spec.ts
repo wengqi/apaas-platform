@@ -74,6 +74,14 @@ test.describe('流程写库复用记录写内核（P1-5 回归）', () => {
       type: 'formula',
       config: { formula: { expression: 'qty * price', returnType: 'number' } },
     });
+    // R-A 数据面闸门：批量更新写入的 flag 必须是已声明字段（闸门拒绝 schema 外字段，
+    // 本用例此前依赖静默写入未声明字段的旧洞）
+    await api.post(`/design/apps/${appId}/objects/${objectId}/fields`, {
+      apiName: 'flag',
+      label: '标记',
+      type: 'text',
+      config: {},
+    });
 
     // 1) 流程创建记录（不提供 code/total，应由内核计算）
     const createFlow = await api.post<{ id: string }>(`/design/apps/${appId}/processes`, {

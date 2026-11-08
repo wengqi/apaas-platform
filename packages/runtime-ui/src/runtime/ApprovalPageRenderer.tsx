@@ -7,7 +7,7 @@
  * 页面内 form 的普通请求走平台 fetcher（认证/响应适配）。
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Spin, Typography } from 'antd';
 import { pagesApi } from '../api/pages.js';
@@ -25,6 +25,8 @@ interface ApprovalPageRendererProps {
   appId: string;
   /** R1.4：实例所在环境（缺省 prod） */
   env?: string;
+  /** 审批页加载失败回调（R-B functional-05 盲批回退：壳层回退展示申请内容） */
+  onLoadError?: () => void;
 }
 
 /** 从 amis page schema 中提取 form 相关性标记（含表单即 true）。 */
@@ -70,6 +72,7 @@ export default function ApprovalPageRenderer({
   data: ctxData,
   appId,
   env,
+  onLoadError,
 }: ApprovalPageRendererProps) {
   // R1.4：审批页按环境 bundle 渲染（实例所在环境优先，URL ?env 兜底）
   const urlEnv = new URLSearchParams(window.location.search).get('env') ?? undefined;
@@ -87,6 +90,11 @@ export default function ApprovalPageRenderer({
 
   const fetcher = usePlatformFetcher();
 
+  // R-B functional-05 盲批回退：加载失败上报壳层（TaskCenter 回退展示申请内容）
+  useEffect(() => {
+    if (error && onLoadError) onLoadError();
+  }, [error, onLoadError]);
+
   if (isLoading) {
     return (
       <div style={{ textAlign: 'center', padding: 32 }}>
@@ -101,7 +109,11 @@ export default function ApprovalPageRenderer({
         type="warning"
         showIcon
         message="审批页面加载失败"
-        description={<Text type="secondary">{(error as Error)?.message ?? '页面不存在'}</Text>}
+        description={
+          <Text type="secondary">
+            {(error as Error)?.message ?? '页面不存在'}（可查看下方申请内容）
+          </Text>
+        }
       />
     );
   }

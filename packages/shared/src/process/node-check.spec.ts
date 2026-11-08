@@ -138,3 +138,70 @@ describe('collectErrorEdgeConflicts — S2 歧义检测（P1-15）', () => {
     expect(issues).toEqual([]);
   });
 });
+
+describe('R-B functional 波次①（node-check 新规则）', () => {
+  it('functional-02a：user_task AUTO_REJECT 未配驳回目标 → 不完整', () => {
+    expect(
+      isNodeIncomplete('user_task', {
+        candidateGroups: ['role-1'],
+        approvalMode: 'SINGLE',
+        timeoutAction: 'AUTO_REJECT',
+      }),
+    ).toBe(true);
+    // 配置了驳回跳转目标 → 完整
+    expect(
+      isNodeIncomplete('user_task', {
+        candidateGroups: ['role-1'],
+        approvalMode: 'SINGLE',
+        timeoutAction: 'AUTO_REJECT',
+        rejectToNodeId: 'n9',
+      }),
+    ).toBe(false);
+    // 对照：AUTO_APPROVE 免 rejectToNodeId（超时自动通过无需目标）
+    expect(
+      isNodeIncomplete('user_task', {
+        candidateGroups: ['role-1'],
+        approvalMode: 'SINGLE',
+        timeoutAction: 'AUTO_APPROVE',
+      }),
+    ).toBe(false);
+  });
+
+  it('functional-02a：nodeIncompleteReason 对 AUTO_REJECT 缺目标给出专因', () => {
+    expect(nodeIncompleteReason('user_task', { timeoutAction: 'AUTO_REJECT' })).toContain(
+      '驳回跳转节点',
+    );
+    // 缺省（非 AUTO_REJECT 场景）保持既有原因
+    expect(nodeIncompleteReason('user_task', {})).toBe('审批人或审批模式未配置');
+  });
+
+  it('functional-09：trigger SCHEDULED 未配 cron → 不完整', () => {
+    expect(isNodeIncomplete('trigger', { triggerType: 'SCHEDULED' })).toBe(true);
+    expect(isNodeIncomplete('trigger', { triggerType: 'SCHEDULED', cron: '0 9 * * *' })).toBe(
+      false,
+    );
+    // 对照：非 SCHEDULED 不要求 cron
+    expect(isNodeIncomplete('trigger', { triggerType: 'MANUAL' })).toBe(false);
+    expect(isNodeIncomplete('trigger', { triggerType: 'RECORD_CREATED' })).toBe(false);
+    expect(isNodeIncomplete('trigger', {})).toBe(true);
+    expect(nodeIncompleteReason('trigger', { triggerType: 'SCHEDULED' })).toContain('Cron');
+    expect(nodeIncompleteReason('trigger', {})).toBe('触发器未配置触发类型');
+  });
+
+  it('functional-02a：collectNodeIssues 动态 reason 携带 AUTO_REJECT 专因', () => {
+    const issues = collectNodeIssues([
+      {
+        id: 'n1',
+        type: 'user_task',
+        data: {
+          title: '审批',
+          candidateGroups: ['r1'],
+          approvalMode: 'SINGLE',
+          timeoutAction: 'AUTO_REJECT',
+        },
+      },
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.reason).toContain('驳回跳转节点');
+  });
+});

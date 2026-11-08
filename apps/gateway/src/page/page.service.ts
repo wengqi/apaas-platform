@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { prisma, Prisma, getEnvironmentId } from '@apaas/db';
 import type { PageMeta as PrismaPageMeta } from '@apaas/db';
 import {
@@ -15,6 +20,7 @@ import {
 } from '@apaas/shared';
 import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
 import { SchemaContractService } from '../schema-contract/schema-contract.service.js';
+import { findReferencingProcessNames } from '../shared/workflow-schema-refs.js';
 import { ChangeLogService } from '../application/changelog.service.js';
 
 /**
@@ -431,6 +437,20 @@ export class PageService {
   async delete(tenantId: string, appId: string, pageId: string, changedBy?: string): Promise<void> {
     // 先查信息（删除后无法获取）
     const existing = await this.requirePage(tenantId, appId, pageId);
+
+    // R-B functional-05：页面被流程引用（审批节点 pageId 绑定 / 触发器 startPageId
+    // 发起页）时硬拦——引用即硬拦标准，409 清单直出流程名
+    const defs =
+      (await prisma.processDef.findMany({
+        where: { tenantId, appId },
+        select: { name: true, workflowSchema: true },
+      })) ?? [];
+    const referencing = findReferencingProcessNames(defs, (refs) => refs.pageIds.has(pageId));
+    if (referencing.length > 0) {
+      throw new ConflictException(
+        `页面「${existing.name}」被以下流程引用（审批节点绑定或发起页），无法删除：${referencing.join('、')}`,
+      );
+    }
 
     const result = await prisma.pageMeta.deleteMany({
       where: { id: pageId, tenantId, appId },

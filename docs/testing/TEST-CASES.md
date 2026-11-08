@@ -400,6 +400,16 @@
 | TC-244 | CSV 导入逐列强转 | P1 | 对象含 number/checkbox/multi_select/attachment 列 | ① 数字列 '100' ② checkbox 列 TRUE/false/是 ③ multi_select 引号逗号切分 + 空单元格 ④ attachment 列 ⑤ 非法数字行 | ① 落数字 ② 布尔（大小写不敏感）/「是」行失败 ③ 数组 + null（不被 Number('')=0）④ 行失败「不支持 CSV 导入」 ⑤ 整行剔除进 errors 含行号 | record-import-export.service.spec.ts（R-A 组 4 例） | 设计 §2.4；强转在 ''→null 之后（避 Number('')=0）；已知边界=multi_select 逗号 round-trip 依赖选项无逗号 |
 | TC-245 | 闸门 API 实测（结果可见） | P1 | procurement.contract 已发布对象 | ① POST records 传 ghost 字段 ② amount 传字符串 ③ status 出值域 ④ 伪造 id/createdAt/version 合法写入 ⑤ 查落库 data | ① 400 含可用字段清单 ② 400 期望数字 ③ 400 不在可选值（value 稳定编码契约生效：label 被拒） ④ 成功且 AutoNumber 照常 ⑤ data 无平台键 | 已实测通过（2026-11-07，DATA-GATE-2026-11-07 §二；实测记录已清理） | 已知遗留：审批回写通道 400 被既有 catch 吞为日志（writeback 配置错静默不回写——方言指南后续补 stored value 强调） |
 
+### W. R-B 流程引擎修缮批 1（2026-11-08，functional 波次①②）
+
+| 编号 | 用例标题 | 优先级 | 前置条件 | 测试步骤 | 预期结果 | 自动化 | 备注 |
+|---|---|---|---|---|---|---|---|
+| TC-246 | AUTO_REJECT 未配驳回目标发布硬拦 | P1 | 画布 user_task 节点 timeoutAction=AUTO_REJECT | ① 不配 rejectToNodeId 保存并发布 ② 配置 rejectToNodeId 后发布 ③ 对照 AUTO_APPROVE 无目标发布 ④ 画布观察标红 | ① 发布 400「已配置超时自动驳回但未配置驳回跳转节点」（与画布标红同源 node-check） ② 发布成功 ③ 发布成功 ④ 画布节点标红 | node-check.spec（4 例）+ process.service.spec（publish 400） | functional-02a；引擎超时路径注释同步勘误为防御层口径 |
+| TC-247 | user_task 默认态可配驳回目标 | P2 | 新建 user_task 节点（allowReject 未配置） | ① 打开配置面板观察驳回配置区 ② 显式选「不允许」 ③ 切回允许 | ① 默认态即显示驳回目标选择器（allowReject !== false 口径与显示值/回写区三处统一） ② 隐藏 ③ 恢复显示 | GUI 走查（studio 无组件渲染测试基建，偏差见实现记录） | functional-07；不加发布硬闸（未配目标=不可驳回为合法存量语义） |
+| TC-248 | SCHEDULED 无 cron 发布硬拦 | P1 | 画布 trigger 节点 triggerType=SCHEDULED | ① 不配 cron 发布 ② 配 cron 发布 ③ 存量缺 cron 流程触发注册观察日志 | ① 发布 400「定时触发未配置 Cron 表达式」 ② 成功且注册 Redis job ③ 注册防御层 warn 日志「未注册 job: apiName」（不静默） | node-check.spec + process.service.spec（publish 400） | functional-09；TriggerConfigForm/Modal 不加假校验（画布标红同源） |
+| TC-249 | 删流程定义存在实例 409 | P1 | 任一有 ≥1 条实例（含历史）的流程 | ① DELETE 流程定义 ② 无实例流程 DELETE ③ PUBLISHED 流程 DELETE | ① 409「存在 N 条实例（含在途审批），删除将连带销毁全部执行历史；如需下线请使用取消/归档」 ② 正常删除（release 级联链保持） ③ 既有「请先归档」语义不变 | process.service.spec（2 例） | functional-01（◆1=A 存在即拦，审计历史不灭失）；历史清理留「归档」能力后续立项 |
+| TC-250 | 删被流程引用的页面/通知模版 409 + 审批页盲批回退 | P1 | 流程 user_task 绑定页面 / notification 引用模版 / 任务绑定审批页 | ① DELETE 被绑定页面 ② DELETE 被引用模版 ③ DELETE 无引用页面 ④ 人为使绑定审批页加载失败后打开审批弹窗 | ①② 409 清单直出流程名（页面含审批绑定+发起页 startPageId 两类引用） ③ 正常删除 ④ 弹窗显示失败告警「（可查看下方申请内容）」+ 申请内容/表单数据回退真实展示（不再吞成空） | page.service.spec（3 例）+ process.service.spec（2 例）；盲批回退=typecheck+e2e 结构回归 | functional-05（引用即硬拦标准）；盲批回退视觉结果留 QA 走查（需人为构造失败场景，见实现记录未执行清单） |
+
 ---
 
 
@@ -445,6 +455,7 @@
 | 2026-10-23 | v3.0 | 对抗审查 P0 批次第二波：新增 TC-201「服务身份应用作用域」/ TC-202「G4 硬闸：页面引用敏感环境变量拒绝发布」/ TC-203「运行面页面读端点可见性门」/ TC-204「数据端点双门（DRAFT 应用不再供数）」；P0-2/6/9/10 四项修复落地（gateway 935 全绿）；同日 P0-3/4/5/7/8 收口（TC-205~207：云函数异步 run+槽位守恒+日志上限/生产 seed 开关/删对象跨环境守卫，gateway 940 全绿）；ADR-0005 补勘误（决策 10 非语义豁免） | 对抗审查 P0 批次（用户裁决：P0-6 G4 硬闸+否决服务端代理；P0-9 双门判定） |
 | 2026-10-25 | v3.5 | 对抗审查 P1 波次③第二批（收官）：新增 U 节 TC-233「图表聚合 SQL 下推」/ TC-234「业务字段排序 SQL 下推」/ TC-235「rollup 数值聚合下推」/ TC-236「CSV 导出游标分页」/ TC-237「batchCreate 有界并行+后台预算」——**P1 专项 30/30 全清** | 对抗审查 P1 专项（工单波次③第二批） |
 | 2026-11-07 | v3.6 | R-A 数据面写路径闸门轮（ADR-0006 排期第一站）：新增 V 节 TC-238「未知字段写路径拒绝」/ TC-239「字段类型按 schema 校验」/ TC-240「平台键回显剥离」/ TC-241「update 增量校验+存量回显豁免」/ TC-242「空字符串归一」/ TC-243「fields 空数组守卫」/ TC-244「CSV 导入逐列强转」/ TC-245「闸门 API 实测」；**行为变更**：schema 外字段写路径一律 400（原静默落 JSONB）、CSV 数字列落数字（原字符串）——e2e/14 夹具与 2 处单测断言随契约修正（理由留档 DATA-GATE-2026-11-07 §三） | ADR-0006 R-A（设计文档含独立评审修订记录：3 BLOCKING+7 建议全采纳） |
+| 2026-11-08 | v3.7 | R-B 批 1（functional 波次①②）：新增 W 节 TC-246「AUTO_REJECT 未配驳回目标发布硬拦」/ TC-247「user_task 默认态可配驳回目标」/ TC-248「SCHEDULED 无 cron 发布硬拦」/ TC-249「删流程定义存在实例 409」/ TC-250「删被引用页面/模版 409+审批页盲批回退」；**行为变更**：AUTO_REJECT 无目标与 SCHEDULED 无 cron 发布被拦（node-check 同源新规则）、删流程定义存在实例 409（原静默连带销毁）、删被引用页面/模版 409（原悬空引用） | R-B functional 波次①②（16 项裁决 2026-11-08，ADR-0007 关联） |
 | 2026-10-25 | v3.4 | 对抗审查 P1 波次③第一批：新增 T 节 TC-230「JSONB 等值查询 @> 形态」/ TC-231「ProcessTask 查询索引」/ TC-232「权限决策缓存与失效」（用户裁决=TTL+主动失效）；QA-PLAN v1.0.19 同步 | 对抗审查 P1 专项（工单波次③第一批） |
 | 2026-10-25 | v3.3 | 对抗审查 P1 波次①（并发/事务十项）：新增 S 节 TC-220「unique 字段 partial unique index」/ TC-221「记录更新乐观锁」/ TC-222「审批单原子认领」/ TC-223「定时触发注册账本与串行化」/ TC-224「Rollup 字段定向写」/ TC-225「依次审批环实例锁」/ TC-226「分布式锁看门狗续期」/ TC-227「应用创建同事务」/ TC-228「字段变更引用硬拦」/ TC-229「计算顺序」；**契约变更**：Record 加 version 列、ResourceVersionStatus 加 APPROVING、审批并发后到者 409、字段引用存在时改名/改类型/删除 400 | 对抗审查 P1 专项（工单波次①） |
 | 2026-10-24 | v3.2 | 对抗审查 P1 波次②（流程引擎与出站安全六项）：新增 R 节 TC-214「safeFetch 校验后钉连接（DNS TOCTOU）」/ TC-215「Webhook HMAC 纳入时间戳」/ TC-216「CSV 导出公式注入中和」/ TC-217「依次审批第 2..N 环超时」/ TC-218「S2 error 出边归一与歧义硬闸」/ TC-219「Webhook 绑定触发」；**契约变更**：webhook 入站签名输入改 `${ts}.${rawBody}`（旧格式拒绝，破坏性变更零兼容）；连接器新增 processDefId（迁移回填幂等） | 对抗审查 P1 专项（工单波次②） |

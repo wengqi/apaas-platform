@@ -28,6 +28,9 @@ export default function TaskCenter() {
   const [selectedTask, setSelectedTask] = useState<ProcessTask | null>(null);
   const [comment, setComment] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  // R-B functional-05 盲批回退：绑定审批页加载失败时回退展示申请内容（triggerData），
+  // 避免「页面空白 + 表单数据被吞」导致审批人盲批
+  const [boundPageFailed, setBoundPageFailed] = useState(false);
 
   // 待办列表（错误显式化，2026-10-10：此前 403/网络错误被吞成空表）
   const {
@@ -88,6 +91,7 @@ export default function TaskCenter() {
   const openTaskModal = (task: ProcessTask) => {
     setSelectedTask(task);
     setComment('');
+    setBoundPageFailed(false);
     setModalOpen(true);
   };
 
@@ -256,6 +260,7 @@ export default function TaskCenter() {
                     pageId={taskDetail.boundPageId}
                     appId={taskDetail.appId}
                     env={taskDetail.runtimeEnv}
+                    onLoadError={() => setBoundPageFailed(true)}
                     data={{
                       taskId: taskDetail.id,
                       ...(taskDetail.instance?.variables ?? {}),
@@ -269,8 +274,9 @@ export default function TaskCenter() {
               ) : null}
               <TaskDetailTabs
                 taskDetail={taskDetail}
-                triggerData={taskDetail.boundPageId ? [] : triggerData}
-                formData={taskDetail.boundPageId ? [] : formData}
+                // functional-05：绑定页失败时回退真实申请内容/表单数据（不再吞成空数组）
+                triggerData={taskDetail.boundPageId && !boundPageFailed ? [] : triggerData}
+                formData={taskDetail.boundPageId && !boundPageFailed ? [] : formData}
                 activeTab={activeTab}
                 comment={comment}
                 onCommentChange={setComment}

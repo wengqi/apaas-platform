@@ -19,9 +19,14 @@ export interface NodeIncompleteIssue {
 export function isNodeIncomplete(type: string, data: Record<string, unknown>): boolean {
   switch (type) {
     case 'trigger':
+      // R-B functional-09：定时触发必须配 cron（到点注册依赖 cron，缺省 job 无法注册）
+      if (data['triggerType'] === 'SCHEDULED' && !data['cron']) return true;
       return !data['triggerType'];
     case 'userTask':
     case 'user_task': {
+      // R-B functional-02a：AUTO_REJECT 需驳回跳转目标——到点自动驳回无目标时
+      // 引擎只能兜底留痕（fail-safe break），预检在源头拦下这个死配置
+      if (data['timeoutAction'] === 'AUTO_REJECT' && !data['rejectToNodeId']) return true;
       // 审批人（单值/角色数组/多人数组任一）+ 审批模式都有值才算完成；
       // INITIATOR（发起人审批，专题 R1-A1）免填审批人
       const hasAssignee =
@@ -70,13 +75,19 @@ export function isNodeIncomplete(type: string, data: Record<string, unknown>): b
   }
 }
 
-/** 不完整原因（中文，供发布预检错误与检查报告直出）。 */
-export function nodeIncompleteReason(type: string): string {
+/** 不完整原因（中文，供发布预检错误与检查报告直出）。data 供动态专因判定（functional-02a）。 */
+export function nodeIncompleteReason(type: string, data?: Record<string, unknown>): string {
   switch (type) {
     case 'trigger':
+      if (data?.['triggerType'] === 'SCHEDULED' && !data?.['cron']) {
+        return '定时触发未配置 Cron 表达式';
+      }
       return '触发器未配置触发类型';
     case 'userTask':
     case 'user_task':
+      if (data?.['timeoutAction'] === 'AUTO_REJECT' && !data?.['rejectToNodeId']) {
+        return '已配置超时自动驳回但未配置驳回跳转节点';
+      }
       return '审批人或审批模式未配置';
     case 'notification':
       return '通知渠道或收件人未配置';
@@ -113,7 +124,7 @@ export function collectNodeIssues(
         nodeId: String(n['id'] ?? ''),
         nodeType: type,
         nodeTitle: String(data['title'] ?? type),
-        reason: nodeIncompleteReason(type),
+        reason: nodeIncompleteReason(type, data),
       });
     }
     const blocks = n['blocks'];

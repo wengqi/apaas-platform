@@ -19,6 +19,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { collectErrorEdgeConflicts, collectNodeIssues } from '@apaas/shared';
+import { findReferencingProcessNames } from '../shared/workflow-schema-refs.js';
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
@@ -223,6 +224,18 @@ export class ProcessService {
         code: 'VALIDATION_ERROR',
         message: '已发布的流程不可删除，请先归档',
       });
+    }
+
+    // R-B functional-01（◆1=A，2026-11-08 裁决）：存在任何实例即硬拦——删除连带
+    // 销毁执行历史（含在途审批与审计留痕），对齐删对象五守卫/P1-09「引用即硬拦」
+    // 标准；下线走取消/归档，历史清理留「归档」能力后续立项。
+    const instanceCount = await prisma.processInstance.count({
+      where: { processDefId: processId, tenantId },
+    });
+    if (instanceCount > 0) {
+      throw new ConflictException(
+        `该流程存在 ${instanceCount} 条实例（含在途审批），删除将连带销毁全部执行历史；如需下线请使用取消/归档`,
+      );
     }
 
     // 级联处置该流程的 API release 行（P1-30）：processDefId 无 FK，残留行会让
@@ -1126,6 +1139,23 @@ export class ProcessService {
       where: { id: templateId, tenantId, appId },
     });
     if (!existing) throw new NotFoundException('通知模版不存在');
+
+    // R-B functional-05：模版被流程 notification 节点引用时硬拦（引用即硬拦标准，
+    // 引用清单直出流程名；预检只拦未来提交，删除闸防存量引用悬空）
+    const defs =
+      (await prisma.processDef.findMany({
+        where: { tenantId, appId },
+        select: { name: true, workflowSchema: true },
+      })) ?? [];
+    const referencing = findReferencingProcessNames(defs, (refs) =>
+      refs.templateIds.has(templateId),
+    );
+    if (referencing.length > 0) {
+      throw new ConflictException(
+        `通知模版「${existing.name}」被以下流程引用，无法删除：${referencing.join('、')}`,
+      );
+    }
+
     await prisma.notificationTemplate.delete({ where: { id: templateId } });
     return { deleted: true };
   }

@@ -1413,7 +1413,9 @@ export class ProcessEngine {
           );
           processed += 1;
         } catch (err) {
-          // 典型：AUTO_REJECT 但节点无 rejectToNodeId——发布预检已拦，此处兜底留痕不中断
+          // 典型：AUTO_REJECT 但节点无 rejectToNodeId——发布预检已拦（R-B functional-02a：
+          // node-check 组合规则硬闸），此处为防御层兜底留痕不中断；升级为显式失败处置
+          // 由 functional-02b 承接（工单波次③）
           this.logger.error(
             `实例 ${instanceId} 节点 ${nodeId} 超时动作 ${action} 失败（任务 ${next.id}）：${err instanceof Error ? err.message : String(err)}`,
           );

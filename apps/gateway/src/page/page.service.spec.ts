@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PageService } from './page.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 
@@ -179,6 +179,68 @@ describe('PageService', () => {
         NotFoundException,
       );
       expect(prisma.pageMeta.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('R-B functional-05：页面被流程引用（审批节点 pageId 绑定）→ 409 含流程清单且不删除', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow({ name: '合同审批页' }));
+      prisma.processDef.findMany.mockResolvedValue([
+        {
+          id: 'pd-1',
+          name: '采购审批',
+          workflowSchema: {
+            nodes: [{ id: 'n1', type: 'user_task', data: { title: '审批', pageId: 'page-001' } }],
+          },
+        },
+        {
+          id: 'pd-2',
+          name: '无引用流程',
+          workflowSchema: {
+            nodes: [{ id: 'n2', type: 'user_task', data: { title: '审批', pageId: 'page-other' } }],
+          },
+        },
+      ]);
+
+      const { service } = createService();
+      await expect(service.delete('tenant-001', 'app-001', 'page-001')).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.delete('tenant-001', 'app-001', 'page-001')).rejects.toThrow(/采购审批/);
+      expect(prisma.pageMeta.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('R-B functional-05：发起页 startPageId 引用同样拦截', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.processDef.findMany.mockResolvedValue([
+        {
+          id: 'pd-3',
+          name: '发起流程',
+          workflowSchema: {
+            nodes: [
+              {
+                id: 'n0',
+                type: 'trigger',
+                data: { triggerType: 'RECORD_CREATED', startPageId: 'page-001' },
+              },
+            ],
+          },
+        },
+      ]);
+
+      const { service } = createService();
+      await expect(service.delete('tenant-001', 'app-001', 'page-001')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('R-B functional-05：无引用页面可正常删除', async () => {
+      prisma.pageMeta.findFirst.mockResolvedValue(makePageRow());
+      prisma.processDef.findMany.mockResolvedValue([]);
+      prisma.pageMeta.deleteMany.mockResolvedValue({ count: 1 });
+
+      const { service } = createService();
+      await service.delete('tenant-001', 'app-001', 'page-001');
+
+      expect(prisma.pageMeta.deleteMany).toHaveBeenCalled();
     });
   });
 

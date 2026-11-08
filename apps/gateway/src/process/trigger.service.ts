@@ -151,7 +151,12 @@ export class TriggerService implements OnModuleInit {
               triggerType: def.triggerType,
               cron: def.cron,
             });
-            if (info.triggerType !== 'SCHEDULED' || !info.cron) continue;
+            if (info.triggerType !== 'SCHEDULED') continue;
+            if (!info.cron) {
+              // R-B functional-09：预检已拦存量外新增（node-check 同源），此处防御层防静默不注册
+              this.logger.warn(`定时触发缺 cron，未注册 job: ${def.apiName}`);
+              continue;
+            }
             await this.registerScheduledJob(def.tenantId, def.id, info.cron, 'prod', def.apiName);
             registered += 1;
           }
@@ -314,7 +319,13 @@ export class TriggerService implements OnModuleInit {
       triggerType,
       cron,
     });
-    if (info.triggerType !== 'SCHEDULED' || !info.cron) return;
+    if (info.triggerType !== 'SCHEDULED') return;
+    if (!info.cron) {
+      // R-B functional-09：预检已拦「SCHEDULED 无 cron」（node-check 同源），此处为
+      // 防御层——防静默不注册（缺 job 且无痕迹会让定时流程「发布了但不跑」）
+      this.logger.warn(`定时触发缺 cron，未注册 job: ${apiName}`);
+      return;
+    }
     const def = await prisma.processDef.findFirst({
       where: { id: processDefId },
       select: { tenantId: true },

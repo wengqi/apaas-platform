@@ -373,6 +373,12 @@ export default function UserTaskConfigForm({
           placeholder="截止时间到点且任务仍待处理时执行"
         />
       </Form.Item>
+      {/* functional-02a：即时校验提示——发布预检将硬拦该组合（node-check 同源规则） */}
+      {data.timeoutAction === 'AUTO_REJECT' && !data.rejectToNodeId && (
+        <Typography.Text type="warning" style={{ display: 'block', marginBottom: 12 }}>
+          已选超时自动驳回但未配置驳回跳转节点，发布预检将拦截——请在下方驳回配置中选择驳回目标
+        </Typography.Text>
+      )}
       <Divider orientation="left" plain>
         驳回配置
       </Divider>
@@ -393,7 +399,7 @@ export default function UserTaskConfigForm({
           ]}
         />
       </Form.Item>
-      {data.allowReject === true && (
+      {data.allowReject !== false && (
         <Form.Item label="驳回目标节点" required>
           <Select
             value={data.rejectToNodeId}

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ProcessService } from './process.service.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 
@@ -61,6 +61,117 @@ describe('ProcessService deleteProcess（P1-30）', () => {
     const { service } = createService();
     await expect(service.deleteProcess('t1', 'app-1', 'pd-1')).rejects.toThrow(BadRequestException);
     expect(prisma.processDef.delete).not.toHaveBeenCalled();
+  });
+
+  it('R-B functional-01：存在任何实例 → 409 硬拦（含计数与指引，◆1=A）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'DRAFT',
+    });
+    prisma.processInstance.count.mockResolvedValue(7);
+
+    const { service } = createService();
+    await expect(service.deleteProcess('t1', 'app-1', 'pd-1')).rejects.toThrow(/存在 7 条实例/);
+    expect(prisma.processInstance.count).toHaveBeenCalledWith({
+      where: { processDefId: 'pd-1', tenantId: 't1' },
+    });
+    expect(prisma.processDef.delete).not.toHaveBeenCalled();
+  });
+
+  it('R-B functional-01：无实例正常删除（计数放行，级联链保持）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'DRAFT',
+    });
+    prisma.processInstance.count.mockResolvedValue(0);
+
+    const { service } = createService();
+    await service.deleteProcess('t1', 'app-1', 'pd-1');
+
+    expect(prisma.processApiRelease.deleteMany).toHaveBeenCalled();
+    expect(prisma.processDef.delete).toHaveBeenCalledWith({ where: { id: 'pd-1' } });
+  });
+
+  it('R-B functional-05：通知模版被 notification 节点引用 → 409 含流程清单', async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue({
+      id: 'tpl-1',
+      appId: 'app-1',
+      name: '通过通知',
+    });
+    prisma.processDef.findMany.mockResolvedValue([
+      {
+        id: 'pd-9',
+        name: '采购审批',
+        workflowSchema: {
+          nodes: [
+            {
+              id: 'n2',
+              type: 'notification',
+              data: { channel: 'IN_APP', recipients: ['u1'], templateId: 'tpl-1' },
+            },
+          ],
+        },
+      },
+      {
+        id: 'pd-8',
+        name: '无引用流程',
+        workflowSchema: {
+          nodes: [
+            {
+              id: 'n3',
+              type: 'notification',
+              data: { channel: 'IN_APP', recipients: ['u1'], templateId: 'tpl-other' },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const { service } = createService();
+    await expect(service.deleteTemplate('t1', 'app-1', 'tpl-1')).rejects.toThrow(/采购审批/);
+    await expect(service.deleteTemplate('t1', 'app-1', 'tpl-1')).rejects.toThrow(ConflictException);
+    expect(prisma.notificationTemplate.delete).not.toHaveBeenCalled();
+  });
+
+  it('R-B functional-05：无引用模版可正常删除', async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue({
+      id: 'tpl-1',
+      appId: 'app-1',
+      name: '通过通知',
+    });
+    prisma.processDef.findMany.mockResolvedValue([]);
+
+    const { service } = createService();
+    await service.deleteTemplate('t1', 'app-1', 'tpl-1');
+
+    expect(prisma.notificationTemplate.delete).toHaveBeenCalledWith({ where: { id: 'tpl-1' } });
+  });
+
+  it('R-B functional-09：SCHEDULED 无 cron 发布硬拦（预检 400 含 reason）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'DRAFT',
+      workflowSchema: {
+        nodes: [
+          { id: 'n1', type: 'trigger', data: { title: '触发', triggerType: 'SCHEDULED' } },
+          { id: 'n2', type: 'end', data: { title: '结束' } },
+        ],
+        edges: [],
+      },
+    });
+
+    const { service } = createService();
+    const err = (await service.publishProcess('t1', 'app-1', 'pd-1').catch((e: unknown) => e)) as {
+      getResponse: () => { message: string };
+    };
+    expect(err.getResponse().message).toContain('定时触发未配置 Cron 表达式');
+    expect(prisma.processDef.update).not.toHaveBeenCalled();
   });
 
   it('P1-15：发布硬闸拦截双 error 出边歧义（error 级，同一节点）', async () => {

@@ -1,6 +1,7 @@
 # 流程引擎 functional 专项对抗审查：裁决落档 + 修复计划提案（2026-10-28）
 
-> **状态**：裁决已终局（独立裁判盲审重验 9/9 确认，0 降级 0 驳回）；**修复计划为提案态**，开工前待用户对 5 项 ◆ 裁决（见 §四）。
+> **状态**：裁决已终局（独立裁判盲审重验 9/9 确认，0 降级 0 驳回）；**修复计划已裁决（2026-11-08，5 项 ◆ 全按推荐收齐，见 §四裁决结果），随 R-B 开工放行**。
+> **TC 编号勘误（2026-11-08）**：本档原编回归锚点 TC-240~250 与 R-A 数据面闸门轮（2026-11-07）占用号冲突，全档顺延为 **TC-246~258**（R-A 占 TC-238~245）；PE 专项档用例编号自 **TC-259** 起。
 > **运行**：workflow `apaas-adversarial-review`（run `dwfrun-88929e8e-f953-496d-b49d-47a2c3197581`），target=`apps/gateway/src/process`，roles=`["functional"]`，focus=功能正确性 + 对象/页面/流程/数据集/权限引用链联动。红队=DeepSeek-V4-Flash，裁判=GLM-5.3（独立盲审：证据核对 / 复现执行 / 逻辑审查 / 前提溯源）。
 > **审查时点**：main@6971db9。审查后代码零变化（后续仅 docs 提交），本档全部行号在落档时点仍然有效。
 
@@ -146,14 +147,14 @@
   4. process-engine.ts:1416 失实注释勘误（预检落地后该注释才重新为真——勘误文案以落地后事实为准）。
 - 影响面：只拦「配了 AUTO_REJECT 未配目标」的节点（存量面小，S-01 扫描清单兜底）。
 - 验证：shared node-check 单测（新规则命中/放行/对照 AUTO_APPROVE 免 rejectToNodeId）+ publishProcess 预检集成单测 + studio 表单单测。
-- 回归锚点：**TC-238**（AUTO_REJECT 无 rejectToNodeId 发布硬拦，画布标红同源）。
+- 回归锚点：**TC-246**（AUTO_REJECT 无 rejectToNodeId 发布硬拦，画布标红同源）。
 
 **functional-07（驳回配置口径统一）**
 
 - 修法：UserTaskConfigForm.tsx:396 渲染条件 `data.allowReject === true` → `data.allowReject !== false`（与 :383 显示值、:470 回写区同口径）——默认态即显示驳回目标选择器；:381-382 注释更新为三口径统一后的事实。
 - **不加发布硬闸**：运行时语义「未配 rejectToNodeId = 该节点不可驳回」合法（TaskCenter rejectConfigured 机制 + tooltip 已按此降级），硬闸会拦截存量合法配置。引擎 :637-642 硬闸不动。
 - 验证：studio 表单单测（undefined 默认态渲染目标选择器 / 显式 false 隐藏 / 切换数据清理）。
-- 回归锚点：**TC-239**（新建 user_task 默认态可直接配置驳回目标，运行面按钮随配置点亮）。
+- 回归锚点：**TC-247**（新建 user_task 默认态可直接配置驳回目标，运行面按钮随配置点亮）。
 
 **functional-09（Cron 发布闸 + 注册防御）**
 
@@ -162,7 +163,7 @@
   2. TriggerConfigForm.tsx cron 输入占位/预设保持，画布侧依赖同源标红（非受控 Form 无 rules 可挂，不加假校验）；TriggerConfigModal.tsx 已合规不动；
   3. trigger.service.ts:317 `!info.cron` 分支补防御日志（预检落地后为防御层：`定时触发缺 cron，未注册 job: ${apiName}`）。
 - 验证：shared 单测 + publish 集成单测（SCHEDULED 无 cron 发布 400 且错误信息含 reason）。
-- 回归锚点：**TC-240**（SCHEDULED 无 cron 发布硬拦；有 cron 正常注册 Redis job）。
+- 回归锚点：**TC-248**（SCHEDULED 无 cron 发布硬拦；有 cron 正常注册 Redis job）。
 
 ### 3.3 波次② 删除守卫簇
 
@@ -172,7 +173,7 @@
 - **◆1 守卫强度待裁决**：方案 A（推荐）=存在任何实例即硬拦（与删对象五守卫/P1-09 标准一致，审计历史不灭失；历史清理留「归档」能力后续立项）；方案 B=仅在途（RUNNING/WAITING_USER_TASK）硬拦、仅历史实例可放行（删前二次确认提示销毁规模）。
 - 「转为草稿编辑」降级链路（updateProcess :175-180）不改：降草稿不删数据，实例守卫仍有效覆盖删除路径。
 - 验证：单测（有实例 409 / 无实例放行 / release 行级联保持 P1-30 行为）。
-- 回归锚点：**TC-241**（删流程定义存在实例时 409，无实例正常删除）。
+- 回归锚点：**TC-249**（删流程定义存在实例时 409，无实例正常删除）。
 
 **functional-05（删页面/删通知模版引用守卫 + 盲批回退）**
 
@@ -182,7 +183,7 @@
   3. TaskCenter.tsx:272-273 盲批修复：boundPageId 有值但审批页加载失败时回退展示 triggerData（申请内容），ApprovalPageRenderer 失败态文案保留并追加「可查看下方申请内容」。
 - 范围声明：本单聚焦流程引用链（裁决书确认面）；应用导航菜单/页面间跳转对页面的引用为**扩展观察项**，不在本单（后续轮按「引用即硬拦」标准补扫）。
 - 验证：单测（引用存在 409 含清单 / 无引用放行 / DRAFT 引用同样拦截）+ e2e 反验（删模版腿：审批通过后实例不再 FAILED）。
-- 回归锚点：**TC-242**（删除被流程引用的页面/模版 409；无引用可删）。
+- 回归锚点：**TC-250**（删除被流程引用的页面/模版 409；无引用可删）。
 
 ### 3.4 波次③ 引擎语义簇（TDD 红先行）
 
@@ -191,13 +192,13 @@
 - 修法：sub-process.executor.ts 构造 triggerContext 时透传父实例 triggerContext 的 `triggeredByUser` / `record` / `recordId`（父实例有则透传、无则不传——定时/API 触发父流程时 INITIATOR 报清晰错误是合理边界）；头注释 :5-6 摘除 `inputMapping` 失实声明，改为「变量经 inputs 透传，父实例发起人/触发记录随 triggerContext 继承」。
 - **◆2 附带确认**：显式变量映射 UI（inputMapping 真实现）本轮不做（YAGNI，继承语义覆盖主链路），留观察。
 - 验证：单测三路——手动触发父流程 → 子流程 INITIATOR 解析成功；记录触发父流程 → 子流程 FORM_FIELD 解析成功且 writeback 有 recordId；定时触发父流程 → INITIATOR 报清晰错误（不静默）。
-- 回归锚点：**TC-243**（子流程内 INITIATOR/FORM_FIELD 审批与回写闭环）。
+- 回归锚点：**TC-251**（子流程内 INITIATOR/FORM_FIELD 审批与回写闭环）。
 
 **functional-02b（超时动作执行失败兜底处置）**
 
 - 修法：process-engine.ts:1415-1421 catch 分支从「error 日志 + break」升级为显式失败处置——NodeExecution 留痕（S2 语义）+ 任务置 CANCELLED + 实例置 FAILED（error 信息含任务/原因），对齐 S2「无 error 出边则实例 FAILED」聚合语义与人工 cancel 路径的状态口径；消除「任务永久 PENDING、实例永久 WAITING」静默悬挂。
 - 实施时按 S2 聚合代码路径对齐（TDD 先红：AUTO_REJECT 无 rejectToNodeId 的存量流程超时到点 → 实例 FAILED 而非悬挂）。
-- 回归锚点：**TC-244**（超时动作执行失败实例显式 FAILED，不再静默悬挂）。
+- 回归锚点：**TC-252**（超时动作执行失败实例显式 FAILED，不再静默悬挂）。
 
 ### 3.5 波次④ 任务列表契约（◆3）
 
@@ -205,7 +206,7 @@
 
 - 修法：controller listTasks 声明 `processDefId` / `assignee` query 参数；service where 增加 `instance: { processDefId }` 过滤；assignee 参数语义按 ◆3 裁决定。同步对齐 PE-24（pageSize 上限）既有修法避免同端点二次踩。
 - **◆3 权限面待裁决**：方案 A（推荐）=请求携带 processDefId 或 assignee（非本人）时要求租户级 BUILDER/ADMIN（真「流程监控」语义，监控页产品意图）；方案 B（最小）=processDefId/assignee 仅叠加在「本人」范围内（监控页语义修正为「我在该流程的任务」，零权限风险但不满足跨人监控）。
-- 回归锚点：**TC-245**（processDefId 过滤生效；荒谬参数不再静默全量返回）。
+- 回归锚点：**TC-253**（processDefId 过滤生效；荒谬参数不再静默全量返回）。
 
 ### 3.6 波次⑤ 触发条件/事件语义（◆2）
 
@@ -218,7 +219,7 @@
     3. UI 摘除 event Radio（与 triggerType 语义重复、全链零消费、还能制造 RECORD_CREATED×event=UPDATE 矛盾配置；存量 node.data.event 字段留着无害）；
     4. MCP 方言指南补 condition 节（含最小示例与值域边界）；shared TriggerConfig 死契约处置与 PE-30 汇合（同一提交对齐，避免双轨）。
   - **方案 B——全摘除**：condition 与 event 一并删 UI 入口（SUPERVISOR 先例：无数据源能力不放假入口），功能缺口显式留观察。
-- 回归锚点（方案 A）：**TC-246**（condition 满足触发/不满足不触发/非法表达式校验拒绝）+ **TC-247**（event 摘除后 triggerType 语义唯一）。
+- 回归锚点（方案 A）：**TC-254**（condition 满足触发/不满足不触发/非法表达式校验拒绝）+ **TC-255**（event 摘除后 triggerType 语义唯一）。
 
 ### 3.7 波次⑥ 审批操作入口
 
@@ -229,15 +230,27 @@
   2. runtime-ui「我发起的」列表（TaskCenter.tsx:213 Tab）行操作加「撤回」（仅 RUNNING/WAITING_USER_TASK 行显示，消费 POST /instances/:instanceId/withdraw，后端 403/400 语义直接透出）；
   3. **◆4 转办死方法处置**：方案 A（推荐）=审批弹窗一并补「转办」入口（消费既有 delegate 端点，R1.3 三件套对齐）；方案 B=删除 tasksApi.delegate 死方法（转办维持 studio 监控页单入口）。
 - 验证：runtime-ui 单测 + GUI 走查（加签→新任务出现→审批推进；发起人撤回→实例 CANCELLED；非发起人撤回 403 显式化）。
-- 回归锚点：**TC-248**（发起人在「我发起的」撤回在途实例）/ **TC-249**（受理人加签生成新任务并推进）/ **TC-250**（转办按 ◆4 裁决结果入库或销号）。
+- 回归锚点：**TC-256**（发起人在「我发起的」撤回在途实例）/ **TC-257**（受理人加签生成新任务并推进）/ **TC-258**（转办入口按 ◆4 裁决=审批弹窗补转入库）。
 
 ### 3.8 横切工单
 
 | 单 | 内容 | 说明 |
 |---|---|---|
 | S-01 | **存量脏配置扫描**（read-only 脚本，◆5） | 扫活表 PUBLISHED 流程：AUTO_REJECT 无 rejectToNodeId / SCHEDULED 无 cron /（若 ◆2 选 A）condition 非法 JsonLogic。输出清单人工处置——发布预检只拦未来提交，存量脏配置在下次提交时被打回，提前扫描避免「重发布才爆炸」。**◆5 待裁决**：A 做（推荐）/ B 不做（靠提交时拦截）。 |
-| RES-01 | **dev 库裁判复现残留清理** | 本轮审查在 dev 库留下：functional-02 悬挂实例（cmvrx63oj03wllj1jp8gmzdog，若波次③先落地可由 TC-244 处置路径收口）及裁判新建的 judge 对象/流程/实例/模版。悬挂实例建议 cancel；judge 流程删除会撞 functional-01 新守卫（守卫落地后按其指引处置或 SQL 人工清）。非紧急，随波次收尾。 |
-| DOC-01 | **文档同步（随各波次同提交）** | TEST-CASES.md（TC-238~250 按波次入库，v3.6+）；QA-TEST-PLAN-PROMPT.md（发布预检新规则行 + 任务中心矩阵）；workflow 方言指南（F-02 契约追平实现 / F-03 condition 节）；PROCESS-ENGINE-BACKLOG 台账登记本批新知；AGENTS.md 当前阶段轮次条目随实施落档更新。 |
+| RES-01 | **dev 库裁判复现残留清理** | 本轮审查在 dev 库留下：functional-02 悬挂实例（cmvrx63oj03wllj1jp8gmzdog，若波次③先落地可由 TC-252 处置路径收口）及裁判新建的 judge 对象/流程/实例/模版。悬挂实例建议 cancel；judge 流程删除会撞 functional-01 新守卫（守卫落地后按其指引处置或 SQL 人工清）。非紧急，随波次收尾。 |
+| DOC-01 | **文档同步（随各波次同提交）** | TEST-CASES.md（TC-246~258 按波次入库，v3.6+）；QA-TEST-PLAN-PROMPT.md（发布预检新规则行 + 任务中心矩阵）；workflow 方言指南（F-02 契约追平实现 / F-03 condition 节）；PROCESS-ENGINE-BACKLOG 台账登记本批新知；AGENTS.md 当前阶段轮次条目随实施落档更新。 |
+
+---
+
+## 五、◆ 裁决结果（2026-11-08，用户「全按推荐」收齐，R-B 开工放行）
+
+| ◆ | 项 | 裁决 |
+|---|---|---|
+| 1 | functional-01 删除实例守卫强度 | **方案 A**：存在任何实例即硬拦（对齐删对象五守卫/P1-09 标准，审计历史不灭失；历史清理留「归档」能力后续立项） |
+| 2 | functional-03 触发条件/事件语义 | **方案 A**：实现 condition（JsonLogic 子集复用 D1 校验器）+ 摘除 event UI；MCP 方言指南同提交补 condition 节；shared TriggerConfig 死契约与 PE-30 同提交对齐 |
+| 3 | functional-06 任务列表权限面 | **方案 A**：携带 processDefId/assignee（非本人）时要求租户级 BUILDER/ADMIN（真「流程监控」语义） |
+| 4 | functional-08 转办死方法处置 | **方案 A**：审批弹窗补「转办」入口（消费既有 delegate 端点，R1.3 三件套运行时对齐） |
+| 5 | S-01 存量脏配置扫描 | **方案 A**：做 read-only 扫描脚本输出清单人工处置（避免「重发布才爆炸」） |
 
 ### 3.9 契约变更清单（供 commit 标注）
 

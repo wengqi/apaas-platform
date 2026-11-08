@@ -13,15 +13,15 @@
 > 以「评审轮」标注内嵌各行；新增工单 PE-32，◆ 表扩项（◆1~7），降级表勘误 2 行。
 > 第二轮发现号一律加 R2- 前缀，与首轮裁决号区分。
 >
-> **本档状态：提案。** 波次划分与 ◆ 裁决项待用户确认后开工；确认前为已裁决事实的工单化，未排期承诺。
+> **本档状态：已裁决（2026-11-08）。** 波次划分与 ◆ 裁决项 9 项 + 降级表 2 项已由用户「全按推荐」一次性收齐（裁决结果见文末 ◆ 表后附块），R-B 开工放行；ADR 级三项（◆4/◆7/◆8）落 ADR-0007。
 
 ## 执行约定（专项会话开跑前读）
 
 1. **基线事实勿重审**：各项证据均经裁判活体复现或逐行走读固化（对齐 2026-10-23 全项目审查轮惯例），直接采信，不复现不推翻；
-2. **TDD**：每项先写能红的复现测试再修（项目红线）；新用例编号从 **TC-238** 起，同提交更新 TEST-CASES.md + QA-PLAN；
+2. **TDD**：每项先写能红的复现测试再修（项目红线）；新用例编号从 **TC-259** 起（R-A 闸门轮已占 TC-238~245、functional 档顺延占 TC-246~258，2026-11-08 勘误），同提交更新 TEST-CASES.md + QA-PLAN；
 3. **标尺**：high=越权/资损/崩溃级；medium=功能缺陷/明确性能瓶颈/一致性；low=工程质量（对齐裁决书全池标尺）；
 4. **每批修完**：受影响包单测 + typecheck + lint 全绿，随批走 OCR/QA/e2e 闸门后推送 main；
-5. **◆ 裁决项**（9 项，见文末，评审轮已扩项）+降级表 2 项【待裁决】开工前一次性向用户收集；
+5. ✅ **◆ 裁决项**（9 项，见文末）+降级表 2 项已于 2026-11-08 收齐（用户「全按推荐」，裁决结果见 ◆ 表后附块与降级表两行标注）；
 6. 完成一项在本档状态列打 ✅ 并补 TC 号；
 7. 波次间依赖（评审轮重写，原注「②依赖⑤(PE-05)」自指失义作废——PE-05 本身在波次②，R2-security-06/devil-08）：① **②×③** PE-05（approveUsers 实例化）与 PE-06（聚合判定统一读 frozenWorkflowSchema）对 process-engine.ts:688-697 聚合段是相反改写指令，须合并设计、先定读源（R2-correctness-02）；② **④×⑤** PE-13 开重试前 PE-17 幂等守卫须先落地或同批，否则中间态外发副作用最多×3（R2-engineering-03）；③ **④ 内 PE-12/PE-14/PE-04** 同批设计「认领+推进原子性」统一方案（PE-04 守卫与 PE-14 锁外认领同根因，R2-engineering-04）；④ **PE-16×PE-14** 环内校验须在锁内认领之前或与 PE-14 同批，否则单独实施制造 PE-14 同构死局（R2-scale-02）。
 
@@ -96,8 +96,8 @@
 
 | 裁决号 | 原定性 | 降级依据（裁判溯源） | 处置建议 |
 |---|---|---|---|
-| correctness-01 | 运行面 start 无应用归属校验=越权 | 【评审轮勘误，R2-devil-03】原依据失实：ADR-0005 决策 8 语义方向相反（可用哪些应用由角色权限经 listVisibleForUser 归纳，start 不做归纳）；2026-10-23 勘误明示「路由形态不动≠运行时语义豁免」；P0-9/P0-10 已确立运行面双门原则，唯独 process start 未补且 31 工单+9◆ 无处置 | 【待裁决】a) 增列工单：start 补应用可见性归纳（isInternal/未发布应用流程可被启动+引擎系统上下文读写其数据）；b) 留权限轮统一处理 |
-| security-04 | /apps/:appId/processes 返回全量 workflowSchema（含 http_request 节点 headers——凭证可能入内） | 【评审轮勘误，R2-engineering-07】清单可见性系 ADR-0005 决策 10 裁决设计，但 payload 字段投影无契约背书（决策 10 只裁「只回已发布」）；原行 low 定级与「建议排期」自相矛盾 | 【待裁决】a) 升级正式工单：运行面投影 DTO（不下发设计级 schema 含 url/headers）；b) 维持降级，但改写为一致的 low 口径 |
+| correctness-01 | 运行面 start 无应用归属校验=越权 | 【评审轮勘误，R2-devil-03】原依据失实：ADR-0005 决策 8 语义方向相反（可用哪些应用由角色权限经 listVisibleForUser 归纳，start 不做归纳）；2026-10-23 勘误明示「路由形态不动≠运行时语义豁免」；P0-9/P0-10 已确立运行面双门原则，唯独 process start 未补且 31 工单+9◆ 无处置 | **【已裁决 2026-11-08 = a】** a) 增列工单：start 补应用可见性归纳（isInternal/未发布应用流程可被启动+引擎系统上下文读写其数据），并入 R-B 波次；b) 留权限轮统一处理（否） |
+| security-04 | /apps/:appId/processes 返回全量 workflowSchema（含 http_request 节点 headers——凭证可能入内） | 【评审轮勘误，R2-engineering-07】清单可见性系 ADR-0005 决策 10 裁决设计，但 payload 字段投影无契约背书（决策 10 只裁「只回已发布」）；原行 low 定级与「建议排期」自相矛盾 | **【已裁决 2026-11-08 = a】** a) 升级正式工单：运行面投影 DTO（不下发设计级 schema 含 url/headers），并入 R-B 波次；b) 维持降级（否） |
 | security-06 | /processes/analytics 全租户开放 END_USER | 知识库明文 carve-out（租户级治理读留运行面） | 残余硬化：角色闸或按可见应用收敛（可选） |
 | security-07 | http_request 变量覆盖 url/method 重定向 | 发布闸强制 data.method/url（实机验证发布被拒），data 恒胜 inputs，headline 不可达 | 残余硬化：发布预检禁 connectorId/headers/body 变量绑定（可选小修） |
 | correctness-04 | trigger 应用级匹配跨对象误触发 | I-1 修复刻意保留的存量兼容语义（注释+spec+知识库三重固化） | 残余硬化：发布预检强制 RECORD_* 触发节点绑定 objectId（防呆，建议采纳） |
@@ -123,7 +123,21 @@
 | 8 | PE-19 版本锚点 | 实例快照版本列（轻量，推荐先做）vs ProcessDefVersion 全历史表（牵动 G6 与回滚能力，另立专项） |
 | 9 | PE-22 执行池公平性 | 本轮仅 concurrency 配置化（推荐）vs 同轮做逐 token 重入队/租户公平调度（建议留压测轮，对齐 AGENTS 风险登记） |
 
-> 评审轮新增（R2-engineering-10）：◆4（已发布流程可变性）、◆7（方言契约变更）、◆8（版本历史牵动 G6）系 ADR 级架构决策——裁决后须落 ADR（新增或修订既有），工单表回引 ADR 号；其余 ◆ 为实现级裁量。
+### ◆ 裁决结果（2026-11-08，用户「全按推荐」收齐，R-B 开工放行）
+
+| ◆ | 裁决 |
+|---|---|
+| 1 | **a+c**：仅禁非 MANUAL 手动启动（判定源 extractTriggerInfo/闸位显式 channel）+ 保留键全谱忽略（recordId/sequentialIndex/global/_joins）+ 节点 objectId 域校验 + 发起人 permissionContext 强制行级校验；TDD 实测 c 护不住新保留键消费点时升 b |
+| 2 | **保留 after 链**（实例级存储，不再写 ProcessDef）；存储位置三路径随开工 TDD 定，与 PE-06 读源联动 |
+| 3 | **拒绝加签 400 + 定论守卫 409**（对齐 P1-01 原子认领/P1-06 锁内重验的显式拒绝惯例；评审轮留白的幂等分支不采纳） |
+| 4 | **a + 退役子项必带**：维持 PUT→DRAFT 快捷迭代 + ACTIVE release 硬闸 + 主动退役端点（ACTIVE→DEPRECATED）+ ARCHIVED 写入点（防单向门掏空 G6 迭代）——**已落 ADR-0007** |
+| 5 | **打包**：预检静态分析硬拦（检测面含 writeback×触发 objectId 闭环）+ 运行时链深默认 3 环境变量化 + **ALS 传播**（租户/环境上下文已走 ALS，跨三模块成本最低）+ 达上限实例显式 FAILED + 告警通知（非静默丢审批） |
+| 6 | **按工单全做**：重试耗尽 processor 侧置 FAILED（NonRetryableNodeError 分支同步落 FAILED 防搁浅）+ admin retry 恢复端点（归属校验=发起人/受理人/租户·应用 admin + targetIdParam，禁落运行面通配 EXECUTE） |
+| 7 | **a + 冻结快照求值层兼容必带**：顶层 decision 别名对新 schema 废弃→节点命名空间；已发布 release/在途实例（frozen schema）永久保留别名注入；MCP 方言指南同批修订停教裸引用——**已落 ADR-0007** |
+| 8 | **实例快照版本列先做**（发布时钉值，toInstanceDto 读快照值）；ProcessDefVersion 全历史表牵动 G6 回滚另立专项——**已落 ADR-0007** |
+| 9 | **仅 concurrency 配置化**；逐 token 重入队/租户公平调度留压测轮（对齐 AGENTS 风险登记） |
+
+> 评审轮新增（R2-engineering-10）：◆4（已发布流程可变性）、◆7（方言契约变更）、◆8（版本历史牵动 G6）系 ADR 级架构决策——裁决后须落 ADR（新增或修订既有），工单表回引 ADR 号；其余 ◆ 为实现级裁量。**✅ 三项已于 2026-11-08 落 ADR-0007（docs/adr/0007-published-process-mutability-decision-alias-version-anchor.md）。**
 
 ## dev 库复现残留清理清单（裁判复现遗留，建议开工前清一次）
 

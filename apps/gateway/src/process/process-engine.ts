@@ -1413,12 +1413,26 @@ export class ProcessEngine {
           );
           processed += 1;
         } catch (err) {
-          // 典型：AUTO_REJECT 但节点无 rejectToNodeId——发布预检已拦（R-B functional-02a：
-          // node-check 组合规则硬闸），此处为防御层兜底留痕不中断；升级为显式失败处置
-          // 由 functional-02b 承接（工单波次③）
-          this.logger.error(
-            `实例 ${instanceId} 节点 ${nodeId} 超时动作 ${action} 失败（任务 ${next.id}）：${err instanceof Error ? err.message : String(err)}`,
-          );
+          // R-B functional-02b：超时动作执行失败=显式失败处置（不再静默悬挂）——
+          // NodeExecution FAILED 留痕（S2 语义）+ 剩余任务 CANCELLED + 实例 FAILED
+          // （error 含任务/原因），对齐「无 error 出边则实例 FAILED」聚合语义，
+          // 消除「任务永久 PENDING、实例永久 WAITING」。典型失败：AUTO_REJECT 无
+          // rejectToNodeId（存量配置，预检 R-B functional-02a 起硬拦增量）。
+          const reason = err instanceof Error ? err.message : String(err);
+          const errorMsg = `超时动作 ${action} 执行失败（任务 ${next.id}）：${reason}`;
+          this.logger.error(`实例 ${instanceId} ${errorMsg}`);
+          await prisma.nodeExecution.update({
+            where: { id: nodeExecutionId },
+            data: { status: 'FAILED', error: errorMsg, finishedAt: new Date() },
+          });
+          await prisma.processTask.updateMany({
+            where: { instanceId, nodeId, nodeExecutionId, status: 'PENDING' },
+            data: { status: 'CANCELLED' },
+          });
+          await prisma.processInstance.update({
+            where: { id: instanceId },
+            data: { status: 'FAILED', error: errorMsg },
+          });
           break;
         }
       }

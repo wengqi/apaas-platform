@@ -3,7 +3,10 @@
  *
  * 定位：调用另一个已发布流程，实现流程复用与分层。
  * 配置项（node.data）：subProcessKey（子流程 apiName）/ subProcessDefId（直接指定流程定义ID）/
- *   sync（是否同步等待，默认 true）/ inputMapping（输入参数映射）。
+ *   sync（是否同步等待，默认 true）。
+ * 变量经 inputs 透传（global + 节点输入），父实例发起人/触发记录随 triggerContext
+ * 继承（functional-04）；显式 inputMapping UI 按裁决留观察不做。
+ * 执行逻辑：通过 ctx.startSubProcess 启动子流程实例 →
  * 执行逻辑：通过 ctx.startSubProcess 启动子流程实例 →
  *   同步模式（默认）：triggerContext 记录父实例链接（_parent），本节点 wait=true 暂停；
  *     子实例完成/失败时由引擎 resumeParentAfterSubProcess 恢复父节点
@@ -59,6 +62,16 @@ export class SubProcessExecutor implements NodeExecutor {
       triggeredBy: 'SUB_PROCESS',
       inputs: { ...globalVars, ...ctx.inputs },
     };
+
+    // R-B functional-04：父实例触发上下文透传——子流程内的 INITIATOR（发起人审批）、
+    // FORM_FIELD（记录字段审批人）与回写（recordId）按父实例来源解析。父实例无对应
+    // 来源（定时/API 触发）时不透传：子流程 INITIATOR 解析报清晰错误属合理边界
+    // （user-task.executor 明确报错，不静默）。显式变量映射 UI（inputMapping）按裁决
+    // 留观察不做（YAGNI，继承语义覆盖主链路）。
+    const parentCtx = (ctx.instance.triggerContext ?? {}) as Record<string, unknown>;
+    for (const key of ['triggeredByUser', 'record', 'recordId'] as const) {
+      if (parentCtx[key] !== undefined) triggerContext[key] = parentCtx[key];
+    }
 
     // 同步等待：记录父实例链接，子实例完成/失败时由引擎恢复本节点
     if (sync) {

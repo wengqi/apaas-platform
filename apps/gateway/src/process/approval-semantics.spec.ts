@@ -936,4 +936,52 @@ describe('S1 审批超时边界 — handleTaskTimeout', () => {
     expect(prisma.processTask.updateMany).not.toHaveBeenCalled();
     expect(prisma.inAppMessage.createMany).not.toHaveBeenCalled();
   });
+
+  it('functional-02b：超时动作执行失败 → NodeExecution FAILED 留痕 + 任务 CANCELLED + 实例 FAILED（不静默悬挂）', async () => {
+    setupTimeoutInstance('AUTO_REJECT');
+    const pendingTask = makeProcessTask({
+      id: 't1',
+      nodeId: 'n1',
+      nodeExecutionId: 'ne-001',
+      assignee: 'u1',
+      instance: makeProcessInstance({ id: 'pi-1' }),
+    });
+    prisma.processTask.findMany.mockResolvedValueOnce([pendingTask]).mockResolvedValue([]);
+    // completeTask 内部首查即失败——模拟「AUTO_REJECT 无 rejectToNodeId」等执行失败
+    prisma.processTask.findFirst
+      .mockResolvedValueOnce(pendingTask) // 循环取待处理任务
+      .mockRejectedValueOnce(new Error('模拟超时动作执行失败')) // completeTask 内首查失败
+      .mockResolvedValue(null);
+    const { engine } = createEngine();
+
+    await engine.handleTaskTimeout('pi-1', 'n1', 'ne-001');
+
+    // NodeExecution 留痕 FAILED（S2 语义）
+    expect(prisma.nodeExecution.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'ne-001' },
+        data: expect.objectContaining({ status: 'FAILED' }),
+      }),
+    );
+    // 剩余 PENDING 任务 CANCELLED（不再永久挂起）
+    expect(prisma.processTask.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ nodeExecutionId: 'ne-001', status: 'PENDING' }),
+        data: expect.objectContaining({ status: 'CANCELLED' }),
+      }),
+    );
+    // 实例显式 FAILED（error 含任务/原因），对齐「无 error 出边则实例 FAILED」
+    expect(prisma.processInstance.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pi-1' },
+        data: expect.objectContaining({ status: 'FAILED' }),
+      }),
+    );
+    const failCall = prisma.processInstance.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { where: { id: string } }).where.id === 'pi-1',
+    );
+    const failData = (failCall?.[0] as { data: { error: string } }).data.error;
+    expect(failData).toContain('t1');
+    expect(failData).toContain('模拟超时动作执行失败');
+  });
 });

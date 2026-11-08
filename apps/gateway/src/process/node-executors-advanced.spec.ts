@@ -14,6 +14,7 @@ import { BreakExecutor } from './node-executors/break.executor.js';
 import { ContinueExecutor } from './node-executors/continue.executor.js';
 import { WaitForConditionExecutor } from './node-executors/wait-for-condition.executor.js';
 import { BatchOperationExecutor } from './node-executors/batch-operation.executor.js';
+import { SubProcessExecutor } from './node-executors/sub-process.executor.js';
 import type { ExecutionContext, NodeExecutionResult } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -473,5 +474,69 @@ describe('BatchOperationExecutor', () => {
       } as ExecutionContext['node'],
     });
     await expect(executor.execute(ctx)).rejects.toThrow('拒绝全表操作');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SubProcessExecutor — functional-04 触发上下文透传（R-B 批 2）
+// ---------------------------------------------------------------------------
+
+describe('SubProcessExecutor — functional-04 触发上下文透传', () => {
+  const executor = new SubProcessExecutor();
+
+  function subCtx(parentTriggerContext: Record<string, unknown>): ExecutionContext {
+    return makeCtx({
+      instance: {
+        id: 'pi-1',
+        tenantId: 't-1',
+        triggerContext: parentTriggerContext,
+      } as ExecutionContext['instance'],
+      node: {
+        id: 'n-sub',
+        type: 'sub_process',
+        meta: {},
+        data: { subProcessDefId: 'pd-child', sync: false },
+      } as ExecutionContext['node'],
+      variables: { global: { g1: 'v1' } },
+      inputs: { a: 1 },
+    });
+  }
+
+  it('手动触发父流程 → 子流程 triggerContext 携带 triggeredByUser（INITIATOR 可解析）', async () => {
+    const ctx = subCtx({ triggeredBy: 'MANUAL', triggeredByUser: 'u-parent' });
+    const startSubProcess = vi.fn().mockResolvedValue('pi-child');
+    const ctx2 = { ...ctx, startSubProcess };
+    await executor.execute(ctx2);
+
+    const passed = startSubProcess.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(passed['triggeredBy']).toBe('SUB_PROCESS');
+    expect(passed['triggeredByUser']).toBe('u-parent');
+    expect(passed['inputs']).toEqual({ g1: 'v1', a: 1 });
+  });
+
+  it('记录触发父流程 → 子流程携带 recordId/record（FORM_FIELD 与 writeback 可解析）', async () => {
+    const ctx = subCtx({
+      triggeredBy: 'RECORD_CREATED',
+      triggeredByUser: 'u-parent',
+      recordId: 'rec-1',
+      record: { approver: 'u2', amount: 100 },
+    });
+    const startSubProcess = vi.fn().mockResolvedValue('pi-child');
+    await executor.execute({ ...ctx, startSubProcess });
+
+    const passed = startSubProcess.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(passed['recordId']).toBe('rec-1');
+    expect(passed['record']).toEqual({ approver: 'u2', amount: 100 });
+  });
+
+  it('定时触发父流程 → 不透传来源键（子流程 INITIATOR 报清晰错误为合理边界，不静默）', async () => {
+    const ctx = subCtx({ triggeredBy: 'SCHEDULED' });
+    const startSubProcess = vi.fn().mockResolvedValue('pi-child');
+    await executor.execute({ ...ctx, startSubProcess });
+
+    const passed = startSubProcess.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(passed).not.toHaveProperty('triggeredByUser');
+    expect(passed).not.toHaveProperty('record');
+    expect(passed).not.toHaveProperty('recordId');
   });
 });

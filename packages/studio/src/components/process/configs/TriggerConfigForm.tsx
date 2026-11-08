@@ -2,7 +2,7 @@
  * 触发器节点配置表单 —— 对齐 DESIGN-process.md §6.1。
  */
 
-import { Divider, Form, Input, Radio, Select, Typography } from 'antd';
+import { Divider, Form, Input, Select, Typography } from 'antd';
 import { TRIGGER_OPTIONS } from '../../../constants/process.js';
 
 const { Text } = Typography;
@@ -10,8 +10,8 @@ const { Text } = Typography;
 export interface TriggerConfigData {
   triggerType?: string;
   objectId?: string;
-  event?: 'CREATE' | 'UPDATE' | 'DELETE';
   cron?: string;
+  /** 触发条件（functional-03）：JsonLogic JSON 字符串（引擎对触发记录数据求值，满足才触发） */
   condition?: string;
   title?: string;
   /** 发起页面绑定（R6 方案一）——与 user_task.pageId 对称：该流程从此页面发起 */
@@ -76,23 +76,19 @@ export default function TriggerConfigForm({
               placeholder="选择触发关联的对象"
             />
           </Form.Item>
-          <Form.Item label="触发事件" required>
-            <Radio.Group
-              value={data.event || 'CREATE'}
-              onChange={(e) => update({ event: e.target.value })}
-            >
-              <Radio value="CREATE">创建</Radio>
-              <Radio value="UPDATE">更新</Radio>
-              <Radio value="DELETE">删除</Radio>
-            </Radio.Group>
-          </Form.Item>
+          {/* functional-03：event Radio 摘除——引擎按 triggerType（创建/更新/删除三类
+              触发类型）匹配事件，event 全链零消费且能制造矛盾配置；存量 data.event 无害保留 */}
           <Form.Item label="触发条件(可选)">
             <Input.TextArea
               value={data.condition}
               onChange={(e) => update({ condition: e.target.value })}
-              placeholder="满足条件时才触发,例如: amount > 1000"
+              placeholder='JsonLogic 表达式，满足才触发，如 {"==":[{"var":"amount"},1000]}'
               rows={2}
             />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              对触发记录的字段求值（var 填字段
+              apiName），仅支持平台操作符子集；非法表达式无法保存发布
+            </Text>
           </Form.Item>
         </>
       )}

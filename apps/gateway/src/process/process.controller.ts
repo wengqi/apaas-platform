@@ -168,6 +168,8 @@ export class ProcessController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('processDefId') processDefId?: string,
+    @Query('assignee') assignee?: string,
   ) {
     const result = await this.processService.listTasks(
       requireTenantId(req),
@@ -175,6 +177,8 @@ export class ProcessController {
       status,
       page ? parseInt(page, 10) : undefined,
       pageSize ? parseInt(pageSize, 10) : undefined,
+      processDefId || undefined,
+      assignee || undefined,
     );
     // 前端期望数组，直接返回 items
     return { ok: true as const, data: result.items };

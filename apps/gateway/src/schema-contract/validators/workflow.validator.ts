@@ -10,7 +10,7 @@
  */
 
 import type { SchemaIssue } from '@apaas/shared';
-import { SCHEMA_ISSUE_CODES } from '@apaas/shared';
+import { isValidJsonLogicRule, SCHEMA_ISSUE_CODES } from '@apaas/shared';
 import type { UserTaskConfig } from '@apaas/shared';
 
 /** 节点类型白名单 = 引擎注册的 20 个执行器。 */
@@ -220,6 +220,45 @@ export function validateWorkflow(
           path: `${nPath}/data/startPageId`,
           code: SCHEMA_ISSUE_CODES.REF_NOT_FOUND,
           message: `发起页面 "${startPageId}" 不存在（startPageId 须为平台已创建页面的 ID）`,
+          severity: 'error',
+        });
+      }
+    }
+    // trigger 节点配置（functional-09/03，与 node-check 发布硬闸同源）：
+    // SCHEDULED 需 cron；condition 须为合法 JsonLogic 规则（D1 子集）
+    if (n['type'] === 'trigger') {
+      const rawCondition = data['condition'];
+      if (rawCondition !== undefined && rawCondition !== null && rawCondition !== '') {
+        let parsed: unknown = rawCondition;
+        if (typeof rawCondition === 'string') {
+          try {
+            parsed = JSON.parse(rawCondition);
+          } catch {
+            issues.push({
+              path: `${nPath}/data/condition`,
+              code: SCHEMA_ISSUE_CODES.INVALID_VALUE,
+              message:
+                '触发条件不是合法的 JSON（须为 JsonLogic 规则，如 {"==":[{"var":"amount"},100]}）',
+              severity: 'error',
+            });
+            parsed = null;
+          }
+        }
+        if (parsed !== null && !isValidJsonLogicRule(parsed)) {
+          issues.push({
+            path: `${nPath}/data/condition`,
+            code: SCHEMA_ISSUE_CODES.INVALID_VALUE,
+            message:
+              '触发条件不是合法的 JsonLogic 规则（仅限平台支持的操作符，顶层须为单键操作符节点）',
+            severity: 'error',
+          });
+        }
+      }
+      if (data['triggerType'] === 'SCHEDULED' && !data['cron']) {
+        issues.push({
+          path: `${nPath}/data/cron`,
+          code: SCHEMA_ISSUE_CODES.MISSING_REQUIRED,
+          message: '定时触发未配置 Cron 表达式',
           severity: 'error',
         });
       }

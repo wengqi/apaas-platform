@@ -87,3 +87,99 @@ describe('getInstance 实例可见性（组织候选=任务参与人）', () => 
     expect(dto.id).toBe('inst-1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// functional-06（◆3=A）：任务列表监控筛选——processDefId/assignee 需租户级
+// BUILDER/ADMIN（真「流程监控」语义）；无参数路径不要求监控角色（回归对照）。
+// ---------------------------------------------------------------------------
+
+describe('functional-06 listTasks 监控筛选（processDefId/assignee）', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // 覆盖两条 user.findFirst 消费点：监控断言（isPlatformAdmin）+ listTasks 邮箱匹配
+    prisma.user.findFirst.mockResolvedValue({
+      email: 'u@t.dev',
+      isPlatformAdmin: false,
+    });
+    prisma.userRole.findMany.mockResolvedValue([{ roleId: 'role-1' }]);
+    prisma.orgMember.findMany.mockResolvedValue([]);
+    prisma.orgRoleGrant.findMany.mockResolvedValue([]);
+    prisma.processTask.findMany.mockResolvedValue([]);
+    prisma.processTask.count.mockResolvedValue(0);
+  });
+
+  it('BUILDER 携带 processDefId → where 增 instance.processDefId 过滤', async () => {
+    prisma.userRole.findFirst.mockResolvedValue({ roleId: 'r-builder' });
+
+    await makeService().listTasks(TENANT, USER, undefined, undefined, undefined, 'pd-1');
+
+    const arg = prisma.processTask.findMany.mock.calls[0]?.[0] as {
+      where: { instance?: { processDefId?: string } };
+    };
+    expect(arg.where.instance).toEqual({ processDefId: 'pd-1' });
+  });
+
+  it('非监控用户携带 processDefId → 403（◆3=A：跨人监控需租户级 BUILDER/ADMIN）', async () => {
+    prisma.userRole.findFirst.mockResolvedValue(null);
+
+    await expect(
+      makeService().listTasks(TENANT, USER, undefined, undefined, undefined, 'pd-1'),
+    ).rejects.toThrow(/流程监控/);
+    expect(prisma.processTask.findMany).not.toHaveBeenCalled();
+  });
+
+  it('平台超管携带 assignee → 放行（admin 短路）且 where.OR 精确受理人', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      email: 'u@t.dev',
+      isPlatformAdmin: true,
+    });
+
+    await makeService().listTasks(
+      TENANT,
+      USER,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'someone-else',
+    );
+
+    const arg = prisma.processTask.findMany.mock.calls[0]?.[0] as {
+      where: { OR?: Array<Record<string, unknown>> };
+    };
+    expect(arg.where.OR).toEqual([{ assignee: 'someone-else' }]);
+  });
+
+  it('非监控用户携带他人 assignee → 403', async () => {
+    prisma.userRole.findFirst.mockResolvedValue(null);
+
+    await expect(
+      makeService().listTasks(
+        TENANT,
+        USER,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'someone-else',
+      ),
+    ).rejects.toThrow(/流程监控/);
+  });
+
+  it('携带本人 assignee 不要求监控角色（=普通「我的任务」查询）', async () => {
+    prisma.userRole.findFirst.mockResolvedValue(null);
+
+    await makeService().listTasks(TENANT, USER, undefined, undefined, undefined, undefined, USER);
+
+    expect(prisma.userRole.findFirst).not.toHaveBeenCalled();
+    expect(prisma.processTask.findMany).toHaveBeenCalled();
+  });
+
+  it('无监控参数 → 不触发权限断言（既有路径回归对照）', async () => {
+    await makeService().listTasks(TENANT, USER);
+
+    expect(prisma.userRole.findFirst).not.toHaveBeenCalled();
+  });
+});

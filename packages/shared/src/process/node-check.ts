@@ -6,6 +6,8 @@
  * data 形态为节点 data 原样（引擎/画布两侧字段名一致，snake_case 为主）。
  */
 
+import { isValidJsonLogicRule } from '../jsonlogic/index.js';
+
 /** 节点配置完整性问题（含中文原因，可直接展示）。 */
 export interface NodeIncompleteIssue {
   nodeId: string;
@@ -15,13 +17,36 @@ export interface NodeIncompleteIssue {
   reason: string;
 }
 
+/**
+ * functional-03：trigger 节点 condition 合法性（isNodeIncomplete 与
+ * nodeIncompleteReason 共用）——condition 存在时须为合法 JsonLogic 规则
+ * （字符串按 JSON 解析、对象直用；解析失败/非规则节点/超集操作符均判非法，
+ * 坏条件到点静默不触发）。返回 true = 非法（视为配置不完整）。
+ */
+function triggerConditionIssue(data: Record<string, unknown>): boolean {
+  const raw = data['condition'];
+  if (raw === undefined || raw === null || raw === '') return false;
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return true;
+    }
+  }
+  return !isValidJsonLogicRule(parsed);
+}
+
 /** 单节点是否配置不完整（true=不完整）。判定与画布标红口径一致。 */
 export function isNodeIncomplete(type: string, data: Record<string, unknown>): boolean {
   switch (type) {
-    case 'trigger':
+    case 'trigger': {
       // R-B functional-09：定时触发必须配 cron（到点注册依赖 cron，缺省 job 无法注册）
       if (data['triggerType'] === 'SCHEDULED' && !data['cron']) return true;
+      // R-B functional-03：触发条件须为合法 JsonLogic（D1 子集）——坏条件到点静默不触发
+      if (triggerConditionIssue(data)) return true;
       return !data['triggerType'];
+    }
     case 'userTask':
     case 'user_task': {
       // R-B functional-02a：AUTO_REJECT 需驳回跳转目标——到点自动驳回无目标时
@@ -81,6 +106,9 @@ export function nodeIncompleteReason(type: string, data?: Record<string, unknown
     case 'trigger':
       if (data?.['triggerType'] === 'SCHEDULED' && !data?.['cron']) {
         return '定时触发未配置 Cron 表达式';
+      }
+      if (triggerConditionIssue(data ?? {})) {
+        return '触发条件表达式非法（须为 JsonLogic JSON，仅限平台支持的操作符）';
       }
       return '触发器未配置触发类型';
     case 'userTask':

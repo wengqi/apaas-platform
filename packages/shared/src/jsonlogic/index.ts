@@ -162,3 +162,28 @@ export function findUnsupportedOperators(rule: unknown, translator: JsonLogicTra
   const supported = jsonlogicSupportedOperators(translator);
   return [...collectJsonLogicOperators(rule)].filter((op) => !supported.has(op)).sort();
 }
+
+/**
+ * 判定一个 JSON 值是否为合法 JsonLogic 规则（R-B functional-03，D1 子集）：
+ * 顶层必须是单键操作符节点且操作符在契约内；嵌套值递归——单键对象按操作符节点
+ * 校验，多键对象视为普通数据对象（键值仍递归），标量/null 为字面量叶子。
+ * 用途：trigger 节点 condition 的 node-check/G3 同源校验（坏条件到点静默不触发）。
+ */
+export function isValidJsonLogicRule(rule: unknown): boolean {
+  if (rule === null || typeof rule !== 'object' || Array.isArray(rule)) return false;
+  const entries = Object.entries(rule as Record<string, unknown>);
+  if (entries.length !== 1) return false;
+  if (jsonlogicOperatorContract(entries[0]![0]) === undefined) return false;
+  return isValidJsonLogicValue(entries[0]![1]);
+}
+
+/** 规则操作数的合法性：字面量/数组/嵌套规则/普通数据对象均合法，操作符节点须在契约内。 */
+function isValidJsonLogicValue(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return true;
+  if (Array.isArray(value)) return value.every(isValidJsonLogicValue);
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 1 && jsonlogicOperatorContract(entries[0]![0]) === undefined) {
+    return false;
+  }
+  return Object.values(value as Record<string, unknown>).every(isValidJsonLogicValue);
+}

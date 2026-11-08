@@ -481,6 +481,7 @@ export const DIALECT_GUIDES: Record<string, string> = {
     '- 组织审批（ORG）：data.assigneeType="ORG" + candidateGroups=["<组织ID>"]——组织成员均可在任务中心办理（候选组语义=角色 ID 或组织 ID）；组织须有成员，否则实例报错',
     '- 记录字段动态审批人（FORM_FIELD）：data.assigneeType="FORM_FIELD" + assignee="<触发记录字段apiName>"——运行时取该字段值（须为本租户真实用户 ID，引擎校验存在性）作为受理人；仅记录触发（创建/更新）可用，定时/API/手动启动会报错',
     '- 审批超时（timeoutAction）：data.dueDate（数值）+ data.dueUnit（SECONDS/MINUTES/HOURS/DAYS，缺省 HOURS）+ data.timeoutAction（notify=催办站内信 / auto_approve=系统身份自动通过 / auto_reject=自动驳回[须同时配置 rejectToNodeId，发布预检校验]）；到点且任务仍待处理时执行，缺省无动作',
+    '- trigger 节点（记录/定时触发）：data.triggerType=RECORD_CREATED/RECORD_UPDATED/RECORD_DELETED 时 data.objectId 绑定对象（list_objects 获取，或 "@ref:object:<apiName>" 落地解析）；data.condition 为可选 JsonLogic JSON 字符串（与边条件同语法，对触发记录的顶层标量字段求值，如 \'{"==":[{"var":"amount"},100]}\'——满足才触发，须用受支持操作符否则发布校验拒绝）；triggerType=SCHEDULED 时 data.cron 必填（Quartz 形态如 "0 0 9 * * ?"），缺省发布预检拦截',
     '- 审批页面绑定：data.pageId 指向平台页面 ID（list_pages 获取，或用 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析）；绑定后任务中心渲染该页面',
     '- 驳回跳转：data.rejectToNodeId 指向流程内节点',
     '- 边条件：condition 为 JsonLogic JSON 字符串，如 \'{"==":[{"var":"decision"},"APPROVED"]}\'；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',

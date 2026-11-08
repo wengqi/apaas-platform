@@ -624,9 +624,43 @@ export class ProcessService {
   // 人工任务
   // ===========================================================================
 
-  /** 列出我的待办任务。 */
-  async listTasks(tenantId: string, userId: string, status?: string, page = 1, pageSize = 20) {
+  /**
+   * functional-06（◆3=A）：监控筛选权限断言——按流程 Id / 他人受理人筛选属
+   * 「流程监控」能力，要求租户级 BUILDER/TENANT_ADMIN（平台超管短路）。
+   */
+  private async assertProcessMonitor(tenantId: string, userId: string): Promise<void> {
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { isPlatformAdmin: true },
+    });
+    if (user?.isPlatformAdmin) return;
+    const monitor = await prisma.userRole.findFirst({
+      where: { userId, role: { tenantId, code: { in: ['BUILDER', 'TENANT_ADMIN'] } } },
+      select: { roleId: true },
+    });
+    if (!monitor) {
+      throw new ForbiddenException(
+        '按流程/受理人筛选任务属流程监控能力，需租户级 BUILDER 或管理员角色',
+      );
+    }
+  }
+
+  /** 列出我的待办任务（functional-06：支持 processDefId/assignee 监控筛选）。 */
+  async listTasks(
+    tenantId: string,
+    userId: string,
+    status?: string,
+    page = 1,
+    pageSize = 20,
+    processDefId?: string,
+    assignee?: string,
+  ) {
     const where: Prisma.ProcessTaskWhereInput = { tenantId };
+
+    // ◆3=A：跨人/跨流程筛选（assignee 非本人或指定流程）→ 要求监控角色；本人筛选不要求
+    if (processDefId || (assignee !== undefined && assignee !== userId)) {
+      await this.assertProcessMonitor(tenantId, userId);
+    }
     // 我的待办：assignee = userId 或候选组匹配（candidateGroups 存角色ID，需用用户角色匹配）
     const [userRoles, orgMembers] = await Promise.all([
       prisma.userRole.findMany({ where: { userId, role: { tenantId } }, select: { roleId: true } }),
@@ -652,13 +686,24 @@ export class ProcessService {
     const orgIds = orgMembers.map((m) => m.orgId);
     const candidateGroupIds = [...new Set([...roleIds, ...orgIds])];
 
-    where.OR = [
-      { assignee: userId },
-      ...(user?.email ? [{ assignee: user.email }] : []),
-      ...(candidateGroupIds.length > 0
-        ? [{ candidateGroups: { hasSome: candidateGroupIds } }]
-        : []),
-    ];
+    // functional-06：监控筛选——指定 assignee 时精确匹配该受理人（值可为 userId 或
+    // 邮箱，与存储口径一致）；否则保持「我的任务」候选组语义
+    if (assignee !== undefined) {
+      where.OR = [{ assignee }];
+    } else {
+      where.OR = [
+        { assignee: userId },
+        ...(user?.email ? [{ assignee: user.email }] : []),
+        ...(candidateGroupIds.length > 0
+          ? [{ candidateGroups: { hasSome: candidateGroupIds } }]
+          : []),
+      ];
+    }
+
+    // functional-06：按流程定义过滤（监控语义；任务经 instance 关联流程）
+    if (processDefId) {
+      where.instance = { processDefId };
+    }
 
     // 前端传入小写 status（pending/completed），需要映射为 Prisma 枚举值
     if (status) {

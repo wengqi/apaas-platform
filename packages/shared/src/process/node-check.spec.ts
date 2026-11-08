@@ -204,4 +204,46 @@ describe('R-B functional 波次①（node-check 新规则）', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]!.reason).toContain('驳回跳转节点');
   });
+
+  it('functional-03：trigger condition 合法 JsonLogic → 完整', () => {
+    expect(
+      isNodeIncomplete('trigger', {
+        triggerType: 'RECORD_CREATED',
+        condition: '{"==":[{"var":"amount"},100]}',
+      }),
+    ).toBe(false);
+    // 对象形态（AI 提交）同样合法
+    expect(
+      isNodeIncomplete('trigger', {
+        triggerType: 'RECORD_CREATED',
+        condition: { '==': [{ var: 'amount' }, 100] },
+      }),
+    ).toBe(false);
+  });
+
+  it('functional-03：trigger condition 非法 JSON 字符串 → 不完整 + 专因', () => {
+    expect(
+      isNodeIncomplete('trigger', { triggerType: 'RECORD_CREATED', condition: '{{bad json' }),
+    ).toBe(true);
+    expect(
+      nodeIncompleteReason('trigger', { triggerType: 'RECORD_CREATED', condition: '{{bad json' }),
+    ).toContain('JsonLogic');
+  });
+
+  it('functional-03：trigger condition 不受支持操作符/多键规则节点 → 不完整', () => {
+    // 假设 D1 子集不含 {map:}
+    expect(
+      isNodeIncomplete('trigger', {
+        triggerType: 'RECORD_CREATED',
+        condition: '{"map":[{"var":"x"}]}',
+      }),
+    ).toBe(true);
+    // 顶层多键不是合法规则节点
+    expect(
+      isNodeIncomplete('trigger', {
+        triggerType: 'RECORD_CREATED',
+        condition: { '==': [1, 2], extra: 1 },
+      }),
+    ).toBe(true);
+  });
 });

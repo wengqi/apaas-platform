@@ -218,15 +218,14 @@ export enum SimplifiedNodeType {
 // 节点配置类型（与 SimplifiedNodeType 一一对应）
 // ---------------------------------------------------------------------------
 
-/** 触发器配置。 */
+/** 触发器配置（画布扁平形状=trigger 节点 data；嵌套 objectTrigger 死契约已删——
+ * 无任何写入方/消费方，R-B functional-03 同提交处置，PE-30 汇合登记）。 */
 export interface TriggerConfig {
   triggerType: TriggerType;
-  objectTrigger?: {
-    objectId: ObjectId;
-    event: 'CREATE' | 'UPDATE' | 'DELETE';
-    /** 触发条件表达式（可选，满足才触发） */
-    condition?: string;
-  };
+  /** 触发绑定对象 ID（缺省 = 应用级匹配，I-1 存量语义） */
+  objectId?: ObjectId;
+  /** 触发条件（functional-03）：JsonLogic JSON 字符串（D1 子集），满足才触发 */
+  condition?: string;
   cron?: string;
 }
 

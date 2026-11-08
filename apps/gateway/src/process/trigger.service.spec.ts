@@ -175,6 +175,60 @@ describe('TriggerService.onRecordEvent — 触发匹配读 schema 触发节点�
     await makeService().onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', { id: 'rec-6' });
     expect(engine.startProcess).toHaveBeenCalledTimes(1);
   });
+
+  it('functional-03：condition 满足才触发（JsonLogic 对记录数据求值）', async () => {
+    installLiveTable([
+      canvasFlow(
+        {},
+        {
+          title: '触发器',
+          triggerType: 'RECORD_CREATED',
+          objectId: 'obj-vehicle',
+          condition: '{"==":[{"var":"amount"},100]}',
+        },
+      ),
+    ]);
+    await makeService().onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', {
+      id: 'rec-7',
+      amount: 100,
+    });
+    expect(engine.startProcess).toHaveBeenCalledTimes(1);
+
+    engine.startProcess.mockClear();
+    await makeService().onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', {
+      id: 'rec-8',
+      amount: 200,
+    });
+    expect(engine.startProcess).not.toHaveBeenCalled();
+  });
+
+  it('functional-03：condition 非法 JSON → 视为不触发并 warn（不炸事件管道）', async () => {
+    installLiveTable([
+      canvasFlow(
+        {},
+        {
+          title: '触发器',
+          triggerType: 'RECORD_CREATED',
+          objectId: 'obj-vehicle',
+          condition: '{{bad json',
+        },
+      ),
+    ]);
+    const svc = makeService();
+    const warnSpy = vi.spyOn(
+      (svc as unknown as { logger: { warn: (m: string) => void } }).logger,
+      'warn',
+    );
+    await svc.onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', { id: 'rec-9', amount: 100 });
+    expect(engine.startProcess).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('functional-03：无 condition 的流程不受影响（回归对照）', async () => {
+    installLiveTable([canvasFlow()]);
+    await makeService().onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', { id: 'rec-10' });
+    expect(engine.startProcess).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('TriggerService.rebuildForEnvironment — 定时注册读活表+触发节点（I-1 同根）', () => {

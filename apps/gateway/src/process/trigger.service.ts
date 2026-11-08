@@ -26,7 +26,9 @@ import { prisma, runWithEnv } from '@apaas/db';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 import type { EnvironmentKey } from '@apaas/shared';
+import { isValidJsonLogicRule } from '@apaas/shared';
 import { ProcessEngine } from './process-engine.js';
+import { evaluateCondition } from './process-utils.js';
 import { RedisLockService } from '../common/redis/redis-lock.service.js';
 import { PROCESS_QUEUE } from '../queue/queue.constants.js';
 
@@ -48,6 +50,8 @@ interface TriggerInfo {
   /** 触发绑定的对象 ID（undefined = 应用级匹配，存量语义） */
   objectId?: string;
   cron: string | null;
+  /** 触发条件（functional-03）：JsonLogic 规则对象（节点 data.condition 字符串已解析） */
+  condition?: unknown;
 }
 
 /**
@@ -68,6 +72,25 @@ export function extractTriggerInfo(
       { data?: Record<string, unknown> } | undefined;
     const data = triggerNode?.data;
     if (data) {
+      // functional-03：condition 字符串按 JSON 解析为规则对象（解析失败保留原值，
+      // 由匹配层按「求值异常视为不触发」处理——预检已拦非法表达式，此处为防御）
+      let condition: unknown;
+      if (
+        data['condition'] !== undefined &&
+        data['condition'] !== null &&
+        data['condition'] !== ''
+      ) {
+        const raw = data['condition'];
+        if (typeof raw === 'string') {
+          try {
+            condition = JSON.parse(raw);
+          } catch {
+            condition = raw;
+          }
+        } else {
+          condition = raw;
+        }
+      }
       return {
         triggerType:
           typeof data['triggerType'] === 'string' && data['triggerType']
@@ -76,6 +99,7 @@ export function extractTriggerInfo(
         objectId:
           typeof data['objectId'] === 'string' && data['objectId'] ? data['objectId'] : undefined,
         cron: typeof data['cron'] === 'string' && data['cron'] ? data['cron'] : fallback.cron,
+        condition,
       };
     }
   }
@@ -406,7 +430,23 @@ export class TriggerService implements OnModuleInit {
         });
         if (info.triggerType !== triggerType) return false;
         // 触发节点绑定对象时按对象精确匹配；缺省应用级（存量语义）
-        return info.objectId === undefined || info.objectId === objectId;
+        if (!(info.objectId === undefined || info.objectId === objectId)) return false;
+        // R-B functional-03：触发条件 JsonLogic 求值（对记录数据）——满足才触发。
+        // 非法条件/求值异常均视为不触发并 warn（坏条件不炸事件管道、不静默放行；
+        // 发布预检与 G3 已拦增量，此处防存量脏配置）。
+        if (info.condition !== undefined) {
+          if (!isValidJsonLogicRule(info.condition)) {
+            this.logger.warn(`流程 ${def.apiName} 触发条件非法（非 JsonLogic 规则），按不触发处理`);
+            return false;
+          }
+          try {
+            if (!evaluateCondition(info.condition as object, recordData)) return false;
+          } catch {
+            this.logger.warn(`流程 ${def.apiName} 触发条件求值失败，按不触发处理`);
+            return false;
+          }
+        }
+        return true;
       });
       if (matched.length === 0) return;
 

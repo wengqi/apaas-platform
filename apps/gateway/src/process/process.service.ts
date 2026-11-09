@@ -851,6 +851,28 @@ export class ProcessService {
     return { cancelled: true };
   }
 
+  /**
+   * ◆6/PE-13（R-B 波次④⑤）：admin 重试失败实例——从失败节点重投。
+   * 归属校验对齐 PE-02 口径（发起人/受理人/租户·应用 admin，assertInstanceVisible
+   * 复用）——禁落运行面通配 EXECUTE 惯例（否则任何 EXECUTE 用户可重投他人实例）；
+   * 仅 FAILED 实例可重试（归属校验前置，防存在性泄露）。
+   */
+  async retryFailedInstance(tenantId: string, instanceId: string, userId?: string) {
+    const instance = await prisma.processInstance.findFirst({
+      where: { id: instanceId, tenantId },
+      // 归属四口径的「受理人」判定读任务行（OCR 复审 2026-11-09：缺 include 则
+      // 参与人分支恒空、受理人恒 403）——对齐 cancelInstance/getInstance 惯例
+      include: { tasks: true },
+    });
+    if (!instance) throw new NotFoundException('流程实例不存在');
+    if (userId) await this.assertInstanceVisible(tenantId, instance, userId);
+    if (instance.status !== 'FAILED') {
+      throw new BadRequestException('仅失败实例可重试');
+    }
+    await this.engine.retryInstance(instanceId);
+    return this.getInstance(tenantId, instanceId, userId);
+  }
+
   // ===========================================================================
   // 人工任务
   // ===========================================================================

@@ -11,6 +11,12 @@
  * BullMQ worker 在 HTTP 请求上下文之外执行，AsyncLocalStorage 为空。
  * 此处在 worker 回调内从实例/定义恢复 tenantId，通过 runWithTenant 设置 ALS，
  * 使后续 Prisma 查询自动注入 tenantId（Layer 2 防御）。
+ *
+ * ## 失败语义（PE-13）
+ * 引擎不再先行置实例 FAILED：瞬时失败上抛交 BullMQ attempts 重试（重试再入从
+ * 失败节点重投）；NonRetryableNodeError 同步落实例 FAILED（R2-scale-01）；
+ * 瞬时失败重试耗尽（attemptsMade+1 >= attempts）后落实例 FAILED——
+ * 见 process worker handler 内分类逻辑与 ProcessEngine.finalizeFailedInstance。
  */
 
 import {
@@ -91,14 +97,31 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
             try {
               await this.processEngine.executeNextNode(instanceId);
             } catch (err) {
-              // ✅3 retryable 分类（Temporal 借鉴 §8.1）：确定性失败（配置/校验类，
-              // NonRetryableNodeError）重试不会成功——实例已由引擎置 FAILED 并留痕，
-              // 吞掉异常避免 BullMQ attempts:3 空转；瞬时失败照常重试
+              // ✅3 retryable 分类（Temporal 借鉴 §8.1；PE-13 R-B 波次④⑤）：
+              // 引擎已不先行置实例 FAILED——瞬时失败交 BullMQ attempts 重试
+              // （重试再入从失败节点重投），异常在此分类处置：
+              // ① NonRetryableNodeError（配置/校验类确定性失败）：重试不会成功，
+              //   同步落实例 FAILED（R2-scale-01——引擎先行置 FAILED 的旧前提已摘除，
+              //   不同步落库则 9 处抛出点从 FAILED 留痕变永久 RUNNING 搁浅），吞掉
+              //   异常避免 BullMQ attempts:3 空转；
+              // ② 瞬时失败：上抛交重试；最终尝试先落实例 FAILED 再上抛——判定点
+              //   attemptsMade+1 >= attempts 与 BullMQ shouldRetryJob 的
+              //   attemptsMade+1 < opts.attempts 精确镜像（BullMQ 5.81.3 于
+              //   moveToFailed 内才自增 attemptsMade，handler 运行期为既往尝试数）。
               if (err instanceof NonRetryableNodeError) {
                 this.logger.warn(
                   `process job 确定性失败（不重试）: instanceId=${instanceId}, ${err.message}`,
                 );
+                await this.finalizeSafely(instanceId, err.message);
                 return;
+              }
+              const attempts = job.opts?.attempts ?? 1;
+              if (job.attemptsMade + 1 >= attempts) {
+                const msg = err instanceof Error ? err.message : String(err);
+                this.logger.error(
+                  `process job 瞬时失败重试耗尽（attempts=${attempts}）: instanceId=${instanceId}, ${msg}`,
+                );
+                await this.finalizeSafely(instanceId, msg);
               }
               throw err;
             }
@@ -178,5 +201,22 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
     await Promise.all(this.workers.map((w) => w.close()));
     await this.connection.quit();
     this.logger.log('BullMQ Workers 已关闭');
+  }
+
+  /**
+   * final-failure 落库兜底（PE-13）：finalize 自身失败（Redis/DB 抖动）不掩盖
+   * 原始异常、不影响重试语义——残余的 RUNNING 孤儿由后续 sweeper（PE-12 工单）
+   * 巡检兜底，此处显式留痕。
+   */
+  private async finalizeSafely(instanceId: string, errorMsg: string): Promise<void> {
+    try {
+      await this.processEngine.finalizeFailedInstance(instanceId, errorMsg);
+    } catch (finalizeErr) {
+      this.logger.error(
+        `final-failure 落库失败（实例可能停留 RUNNING，待 sweeper 兜底）: instanceId=${instanceId}, ${
+          finalizeErr instanceof Error ? finalizeErr.message : String(finalizeErr)
+        }`,
+      );
+    }
   }
 }

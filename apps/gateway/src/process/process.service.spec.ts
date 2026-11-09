@@ -7,8 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import 'reflect-metadata';
 import { ProcessService } from './process.service.js';
+import { ProcessController } from './process.controller.js';
+import { PERMISSION_KEY } from '../permission/require-permission.decorator.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 
 function createMockChangeLogService() {
@@ -31,6 +34,7 @@ function createMockEngine() {
     listTasks: vi.fn(),
     completeTask: vi.fn(),
     delegateTask: vi.fn(),
+    retryInstance: vi.fn().mockResolvedValue({ activeNodeIds: ['node-1'] }),
   };
 }
 
@@ -398,5 +402,134 @@ describe('ProcessService deleteProcess（P1-30）', () => {
     expect(changeLogService.log).toHaveBeenCalledWith(
       expect.objectContaining({ changeType: 'DELETE' }),
     );
+  });
+});
+
+// ===========================================================================
+// retryFailedInstance（◆6/PE-13 admin 恢复端点，R-B 波次④⑤合并批）
+// ===========================================================================
+
+describe('retryFailedInstance（◆6/PE-13 admin 恢复端点）', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** FAILED 实例夹具（发起人 user-1）。 */
+  function failedInstance(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'pi-001',
+      tenantId: 't1',
+      processDefId: 'pd-001',
+      triggerContext: { trigger: 'MANUAL', triggeredByUser: 'user-1' },
+      variables: {},
+      status: 'FAILED',
+      error: 'HTTP 502',
+      activeNodeIds: ['node-1'],
+      startedAt: new Date('2026-11-01'),
+      finishedAt: null,
+      processDef: { id: 'pd-001', apiName: 'proc_x', name: 'F', version: 2 },
+      nodeExecutions: [],
+      tasks: [],
+      ...overrides,
+    };
+  }
+
+  it('发起人重试失败实例：engine.retryInstance 调用并返回实例 DTO', async () => {
+    const inst = failedInstance();
+    prisma.processInstance.findFirst.mockResolvedValue(inst);
+    const { service, engine } = createService();
+
+    const data = await service.retryFailedInstance('t1', 'pi-001', 'user-1');
+
+    expect(engine.retryInstance).toHaveBeenCalledWith('pi-001');
+    expect(data).toEqual(expect.objectContaining({ id: 'pi-001', status: 'FAILED' }));
+  });
+
+  it('非 FAILED（RUNNING）实例拒绝 400：仅失败实例可重试', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue(failedInstance({ status: 'RUNNING' }));
+    const { service, engine } = createService();
+
+    await expect(service.retryFailedInstance('t1', 'pi-001', 'user-1')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(engine.retryInstance).not.toHaveBeenCalled();
+  });
+
+  it('非归属用户拒绝 403（四口径：发起人/受理人/租户·应用 admin 之外无权）', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue(failedInstance());
+    const { service, engine } = createService();
+
+    await expect(service.retryFailedInstance('t1', 'pi-001', 'user-x')).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(engine.retryInstance).not.toHaveBeenCalled();
+  });
+
+  it('租户管理员可重试他人实例（归属四口径之一）', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue(failedInstance());
+    prisma.userRole.findMany.mockResolvedValue([
+      { role: { id: 'role-admin', code: 'TENANT_ADMIN' } },
+    ]);
+    const { service, engine } = createService();
+
+    await service.retryFailedInstance('t1', 'pi-001', 'user-admin');
+
+    expect(engine.retryInstance).toHaveBeenCalledWith('pi-001');
+  });
+
+  it('OCR-High 回归：任务受理人可重试（归属四口径之一）——findFirst 须 include tasks', async () => {
+    // OCR 复审（2026-11-09）挖出：retryFailedInstance findFirst 未 include tasks →
+    // assertInstanceVisible 参与人分支读 undefined 恒空 → 受理人恒 403 违背 ◆6 四口径。
+    prisma.processInstance.findFirst.mockResolvedValue(
+      failedInstance({ tasks: [{ assignee: 'user-assignee', candidateGroups: [] }] }),
+    );
+    const { service, engine } = createService();
+
+    await service.retryFailedInstance('t1', 'pi-001', 'user-assignee');
+
+    expect(engine.retryInstance).toHaveBeenCalledWith('pi-001');
+    // 归属判定源完整性：查询必须装载任务行（候选组命中同理依赖 tasks）
+    const query = prisma.processInstance.findFirst.mock.calls[0]![0] as {
+      include?: Record<string, unknown>;
+    };
+    expect(query.include).toEqual(expect.objectContaining({ tasks: true }));
+  });
+
+  it('OCR-High 回归：候选组（角色/组织）命中受理人可重试', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue(
+      failedInstance({ tasks: [{ assignee: null, candidateGroups: ['role-sales'] }] }),
+    );
+    prisma.userRole.findMany.mockResolvedValue([{ role: { id: 'role-sales', code: 'SALES' } }]);
+    const { service, engine } = createService();
+
+    await service.retryFailedInstance('t1', 'pi-001', 'user-sales');
+
+    expect(engine.retryInstance).toHaveBeenCalledWith('pi-001');
+  });
+
+  it('实例不存在 404', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue(null);
+    const { service } = createService();
+
+    await expect(service.retryFailedInstance('t1', 'missing', 'user-1')).rejects.toThrow(
+      '流程实例不存在',
+    );
+  });
+});
+
+// ===========================================================================
+// retry 端点权限锚定（◆6：targetIdParam 实例级授权，禁落运行面通配 EXECUTE）
+// ===========================================================================
+
+describe('retry 端点权限锚定（◆6）', () => {
+  it('POST /instances/:instanceId/retry 携带 PROCESS EXECUTE + targetIdParam=instanceId', () => {
+    const metadata = Reflect.getMetadata(
+      PERMISSION_KEY,
+      Object.getOwnPropertyDescriptor(ProcessController.prototype, 'retryInstance')!.value,
+    ) as { type: string; action: string; targetIdParam?: string };
+
+    expect(metadata).toEqual({ type: 'PROCESS', action: 'EXECUTE', targetIdParam: 'instanceId' });
   });
 });

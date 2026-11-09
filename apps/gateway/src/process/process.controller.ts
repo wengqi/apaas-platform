@@ -14,6 +14,7 @@
  *     GET    /instances/:instanceId/trace        — 获取流程轨迹（节点状态+连线）
  *     POST   /instances/:instanceId/cancel       — 取消实例
  *     POST   /instances/:instanceId/withdraw     — 发起人撤回
+ *     POST   /instances/:instanceId/retry        — 重试失败实例（◆6/PE-13，从失败节点重投）
  *
  *   人工任务：
  *     GET    /tasks                              — 列出我的待办
@@ -257,6 +258,23 @@ export class ProcessController {
     @Param('instanceId') instanceId: string,
   ) {
     const data = await this.processService.withdrawInstance(
+      requireTenantId(req),
+      instanceId,
+      req.user.id,
+    );
+    return { ok: true as const, data };
+  }
+
+  /**
+   * ◆6/PE-13：admin 重试失败实例（从失败节点重投）。
+   * targetIdParam=instanceId 实例级授权 + 服务层归属四口径（发起人/受理人/
+   * 租户·应用 admin）——禁落运行面通配 EXECUTE 惯例。
+   */
+  @Post('instances/:instanceId/retry')
+  @RequirePermission('PROCESS', 'EXECUTE', 'instanceId')
+  @ApiOperation({ summary: '重试失败的流程实例（从失败节点重投，归属校验）' })
+  async retryInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
+    const data = await this.processService.retryFailedInstance(
       requireTenantId(req),
       instanceId,
       req.user.id,

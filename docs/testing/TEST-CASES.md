@@ -444,6 +444,8 @@
 | TC-273 | 认领后加锁失败回滚（PE-14） | P1 | 任一审批任务 | ① 锁获取失败（超时/Redis 故障）后审批 ② 业务 409（定论守卫）对照 | ① 任务回滚保持 PENDING 可重试（decision/completedAt 清零），不再「已 APPROVED 但令牌永不推进+重试 400」死局 ② 业务拒绝不回滚（批次已被他人定论，回滚会复活） | approval-semantics.spec（1 例）| 波次④ PE-14（部分方案：失败回滚形态；「认领移入锁内」统一方案随 PE-12 sweeper 批再评估）；顺序分支内层锁同暴露登记 |
 | TC-274 | 定时注册同步重试+register_failed 处置（PE-10） | P1 | SCHEDULED 流程发布（Redis 抖动场景） | ① 注册失败观察发布结果与重试次数 ② 3 次耗尽观察通知 ③ POST register-trigger 手动重试 | ① 发布仍成功（评审轮 R2-devil-02：回滚制造「ACTIVE release+DRAFT」非法态被否）+共 3 次尝试 ② 站内信通知租户管理员（register_failed 显式登记，失败面不为静默日志） ③ 200 registered | process.service.spec（2 例） | 波次④ PE-10；P1-04 账本联动=成功即记账（既有）；与 PE-07 硬闸无冲突（不回滚发布状态） |
 | TC-275 | 子流程父恢复队列解耦（PE-09） | P1 | 同步子流程（父 WAITING_USER_TASK） | ① 子实例完成 ② 子实例失败 | ①② 均投递 delayQueue resume_parent job（父锁由 worker 独立获取，不再持子锁取父锁嵌套 10s 超时吞错→父永久卡 WAITING）；失败面=PE-11 重试语义覆盖可重试 | process-engine-advanced.spec（2 例改写：入队断言替代同步恢复断言——红线 1 理由=PE-09 契约本身） | 波次④ PE-09；resumeParentAfterSubProcess 改 public 供 processor 调用 |
+| TC-276 | 节点完成+路由+推进原子化（PE-17） | P1 | 任一含非等待节点的流程实例 | ① 节点执行成功 ② 提交窗口失败（事务拒绝）后 BullMQ 重试 ③ error 出边路由 | ①② 完成行/路由留痕/令牌推进单事务原子提交（「COMPLETED 已持久化但令牌未推进」中间态不可产生）——事务失败零部分持久化，重试整节点重执行（副作用 at-least-once=非事务副作用固有属性，窗口 A 工单显式登记） ③ FAILED 行+_routing+推进原子提交，实例不失败（S2 保持） | process-engine.spec（5 例：原子快照/零部分持久化/S2 原子改写/finalize/retry）+ advanced 2 例改写（红线 1 理由=PE-17 契约本身） | 波次⑤ PE-17；**机制择优登记**：工单文本「两段标记+重入守卫」以完成+推进原子化实现（守卫无法区分循环再入，loop 回边重新激活同一 nodeId 与崩溃窗口观测状态同构；窗口源头消除后守卫无必要）；与 PE-13 同批（④×⑤ 依赖 R2-engineering-03） |
+| TC-277 | 失败重试语义与 admin 恢复端点（PE-13，◆6） | P1 | 无 error 出边的瞬时依赖失败流程 | ① 执行器瞬时异常（第 1 次） ② BullMQ 重试再入 ③ attempts=3 耗尽（第 3 次） ④ NonRetryableNodeError ⑤ POST /instances/:id/retry（发起人/租户管理员/非归属用户） | ①② 实例保持 RUNNING（不再先行置 FAILED——重试进门不再非 RUNNING 早退空转）+执行行 FAILED 留痕，重试从失败节点重投 ③ processor 判定耗尽（attemptsMade+1≥attempts，与 shouldRetryJob 镜像）finalizeFailedInstance→实例 FAILED+子流程父恢复传播 ④ 同步落 FAILED 不重试（R2-scale-01 防 9 处抛出点变永久 RUNNING） ⑤ 仅 FAILED 可重试+归属四口径（发起人/受理人/租户·应用 admin，targetIdParam=instanceId，禁落通配 EXECUTE）→ RUNNING+清 error+重新入队；非 FAILED 400/非归属 403 | process-engine.spec（4 例）+ process.processor.spec 新建（5 例：NonRetryable/final 判定点/正常/scheduled）+ process.service.spec（5 例+controller targetIdParam 锚定） | 波次④ PE-13（④×⑤ 与 PE-17 同批）；恢复端点=PE-12 sweeper 工单联动预留（PUT 后续轮 UI 入口未做） |
 
 ---
 
@@ -452,6 +454,7 @@
 
 | 日期 | 版本 | 变更 | 来源 |
 |---|---|---|---|
+| 2026-11-09 | v3.23 | PE 波次④⑤合并批（R-B）：Z 节追加 TC-276「节点完成+路由+推进原子化（PE-17）」/ TC-277「失败重试语义与 admin 恢复端点（PE-13，◆6）」；**行为变更**：①节点完成+路由留痕+令牌推进合并单事务（COMPLETED 未推进中间态消除，重试/stalled 重投不再整段重执行已完成节点）②无 error 出边异常不再先行置实例 FAILED（执行行 FAILED 留痕+实例保持 RUNNING 交 BullMQ attempts 重试，重试从失败节点重投）③瞬时耗尽（attemptsMade+1≥attempts）与 NonRetryableNodeError 均由 processor 侧 finalizeFailedInstance 落 FAILED+子流程父恢复传播 ④新端点 POST /instances/:instanceId/retry（仅 FAILED+归属四口径，targetIdParam 锚定）；S2 error 出边/超时/审批既有语义零变化（S1/S2 回归通过） | PE 波次④⑤（④×⑤ 依赖 R2-engineering-03：PE-13 开重试前 PE-17 幂等须先落或同批） |
 | 2026-10-07 | v1.0 | 建立：148 条基线自 QA-FULL-REPORT-2026-10-06 §九/§10.10 逐条提炼；前置/步骤/预期按报告原文+QA-TEST-PLAN-PROMPT 底册与矩阵标准化展开；补入已修复缺陷的修复后语义（D-001/002/004/005/006/007/009/010/012/014/015）与已验证文案（§10.1/10.2/10.5 实测）；优先级按维护规约第 5 条规则标注 | 用户指令（用例库建设） |
 | 2026-10-07 | v1.1 | 字段绑定专项：分组 F 追加 TC-149（对象字段绑定下拉面板）/TC-150（保存错配告警）两条用例 | feat/field-binding-picker 功能轮 |
 | 2026-10-07 | v1.2 | 字段绑定专项 v2：TC-149 改写为原生感叹号选择器（分组+搜索+确认联动）；TC-150 保存错配告警升级为逐 form 按所属对象比对（多表） | feat/field-binding-picker |

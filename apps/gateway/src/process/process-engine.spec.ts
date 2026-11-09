@@ -8,6 +8,7 @@
  * - 完成人工任务（completeTask）
  * - 取消流程（cancelProcess）
  * - 延时节点恢复（resumeDelayedNode）
+ * - PE-17 节点完成+路由+推进原子化 / PE-13 失败重试语义与恢复
  * - Schema 导航辅助（findNode / getOutgoingEdges / resolveNextNodes）
  */
 
@@ -16,7 +17,12 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { ProcessEngine } from './process-engine.js';
 import type { NodeExecutor } from './types.js';
 import type { WorkflowSchema, WorkflowNode } from '@apaas/shared';
-import { getMockPrisma, createMockQueue, createMockExecutor } from '../test/test-helpers.js';
+import {
+  getMockPrisma,
+  getMockTransaction,
+  createMockQueue,
+  createMockExecutor,
+} from '../test/test-helpers.js';
 import {
   makeProcessDef,
   makeProcessInstance,
@@ -895,9 +901,11 @@ describe('ProcessEngine', () => {
   // =========================================================================
 
   describe('executeNode error handling', () => {
-    it('P1-15：error 出边 label 归一匹配（大小写/首尾空白不敏感，双 error 边取第一条并留痕）', async () => {
+    it('P1-15：error 出边 label 归一匹配（大小写/首尾空白不敏感）+ PE-17 路由与推进原子提交', async () => {
       // 缺陷：label 按 === 'error' | '失败' 字面首匹配——'Error'/'ERROR'/' Error ' 均
       // 不命中 → 实例静默 FAILED。修复契约：trim + 小写归一后匹配。
+      // PE-17 改写（红线 1 理由=工单契约本身）：行 FAILED+路由留痕+令牌推进由调用方
+      // 单事务原子提交——原「行 FAILED 先落、推进后行」的两段窗口不复存在。
       const schema = makeSimpleSchema({
         nodes: [makeNode('node-start', 'start'), makeNode('node-notify', 'notification')],
         edges: [{ sourceNodeID: 'node-start', targetNodeID: 'node-notify', label: ' Error ' }],
@@ -905,24 +913,25 @@ describe('ProcessEngine', () => {
       const failingExecutor = createMockExecutor('start', async () => {
         throw new Error('Executor boom');
       });
+      const notifyExecutor = createMockExecutor('notification', async () => ({
+        output: {},
+        wait: true,
+      }));
 
       const instance = makeInstanceRow({
         activeNodeIds: ['node-start'],
         processDef: makeProcessDef({ workflowSchema: schema }),
       });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
       prisma.nodeExecution.create.mockResolvedValue(makeNodeExecution());
 
-      const { engine } = createEngine([failingExecutor]);
-      const result = await engine.executeNode(
-        instance,
-        makeNode('node-start', 'start'),
-        schema,
-        {},
-      );
+      const { engine } = createEngine([failingExecutor, notifyExecutor]);
+      await engine.executeNextNode('pi-001');
 
-      expect(result.result.nextNodeIds).toEqual(['node-notify']);
-      expect((result.result.output as Record<string, unknown>)._errorRouted).toBe('Executor boom');
-      // 路由留痕：NodeExecution FAILED 行带 _routing
+      // error 分支令牌已推进（notify 执行器被调用 = 推进发生）
+      expect(failingExecutor.execute).toHaveBeenCalledTimes(1);
+      expect(notifyExecutor.execute).toHaveBeenCalledTimes(1);
+      // 路由留痕：NodeExecution FAILED 行带 _routing（原子事务内提交）
       const failedUpdate = prisma.nodeExecution.update.mock.calls.find(
         (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
       );
@@ -932,9 +941,17 @@ describe('ProcessEngine', () => {
           _routing: { nextNodeIds: ['node-notify'], at: expect.any(String) },
         }),
       );
+      // S2 语义保持：实例不失败，落在 error 分支等待（notify wait=true）
+      const instFailedUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(instFailedUpdate).toBeUndefined();
     });
 
-    it('节点执行抛出异常时标记 FAILED', async () => {
+    it('PE-13：无 error 出边执行器异常——执行行 FAILED 留痕、实例保持 RUNNING 交重试', async () => {
+      // PE-13 改写（红线 1 理由=工单契约本身）：原「实例先行置 FAILED」使 BullMQ
+      // attempts:3 重试进门即非 RUNNING 早退全部空转——瞬时依赖失败=审批永久失败。
+      // 新契约：行 FAILED 留痕（attempt 记录）、实例保持 RUNNING、异常上抛交重试。
       const schema = makeSimpleSchema();
       const failingExecutor = createMockExecutor('start', async () => {
         throw new Error('Executor boom');
@@ -952,18 +969,253 @@ describe('ProcessEngine', () => {
         engine.executeNode(instance, makeNode('node-start', 'start'), schema, {}),
       ).rejects.toThrow('Executor boom');
 
-      // NodeExecution 应被标记为 FAILED
+      // NodeExecution 应被标记为 FAILED（attempt 留痕）
       const failedUpdate = prisma.nodeExecution.update.mock.calls.find(
         (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
       );
       expect(failedUpdate).toBeDefined();
       expect(failedUpdate![0]!.data.error).toBe('Executor boom');
 
-      // 实例也应被标记为 FAILED
+      // 实例不置 FAILED（交由 BullMQ 重试 / processor 耗尽后 final-failure 处置）
       const instFailedUpdate = prisma.processInstance.update.mock.calls.find(
         (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
       );
-      expect(instFailedUpdate).toBeDefined();
+      expect(instFailedUpdate).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // PE-17/PE-13 — 节点执行原子性与失败重试语义（R-B 波次④⑤合并批）
+  // =========================================================================
+
+  describe('PE-17/PE-13 节点执行原子性与失败重试语义', () => {
+    beforeEach(() => {
+      prisma.nodeExecution.count.mockResolvedValue(0);
+      prisma.nodeExecution.create.mockImplementation(
+        async (args: { data: Record<string, unknown> }) => ({
+          id: `ne-${Math.random().toString(36).slice(2, 8)}`,
+          ...args.data,
+        }),
+      );
+    });
+
+    /** 构造 start→end 直连流程实例 mock（findFirst 返回同一实例行）。 */
+    function setupStartEnd() {
+      const schema = makeSimpleSchema();
+      const instance = makeInstanceRow({
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      prisma.processInstance.update.mockImplementation(
+        async (args: { data: Record<string, unknown> }) => ({ ...instance, ...args.data }),
+      );
+      return schema;
+    }
+
+    it('PE-17：节点完成+路由留痕+令牌推进单事务原子提交（无 COMPLETED 未推进中间态）', async () => {
+      const schema = setupStartEnd();
+      const startExecutor = createMockExecutor('start', async () => ({
+        output: { ok: 1 },
+        wait: false,
+      }));
+      const endExecutor = createMockExecutor('end', async () => ({ output: {}, wait: false }));
+
+      // 事务调用时快照：行更新与实例更新必须发生在同一次 $transaction 内
+      const tx = getMockTransaction();
+      let txRowCalls = -1;
+      let txInstCalls = -1;
+      tx.mockImplementationOnce((arg: unknown) => {
+        txRowCalls = prisma.nodeExecution.update.mock.calls.length;
+        txInstCalls = prisma.processInstance.update.mock.calls.length;
+        return Array.isArray(arg)
+          ? Promise.all(arg as unknown[])
+          : (arg as (p: unknown) => Promise<unknown>)(prisma);
+      });
+
+      const { engine } = createEngine([startExecutor, endExecutor]);
+      await engine.executeNextNode('pi-001');
+
+      expect(startExecutor.execute).toHaveBeenCalledTimes(1);
+      // 事务时刻：完成行更新与令牌推进均已入栈（同一次提交）
+      expect(txRowCalls).toBe(1);
+      expect(txInstCalls).toBe(1);
+      // 完成行携带路由留痕（原实现 _routing 由推进前独立的 updateMany 写入——两段写）
+      const rowUpdate = prisma.nodeExecution.update.mock.calls[0]![0]! as {
+        data: Record<string, unknown>;
+      };
+      expect(rowUpdate.data.status).toBe('COMPLETED');
+      expect(rowUpdate.data.output).toEqual(
+        expect.objectContaining({
+          _routing: { nextNodeIds: ['node-end'], at: expect.any(String) },
+        }),
+      );
+      // 令牌推进在同一事务（start → end）
+      const tokenUpdate = prisma.processInstance.update.mock.calls[0]![0]! as {
+        data: Record<string, unknown>;
+      };
+      expect(tokenUpdate.data.activeNodeIds).toEqual(['node-end']);
+      expect(schema).toBeDefined();
+    });
+
+    it('PE-17：提交窗口失败零部分持久化——行/实例均未写，重试整节点重执行（at-least-once 显式登记）', async () => {
+      setupStartEnd();
+      const startExecutor = createMockExecutor('start', async () => ({
+        output: { ok: true },
+        wait: false,
+      }));
+      const endExecutor = createMockExecutor('end', async () => ({ output: {}, wait: false }));
+
+      const tx = getMockTransaction();
+      tx.mockRejectedValueOnce(new Error('提交窗口崩溃'));
+
+      const { engine } = createEngine([startExecutor, endExecutor]);
+      await expect(engine.executeNextNode('pi-001')).rejects.toThrow('提交窗口崩溃');
+
+      // 原子性（mock 语义=事务内操作不单独提交）：唯一一次 $transaction 被拒绝，
+      // 完成行与令牌推进仅存在于该事务中——事务外零持久化、零终态写入
+      expect(tx).toHaveBeenCalledTimes(1);
+      expect(prisma.nodeExecution.update).toHaveBeenCalledTimes(1);
+      expect(prisma.processInstance.update).toHaveBeenCalledTimes(1);
+      const anyTerminalWrite = prisma.processInstance.update.mock.calls.some(
+        (call: { data: Record<string, unknown> }[]) =>
+          call[0]!.data.status === 'COMPLETED' || call[0]!.data.status === 'FAILED',
+      );
+      expect(anyTerminalWrite).toBe(false);
+      // 执行行已创建（RUNNING 残留 = 下轮重执行的留痕）
+      expect(prisma.nodeExecution.create).toHaveBeenCalledTimes(1);
+
+      // BullMQ 重试再入：executor 重执行（副作用 at-least-once=非事务副作用固有属性，
+      // 窗口 A 由工单显式登记），本次提交成功 → 推进至 end → 实例完成
+      await engine.executeNextNode('pi-001');
+      expect(startExecutor.execute).toHaveBeenCalledTimes(2);
+      const finalUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'COMPLETED',
+      );
+      expect(finalUpdate).toBeDefined();
+    });
+
+    it('PE-13：无 error 出边异常——全链实例保持 RUNNING，行 FAILED 留痕，异常上抛', async () => {
+      const schema = setupStartEnd();
+      const failingExecutor = createMockExecutor('start', async () => {
+        throw new Error('瞬时依赖抖动');
+      });
+
+      const { engine } = createEngine([failingExecutor]);
+      await expect(engine.executeNextNode('pi-001')).rejects.toThrow('瞬时依赖抖动');
+
+      // 实例不置 FAILED（BullMQ attempts:3 重试进门不再因非 RUNNING 早退空转）
+      const instFailedUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(instFailedUpdate).toBeUndefined();
+      // attempt 留痕
+      const failedRow = prisma.nodeExecution.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(failedRow).toBeDefined();
+      expect(failedRow![0]!.data.error).toBe('瞬时依赖抖动');
+      expect(schema).toBeDefined();
+    });
+
+    it('PE-13：重试再入从失败节点重投（失败行不阻断重执行，第二次成功推进）', async () => {
+      setupStartEnd();
+      const startExecutor = createMockExecutor('start');
+      startExecutor.execute
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce({ output: { ok: 2 }, wait: false });
+      const endExecutor = createMockExecutor('end', async () => ({ output: {}, wait: false }));
+
+      const { engine } = createEngine([startExecutor, endExecutor]);
+
+      // 第一次投递：失败（实例保持 RUNNING）
+      await expect(engine.executeNextNode('pi-001')).rejects.toThrow('boom');
+      // 第二次投递（BullMQ 重试）：从失败节点重投成功 → 完成行 + 推进
+      await engine.executeNextNode('pi-001');
+      expect(startExecutor.execute).toHaveBeenCalledTimes(2);
+      const completedRow = prisma.nodeExecution.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'COMPLETED',
+      );
+      expect(completedRow).toBeDefined();
+    });
+
+    it('PE-13 finalizeFailedInstance：RUNNING→FAILED+子流程父恢复入队；非 RUNNING 幂等跳过', async () => {
+      const subInstance = makeInstanceRow({
+        triggerContext: { _parent: { instanceId: 'pi-parent', nodeId: 'node-sub' } },
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(subInstance);
+      const { engine, delayQueue } = createEngine();
+
+      await engine.finalizeFailedInstance('pi-001', '重试耗尽');
+      const failedUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(failedUpdate).toBeDefined();
+      expect(failedUpdate![0]!.data.error).toBe('重试耗尽');
+      // 子流程失败传播：父恢复 job 投递（瞬时重试期间不投——父实例继续等待）
+      expect(delayQueue.add).toHaveBeenCalledWith(
+        'resume',
+        expect.objectContaining({
+          instanceId: 'pi-parent',
+          nodeId: 'node-sub',
+          kind: 'resume_parent',
+          subInstanceId: 'pi-001',
+          subStatus: 'FAILED',
+          error: '重试耗尽',
+        }),
+        expect.anything(),
+      );
+
+      // 幂等：非 RUNNING（已终结/等待中）不覆盖
+      (prisma.processInstance.update as unknown as ReturnType<typeof vi.fn>).mockClear();
+      (delayQueue.add as unknown as ReturnType<typeof vi.fn>).mockClear();
+      prisma.processInstance.findFirst.mockResolvedValue({ ...subInstance, status: 'FAILED' });
+      await engine.finalizeFailedInstance('pi-001', 'again');
+      expect(prisma.processInstance.update).not.toHaveBeenCalled();
+      expect(delayQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('PE-13 retryInstance：FAILED→RUNNING+清 error+重新入队（从失败节点重投）', async () => {
+      prisma.processInstance.findFirst.mockResolvedValue(
+        makeInstanceRow({
+          status: 'FAILED',
+          error: '旧错误',
+          activeNodeIds: ['node-start'],
+          processDef: makeProcessDef({ workflowSchema: makeSimpleSchema() }),
+        }),
+      );
+      const { engine, processQueue } = createEngine();
+
+      const result = await engine.retryInstance('pi-001');
+
+      const updateCall = prisma.processInstance.update.mock.calls[0]![0]! as {
+        data: Record<string, unknown>;
+      };
+      expect(updateCall.data).toEqual({ status: 'RUNNING', error: null });
+      expect(processQueue.add).toHaveBeenCalledWith(
+        'execute',
+        { instanceId: 'pi-001' },
+        expect.anything(),
+      );
+      expect(result.activeNodeIds).toEqual(['node-start']);
+    });
+
+    it('PE-13 retryInstance：非 FAILED 实例拒绝 400 / 无活跃令牌拒绝 400', async () => {
+      const { engine } = createEngine();
+
+      // RUNNING 实例不可重试
+      prisma.processInstance.findFirst.mockResolvedValue(
+        makeInstanceRow({ status: 'RUNNING', activeNodeIds: ['node-start'] }),
+      );
+      await expect(engine.retryInstance('pi-001')).rejects.toThrow(BadRequestException);
+      expect(prisma.processInstance.update).not.toHaveBeenCalled();
+
+      // FAILED 但令牌已空（无可重投节点）
+      prisma.processInstance.findFirst.mockResolvedValue(
+        makeInstanceRow({ status: 'FAILED', activeNodeIds: [] }),
+      );
+      await expect(engine.retryInstance('pi-001')).rejects.toThrow(/无活跃令牌/);
+      expect(prisma.processInstance.update).not.toHaveBeenCalled();
     });
   });
 

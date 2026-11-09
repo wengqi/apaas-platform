@@ -362,28 +362,46 @@ export class ProcessEngine {
       }
 
       // 执行单个节点
-      const { result, completed } = await this.executeNode(instance, node, schema, variables);
+      const exec = await this.executeNode(instance, node, schema, variables);
 
-      if (!completed) {
-        // 节点暂停（wait=true），实例已置为 WAITING_USER_TASK，停止推进
+      if (!exec.completed) {
+        // 节点暂停（wait=true）：执行行 WAITING 与实例 WAITING_USER_TASK 已由
+        // executeNode 内部事务原子提交，停止推进
         return;
       }
 
-      // 计算下一节点
-      const nextNodeIds = this.resolveNextNodes(node, result, schema, variables);
+      // PE-17（R-B 波次④⑤合并批）：路由决策 + 完成落库 + 令牌推进合并为单事务——
+      // 「COMPLETED 已持久化但令牌未推进」的中间态从源头消除，BullMQ 重试/stalled
+      // 重投不再整段重执行已完成节点（外发副作用不 ×2）。error 出边路由（markFailed）
+      // 的 FAILED 行落库同样经此原子提交（S2 语义保持：实例不失败，令牌走 error 分支）。
+      const nextNodeIds = this.resolveNextNodes(node, exec.result, schema, variables);
       // ✅1 边走向留痕（Temporal 借鉴 §8.1）：路由决策落 NodeExecution.output，
       // C1 类"静默终结/为什么走这条边"事故可事后归因；条件求值快照已在实例 variables
-      await prisma.nodeExecution.updateMany({
-        where: { instanceId: instance.id, nodeId, status: 'COMPLETED' },
-        data: {
-          output: {
-            ...(result.output ?? {}),
-            _routing: { nextNodeIds, at: new Date().toISOString() },
-          } as Prisma.InputJsonValue,
+      const routingOutput = {
+        ...(exec.result.output ?? {}),
+        _routing: { nextNodeIds, at: new Date().toISOString() },
+      } as Prisma.InputJsonValue;
+      // 令牌推进计算（移除当前+汇聚门控+去重，与 advanceTokens 共用 helper——
+      // 门控计数变更随调用方持久化）
+      const updatedTokens = this.computeAdvancedTokens(
+        instance.activeNodeIds,
+        node.id,
+        nextNodeIds,
+        variables,
+      );
+      // PE-17：完成行（COMPLETED / error 路由 FAILED）+ 路由留痕 + 令牌与变量推进
+      // ——单事务原子提交（封装于 commitNodeCompletion，显式签名同时规避循环变量
+      // 的 TS7022 退化）
+      instance = await this.commitNodeCompletion(
+        instance.id,
+        exec.nodeExecutionId,
+        {
+          status: exec.markFailed ? 'FAILED' : 'COMPLETED',
+          error: exec.markFailed,
+          output: routingOutput,
         },
-      });
-      // 移除当前令牌，添加下游令牌
-      instance = await this.advanceTokens(instance, nodeId, nextNodeIds, variables);
+        { activeNodeIds: updatedTokens, variables: variables as Prisma.InputJsonValue },
+      );
     }
 
     // 无活跃令牌 → 实例完成（或等待汇聚中的其他分支令牌）
@@ -426,20 +444,76 @@ export class ProcessEngine {
   }
 
   /**
+   * 计算推进后的令牌列表：移除当前令牌 + 汇聚门控（gateJoinArrivals 计数变更
+   * 写入 variables，随调用方持久化）+ 去重。advanceTokens（独立更新路径）与
+   * commitNodeCompletion（PE-17 原子事务路径）共用，避免门控语义双处维护。
+   */
+  private computeAdvancedTokens(
+    activeNodeIds: string[],
+    currentNodeId: string,
+    nextNodeIds: string[],
+    variables: Record<string, unknown>,
+  ): string[] {
+    const remaining = activeNodeIds.filter((id) => id !== currentNodeId);
+    const activated = this.gateJoinArrivals(variables, nextNodeIds);
+    return [...new Set([...remaining, ...activated])];
+  }
+
+  /**
+   * PE-17：节点完成事务——执行行终态（含 _routing 路由留痕）与实例令牌/变量推进
+   * 单事务原子提交。「COMPLETED 已持久化但令牌未推进」的中间态自此不可产生。
+   * 独立方法封装（显式返回签名）：事务参数引用外层循环变量会触发 TS7022 循环推断。
+   * 行不存在时 Prisma 抛 P2025（交由 BullMQ 重试语义与调用方异常面，无 null 分支）。
+   */
+  private async commitNodeCompletion(
+    instanceId: string,
+    nodeExecutionId: string,
+    row: { status: 'COMPLETED' | 'FAILED'; error?: string; output: Prisma.InputJsonValue },
+    tokens: { activeNodeIds: string[]; variables: Prisma.InputJsonValue },
+  ): Promise<InstanceRow> {
+    const [, refreshed]: [unknown, InstanceRow] = await prisma.$transaction([
+      prisma.nodeExecution.update({
+        where: { id: nodeExecutionId },
+        data: {
+          status: row.status,
+          ...(row.error ? { error: row.error } : {}),
+          output: row.output,
+          finishedAt: new Date(),
+        },
+      }),
+      prisma.processInstance.update({
+        where: { id: instanceId },
+        data: { activeNodeIds: tokens.activeNodeIds, variables: tokens.variables },
+        include: { processDef: true },
+      }),
+    ]);
+    return refreshed;
+  }
+
+  /**
    * 执行单个节点。
    *
-   * @returns { result, completed } —— result 为执行器输出；completed 表示是否已执行完毕（false = 暂停等待）
+   * @returns { result, completed, nodeExecutionId, markFailed? }
+   *   —— result 为执行器输出；completed=false 表示暂停等待（行 WAITING + 实例
+   *   WAITING_USER_TASK 已在本方法内事务原子提交）；completed=true 时完成落库由
+   *   调用方与路由留痕、令牌推进单事务原子提交（PE-17）；markFailed 非空表示本次
+   *   为 error 出边路由（S2），执行行以 FAILED 落库、实例不失败。
    */
   async executeNode(
     instance: InstanceRow,
     node: WorkflowNode,
     schema: WorkflowSchema,
     variables: Record<string, unknown>,
-  ): Promise<{ result: import('./types.js').NodeExecutionResult; completed: boolean }> {
+  ): Promise<{
+    result: import('./types.js').NodeExecutionResult;
+    completed: boolean;
+    nodeExecutionId: string;
+    markFailed?: string;
+  }> {
     const executor = this.registry.get(node.type);
     const outgoingEdges = this.getOutgoingEdges(schema, node.id);
 
-    // 创建 NodeExecution 记录（RUNNING）
+    // 创建 NodeExecution 记录（RUNNING——完成态由调用方与令牌推进原子落库）
     const nodeExecution = await prisma.nodeExecution.create({
       data: {
         instanceId: instance.id,
@@ -476,33 +550,31 @@ export class ProcessEngine {
       // 写入节点输出到变量作用域
       writeNodeOutput(variables, node.id, result.output);
 
-      // 持久化变量快照 + NodeExecution 完成
-      await prisma.$transaction([
-        prisma.processInstance.update({
-          where: { id: instance.id },
-          data: { variables: variables as Prisma.InputJsonValue },
-        }),
-        prisma.nodeExecution.update({
-          where: { id: nodeExecution.id },
-          data: {
-            status: result.wait ? 'WAITING' : 'COMPLETED',
-            output: (result.output ?? null) as Prisma.InputJsonValue,
-            finishedAt: new Date(),
-          },
-        }),
-      ]);
-
-      // 若节点暂停（人工任务），置实例为 WAITING_USER_TASK
+      // 若节点暂停（人工任务）：PE-17——行 WAITING + 实例 WAITING_USER_TASK +
+      // 变量快照单事务原子提交（原「行事务→实例独立更新」两段窗口摘除）
       if (result.wait) {
-        await prisma.processInstance.update({
-          where: { id: instance.id },
-          data: { status: 'WAITING_USER_TASK' },
-        });
+        await prisma.$transaction([
+          prisma.nodeExecution.update({
+            where: { id: nodeExecution.id },
+            data: {
+              status: 'WAITING',
+              output: (result.output ?? null) as Prisma.InputJsonValue,
+            },
+          }),
+          prisma.processInstance.update({
+            where: { id: instance.id },
+            data: {
+              status: 'WAITING_USER_TASK',
+              variables: variables as Prisma.InputJsonValue,
+            },
+          }),
+        ]);
         this.logger.log(`实例 ${instance.id} 在节点 ${node.id} 暂停，等待人工任务`);
-        return { result, completed: false };
+        return { result, completed: false, nodeExecutionId: nodeExecution.id };
       }
 
-      return { result, completed: true };
+      // PE-17：非等待路径的完成落库延迟至调用方——与路由留痕、令牌推进单事务原子提交
+      return { result, completed: true, nodeExecutionId: nodeExecution.id };
     } catch (err) {
       // 节点执行失败
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -510,7 +582,7 @@ export class ProcessEngine {
 
       // S2 失败处理（错误出口路由）：节点有 label 为 error/失败 的出边时，
       // 令牌路由到该分支（补偿/通知/回写由搭建者显式画节点），实例不失败；
-      // NodeExecution 仍留痕 FAILED（错误信息不因路由掩盖）。无 error 出边时维持实例 FAILED。
+      // NodeExecution 仍留痕 FAILED（错误信息不因路由掩盖）。
       // P1-15（对抗审查 R2-correctness-05）：label 归一匹配（trim+小写）——此前
       // 'Error'/'ERROR'/' Error ' 均字面不命中 → 实例静默 FAILED；多条 error 出边
       // 歧义由发布硬闸（collectErrorEdgeConflicts）前置拦截，引擎取首条保持可运行。
@@ -523,57 +595,34 @@ export class ProcessEngine {
         this.logger.warn(
           `实例 ${instance.id} 节点 ${node.id} 失败已路由到 error 分支 ${errorEdge.targetNodeID}`,
         );
-        await prisma.nodeExecution.update({
-          where: { id: nodeExecution.id },
-          data: {
-            status: 'FAILED',
-            error: errorMsg,
-            finishedAt: new Date(),
-            // 错误路由同样留痕（✅1）：FAILED 行正是"为什么走这条边"的典型现场
-            output: {
-              _routing: { nextNodeIds: [errorEdge.targetNodeID], at: new Date().toISOString() },
-            } as Prisma.InputJsonValue,
-          },
-        });
-        // 显式 nextNodeIds 交由调用方循环推进（移除当前令牌 + 添加 error 目标）
+        // PE-17：FAILED 行落库交由调用方与令牌推进原子提交（原两段写摘除），
+        // _routing 留痕（✅1）由调用方统一写入
         return {
           result: {
             nextNodeIds: [errorEdge.targetNodeID],
             output: { _errorRouted: errorMsg },
           },
           completed: true,
+          nodeExecutionId: nodeExecution.id,
+          markFailed: errorMsg,
         };
       }
 
-      await prisma.$transaction([
-        prisma.nodeExecution.update({
+      // PE-13（R-B 波次④⑤合并批）：无 error 出边异常不再置实例 FAILED——
+      // 原实现先行 FAILED 使 BullMQ attempts:3 重试进门即因非 RUNNING 早退全部
+      // 空转（瞬时依赖失败=审批永久失败）。新语义：执行行 FAILED 留痕（attempt
+      // 记录）、实例保持 RUNNING、异常上抛交重试；重试再入从失败节点重投（该节点
+      // 最新执行行为 FAILED，PE-17 原子化下无残留完成态）。耗尽处置=processor 侧
+      // final-failure 回调（finalizeFailedInstance，NonRetryableNodeError 同步落库）。
+      try {
+        await prisma.nodeExecution.update({
           where: { id: nodeExecution.id },
-          data: {
-            status: 'FAILED',
-            error: errorMsg,
-            finishedAt: new Date(),
-          },
-        }),
-        prisma.processInstance.update({
-          where: { id: instance.id },
-          data: { status: 'FAILED', error: errorMsg },
-        }),
-      ]);
-
-      // 子流程同步等待：子实例失败时同步失败父实例，避免父实例永久挂起
-      const parentLink = this.extractParentLink(instance.triggerContext);
-      if (parentLink) {
-        await this.delayQueue.add(
-          'resume',
-          {
-            instanceId: parentLink.instanceId,
-            nodeId: parentLink.nodeId,
-            kind: 'resume_parent',
-            subInstanceId: instance.id,
-            subStatus: 'FAILED',
-            error: errorMsg,
-          },
-          DEFAULT_JOB_OPTS,
+          data: { status: 'FAILED', error: errorMsg, finishedAt: new Date() },
+        });
+      } catch (updateErr) {
+        // 尽力而为留痕：DB 不可达时（常为异常根因）行保持 RUNNING，不掩盖原始异常
+        this.logger.warn(
+          `实例 ${instance.id} 节点 ${node.id} 失败留痕写入失败: ${updateErr instanceof Error ? updateErr.message : String(updateErr)}`,
         );
       }
       throw err;
@@ -1771,6 +1820,83 @@ export class ProcessEngine {
   }
 
   // ===========================================================================
+  // PE-13 失败恢复：final-failure 落库与 admin 重试（◆6）
+  // ===========================================================================
+
+  /**
+   * final-failure 回调（processor 侧调用）：实例置 FAILED（幂等，仅 RUNNING 时覆盖）
+   * + 子流程父恢复传播（失败语义与原引擎内联路径一致）。
+   * 调用时机：①NonRetryableNodeError（确定性失败同步落库，R2-scale-01——其吞错前提
+   * 「引擎已置 FAILED」随 PE-13 摘除，不同步落库则 9 处抛出点变永久 RUNNING 搁浅）；
+   * ②瞬时异常 BullMQ attempts 耗尽（判定点=attemptsMade+1 >= attempts，与
+   * shouldRetryJob 精确镜像）。瞬时重试期间实例保持 RUNNING、父实例继续等待。
+   */
+  async finalizeFailedInstance(instanceId: string, errorMsg: string): Promise<void> {
+    await this.withInstanceLock(instanceId, async () => {
+      const instance = await prisma.processInstance.findFirst({
+        where: { id: instanceId },
+        include: { processDef: true },
+      });
+      if (!instance || instance.status !== 'RUNNING') return; // 幂等：非 RUNNING 不覆盖
+      await prisma.processInstance.update({
+        where: { id: instanceId },
+        data: { status: 'FAILED', error: errorMsg },
+      });
+      this.logger.error(`实例 ${instanceId} 确定性失败/重试耗尽，置 FAILED: ${errorMsg}`);
+
+      // 子流程同步等待：子实例失败时同步失败父实例，避免父实例永久挂起
+      // （PE-09 队列解耦口径：父锁由 delay worker 独立获取，失败面由 PE-11 重试覆盖）
+      const parentLink = this.extractParentLink(instance.triggerContext);
+      if (parentLink) {
+        await this.delayQueue.add(
+          'resume',
+          {
+            instanceId: parentLink.instanceId,
+            nodeId: parentLink.nodeId,
+            kind: 'resume_parent',
+            subInstanceId: instance.id,
+            subStatus: 'FAILED',
+            error: errorMsg,
+          },
+          DEFAULT_JOB_OPTS,
+        );
+      }
+    });
+  }
+
+  /**
+   * ◆6 admin 重试（PE-13 恢复端点的引擎侧）：失败实例从失败节点重投。
+   * 仅 FAILED 可重试（400 显式拒绝）；活跃令牌即失败节点（失败路径不消费令牌），
+   * 重置 RUNNING 后重新入队——executeNextNode 从令牌节点重执行（该节点最新执行行
+   * 为 FAILED，PE-17 原子化下无残留完成态，重投即干净重执行）。
+   */
+  async retryInstance(instanceId: string): Promise<{ activeNodeIds: string[] }> {
+    return this.withInstanceLock(instanceId, async () => {
+      const instance = await prisma.processInstance.findFirst({
+        where: { id: instanceId },
+        include: { processDef: true },
+      });
+      if (!instance) throw new NotFoundException('流程实例不存在');
+      if (instance.status !== 'FAILED') {
+        throw new BadRequestException('仅失败实例可重试');
+      }
+      const activeNodeIds = (instance.activeNodeIds as string[]) ?? [];
+      if (activeNodeIds.length === 0) {
+        throw new BadRequestException('实例无活跃令牌，无法重试（请检查流程轨迹定位失败节点）');
+      }
+      await prisma.processInstance.update({
+        where: { id: instanceId },
+        data: { status: 'RUNNING', error: null },
+      });
+      this.logger.log(
+        `实例 ${instanceId} admin 重试：从失败节点重投（${activeNodeIds.join(',')}）`,
+      );
+      await this.processQueue.add('execute', { instanceId }, DEFAULT_JOB_OPTS);
+      return { activeNodeIds };
+    });
+  }
+
+  // ===========================================================================
   // 辅助：Schema 导航
   // ===========================================================================
 
@@ -1878,12 +2004,13 @@ export class ProcessEngine {
     nextNodeIds: string[],
     variables: Record<string, unknown>,
   ): Promise<InstanceRow> {
-    // 移除当前令牌
-    const remaining = instance.activeNodeIds.filter((id) => id !== currentNodeId);
-    // 汇聚门控：过滤掉暂扣的令牌，放行到齐的汇聚节点
-    const activated = this.gateJoinArrivals(variables, nextNodeIds);
-    // 添加下游令牌（去重）
-    const updated = [...new Set([...remaining, ...activated])];
+    // 移除当前令牌 + 汇聚门控 + 去重（与 PE-17 原子事务路径共用计算）
+    const updated = this.computeAdvancedTokens(
+      instance.activeNodeIds,
+      currentNodeId,
+      nextNodeIds,
+      variables,
+    );
 
     const refreshed = await prisma.processInstance.update({
       where: { id: instance.id },

@@ -311,8 +311,13 @@ describe('ProcessEngine 子流程同步等待', () => {
     });
     const { engine, delayQueue } = createEngine([boomExec]);
 
-    // executeNextNode 会吞掉执行器错误（引擎 catch 后 throw，由 worker 记录）
+    // PE-13 改写（红线 1 理由=工单契约本身）：引擎不再先行置 FAILED——瞬时失败
+    // 保持 RUNNING 上抛交 BullMQ 重试；重试耗尽后 processor 调 finalizeFailedInstance
+    // 落 FAILED 并投递父恢复 job。此处按新契约驱动完整终局链（engine 抛出 →
+    // processor final-failure 回调）。
     await expect(engine.executeNextNode('pi-sub-f')).rejects.toThrow('子流程内部错误');
+    expect(getStoredInstance(store, 'pi-sub-f')?.['status']).toBe('RUNNING'); // 瞬时失败保持 RUNNING
+    await engine.finalizeFailedInstance('pi-sub-f', '子流程内部错误');
 
     // 子实例 FAILED
     expect(getStoredInstance(store, 'pi-sub-f')?.['status']).toBe('FAILED');
@@ -538,7 +543,7 @@ describe('ProcessEngine 节点失败处理（S2 错误出口路由）', () => {
     expect(getStoredInstance(store, 'pi-err-cn')?.['status']).toBe('COMPLETED');
   });
 
-  it('节点失败且无 error 出边：实例置 FAILED（既有行为不变）', async () => {
+  it('PE-13：节点失败且无 error 出边——执行行 FAILED 留痕、实例保持 RUNNING 交重试', async () => {
     const schema = makeFailEngineSchema();
     const failExec = createMockExecutor('boom', async () => {
       throw new Error('无法恢复的失败');
@@ -552,15 +557,24 @@ describe('ProcessEngine 节点失败处理（S2 错误出口路由）', () => {
     });
     const store = setupInstanceStore([instance]);
 
-    // 既有契约：无 error 出边时失败向上抛（BullMQ 消费端记失败日志）
+    // PE-13 改写（红线 1 理由=工单契约本身）：原「实例先行置 FAILED」使 BullMQ
+    // attempts:3 重试进门即非 RUNNING 早退全部空转。新契约：失败上抛交重试、
+    // 行 FAILED 留痕（attempt 记录）、实例保持 RUNNING；终态由 processor 侧
+    // final-failure 回调（finalizeFailedInstance）落库。
     await expect(engine.executeNextNode('pi-err-fail')).rejects.toThrow('无法恢复的失败');
 
     const final = getStoredInstance(store, 'pi-err-fail');
-    expect(final?.['status']).toBe('FAILED');
-    expect(final?.['error']).toContain('无法恢复的失败');
+    expect(final?.['status']).toBe('RUNNING');
+    expect(final?.['activeNodeIds']).toEqual(['fail_node']); // 令牌未消费，可从失败节点重投
+    // attempt 留痕：执行行 FAILED
+    const failedRow = prisma.nodeExecution.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'FAILED',
+    );
+    expect(failedRow).toBeDefined();
+    expect((failedRow![0] as { data: { error: string } }).data.error).toContain('无法恢复的失败');
   });
 
-  it('✅1 边走向留痕：路由决策写入 NodeExecution.output._routing（事故可事后归因）', async () => {
+  it('✅1 边走向留痕：路由决策写入 NodeExecution.output._routing（PE-17 随完成原子提交）', async () => {
     const schema = {
       nodes: [makeNode('a', 'pass_a'), makeNode('b', 'pass_b'), makeNode('end_0', 'end')],
       edges: [makeEdge('a', 'b'), makeEdge('b', 'end_0')],
@@ -580,8 +594,9 @@ describe('ProcessEngine 节点失败处理（S2 错误出口路由）', () => {
     await engine.executeNextNode('pi-route-log');
     expect(getStoredInstance(store, 'pi-route-log')?.['status']).toBe('COMPLETED');
 
-    // 每个完成节点都有 _routing 留痕（含下一跳）
-    const routingCalls = prisma.nodeExecution.updateMany.mock.calls.filter((c: unknown[]) => {
+    // PE-17 改写（红线 1 理由=工单契约本身）：路由留痕由推进前的独立 updateMany
+    // 改为随完成行单事务写入（nodeExecution.update），原子性与可归因性兼得
+    const routingCalls = prisma.nodeExecution.update.mock.calls.filter((c: unknown[]) => {
       const data = (c[0] as { data: { output?: Record<string, unknown> } }).data;
       return data.output && typeof data.output === 'object' && '_routing' in data.output;
     });

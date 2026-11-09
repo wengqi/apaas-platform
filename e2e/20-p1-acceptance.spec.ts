@@ -564,6 +564,8 @@ test.describe('R1.5 验收刷新：P1 全链路协同', () => {
     }>(`/design/apps/${appId}/processes/${flow.id}`);
     const node = flowDetail.workflowSchema.nodes.find((n) => n.id === 'ut_cs');
     if (node?.data) node.data['taskName'] = '开放会签（v2）';
+    // PE-07（ADR-0007）：有 ACTIVE release 须先退役再编辑
+    await api.post(`/design/apps/${appId}/processes/${flow.id}/release/retire`, {});
     await api.put(`/design/apps/${appId}/processes/${flow.id}`, {
       workflowSchema: flowDetail.workflowSchema,
     });

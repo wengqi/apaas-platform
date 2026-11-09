@@ -191,6 +191,23 @@ export class ProcessService {
     // 已发布流程允许更新,但回退为草稿状态(便于开发迭代)
     // 生产环境应改为"新建版本"逻辑
     if (existing.status === 'PUBLISHED') {
+      // PE-07（R-B 波次③，◆4/ADR-0007）：存在生效 API 发布的流程禁止降级编辑
+      // （G6 major 冻结契约不被一次保存击穿；退役走主动 retire 端点）
+      const activeRelease = await prisma.processApiRelease.findFirst({
+        where: { tenantId, processDefId: processId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (activeRelease) {
+        throw new BadRequestException({
+          code: 'CONFLICT',
+          message:
+            '该流程存在生效的 API 发布（ACTIVE major），编辑前请先退役：POST /design/apps/' +
+            appId +
+            '/processes/' +
+            processId +
+            '/release/retire',
+        });
+      }
       // 回退为草稿,允许编辑
       await prisma.processDef.update({
         where: { id: processId },
@@ -277,6 +294,91 @@ export class ProcessService {
     });
 
     return { deleted: true };
+  }
+
+  /**
+   * PE-07（◆4/ADR-0007）：主动退役流程 API 发布——ACTIVE→DEPRECATED（旧 major
+   * 对调用方仍可调，退役 ≠ 不可调）。退役后流程恢复可编辑（PUT→DRAFT 闸放行）。
+   */
+  async retireProcessApiRelease(
+    tenantId: string,
+    appId: string,
+    processId: string,
+    userId?: string,
+  ) {
+    const existing = await this.requireProcessDef(tenantId, appId, processId);
+    const result = await prisma.processApiRelease.updateMany({
+      where: { tenantId, appId, processDefId: processId, status: 'ACTIVE' },
+      data: { status: 'DEPRECATED' },
+    });
+    if (result.count === 0) {
+      throw new BadRequestException('该流程没有生效的 API 发布（ACTIVE），无需退役');
+    }
+    await this.changeLogService.log({
+      tenantId,
+      appId: existing.appId,
+      module: 'PROCESS',
+      entityType: 'ProcessApiRelease',
+      entityId: processId,
+      entityName: existing.name,
+      changeType: 'UPDATE',
+      changedBy: userId ?? 'system',
+      changeDescription: `退役流程 API 发布（ACTIVE→DEPRECATED）: ${existing.name}`,
+    });
+    return { retired: true, count: result.count };
+  }
+
+  /**
+   * PE-07（◆4/ADR-0007）：归档流程——「请先归档」守卫指向的写入点自此可达
+   * （守卫链：ACTIVE release 先退役 → 归档 → 删除需过实例守卫）。归档即下线
+   * （记录/定时自动化随 PUBLISHED 状态消失）。
+   */
+  async archiveProcess(tenantId: string, appId: string, processId: string, changedBy?: string) {
+    const existing = await this.requireProcessDef(tenantId, appId, processId);
+    if (existing.status === 'ARCHIVED') {
+      throw new BadRequestException('该流程已归档');
+    }
+    const activeRelease = await prisma.processApiRelease.findFirst({
+      where: { tenantId, appId, processDefId: processId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (activeRelease) {
+      throw new BadRequestException(
+        '该流程存在生效的 API 发布（ACTIVE），归档前请先退役：POST /design/apps/' +
+          appId +
+          '/processes/' +
+          processId +
+          '/release/retire',
+      );
+    }
+    await prisma.processDef.update({
+      where: { id: processId },
+      data: { status: 'ARCHIVED' },
+    });
+    if (existing.status === 'PUBLISHED') {
+      // I-1 同口径：下线取消定时触发注册
+      void this.triggerService
+        .onProcessUnpublished(
+          existing.id,
+          existing.triggerType,
+          existing.cron,
+          existing.apiName,
+          existing.workflowSchema,
+        )
+        .catch((err) => this.logger.error(`归档取消定时触发失败: ${err.message}`));
+    }
+    await this.changeLogService.log({
+      tenantId,
+      appId: existing.appId,
+      module: 'PROCESS',
+      entityType: 'ProcessDef',
+      entityId: processId,
+      entityName: existing.name,
+      changeType: 'UPDATE',
+      changedBy: changedBy ?? 'system',
+      changeDescription: `归档流程: ${existing.name}`,
+    });
+    return { archived: true };
   }
 
   /** 发布流程（版本自增，状态→PUBLISHED）。 */

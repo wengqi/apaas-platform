@@ -45,3 +45,9 @@
 - after 加签实例化：存实例 variables `_addSign:<nodeId>` 完整有序名单（插当前 sequentialIndex 后）+writeAudit+changelog；ProcessDef 零写入（治理基线/冻结快照不可被运行期改写）。引擎 completeTask 顺序分支实例级名单优先消费（冻结定义回退）。非 sequential after→400 指引 parallel（原只污染）。
 - 语义修正：PE-06 冻结读源后原活表写对在途实例已不生效（加签链断裂）——本单恢复能力同时完成治理化；旧「写回定义」锚定测试被 ◆2 推翻改写（红线 1 理由=工单本身）。
 - 验证：process 273/273+全量 11/11+e2e 99/99。TC-268 v3.16。
+
+## 追记：波次③ PE-07（2026-11-09，本提交）——◆4/ADR-0007 出口
+
+- ACTIVE release 硬闸（PUT 降级/delete 400 指向退役路径）；主动退役端点 release/retire（ACTIVE→DEPRECATED+changelog，DEPRECATED 仍可调）；archive ARCHIVED 写入点（ACTIVE 先退役；PUBLISHED 归档取消定时注册 I-1 同口径；归档≠删除——删除仍过 PE-04 实例守卫）。
+- **契约变更（ADR-0007 §一）**：G6 迭代改「先退役再编辑再发新 major」——e2e/19、20 三处已改 retire 先行（14/14 过）。UI 退役/归档入口待后续轮。
+- 验证：+4 例 TDD 红→绿（trigger mock 补 onProcessUnpublished）+process 277/277+全量 11/11+e2e 99/99。TC-269/270 v3.17。

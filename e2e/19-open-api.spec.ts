@@ -122,6 +122,8 @@ test.describe('开放 API（G6）', () => {
 
   test('版本稳定性：发 major2 后，v1 钉版本仍按 v1 冻结契约执行', async () => {
     // 修改流程（updateProcess 会打回 DRAFT）→ 重新发布 → 发 major 2
+    // PE-07（ADR-0007）：有 ACTIVE release 须先退役（DEPRECATED 仍可调）再编辑
+    await api.post(`/design/apps/${appId}/processes/${processId}/release/retire`, {});
     await api.put(`/design/apps/${appId}/processes/${processId}`, {
       workflowSchema: schema('二审（新契约）'),
     });

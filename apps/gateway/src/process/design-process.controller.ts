@@ -137,6 +137,40 @@ export class DesignProcessController {
     return { ok: true as const, data };
   }
 
+  /** PE-07（◆4/ADR-0007）：主动退役流程 API 发布（ACTIVE→DEPRECATED）。 */
+  @Post('processes/:processId/release/retire')
+  @RequirePermission('PROCESS', 'EDIT', 'processId')
+  async retireProcessApiRelease(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('processId') processId: string,
+  ) {
+    const data = await this.processService.retireProcessApiRelease(
+      requireTenantId(req),
+      appId,
+      processId,
+      req.user.id,
+    );
+    return { ok: true as const, data };
+  }
+
+  /** PE-07（◆4/ADR-0007）：归档流程（ARCHIVED 写入点；ACTIVE release 先退役）。 */
+  @Post('processes/:processId/archive')
+  @RequirePermission('PROCESS', 'EDIT', 'processId')
+  async archiveProcess(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('processId') processId: string,
+  ) {
+    const data = await this.processService.archiveProcess(
+      requireTenantId(req),
+      appId,
+      processId,
+      req.user.id,
+    );
+    return { ok: true as const, data };
+  }
+
   @Get('processes/:processId/instances')
   @RequirePermission('PROCESS', 'VIEW')
   async listInstances(

@@ -16,7 +16,10 @@ function createMockChangeLogService() {
 }
 
 function createMockTriggerService() {
-  return { onRecordEvent: vi.fn().mockResolvedValue(undefined) };
+  return {
+    onRecordEvent: vi.fn().mockResolvedValue(undefined),
+    onProcessUnpublished: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function createMockEngine() {
@@ -172,6 +175,86 @@ describe('ProcessService deleteProcess（P1-30）', () => {
     };
     expect(err.getResponse().message).toContain('定时触发未配置 Cron 表达式');
     expect(prisma.processDef.update).not.toHaveBeenCalled();
+  });
+
+  it('PE-07：PUT 降级遇 ACTIVE release → 400 指向退役端点', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'PUBLISHED',
+      triggerType: null,
+      cron: null,
+    });
+    prisma.processApiRelease.findFirst.mockResolvedValue({ id: 'rel-1' });
+
+    const { service } = createService();
+    await expect(service.updateProcess('t1', 'app-1', 'pd-1', { name: 'X' })).rejects.toThrow(
+      /release\/retire/,
+    );
+    expect(prisma.processDef.update).not.toHaveBeenCalled();
+  });
+
+  it('PE-07：retire——ACTIVE→DEPRECATED + changelog', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'PUBLISHED',
+      triggerType: null,
+      cron: null,
+    });
+    prisma.processApiRelease.updateMany.mockResolvedValue({ count: 2 });
+
+    const { service, changeLogService } = createService();
+    const r = await service.retireProcessApiRelease('t1', 'app-1', 'pd-1', 'admin');
+    expect(r).toEqual({ retired: true, count: 2 });
+    expect(prisma.processApiRelease.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'ACTIVE' }),
+        data: { status: 'DEPRECATED' },
+      }),
+    );
+    expect(changeLogService.log).toHaveBeenCalled();
+  });
+
+  it('PE-07：retire 无 ACTIVE 发布 → 400 无需退役', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'PUBLISHED',
+      triggerType: null,
+      cron: null,
+    });
+    prisma.processApiRelease.updateMany.mockResolvedValue({ count: 0 });
+
+    const { service } = createService();
+    await expect(service.retireProcessApiRelease('t1', 'app-1', 'pd-1')).rejects.toThrow(
+      /无需退役/,
+    );
+  });
+
+  it('PE-07：archive——PUBLISHED 无 ACTIVE → ARCHIVED 写入点；有 ACTIVE → 400 指向退役', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'PUBLISHED',
+      triggerType: null,
+      cron: null,
+    });
+    prisma.processApiRelease.findFirst.mockResolvedValue(null);
+
+    const { service } = createService();
+    const r = await service.archiveProcess('t1', 'app-1', 'pd-1');
+    expect(r).toEqual({ archived: true });
+    expect(prisma.processDef.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'ARCHIVED' } }),
+    );
+
+    prisma.processApiRelease.findFirst.mockResolvedValue({ id: 'rel-1' });
+    await expect(service.archiveProcess('t1', 'app-1', 'pd-1')).rejects.toThrow(/release\/retire/);
   });
 
   it('P1-15：发布硬闸拦截双 error 出边歧义（error 级，同一节点）', async () => {

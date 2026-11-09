@@ -8,6 +8,7 @@ import {
   isNodeIncomplete,
   nodeIncompleteReason,
   collectErrorEdgeConflicts,
+  collectTriggerLoopIssues,
 } from './node-check.js';
 
 describe('isNodeIncomplete', () => {
@@ -245,5 +246,64 @@ describe('R-B functional 波次①（node-check 新规则）', () => {
         condition: { '==': [1, 2], extra: 1 },
       }),
     ).toBe(true);
+  });
+
+  describe('PE-08：触发环静态分析（collectTriggerLoopIssues）', () => {
+    const triggerNode = (triggerType: string, objectId = 'obj-x') => ({
+      id: 'tg',
+      type: 'trigger',
+      data: { title: '触发', triggerType, objectId },
+    });
+
+    it('环①：RECORD 触发 × object_operation 写回同一对象 → OBJECT_OP_WRITE', () => {
+      const issues = collectTriggerLoopIssues([
+        triggerNode('RECORD_CREATED'),
+        {
+          id: 'w',
+          type: 'object_operation',
+          data: { title: '写状态', objectId: 'obj-x', operation: 'update' },
+        },
+      ]);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.kind).toBe('OBJECT_OP_WRITE');
+      expect(issues[0]!.message).toContain('无界级联');
+    });
+
+    it('环②：RECORD_UPDATED 触发 × user_task 配置回写 → WRITEBACK_LOOP', () => {
+      const issues = collectTriggerLoopIssues([
+        triggerNode('RECORD_UPDATED'),
+        {
+          id: 't',
+          type: 'user_task',
+          data: { title: '审批', writeback: { field: 'status', approveValue: 'OK' } },
+        },
+      ]);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.kind).toBe('WRITEBACK_LOOP');
+    });
+
+    it('非环形态放行：写其他对象 / 只读操作 / 删除触发+回写 / 无触发绑定', () => {
+      expect(
+        collectTriggerLoopIssues([
+          triggerNode('RECORD_CREATED', 'obj-x'),
+          { id: 'w', type: 'object_operation', data: { objectId: 'obj-y', operation: 'update' } },
+        ]),
+      ).toEqual([]);
+      expect(
+        collectTriggerLoopIssues([
+          triggerNode('RECORD_CREATED'),
+          { id: 'w', type: 'object_operation', data: { objectId: 'obj-x', operation: 'query' } },
+        ]),
+      ).toEqual([]);
+      expect(
+        collectTriggerLoopIssues([
+          triggerNode('RECORD_DELETED'),
+          { id: 't', type: 'user_task', data: { writeback: { field: 'status' } } },
+        ]),
+      ).toEqual([]);
+      expect(
+        collectTriggerLoopIssues([{ id: 'tg', type: 'trigger', data: { triggerType: 'MANUAL' } }]),
+      ).toEqual([]);
+    });
   });
 });

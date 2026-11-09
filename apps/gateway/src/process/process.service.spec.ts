@@ -177,6 +177,34 @@ describe('ProcessService deleteProcess（P1-30）', () => {
     expect(prisma.processDef.update).not.toHaveBeenCalled();
   });
 
+  it('PE-08：触发环发布硬拦（对象操作写回触发对象）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'DRAFT',
+      workflowSchema: {
+        nodes: [
+          { id: 'tg', type: 'trigger', data: { triggerType: 'RECORD_CREATED', objectId: 'obj-x' } },
+          {
+            id: 'w',
+            type: 'object_operation',
+            data: { title: '写状态', operation: 'update', objectId: 'obj-x' },
+          },
+          { id: 'e', type: 'end', data: {} },
+        ],
+        edges: [],
+      },
+    });
+
+    const { service } = createService();
+    const err = (await service.publishProcess('t1', 'app-1', 'pd-1').catch((e: unknown) => e)) as {
+      getResponse: () => { message: string };
+    };
+    expect(err.getResponse().message).toContain('触发环');
+    expect(prisma.processDef.update).not.toHaveBeenCalled();
+  });
+
   it('PE-07：PUT 降级遇 ACTIVE release → 400 指向退役端点', async () => {
     prisma.processDef.findFirst.mockResolvedValue({
       id: 'pd-1',

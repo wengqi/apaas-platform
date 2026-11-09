@@ -200,3 +200,64 @@ export function collectErrorEdgeConflicts(
   }
   return issues;
 }
+
+/** PE-08（◆5）：触发环静态分析问题（发布硬闸直出）。 */
+export interface TriggerLoopIssue {
+  /** 环类型：OBJECT_OP_WRITE=对象操作写回触发对象；WRITEBACK_LOOP=回写×更新触发成环 */
+  kind: 'OBJECT_OP_WRITE' | 'WRITEBACK_LOOP';
+  /** 触发节点绑定对象 */
+  objectId: string;
+  message: string;
+}
+
+/**
+ * 触发环静态分析（PE-08，◆5=预检硬拦）：
+ * - 环①：RECORD_* 触发节点绑定对象 X + 本流程 object_operation/batch_operation
+ *   节点以 create/update 写同一对象 X——记录→流程→写记录→再触发，无界级联；
+ * - 环②：RECORD_UPDATED 触发绑定 X + 任意 user_task 配置了审批回写（writeback
+ *   写触发记录）——批准→回写→update 事件→再触发，无限循环。
+ * 判定纯静态（画布/发布预检同源直出）。
+ */
+export function collectTriggerLoopIssues(
+  nodes: Array<Record<string, unknown>>,
+  issues: TriggerLoopIssue[] = [],
+): TriggerLoopIssue[] {
+  const trigger = nodes.find((n) => String(n['type'] ?? '') === 'trigger') as
+    { data?: Record<string, unknown> } | undefined;
+  const td = (trigger?.data ?? {}) as Record<string, unknown>;
+  const triggerType = String(td['triggerType'] ?? '');
+  const objectId = typeof td['objectId'] === 'string' ? td['objectId'] : undefined;
+  if (!objectId || !triggerType.startsWith('RECORD_')) return issues;
+
+  const writesObject = (data: Record<string, unknown>): boolean => {
+    const op = String(data['operation'] ?? '');
+    return data['objectId'] === objectId && (op === 'create' || op === 'update');
+  };
+  for (const n of nodes) {
+    const type = String(n['type'] ?? '');
+    const data = (n['data'] ?? {}) as Record<string, unknown>;
+    if (
+      (type === 'objectOperation' || type === 'object_operation' || type === 'batch_operation') &&
+      writesObject(data)
+    ) {
+      issues.push({
+        kind: 'OBJECT_OP_WRITE',
+        objectId,
+        message: `触发环：流程由对象 ${objectId} 的记录变更触发，且节点「${String(data['title'] ?? type)}」会写回同一对象——将形成无界级联，请改写其他对象或移除写回`,
+      });
+    }
+    if (
+      triggerType === 'RECORD_UPDATED' &&
+      (type === 'userTask' || type === 'user_task') &&
+      data['writeback'] !== undefined &&
+      data['writeback'] !== null
+    ) {
+      issues.push({
+        kind: 'WRITEBACK_LOOP',
+        objectId,
+        message: `触发环：流程由对象 ${objectId} 的记录更新触发，且节点「${String(data['title'] ?? type)}」配置了审批回写（写回触发记录）——批准后将再次触发本流程，无限循环`,
+      });
+    }
+  }
+  return issues;
+}

@@ -51,3 +51,9 @@
 - ACTIVE release 硬闸（PUT 降级/delete 400 指向退役路径）；主动退役端点 release/retire（ACTIVE→DEPRECATED+changelog，DEPRECATED 仍可调）；archive ARCHIVED 写入点（ACTIVE 先退役；PUBLISHED 归档取消定时注册 I-1 同口径；归档≠删除——删除仍过 PE-04 实例守卫）。
 - **契约变更（ADR-0007 §一）**：G6 迭代改「先退役再编辑再发新 major」——e2e/19、20 三处已改 retire 先行（14/14 过）。UI 退役/归档入口待后续轮。
 - 验证：+4 例 TDD 红→绿（trigger mock 补 onProcessUnpublished）+process 277/277+全量 11/11+e2e 99/99。TC-269/270 v3.17。
+
+## 追记：波次③ PE-08 层①（2026-11-09，本提交）——波次③ 2/2 全清
+
+- 触发环发布预检静态硬拦：shared collectTriggerLoopIssues（环①对象操作写回触发对象/环②RECORD_UPDATED×回写），publishProcess 400 直出环清单，画布可同源标红。
+- **诚实登记**：运行时链深防护（◆5 打包项：ALS 跨 BullMQ 传播+链深环境变量+显式失败面）为后续子项——ALS 上下文不过队列边界，需触发上下文穿透 trigger/engine/record 三模块的设计 spike；环源已被静态硬拦封死（两形态），存量经 S-01 脏配置扫描兜底。
+- 验证：shared 23/23（+4）+process 278/278（+1）+全量 11/11+e2e 99/99。TC-271 v3.18。

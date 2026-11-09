@@ -18,7 +18,11 @@ import {
   Logger,
   ForbiddenException,
 } from '@nestjs/common';
-import { collectErrorEdgeConflicts, collectNodeIssues } from '@apaas/shared';
+import {
+  collectErrorEdgeConflicts,
+  collectNodeIssues,
+  collectTriggerLoopIssues,
+} from '@apaas/shared';
 import { findReferencingProcessNames } from '../shared/workflow-schema-refs.js';
 import { extractTriggerInfo } from './trigger.service.js';
 import { prisma, Prisma } from '@apaas/db';
@@ -404,6 +408,19 @@ export class ProcessService {
           .map((i) => `「${i.nodeTitle}」${i.reason}`)
           .join('；')}。请在流程编辑器补全后重试。`,
         issues: nodeIssues as never,
+      });
+    }
+
+    // PE-08（◆5=预检硬拦）：触发环静态分析——环①对象操作写回触发对象（无界级联）/
+    // 环②回写×更新触发（批准后再触发本流程无限循环）
+    const loopIssues = collectTriggerLoopIssues(schema.nodes as Array<Record<string, unknown>>);
+    if (loopIssues.length > 0) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: `流程存在触发环，无法发布：${loopIssues
+          .map((i) => i.message)
+          .join('；')}。请调整触发对象或移除写回节点后重试。`,
+        issues: loopIssues as never,
       });
     }
 

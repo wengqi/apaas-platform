@@ -11,6 +11,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMockPrisma } from '../test/test-helpers.js';
+import { BadRequestException } from '@nestjs/common';
 import { ProcessService } from './process.service.js';
 
 const TENANT = 'tenant-001';
@@ -149,5 +150,134 @@ describe('ProcessService.startInstance 发起人注入（A3）', () => {
 
     await makeService(engine).cancelInstance(TENANT, 'inst-9');
     expect(engine.cancelProcess).toHaveBeenCalledWith('inst-9', TENANT);
+  });
+
+  // ---------------------------------------------------------------------
+  // PE-01 ①/②（◆1=a+c）：手动启动闸 + 启动变量保留键剥离
+  // ---------------------------------------------------------------------
+  const triggerSchema = (triggerType: string | undefined) => ({
+    nodes: [
+      ...(triggerType ? [{ id: 'tg', type: 'trigger', data: { title: '触发', triggerType } }] : []),
+      { id: 's', type: 'start', data: {} },
+      { id: 'e', type: 'end', data: {} },
+    ],
+    edges: [{ sourceNodeID: 's', targetNodeID: 'e' }],
+  });
+
+  it('PE-01①：RECORD_CREATED 流程手动启动 → 400（判定源=schema 触发节点）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      tenantId: TENANT,
+      triggerType: 'MANUAL', // 顶层列不同步（画布形状）——判定必须走 schema 触发节点
+      workflowSchema: triggerSchema('RECORD_CREATED'),
+    });
+    await expect(makeService(engine).assertManualStartable(TENANT, 'pd-1')).rejects.toThrow(
+      /该流程为 RECORD_CREATED 触发，不支持手动启动/,
+    );
+  });
+
+  it('PE-01①：MANUAL/SCHEDULED 触发与种子回退（无触发节点+顶层列）放行', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      tenantId: TENANT,
+      triggerType: 'MANUAL',
+      workflowSchema: triggerSchema('MANUAL'),
+    });
+    await expect(
+      makeService(engine).assertManualStartable(TENANT, 'pd-1'),
+    ).resolves.toBeUndefined();
+
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-2',
+      tenantId: TENANT,
+      triggerType: 'SCHEDULED',
+      workflowSchema: triggerSchema('SCHEDULED'),
+    });
+    await expect(
+      makeService(engine).assertManualStartable(TENANT, 'pd-2'),
+    ).resolves.toBeUndefined();
+
+    // 种子/AI 建流：无触发节点，顶层列 MANUAL 回退
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-3',
+      tenantId: TENANT,
+      triggerType: 'MANUAL',
+      workflowSchema: triggerSchema(undefined),
+    });
+    await expect(
+      makeService(engine).assertManualStartable(TENANT, 'pd-3'),
+    ).resolves.toBeUndefined();
+
+    // 无触发节点但顶层列=RECORD_CREATED → 回退判定同样拦（按列实现则越权链修而存活）
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-4',
+      tenantId: TENANT,
+      triggerType: 'RECORD_CREATED',
+      workflowSchema: triggerSchema(undefined),
+    });
+    await expect(makeService(engine).assertManualStartable(TENANT, 'pd-4')).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('PE-01②：启动变量剥离引擎保留键全谱（recordId/sequentialIndex/global/_joins）', async () => {
+    await makeService(engine).startInstance(
+      TENANT,
+      'p-1',
+      {
+        variables: {
+          recordId: 'rec-hack',
+          sequentialIndex: 2,
+          global: { x: 1 },
+          _joins: {},
+          name: 'A',
+        },
+      },
+      'user-9',
+    );
+    expect(engine.startProcess).toHaveBeenCalledWith(
+      TENANT,
+      'p-1',
+      expect.objectContaining({ inputs: { name: 'A' } }),
+    );
+  });
+
+  it('PE-01①：listPublishedProcesses 投影 manualStartable（触发节点判定，顶层列回退）', async () => {
+    prisma.processDef.findMany.mockResolvedValue([
+      {
+        id: 'a',
+        tenantId: TENANT,
+        appId: 'app-1',
+        apiName: 'rec_flow',
+        name: '记录流',
+        version: 1,
+        status: 'PUBLISHED',
+        triggerType: 'MANUAL',
+        cron: null,
+        workflowSchema: triggerSchema('RECORD_CREATED'),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 'b',
+        tenantId: TENANT,
+        appId: 'app-1',
+        apiName: 'manual_flow',
+        name: '手动流',
+        version: 1,
+        status: 'PUBLISHED',
+        triggerType: 'MANUAL',
+        cron: null,
+        workflowSchema: triggerSchema('MANUAL'),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    const dtos = await makeService(engine).listPublishedProcesses(TENANT, 'app-1');
+    const byId = Object.fromEntries(
+      dtos.map((d: { id: string; manualStartable: boolean }) => [d.id, d.manualStartable]),
+    );
+    expect(byId['a']).toBe(false);
+    expect(byId['b']).toBe(true);
   });
 });

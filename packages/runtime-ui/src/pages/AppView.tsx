@@ -48,9 +48,11 @@ export default function AppView() {
     enabled: !!appId,
   });
 
-  /** 可发起流程：已发布 + MANUAL 触发 + start 节点绑定了发起页面 */
+  /** 可发起流程：已发布 + 手动可发起（PE-01①：manualStartable=schema 触发节点判定，
+      顶层列对画布流程不同步不可信）+ start 节点绑定了发起页面 */
   const launchableProcesses = (processes ?? []).filter((p) => {
-    if (p.triggerType !== 'MANUAL' || p.status !== 'PUBLISHED') return false;
+    if (p.status !== 'PUBLISHED') return false;
+    if ((p as unknown as { manualStartable?: boolean }).manualStartable === false) return false;
     const start = p.workflowSchema?.nodes?.find((n) => n.type === 'start');
     return typeof start?.data?.['startPageId'] === 'string';
   });

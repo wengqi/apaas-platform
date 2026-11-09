@@ -20,6 +20,7 @@ import {
 } from '@nestjs/common';
 import { collectErrorEdgeConflicts, collectNodeIssues } from '@apaas/shared';
 import { findReferencingProcessNames } from '../shared/workflow-schema-refs.js';
+import { extractTriggerInfo } from './trigger.service.js';
 import { prisma, Prisma } from '@apaas/db';
 import { ProcessInstanceStatus, TaskStatus } from '@apaas/db';
 import { ProcessEngine } from './process-engine.js';
@@ -64,6 +65,22 @@ export interface UpdateTemplateRequest {
   titleTemplate?: string;
   bodyTemplate?: string;
   variables?: unknown;
+}
+
+/** PE-01②：引擎保留变量键（启动变量禁入——键黑名单按 ◆1=c 全谱固化）。 */
+const ENGINE_RESERVED_VARIABLE_KEYS = ['recordId', 'sequentialIndex', 'global', '_joins'] as const;
+
+/** PE-01①：手动可发起判定（extractTriggerInfo 判定源，MANUAL/SCHEDULED 放行）。 */
+function isManualStartableDef(d: {
+  workflowSchema: unknown;
+  triggerType: string | null;
+  cron: string | null;
+}): boolean {
+  const info = extractTriggerInfo(d.workflowSchema, {
+    triggerType: d.triggerType,
+    cron: d.cron,
+  });
+  return info.triggerType === 'MANUAL' || info.triggerType === 'SCHEDULED';
 }
 
 @Injectable()
@@ -342,6 +359,11 @@ export class ProcessService {
     req: StartInstanceRequest,
     callerUserId?: string,
   ) {
+    // PE-01②（R-B，◆1=a+c）：启动变量剥离引擎保留键全谱——recordId（ref 消费）/
+    // sequentialIndex（依次审批作用域）/global（作用域）/ _joins（并行汇聚），
+    // 防用户注入直达数据面（recordId 借审批流改写任意记录）或跳过审批链
+    const inputs: Record<string, unknown> = { ...(req.variables ?? {}) };
+    for (const key of ENGINE_RESERVED_VARIABLE_KEYS) delete inputs[key];
     const triggerContext: Record<string, unknown> = {
       triggerType: 'MANUAL',
       triggeredBy: 'MANUAL',
@@ -351,7 +373,7 @@ export class ProcessService {
       // /越权撤回/定向指派 INITIATOR）；显式 triggeredByUser 仅保留给无 caller 身份的
       // 服务身份通道（OpenAPI 直调 engine.startProcess 不经本方法，webhook 两者皆不传）。
       triggeredByUser: callerUserId ?? req.triggeredByUser ?? null,
-      inputs: req.variables ?? {},
+      inputs,
     };
     const instanceId = await this.engine.startProcess(tenantId, processId, triggerContext);
     return this.getInstance(tenantId, instanceId);
@@ -614,6 +636,26 @@ export class ProcessService {
   }
 
   /** 取消实例。 */
+  /**
+   * PE-01①（R-B，◆1=a+c）：手动启动闸——判定源钉死 extractTriggerInfo（schema 触发
+   * 节点 SSOT、顶层列仅回退）。非 MANUAL/SCHEDULED 触发的流程拒绝手动启动
+   * （RECORD_CREATED 也可手动启动已被实证为越权链入口）。闸位在 controller 调用点，
+   * 不落 engine.startProcess（开放 API/记录/webhook/定时四通道共用该入口）。
+   */
+  async assertManualStartable(tenantId: string, processId: string): Promise<void> {
+    const def = await prisma.processDef.findFirst({ where: { id: processId, tenantId } });
+    if (!def) throw new NotFoundException('流程不存在');
+    const info = extractTriggerInfo(def.workflowSchema, {
+      triggerType: def.triggerType,
+      cron: def.cron,
+    });
+    if (info.triggerType !== 'MANUAL' && info.triggerType !== 'SCHEDULED') {
+      throw new BadRequestException(
+        `该流程为 ${info.triggerType ?? '未知'} 触发，不支持手动启动（仅手动/定时触发流程可发起）`,
+      );
+    }
+  }
+
   async cancelInstance(tenantId: string, instanceId: string, userId?: string) {
     const instance = await prisma.processInstance.findFirst({
       where: { id: instanceId, tenantId },
@@ -1229,6 +1271,8 @@ export class ProcessService {
       version: d.version,
       status: d.status,
       triggerType: d.triggerType ?? undefined,
+      // PE-01①：运行面手动发起清单过滤依据（触发节点判定，顶层列回退）
+      manualStartable: isManualStartableDef(d),
       createdAt: d.createdAt.toISOString(),
       updatedAt: d.updatedAt.toISOString(),
     };

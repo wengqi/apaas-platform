@@ -98,6 +98,8 @@ export class ProcessController {
     @Param('processId') processId: string,
     @Body() body: StartInstanceDto,
   ) {
+    // PE-01①：手动启动闸（非 MANUAL/SCHEDULED 触发的流程拒绝）——上提 controller 调用点
+    await this.processService.assertManualStartable(requireTenantId(req), processId);
     const data = await this.processService.startInstance(
       requireTenantId(req),
       processId,

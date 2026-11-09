@@ -13,3 +13,11 @@
 
 ## 余
 波次①之二：PE-01（◆1=a+c 三层：controller 闸 extractTriggerInfo 判定+保留键全谱剥离+引擎写 permissionContext 强制+listPublishedProcesses 过滤）——单独批 TDD。
+
+## 追记：波次①之二——PE-01 层①②（2026-11-09，本提交）
+
+- **层① 手动启动闸**：assertManualStartable（判定源 extractTriggerInfo，MANUAL/SCHEDULED 放行，其余 400）；controller startInstance 调用点先行；不落 engine.startProcess（webhook 硬写 MANUAL 与手动同值不可分，R2-compat-02）。
+- **manualStartable 投影**：listPublishedProcesses DTO 增字段；AppView 发起谓词从顶层列 triggerType 改读 manualStartable——原顶层列对画布流程不同步（I-1 缺陷遗产）=假 MANUAL，正是越权入口本体。
+- **层② 保留键剥离**：ENGINE_RESERVED_VARIABLE_KEYS = recordId/sequentialIndex/global/_joins，startInstance 变量入口剥离（◆1=c「服务端忽略保留键全谱」；b 命名空间方案按裁决留升级路径——若 TDD 实测 c 护不住新保留键消费点再升）。
+- **层③ 未做（另批）**：引擎内记录写（object-op/writeback）recordId ∈ 节点 objectId 配置域+应用域校验 + 发起人 permissionContext 行级强制——两 primal 攻击向量已由层①②闭合（假 MANUAL 闸+保留键剥离），残余面=引擎内部写通道（配置错误/跨对象桥梁），按工单独立批次 TDD。
+- 验证：spec 12/12（闸 3 形态含「无触发节点+顶层列 RECORD_CREATED 回退负向」/剥离/投影）+全量 11/11+e2e 99/99（AppView 谓词改源后 runtime 页面回归全绿）；TC-262/263 入库 v3.12。

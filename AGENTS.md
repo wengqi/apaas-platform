@@ -241,6 +241,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 ## 当前阶段（2026-09-30 方向修订快照，基线为 2026-09-27 定位修订）
 
+- ✅ **R-B 批 15：PE 波次④ PE-14（2026-11-09，失败回滚形态）**：completeTask 主路径锁失败（锁超时/Redis 故障等非业务错误）**回滚认领**——任务恢复 PENDING（decision/completedAt 清零）保持可重试，消除「锁外认领→锁超时 500→任务已 APPROVED 但令牌永不推进→重试撞认领 400」死局（实机复现：持锁 60s）；**业务 409（PE-04 定论守卫/实例终态）不回滚**——批次已被他人定论，回滚会复活任务。部分方案声明：裁决修法为「认领移入锁内或失败回滚」，本批采失败回滚形态；「认领移入锁内」统一方案（评审轮 7③ 与 PE-12 sweeper 联动）另行批评估；顺序分支内层锁同暴露登记。测试：approval-semantics +1 例（自建引擎挂具注入 withLock 拒绝，TDD）+process 279/279+全量 11/11+e2e 99/99。TC-273 入库 v3.20；QA-PLAN v1.0.35。余：PE-09/10/12/13（④×⑤ 依赖 PE-17 先行）与波次⑤~⑦。
+
 - ✅ **R-B 批 13：PE 波次④ PE-11（2026-11-09）**：**delayQueue 缺省作业选项收敛**——队列工厂补 defaultJobOptions（attempts=3+指数退避+removeOnComplete{age:3600,count:1000}+removeOnFail{age:86400}），与 processQueue 入队选项收敛为共享常量 `queue-defaults.ts QUEUE_DEFAULT_JOB_OPTS`（引擎 DEFAULT_JOB_OPTS 同源）——delayQueue 三类作业（延时恢复/等待条件轮询/审批超时）一次失败不再永久搁浅实例（BullMQ 缺省零重试），completed 作业不再永久滞留 Redis（实测 zset 跨多日滞留）。R2-compat-08：defaultJobOptions 仅对新 job 生效——在途一次性窗口自然消化；存量滞留清理脚本登记后续。测试：queue-defaults.spec 新建（常量四要素锚定）+process 279/279+全量 11/11+e2e 99/99。TC-272 入库 v3.19；QA-PLAN v1.0.34。余：波次④ PE-09/10/12/13/14（④×⑤ 依赖 PE-17 先行）与波次⑤~⑦。
 
 - ✅ **R-B 批 12：PE 波次③ PE-08 层①（2026-11-09）——波次③ 2/2 全清**：**触发环发布预检静态硬拦（◆5=预检硬拦主防线）**——shared 新增 collectTriggerLoopIssues（画布/预检同源直出）：环① RECORD_* 触发绑定 X×object_operation/batch_operation create/update 写回 X（记录→流程→写记录→再触发无界级联，含 e2e/14 固化链）；环② RECORD_UPDATED 触发 X×user_task 配置 writeback（批准→回写→update 事件→再触发无限循环，R2-scale-04 扩展面）；publishProcess 400 直出环清单。**诚实登记**：运行时链深防护（ALS 跨 BullMQ 队列传播设计）为显式后续子项——环源已封（发布硬拦两形态），存量流程经 S-01 扫描可控。测试：shared 23/23（+4 例含三非环放行）+process 278/278（+1 发布 400 例）+全量 11/11+e2e 99/99。TC-271 入库 v3.18；QA-PLAN v1.0.33。**PE 波次③ 2/2 全清**；余波次④（搁浅实例族 6 条，④×⑤ 依赖 PE-17 先行）~⑦。

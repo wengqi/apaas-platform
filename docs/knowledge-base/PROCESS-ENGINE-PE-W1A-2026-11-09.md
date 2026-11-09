@@ -63,3 +63,8 @@
 - delayQueue 队列工厂补 defaultJobOptions（QUEUE_DEFAULT_JOB_OPTS 共享常量，引擎 DEFAULT_JOB_OPTS 同源收敛）：attempts=3+指数退避+removeOnComplete/Fail——三类作业一次失败不再永久搁浅实例，completed 作业不再永久滞留 Redis。
 - R2-compat-08：defaultJobOptions 仅对新入队 job 生效（在途一次性窗口自然消化）；存量滞留清理脚本登记后续。
 - 验证：queue-defaults.spec 新建+process 279/279+全量 11/11+e2e 99/99。TC-272 v3.19。
+
+## 追记：波次④ PE-14（2026-11-09，本提交）
+
+- completeTask 主路径锁失败（非业务错误）回滚认领：任务恢复 PENDING（decision/completedAt 清零）保持可重试；业务 409（PE-04 守卫/实例终态）不回滚防复活。部分方案（裁决=移入锁内或失败回滚，采后者；移入锁内统一方案随 PE-12 批评估；顺序分支内层锁同暴露登记）。
+- 验证：approval-semantics +1 例（自建引擎挂具注入 withLock 拒绝）+process 279/279+全量 11/11+e2e 99/99。TC-273 v3.20。

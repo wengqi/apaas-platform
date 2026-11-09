@@ -806,160 +806,182 @@ export class ProcessEngine {
 
     // 实例状态推进与 worker 的令牌推进互斥（同进程内）
     // 锁回调返回 false = 聚合未完成（会签等待中），跳过令牌推进
-    const lockResult = await this.withInstanceLock(task.instance.id, async (): Promise<boolean> => {
-      // B2 修复：锁内重新加载实例，确保拿到最新 activeNodeIds/variables。
-      // 此前使用锁外读取的 task.instance.* 快照，并行双任务会读到相同快照
-      // 导致后写入者覆盖先写入者的令牌（令牌丢失 → 实例卡死）。
-      const instance = await prisma.processInstance.findFirst({
-        where: { id: task.instance.id },
-        include: { processDef: true },
-      });
-      if (!instance) throw new NotFoundException('流程实例不存在或已被删除');
+    // PE-14（R-B 波次④）：认领（锁外）与推进（锁内）之间的加锁失败——此前锁超时
+    // 抛 500 后任务已 APPROVED 终态但令牌永不推进，重试撞认领 400 死局（实例永久
+    // WAITING）。非业务错误（锁超时/Redis 故障）时回滚认领保持 PENDING 可重试；
+    // 业务 409（PE-04 定论守卫/实例终态）不回滚——批次已被他人定论，回滚会复活。
+    let lockResult: boolean;
+    try {
+      lockResult = await this.withInstanceLock(task.instance.id, async (): Promise<boolean> => {
+        // B2 修复：锁内重新加载实例，确保拿到最新 activeNodeIds/variables。
+        // 此前使用锁外读取的 task.instance.* 快照，并行双任务会读到相同快照
+        // 导致后写入者覆盖先写入者的令牌（令牌丢失 → 实例卡死）。
+        const instance = await prisma.processInstance.findFirst({
+          where: { id: task.instance.id },
+          include: { processDef: true },
+        });
+        if (!instance) throw new NotFoundException('流程实例不存在或已被删除');
 
-      // 评审 P1-2：锁内校验实例状态——已取消/已完成的实例不得被审批动作复活。
-      // 时序：任务认领(无锁) → cancelProcess 拿锁 TERMINATED → completeTask 拿锁。
-      if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
-        await prisma.processTask
-          .updateMany({
-            where: { id: taskId, status: taskStatus },
-            data: { status: 'CANCELLED', completedAt: new Date() },
-          })
-          .catch(() => {});
-        throw new ConflictException(
-          `流程实例已${instance.status === 'TERMINATED' ? '取消' : '结束'}，任务作废`,
-        );
-      }
+        // 评审 P1-2：锁内校验实例状态——已取消/已完成的实例不得被审批动作复活。
+        // 时序：任务认领(无锁) → cancelProcess 拿锁 TERMINATED → completeTask 拿锁。
+        if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
+          await prisma.processTask
+            .updateMany({
+              where: { id: taskId, status: taskStatus },
+              data: { status: 'CANCELLED', completedAt: new Date() },
+            })
+            .catch(() => {});
+          throw new ConflictException(
+            `流程实例已${instance.status === 'TERMINATED' ? '取消' : '结束'}，任务作废`,
+          );
+        }
 
-      // PE-04（R-B 波次②，◆3=409 拒绝不幂等）：节点批次定论守卫——
-      // ① nodeExecution 已 COMPLETED：single 定论后 parallel 加签残留任务晚到
-      //   决策一律拒绝（封「相反决策改写已定论结果」实机复现链）；
-      // ② 锁内重验本任务状态：claim（锁外）与聚合（锁内）窗口里，或签首个决策
-      //   已终结批次（兄弟任务被 CANCELLED）——晚到者 409（封「双决策双推进」链）。
-      // 残余（工单已认知）：single 推进入 worker 异步标记 nodeExec 前的毫秒级窗口
-      // 由 B2 令牌锁互斥兜底。
-      if (task.nodeExecutionId) {
-        const nodeExec = await prisma.nodeExecution.findUnique({
-          where: { id: task.nodeExecutionId },
+        // PE-04（R-B 波次②，◆3=409 拒绝不幂等）：节点批次定论守卫——
+        // ① nodeExecution 已 COMPLETED：single 定论后 parallel 加签残留任务晚到
+        //   决策一律拒绝（封「相反决策改写已定论结果」实机复现链）；
+        // ② 锁内重验本任务状态：claim（锁外）与聚合（锁内）窗口里，或签首个决策
+        //   已终结批次（兄弟任务被 CANCELLED）——晚到者 409（封「双决策双推进」链）。
+        // 残余（工单已认知）：single 推进入 worker 异步标记 nodeExec 前的毫秒级窗口
+        // 由 B2 令牌锁互斥兜底。
+        if (task.nodeExecutionId) {
+          const nodeExec = await prisma.nodeExecution.findUnique({
+            where: { id: task.nodeExecutionId },
+            select: { status: true },
+          });
+          if (nodeExec?.status === 'COMPLETED') {
+            throw new ConflictException({
+              code: 'CONFLICT',
+              message: '该审批节点已定论，晚到决策被拒绝',
+            });
+          }
+        }
+        const freshTask = await prisma.processTask.findUnique({
+          where: { id: taskId },
           select: { status: true },
         });
-        if (nodeExec?.status === 'COMPLETED') {
+        if (freshTask && freshTask.status !== taskStatus) {
           throw new ConflictException({
             code: 'CONFLICT',
-            message: '该审批节点已定论，晚到决策被拒绝',
+            message: '任务批次已定论（或签已由其他决策终结），该决策被拒绝',
           });
         }
-      }
-      const freshTask = await prisma.processTask.findUnique({
-        where: { id: taskId },
-        select: { status: true },
-      });
-      if (freshTask && freshTask.status !== taskStatus) {
-        throw new ConflictException({
-          code: 'CONFLICT',
-          message: '任务批次已定论（或签已由其他决策终结），该决策被拒绝',
-        });
-      }
 
-      // 写入任务决策到节点输出变量，供下游节点引用
-      const variables = (instance.variables as Record<string, unknown>) ?? {};
-      writeNodeOutput(variables, task.nodeId, {
-        decision: canonicalDecision,
-        comment,
-        formData,
-        assignee: userId,
-      });
-      // 决策顶层别名（R5.5 实测修复 2026-10-09）：决策仅存在于节点命名空间
-      // （<nodeId>.output.decision），方言指南/画布教的边条件 {"var":"decision"}
-      // 求值顶层恒 undefined → 条件边全不匹配 → 令牌静默终止（实例 COMPLETED
-      // 但零回写零通知）。注入顶层规范别名使指南契约成真；dotted 用法不受影响。
-      variables['decision'] = canonicalDecision;
-
-      // R1.3 会签并发封窗：锁内重验同节点 PENDING——聚合判定在锁外读数存在
-      // 竞态窗口（两个会签任务并发 complete 双推进），以锁内为准做最终裁决。
-      // 或签的兄弟任务已被锁外取消，这里 PENDING 计数自然为 0，不受影响。
-      if (approvalMode === 'countersign' && isApproved) {
-        const stillPending = await prisma.processTask.count({
-          where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+        // 写入任务决策到节点输出变量，供下游节点引用
+        const variables = (instance.variables as Record<string, unknown>) ?? {};
+        writeNodeOutput(variables, task.nodeId, {
+          decision: canonicalDecision,
+          comment,
+          formData,
+          assignee: userId,
         });
-        if (stillPending > 0) {
-          this.logger.log(
-            `会签节点 ${task.nodeId} 锁内重验仍有 ${stillPending} 个 PENDING，等待（防并发双推进）`,
-          );
-          return false;
+        // 决策顶层别名（R5.5 实测修复 2026-10-09）：决策仅存在于节点命名空间
+        // （<nodeId>.output.decision），方言指南/画布教的边条件 {"var":"decision"}
+        // 求值顶层恒 undefined → 条件边全不匹配 → 令牌静默终止（实例 COMPLETED
+        // 但零回写零通知）。注入顶层规范别名使指南契约成真；dotted 用法不受影响。
+        variables['decision'] = canonicalDecision;
+
+        // R1.3 会签并发封窗：锁内重验同节点 PENDING——聚合判定在锁外读数存在
+        // 竞态窗口（两个会签任务并发 complete 双推进），以锁内为准做最终裁决。
+        // 或签的兄弟任务已被锁外取消，这里 PENDING 计数自然为 0，不受影响。
+        if (approvalMode === 'countersign' && isApproved) {
+          const stillPending = await prisma.processTask.count({
+            where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+          });
+          if (stillPending > 0) {
+            this.logger.log(
+              `会签节点 ${task.nodeId} 锁内重验仍有 ${stillPending} 个 PENDING，等待（防并发双推进）`,
+            );
+            return false;
+          }
         }
-      }
 
-      // PE-06：驳回路由读冻结 schema（?? 活表回退）
-      const schema = (instance.frozenWorkflowSchema ??
-        instance.processDef.workflowSchema) as unknown as WorkflowSchema;
-      const currentActive = (instance.activeNodeIds as string[]) ?? [];
+        // PE-06：驳回路由读冻结 schema（?? 活表回退）
+        const schema = (instance.frozenWorkflowSchema ??
+          instance.processDef.workflowSchema) as unknown as WorkflowSchema;
+        const currentActive = (instance.activeNodeIds as string[]) ?? [];
 
-      // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
-      // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
-      let nextNodeIds: string[];
-      if (isRejected) {
-        // 从节点 data 中读取 rejectToNodeId 配置
-        const currentNode = schema.nodes?.find((n) => n.id === task.nodeId);
-        const rejectToNodeId = currentNode?.data?.rejectToNodeId as string | undefined;
-        if (rejectToNodeId) {
-          // 驳回：跳回指定节点
-          nextNodeIds = [rejectToNodeId];
-          this.logger.log(`任务 ${taskId} 驳回，实例 ${instance.id} 跳回节点 ${rejectToNodeId}`);
+        // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
+        // 则跳过正常下游节点，直接将 token 跳回 rejectToNodeId
+        let nextNodeIds: string[];
+        if (isRejected) {
+          // 从节点 data 中读取 rejectToNodeId 配置
+          const currentNode = schema.nodes?.find((n) => n.id === task.nodeId);
+          const rejectToNodeId = currentNode?.data?.rejectToNodeId as string | undefined;
+          if (rejectToNodeId) {
+            // 驳回：跳回指定节点
+            nextNodeIds = [rejectToNodeId];
+            this.logger.log(`任务 ${taskId} 驳回，实例 ${instance.id} 跳回节点 ${rejectToNodeId}`);
+          } else {
+            // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
+            nextNodeIds = this.resolveEdgeTargets(schema, task.nodeId, variables);
+          }
         } else {
-          // 未配置驳回目标，按正常流程走（reject 作为条件供下游 condition 判断）
+          // 正常推进：移除当前节点，按边级条件求值添加下游节点
           nextNodeIds = this.resolveEdgeTargets(schema, task.nodeId, variables);
         }
-      } else {
-        // 正常推进：移除当前节点，按边级条件求值添加下游节点
-        nextNodeIds = this.resolveEdgeTargets(schema, task.nodeId, variables);
-      }
 
-      // 汇聚门控：并行分支内的人工任务完成后，下游汇聚点需等待全部分支令牌
-      const activated = this.gateJoinArrivals(variables, nextNodeIds);
-      const updatedActive = [
-        ...new Set([...currentActive.filter((id) => id !== task.nodeId), ...activated]),
-      ];
+        // 汇聚门控：并行分支内的人工任务完成后，下游汇聚点需等待全部分支令牌
+        const activated = this.gateJoinArrivals(variables, nextNodeIds);
+        const updatedActive = [
+          ...new Set([...currentActive.filter((id) => id !== task.nodeId), ...activated]),
+        ];
 
-      // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
-      await prisma.$transaction([
-        prisma.processInstance.update({
-          where: { id: instance.id },
-          data: {
-            variables: variables as Prisma.InputJsonValue,
-            status: 'RUNNING',
-            activeNodeIds: updatedActive,
-          },
-        }),
-        prisma.nodeExecution.update({
-          where: { id: task.nodeExecutionId },
-          data: { status: 'COMPLETED', finishedAt: new Date() },
-        }),
-      ]);
+        // 标记关联 NodeExecution 完成 + 更新实例状态和活跃节点
+        await prisma.$transaction([
+          prisma.processInstance.update({
+            where: { id: instance.id },
+            data: {
+              variables: variables as Prisma.InputJsonValue,
+              status: 'RUNNING',
+              activeNodeIds: updatedActive,
+            },
+          }),
+          prisma.nodeExecution.update({
+            where: { id: task.nodeExecutionId },
+            data: { status: 'COMPLETED', finishedAt: new Date() },
+          }),
+        ]);
 
-      this.logger.log(`任务 ${taskId} 已完成（${decisionUpper}），实例 ${instance.id} 恢复执行`);
+        this.logger.log(`任务 ${taskId} 已完成（${decisionUpper}），实例 ${instance.id} 恢复执行`);
 
-      // 交互评审（2026-10-04）P0：审批结果自动回写触发记录——
-      // 小白最短路径（表单提交→审批）此前审批通过后记录状态字段永远停留原值，
-      // 构成"反馈环三断"之首。节点配置 node.data.writeback = { field, approveValue, rejectValue }，
-      // 记录上下文取自实例变量（记录创建触发器写入的 recordId）。
-      await this.writebackApprovalResult(task, instance, nodeDef, variables, isApproved, userId);
+        // 交互评审（2026-10-04）P0：审批结果自动回写触发记录——
+        // 小白最短路径（表单提交→审批）此前审批通过后记录状态字段永远停留原值，
+        // 构成"反馈环三断"之首。节点配置 node.data.writeback = { field, approveValue, rejectValue }，
+        // 记录上下文取自实例变量（记录创建触发器写入的 recordId）。
+        await this.writebackApprovalResult(task, instance, nodeDef, variables, isApproved, userId);
 
-      // --- 抄送逻辑 ---
-      await this.sendCcNotification(
-        schema,
-        task.nodeId,
-        instance.tenantId,
-        instance.processDef.appId,
-        instance.processDef.name,
-        task.taskName,
-        decisionUpper,
-        comment,
-      );
+        // --- 抄送逻辑 ---
+        await this.sendCcNotification(
+          schema,
+          task.nodeId,
+          instance.tenantId,
+          instance.processDef.appId,
+          instance.processDef.name,
+          task.taskName,
+          decisionUpper,
+          comment,
+        );
 
-      // --- 审批结果默认通知（业务用户旅程 R3 2026-10-06）---
-      await this.notifyInitiatorDefault(schema, instance, task, isApproved, comment);
-      return true;
-    });
+        // --- 审批结果默认通知（业务用户旅程 R3 2026-10-06）---
+        await this.notifyInitiatorDefault(schema, instance, task, isApproved, comment);
+        return true;
+      });
+    } catch (err: unknown) {
+      const business =
+        err instanceof ConflictException ||
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException;
+      if (business) throw err;
+      // PE-14：加锁失败（锁超时/Redis 故障）——回滚认领保持 PENDING 可重试，
+      // 不再「已 APPROVED 终态但令牌永不推进，重试撞认领 400」死局
+      await prisma.processTask
+        .updateMany({
+          where: { id: taskId, status: taskStatus },
+          data: { status: 'PENDING', decision: null, completedAt: null },
+        })
+        .catch(() => {});
+      throw err;
+    }
 
     // 锁回调返回 false = 聚合未完成（会签等待），不推进令牌
     const shouldAdvance = await lockResult;

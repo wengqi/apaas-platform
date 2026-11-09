@@ -221,6 +221,45 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(processQueue.add).toHaveBeenCalledTimes(1);
   });
 
+  it('PE-14：加锁失败（非业务错误）→ 回滚认领保持 PENDING 可重试', async () => {
+    const schema = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance, nodeExecutionId: 'ne-1' });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+    const registry = createMockRegistry([]);
+    const inAppMessageService = { create: vi.fn().mockResolvedValue(undefined) };
+    const processQueue = createMockQueue();
+    const delayQueue = createMockQueue();
+    const engine = new ProcessEngine(
+      registry as unknown as ConstructorParameters<typeof ProcessEngine>[0],
+      inAppMessageService as unknown as ConstructorParameters<typeof ProcessEngine>[1],
+      {
+        withLock: () => Promise.reject(new Error('lock timeout')),
+      } as unknown as ConstructorParameters<typeof ProcessEngine>[2],
+      {
+        resolve: vi.fn().mockResolvedValue({ environmentId: '', versionId: null, bundle: null }),
+      } as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+      processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
+      delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
+      { update: vi.fn() } as unknown as ConstructorParameters<typeof ProcessEngine>[6],
+    );
+
+    await expect(engine.completeTask('t1', 'u1', 'approve', undefined, undefined)).rejects.toThrow(
+      'lock timeout',
+    );
+    const rollback = prisma.processTask.updateMany.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'PENDING',
+    );
+    expect(rollback).toBeDefined();
+  });
+
   it('PE-04：nodeExecution 已定论 → 晚到决策 409（single 定论后残留任务链）', async () => {
     const schema = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
     const instance = makeProcessInstance({

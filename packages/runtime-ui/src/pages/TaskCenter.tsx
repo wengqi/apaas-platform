@@ -9,7 +9,7 @@ import { CheckSquareOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi, type ProcessTask } from '../api/tasks.js';
 import { buildColumns } from './task-center/columns.js';
-import { normalizeItems } from './task-center/utils.js';
+import { apiErrorMessage, normalizeItems } from './task-center/utils.js';
 import { ListErrorAlert } from './task-center/ListErrorAlert.js';
 import MyInitiated from './task-center/MyInitiated.js';
 import { TaskDetailTabs } from './task-center/TaskDetailTabs.js';
@@ -94,6 +94,42 @@ export default function TaskCenter() {
     setBoundPageFailed(false);
     setModalOpen(true);
   };
+
+  // functional-08：加签——任务保留在原受理人待办（依次=被加签人先审，并行=同批会签），
+  // 成功后刷新列表（新任务随受理人变化出现）
+  const addSignMutation = useMutation({
+    mutationFn: ({
+      taskId,
+      userId,
+      position,
+    }: {
+      taskId: string;
+      userId: string;
+      position: 'after' | 'parallel';
+    }) => tasksApi.addSign(taskId, { userId, position }),
+    onSuccess: () => {
+      message.success('已加签');
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (err: unknown) => {
+      message.error(`加签失败: ${apiErrorMessage(err)}`);
+    },
+  });
+
+  // functional-08：转办——任务移交新受理人，离开我的待办（关闭弹窗并刷新）
+  const delegateMutation = useMutation({
+    mutationFn: ({ taskId, userId }: { taskId: string; userId: string }) =>
+      tasksApi.delegate(taskId, userId),
+    onSuccess: () => {
+      message.success('已转办');
+      setModalOpen(false);
+      setSelectedTask(null);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (err: unknown) => {
+      message.error(`转办失败: ${apiErrorMessage(err)}`);
+    },
+  });
 
   const handleComplete = (decision: string) => {
     if (!selectedTask) return;
@@ -232,6 +268,15 @@ export default function TaskCenter() {
             isPending={completeMutation.isPending}
             onClose={() => setModalOpen(false)}
             onComplete={handleComplete}
+            onAddSign={(userId, position) => {
+              if (!selectedTask) return;
+              addSignMutation.mutate({ taskId: selectedTask.id, userId, position });
+            }}
+            onDelegate={(userId) => {
+              if (!selectedTask) return;
+              delegateMutation.mutate({ taskId: selectedTask.id, userId });
+            }}
+            actionPending={addSignMutation.isPending || delegateMutation.isPending}
             allowReject={taskDetail?.allowReject !== false && taskDetail?.rejectConfigured === true}
             rejectReason={
               taskDetail?.rejectConfigured === false

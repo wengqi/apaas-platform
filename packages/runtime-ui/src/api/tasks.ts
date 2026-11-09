@@ -89,6 +89,14 @@ export const tasksApi = {
   delegate: (taskId: string, delegatedTo: string) =>
     apiClient.post(`/tasks/${taskId}/delegate`, { delegatedTo }).then((res) => res.data.data),
 
+  /** 加签（R-B functional-08）：追加审批人（after=依次补审 / parallel=并行会签） */
+  addSign: (taskId: string, body: { userId: string; position?: 'after' | 'parallel' }) =>
+    apiClient.post(`/tasks/${taskId}/add-sign`, body).then((res) => res.data.data),
+
+  /** 撤回我发起的流程实例（R-B functional-08）：仅发起人，待办作废、实例 TERMINATED */
+  withdraw: (instanceId: string) =>
+    apiClient.post(`/instances/${instanceId}/withdraw`).then((res) => res.data.data),
+
   /** 获取流程轨迹 */
   getTrace: (instanceId: string) =>
     apiClient

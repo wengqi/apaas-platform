@@ -6,17 +6,30 @@
  */
 
 import { useState } from 'react';
-import { Button, Descriptions, Modal, Table, Tag } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { Button, Descriptions, Modal, Space, Table, Tag, message } from 'antd';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 import { tasksApi, type MyInstance } from '../../api/tasks.js';
 import TraceViewer from '../../components/TraceViewer.js';
 import { INSTANCE_STATUS_COLORS, INSTANCE_STATUS_LABELS } from './constants.js';
 import { ListErrorAlert } from './ListErrorAlert.js';
-import { extractRecordTitle } from './utils.js';
+import { apiErrorMessage, canWithdraw, extractRecordTitle } from './utils.js';
 
 export default function MyInitiated() {
   const [selected, setSelected] = useState<MyInstance | null>(null);
+  const queryClient = useQueryClient();
+
+  // functional-08：发起人撤回——仅进行中的实例可撤回，后端 403/400 语义直接透出
+  const withdrawMutation = useMutation({
+    mutationFn: (instanceId: string) => tasksApi.withdraw(instanceId),
+    onSuccess: () => {
+      message.success('已撤回，该流程全部待办已作废');
+      void queryClient.invalidateQueries({ queryKey: ['instances', 'mine'] });
+    },
+    onError: (err: unknown) => {
+      message.error(apiErrorMessage(err));
+    },
+  });
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['instances', 'mine'],
@@ -67,11 +80,34 @@ export default function MyInitiated() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 140,
       render: (_: unknown, r: MyInstance) => (
-        <Button type="link" size="small" onClick={() => setSelected(r)}>
-          进度
-        </Button>
+        <Space size={0}>
+          <Button type="link" size="small" onClick={() => setSelected(r)}>
+            进度
+          </Button>
+          {canWithdraw(r.status) && (
+            <Button
+              type="link"
+              size="small"
+              danger
+              loading={withdrawMutation.isPending && withdrawMutation.variables === r.id}
+              onClick={() => {
+                // 撤回不可逆 — 二次确认防误触；非发起人/终态由后端 403/400 显式拒绝
+                Modal.confirm({
+                  title: '确认撤回该申请？',
+                  content: '撤回后该流程全部待办作废、实例终止，此操作不可撤销。',
+                  okText: '确认撤回',
+                  okType: 'danger',
+                  cancelText: '取消',
+                  onOk: () => withdrawMutation.mutate(r.id),
+                });
+              }}
+            >
+              撤回
+            </Button>
+          )}
+        </Space>
       ),
     },
   ];

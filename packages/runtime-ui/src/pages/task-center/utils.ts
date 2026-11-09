@@ -29,3 +29,17 @@ export function extractRecordTitle(triggerContext?: Record<string, unknown> | nu
   }
   return null;
 }
+
+/** functional-08：可撤回状态（仅进行中的实例可撤回，终态行不显示撤回入口）。 */
+export function canWithdraw(status: string): boolean {
+  return status === 'RUNNING' || status === 'WAITING_USER_TASK';
+}
+
+/** functional-08：从 API 错误中提取后端语义消息（403/400 直接透出，不吞成通用文案）。 */
+export function apiErrorMessage(err: unknown): string {
+  const e = (err ?? {}) as {
+    response?: { data?: { error?: { message?: string } } };
+    message?: string;
+  };
+  return e.response?.data?.error?.message ?? e.message ?? '请求失败';
+}

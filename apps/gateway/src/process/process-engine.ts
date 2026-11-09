@@ -685,8 +685,10 @@ export class ProcessEngine {
       select: { id: true, status: true, assignee: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     });
+    // PE-06（R-B 波次②③合并设计）：聚合判定读冻结 schema（?? 活表回退）——
+    // 已发布流程被保存新 schema 后在途实例的会签/依次语义不漂移
     const nodeDef = (
-      task.instance.processDef.workflowSchema as {
+      (task.instance.frozenWorkflowSchema ?? task.instance.processDef.workflowSchema) as {
         nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
       } | null
     )?.nodes?.find((n) => n.id === task.nodeId);
@@ -856,7 +858,9 @@ export class ProcessEngine {
         }
       }
 
-      const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
+      // PE-06：驳回路由读冻结 schema（?? 活表回退）
+      const schema = (instance.frozenWorkflowSchema ??
+        instance.processDef.workflowSchema) as unknown as WorkflowSchema;
       const currentActive = (instance.activeNodeIds as string[]) ?? [];
 
       // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
@@ -1107,7 +1111,9 @@ export class ProcessEngine {
       return;
     }
 
-    const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
+    // PE-06：恢复路径读冻结 schema（?? 活表回退）
+    const schema = (instance.frozenWorkflowSchema ??
+      instance.processDef.workflowSchema) as unknown as WorkflowSchema;
     const node = this.findNode(schema, nodeId);
     if (!node) {
       this.logger.warn(`实例 ${instanceId} 等待条件节点 ${nodeId} 不存在于 Schema，跳过恢复`);
@@ -1219,7 +1225,9 @@ export class ProcessEngine {
     }
 
     const variables = (instance.variables as Record<string, unknown>) ?? {};
-    const schema = instance.processDef.workflowSchema as unknown as WorkflowSchema;
+    // PE-06：恢复推进读冻结 schema（?? 活表回退）
+    const schema = (instance.frozenWorkflowSchema ??
+      instance.processDef.workflowSchema) as unknown as WorkflowSchema;
     const nextNodeIds = this.resolveEdgeTargets(schema, nodeId, variables);
     await this.advanceTokens(instance, nodeId, nextNodeIds, variables);
     return nextNodeIds;

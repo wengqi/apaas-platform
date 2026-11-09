@@ -27,3 +27,9 @@
 - object_operation update/delete 写前 `assertWritableTarget`：①recordId ∈ 节点 objectId 配置域+应用域（跨对象/跨应用 NonRetryable）；②发起人 permissionContext 强制携带（explain 取 ALLOW 规则 mergedCondition/fieldScope 注入写内核 WHERE）。
 - **裁决语义修正**：初版「无 EDIT 硬拒」被 e2e 16/20/21 实证打破审批回写契约（发起人通常仅 CREATE）——按裁决括号项修正为携带语义，无规则残余明示（R2-security-03 原文「不可作理想项」）。writeback 豁免域校验（recordId 引擎生成非注入）。
 - 验证：node-executors 46/46（+5，含既有 2 例夹具随域校验前置修正——红线 1 理由=防呆语义保留仅消息/夹具变更）+process 270/270+gateway 1068+e2e 99/99（采购链修复实证）。TC-264 入库 v3.13。
+
+## 追记：波次②③合并批一站——PE-06 冻结单源化（2026-11-09，本提交）
+
+- ②×③ 波次依赖地基（PE-05 实例化×PE-06 读源对聚合段是相反改写指令，先定读源）：completeTask 聚合判定/驳回路由/等待条件恢复/恢复推进四处统一改读 `instance.frozenWorkflowSchema ?? processDef.workflowSchema`。
+- 分叉回归测试：冻结 sequential [u1,u2,u3] × 活表被改 single → u1 通过后 u2 任务照生成、令牌不推进（改前读活表则 single 直通推进——红→绿）。
+- 验证：process 271/271+全量 11/11+typecheck+e2e 99/99。TC-265 入库 v3.14。PE-04/05 下一批在此读源上实施。

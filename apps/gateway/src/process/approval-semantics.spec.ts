@@ -221,6 +221,40 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(processQueue.add).toHaveBeenCalledTimes(1);
   });
 
+  it('PE-06：聚合判定读冻结 schema——发布后活表被改（sequential→single）不漂移在途实例', async () => {
+    const frozen = makeUserTaskSchema({
+      approvalMode: 'sequential',
+      approveUsers: ['u1', 'u2', 'u3'],
+    });
+    const liveChanged = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      variables: { n1: { sequentialIndex: 0 } },
+      frozenWorkflowSchema: frozen,
+      processDef: makeProcessDef({ workflowSchema: liveChanged }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'APPROVED', assignee: 'u1', createdAt: new Date() },
+    ]);
+    prisma.processTask.create.mockResolvedValue({});
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+    const { engine, processQueue } = createEngine();
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    // 冻结 schema 语义：u1 通过后生成 u2 任务，不推进令牌（活表改为 single 不生效）
+    expect(prisma.processTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignee: 'u2', status: 'PENDING' }),
+      }),
+    );
+    expect(processQueue.add).not.toHaveBeenCalled();
+  });
+
   it('依次：approved 后生成下一人任务且不推进', async () => {
     const schema = makeUserTaskSchema({
       approvalMode: 'sequential',

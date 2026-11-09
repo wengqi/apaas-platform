@@ -73,3 +73,8 @@
 
 - 发布后定时注册从 fire-and-forget 改同步+共 3 次尝试；耗尽不回滚发布（R2-devil-02 否决回滚=非法态）——register_failed 显式登记：站内信通知租户管理员+新端点 POST processes/:id/register-trigger（EDIT）手动重试。
 - 验证：+2 例 TDD（mock 坑=publishProcess 返回 update 结果行需全字段含 status/dates；triggerService cast 需 unknown 双跳）+process 281/281+全量 11/11+e2e 99/99。TC-274 v3.21。
+
+## 追记：波次④ PE-09（2026-11-09，本提交）
+
+- 子流程父恢复队列解耦：完成/失败两路径改投递 delayQueue `resume_parent` job（processor 新增 kind 分派→resumeParentAfterSubProcess 改 public），父锁由 worker 独立获取——嵌套锁吞错链消除；失败面由 PE-11 attempts=3 重试覆盖。
+- 验证：advanced 2 例改写入队断言（红线 1 理由=契约本身）+process 282/282+全量 11/11+e2e 99/99。TC-275 v3.22。

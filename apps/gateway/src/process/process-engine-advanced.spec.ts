@@ -249,27 +249,24 @@ describe('ProcessEngine 子流程同步等待', () => {
     });
     const store = setupInstanceStore([parent, sub]);
 
-    const { engine, processQueue } = createEngine([]);
+    const { engine, delayQueue } = createEngine([]);
 
     await engine.executeNextNode('pi-sub');
 
     // 子实例完成
     expect(getStoredInstance(store, 'pi-sub')?.['status']).toBe('COMPLETED');
-    // 父实例恢复：状态 RUNNING，令牌推进到下游节点
-    const parentAfter = getStoredInstance(store, 'pi-parent');
-    expect(parentAfter?.['status']).toBe('RUNNING');
-    expect(parentAfter?.['activeNodeIds']).toEqual(['after-1']);
-    // 子流程输出写入父实例变量
-    const parentVars = (parentAfter?.['variables'] ?? {}) as Record<string, unknown>;
-    expect((parentVars['sub-1'] as Record<string, unknown>)['output']).toMatchObject({
-      subInstanceId: 'pi-sub',
-      status: 'COMPLETED',
-    });
-    // 父实例重新入队推进
-    expect(processQueue.add).toHaveBeenCalledWith(
-      'execute',
-      { instanceId: 'pi-parent' },
-      expect.objectContaining({ attempts: 3 }),
+    // PE-09：父恢复队列解耦——子路径不再持子锁直取父锁（嵌套锁吞错→父永久卡 WAITING），
+    // 改投递独立恢复 job（父锁由 worker 独立获取）
+    expect(delayQueue.add).toHaveBeenCalledWith(
+      'resume',
+      expect.objectContaining({
+        instanceId: 'pi-parent',
+        nodeId: 'sub-1',
+        kind: 'resume_parent',
+        subInstanceId: 'pi-sub',
+        subStatus: 'COMPLETED',
+      }),
+      expect.anything(),
     );
   });
 
@@ -312,17 +309,23 @@ describe('ProcessEngine 子流程同步等待', () => {
     const boomExec = createMockExecutor('boom', async () => {
       throw new Error('子流程内部错误');
     });
-    const { engine } = createEngine([boomExec]);
+    const { engine, delayQueue } = createEngine([boomExec]);
 
     // executeNextNode 会吞掉执行器错误（引擎 catch 后 throw，由 worker 记录）
     await expect(engine.executeNextNode('pi-sub-f')).rejects.toThrow('子流程内部错误');
 
     // 子实例 FAILED
     expect(getStoredInstance(store, 'pi-sub-f')?.['status']).toBe('FAILED');
-    // 父实例同步 FAILED
-    expect(getStoredInstance(store, 'pi-parent-f')?.['status']).toBe('FAILED');
-    expect(String(getStoredInstance(store, 'pi-parent-f')?.['error'])).toContain(
-      '子流程实例 pi-sub-f',
+    // PE-09：父恢复队列解耦——FAILED 侧同样投递 resume_parent job（父置 FAILED 由
+    // worker 独立持父锁执行）
+    expect(delayQueue.add).toHaveBeenCalledWith(
+      'resume',
+      expect.objectContaining({
+        instanceId: 'pi-parent-f',
+        kind: 'resume_parent',
+        subStatus: 'FAILED',
+      }),
+      expect.anything(),
     );
   });
 });

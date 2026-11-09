@@ -115,12 +115,16 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
     const delayWorker = new Worker(
       DELAY_QUEUE,
       async (job: Job) => {
-        const { instanceId, nodeId, kind, nodeExecutionId } = job.data as {
-          instanceId: string;
-          nodeId: string;
-          kind?: string;
-          nodeExecutionId?: string;
-        };
+        const { instanceId, nodeId, kind, nodeExecutionId, subInstanceId, subStatus, error } =
+          job.data as {
+            instanceId: string;
+            nodeId: string;
+            kind?: string;
+            nodeExecutionId?: string;
+            subInstanceId?: string;
+            subStatus?: 'COMPLETED' | 'FAILED';
+            error?: string;
+          };
         this.logger.debug(
           `消费 delay job: instanceId=${instanceId}, nodeId=${nodeId}, kind=${kind ?? 'delay'}`,
         );
@@ -147,9 +151,17 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
         }
         // 在租户上下文中执行后续所有 DB 操作
         await runWithTenant(instance.tenantId, () =>
-          kind === 'wait_condition'
-            ? this.processEngine.resumeWaitCondition(instanceId, nodeId)
-            : this.processEngine.resumeDelayedNode(instanceId, nodeId),
+          kind === 'resume_parent'
+            ? this.processEngine.resumeParentAfterSubProcess(
+                instanceId,
+                nodeId,
+                subInstanceId!,
+                subStatus ?? 'COMPLETED',
+                error,
+              )
+            : kind === 'wait_condition'
+              ? this.processEngine.resumeWaitCondition(instanceId, nodeId)
+              : this.processEngine.resumeDelayedNode(instanceId, nodeId),
         );
       },
       { connection: this.connection.duplicate(), concurrency: 5 },

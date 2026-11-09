@@ -241,6 +241,8 @@ pnpm infra:up         # 启动 PostgreSQL + Redis
 
 ## 当前阶段（2026-09-30 方向修订快照，基线为 2026-09-27 定位修订）
 
+- ✅ **R-B 批 18：PE 波次④ PE-09（2026-11-09）**：**子流程父恢复队列解耦**——子实例完成/失败路径不再持子锁直取父锁（嵌套锁 10s 超时被 catch 吞为日志→父实例永久卡 WAITING_USER_TASK 无 sweeper），改投递 delayQueue `resume_parent` job（processor 新增 kind 分派，父锁由 worker 独立获取），失败面由 PE-11 重试语义覆盖可重试；resumeParentAfterSubProcess 改 public 供 processor 调用。测试：process-engine-advanced 2 例改写为入队断言（红线 1 理由=PE-09 契约本身：同步恢复断言失效）+process 282/282+全量 11/11+e2e 99/99。TC-275 入库 v3.22；QA-PLAN v1.0.38（顺延 v1.0.37 遗漏登记）。余：PE-12/13（④×⑤ 依赖 PE-17 先行）与波次⑤~⑦。
+
 - ✅ **R-B 批 16：PE 波次④ PE-10（2026-11-09）**：**定时注册同步重试+register_failed 处置**——发布后注册从 fire-and-forget（Redis 抖动→流程 PUBLISHED 但 cron 永不触发仅一行日志）改**同步执行+共 3 次尝试**；耗尽不回滚发布（评审轮 R2-devil-02：回滚制造「ACTIVE release+DRAFT」非法态被否）——显式登记：站内信通知租户管理员「请在流程设计器重新发布或调用 register-trigger 端点重试」+新端点 POST design/apps/:appId/processes/:id/register-trigger（EDIT+targetIdParam）。测试：process.service.spec +2 例（注册 3 次耗尽发布仍成功+站内信；手动重试调 onProcessPublished；mock 坑=publishProcess 返回 update 结果行需含 status/createdAt 全字段+triggerService cast 需 unknown 双跳）+process 281/281+全量 11/11+e2e 99/99。TC-274 入库 v3.21；QA-PLAN v1.0.36。余：PE-09/12/13（④×⑤ 依赖 PE-17 先行）与波次⑤~⑦。
 
 - ✅ **R-B 批 15：PE 波次④ PE-14（2026-11-09，失败回滚形态）**：completeTask 主路径锁失败（锁超时/Redis 故障等非业务错误）**回滚认领**——任务恢复 PENDING（decision/completedAt 清零）保持可重试，消除「锁外认领→锁超时 500→任务已 APPROVED 但令牌永不推进→重试撞认领 400」死局（实机复现：持锁 60s）；**业务 409（PE-04 定论守卫/实例终态）不回滚**——批次已被他人定论，回滚会复活任务。部分方案声明：裁决修法为「认领移入锁内或失败回滚」，本批采失败回滚形态；「认领移入锁内」统一方案（评审轮 7③ 与 PE-12 sweeper 联动）另行批评估；顺序分支内层锁同暴露登记。测试：approval-semantics +1 例（自建引擎挂具注入 withLock 拒绝，TDD）+process 279/279+全量 11/11+e2e 99/99。TC-273 入库 v3.20；QA-PLAN v1.0.35。余：PE-09/10/12/13（④×⑤ 依赖 PE-17 先行）与波次⑤~⑦。

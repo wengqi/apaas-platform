@@ -407,11 +407,19 @@ export class ProcessEngine {
       // 子流程同步等待：子实例完成后恢复父实例的等待节点
       const parentLink = this.extractParentLink(instance.triggerContext);
       if (parentLink) {
-        await this.resumeParentAfterSubProcess(
-          parentLink.instanceId,
-          parentLink.nodeId,
-          instance.id,
-          'COMPLETED',
+        // PE-09（R-B 波次④）：父恢复队列解耦——子实例完成路径持子锁，直取父锁构成
+        // 嵌套锁（10s 超时被 catch 吞为日志→父实例永久卡 WAITING）。改投递独立恢复
+        // job：父锁由 worker 独立获取；吞错改可重试路径（PE-11 重试语义覆盖）
+        await this.delayQueue.add(
+          'resume',
+          {
+            instanceId: parentLink.instanceId,
+            nodeId: parentLink.nodeId,
+            kind: 'resume_parent',
+            subInstanceId: instance.id,
+            subStatus: 'COMPLETED',
+          },
+          DEFAULT_JOB_OPTS,
         );
       }
     }
@@ -555,12 +563,17 @@ export class ProcessEngine {
       // 子流程同步等待：子实例失败时同步失败父实例，避免父实例永久挂起
       const parentLink = this.extractParentLink(instance.triggerContext);
       if (parentLink) {
-        await this.resumeParentAfterSubProcess(
-          parentLink.instanceId,
-          parentLink.nodeId,
-          instance.id,
-          'FAILED',
-          errorMsg,
+        await this.delayQueue.add(
+          'resume',
+          {
+            instanceId: parentLink.instanceId,
+            nodeId: parentLink.nodeId,
+            kind: 'resume_parent',
+            subInstanceId: instance.id,
+            subStatus: 'FAILED',
+            error: errorMsg,
+          },
+          DEFAULT_JOB_OPTS,
         );
       }
       throw err;
@@ -1702,7 +1715,7 @@ export class ProcessEngine {
    * - COMPLETED：父节点标记完成 → 令牌推进下游 → 重新入队父实例
    * - FAILED：父节点与父实例同步置 FAILED（避免永久挂起）
    */
-  private async resumeParentAfterSubProcess(
+  async resumeParentAfterSubProcess(
     parentInstanceId: string,
     nodeId: string,
     subInstanceId: string,

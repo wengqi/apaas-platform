@@ -25,7 +25,10 @@ function makeService(engine: { startProcess: ReturnType<typeof vi.fn> }) {
 
 describe('ProcessService.startInstance 发起人注入（A3）', () => {
   const prisma = getMockPrisma();
-  const engine = { startProcess: vi.fn().mockResolvedValue('inst-1') };
+  const engine = {
+    startProcess: vi.fn().mockResolvedValue('inst-1'),
+    cancelProcess: vi.fn().mockResolvedValue({}),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,12 +51,21 @@ describe('ProcessService.startInstance 发起人注入（A3）', () => {
     });
   });
 
-  it('显式传入优先：req.triggeredByUser 原样保留', async () => {
+  it('PE-03：JWT 用户通道 caller 强制覆盖 body 伪造值（防「我发起的」污染/越权撤回）', async () => {
     await makeService(engine).startInstance(TENANT, 'p-1', { triggeredByUser: 'user-x' }, 'user-9');
     expect(engine.startProcess).toHaveBeenCalledWith(
       TENANT,
       'p-1',
-      expect.objectContaining({ triggerType: 'MANUAL', triggeredByUser: 'user-x' }),
+      expect.objectContaining({ triggerType: 'MANUAL', triggeredByUser: 'user-9' }),
+    );
+  });
+
+  it('PE-03：无 caller（服务身份通道）显式 triggeredByUser 保留（A3/G6 语义）', async () => {
+    await makeService(engine).startInstance(TENANT, 'p-1', { triggeredByUser: 'svc-user' });
+    expect(engine.startProcess).toHaveBeenCalledWith(
+      TENANT,
+      'p-1',
+      expect.objectContaining({ triggeredByUser: 'svc-user' }),
     );
   });
 
@@ -73,5 +85,69 @@ describe('ProcessService.startInstance 发起人注入（A3）', () => {
       'p-1',
       expect.objectContaining({ triggeredByUser: null }),
     );
+  });
+
+  // ---------------------------------------------------------------------
+  // PE-02：cancelInstance 归属校验（超管/发起人/任务参与人；对齐可见性口径）
+  // ---------------------------------------------------------------------
+  it('PE-02：无归属用户取消他人实例 → 403 且不调引擎', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue({
+      id: 'inst-9',
+      tenantId: TENANT,
+      triggerContext: { triggeredByUser: 'owner-1' },
+      status: 'RUNNING',
+      tasks: [{ assignee: 'assignee-1', candidateGroups: [] }],
+    });
+    prisma.user.findFirst.mockResolvedValue({ isPlatformAdmin: false });
+    prisma.userRole.findMany.mockResolvedValue([]);
+
+    const svc = makeService(engine);
+    await expect(svc.cancelInstance(TENANT, 'inst-9', 'stranger-1')).rejects.toThrow(
+      /仅发起人|参与人|管理员/,
+    );
+    expect(engine.startProcess).not.toHaveBeenCalled();
+  });
+
+  it('PE-02：发起人可取消', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue({
+      id: 'inst-9',
+      tenantId: TENANT,
+      triggerContext: { triggeredByUser: 'owner-1' },
+      status: 'RUNNING',
+      tasks: [],
+    });
+    prisma.user.findFirst.mockResolvedValue({ isPlatformAdmin: false });
+    prisma.userRole.findMany.mockResolvedValue([]);
+
+    await makeService(engine).cancelInstance(TENANT, 'inst-9', 'owner-1');
+    expect(engine.cancelProcess).toHaveBeenCalledWith('inst-9', TENANT);
+  });
+
+  it('PE-02：任务受理人可取消', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue({
+      id: 'inst-9',
+      tenantId: TENANT,
+      triggerContext: { triggeredByUser: 'owner-1' },
+      status: 'RUNNING',
+      tasks: [{ assignee: 'assignee-1', candidateGroups: [] }],
+    });
+    prisma.user.findFirst.mockResolvedValue({ isPlatformAdmin: false });
+    prisma.userRole.findMany.mockResolvedValue([]);
+
+    await makeService(engine).cancelInstance(TENANT, 'inst-9', 'assignee-1');
+    expect(engine.cancelProcess).toHaveBeenCalledWith('inst-9', TENANT);
+  });
+
+  it('PE-02：内部调用（无 userId）不限制（既有定时/系统路径兼容）', async () => {
+    prisma.processInstance.findFirst.mockResolvedValue({
+      id: 'inst-9',
+      tenantId: TENANT,
+      triggerContext: {},
+      status: 'RUNNING',
+      tasks: [],
+    });
+
+    await makeService(engine).cancelInstance(TENANT, 'inst-9');
+    expect(engine.cancelProcess).toHaveBeenCalledWith('inst-9', TENANT);
   });
 });

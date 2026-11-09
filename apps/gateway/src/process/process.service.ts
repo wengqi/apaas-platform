@@ -346,8 +346,11 @@ export class ProcessService {
       triggerType: 'MANUAL',
       triggeredBy: 'MANUAL',
       // A3（专题 R1）：MANUAL 启动兜底注入发起人——studio 只传 {processKey, variables}，
-      // 此前 null 导致「我发起的」不可见 / 兜底通知无收件人 / INITIATOR 节点无发起人
-      triggeredByUser: req.triggeredByUser ?? callerUserId ?? null,
+      // 此前 null 导致「我发起的」不可见 / 兜底通知无收件人 / INITIATOR 节点无发起人。
+      // PE-03（R-B 波次①）：JWT 用户通道 caller 强制覆盖 body 值（防伪造污染「我发起的」
+      // /越权撤回/定向指派 INITIATOR）；显式 triggeredByUser 仅保留给无 caller 身份的
+      // 服务身份通道（OpenAPI 直调 engine.startProcess 不经本方法，webhook 两者皆不传）。
+      triggeredByUser: callerUserId ?? req.triggeredByUser ?? null,
       inputs: req.variables ?? {},
     };
     const instanceId = await this.engine.startProcess(tenantId, processId, triggerContext);
@@ -611,11 +614,15 @@ export class ProcessService {
   }
 
   /** 取消实例。 */
-  async cancelInstance(tenantId: string, instanceId: string) {
+  async cancelInstance(tenantId: string, instanceId: string, userId?: string) {
     const instance = await prisma.processInstance.findFirst({
       where: { id: instanceId, tenantId },
+      include: { tasks: true },
     });
     if (!instance) throw new NotFoundException('流程实例不存在');
+    // PE-02（R-B 波次①）：取消不可逆——归属校验对齐实例可见性口径
+    // （超管/租户管理员/发起人/任务参与人）；userId 缺省=内部调用不受限
+    if (userId) await this.assertInstanceVisible(tenantId, instance, userId);
     await this.engine.cancelProcess(instanceId, tenantId);
     return { cancelled: true };
   }

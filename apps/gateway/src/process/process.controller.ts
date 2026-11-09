@@ -153,7 +153,11 @@ export class ProcessController {
   @Post('instances/:instanceId/cancel')
   @RequirePermission('PROCESS', 'EXECUTE')
   async cancelInstance(@Req() req: AuthenticatedRequest, @Param('instanceId') instanceId: string) {
-    const data = await this.processService.cancelInstance(requireTenantId(req), instanceId);
+    const data = await this.processService.cancelInstance(
+      requireTenantId(req),
+      instanceId,
+      req.user.id,
+    );
     return { ok: true as const, data };
   }
 

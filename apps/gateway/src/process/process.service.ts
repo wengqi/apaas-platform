@@ -122,6 +122,68 @@ export class ProcessService {
     return defs.map((d) => this.toProcessDefDto(d));
   }
 
+  /** PE-10：定时注册同步重试（共 3 次尝试），耗尽显式登记（站内信通知管理员）。 */
+  private async registerScheduledTriggerWithRetry(def: {
+    id: string;
+    tenantId: string;
+    appId: string;
+    triggerType: string | null;
+    cron: string | null;
+    apiName: string;
+    workflowSchema: unknown;
+  }): Promise<void> {
+    const attempts = 3;
+    for (let i = 1; i <= attempts; i++) {
+      try {
+        await this.triggerService.onProcessPublished(
+          def.id,
+          def.triggerType,
+          def.cron,
+          def.apiName,
+          def.workflowSchema,
+        );
+        return;
+      } catch (err) {
+        this.logger.warn(
+          `定时注册第 ${i}/${attempts} 次失败: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    this.logger.error(`流程 ${def.apiName} 定时注册 3 次全部失败，登记 register_failed`);
+    // register_failed 显式登记：站内信通知租户管理员（失败面不为静默日志）
+    const admins = await prisma.userRole.findMany({
+      where: { role: { tenantId: def.tenantId, code: 'TENANT_ADMIN' } },
+      select: { userId: true },
+    });
+    if (admins.length > 0) {
+      await prisma.inAppMessage
+        .createMany({
+          data: admins.map((a) => ({
+            tenantId: def.tenantId,
+            appId: def.appId,
+            userId: a.userId,
+            title: `定时流程注册失败（register_failed）：${def.apiName}`,
+            body: '发布已成功但定时触发注册失败（Redis 抖动等）。请在流程设计器中重新发布或调用 register-trigger 端点手动重试。',
+            link: '/apps',
+          })),
+        })
+        .catch(() => {});
+    }
+  }
+
+  /** PE-10：手动重试定时注册（register_failed 处置端点后端）。 */
+  async retryTriggerRegistration(tenantId: string, appId: string, processId: string) {
+    const def = await this.requireProcessDef(tenantId, appId, processId);
+    await this.triggerService.onProcessPublished(
+      def.id,
+      def.triggerType,
+      def.cron,
+      def.apiName,
+      def.workflowSchema,
+    );
+    return { registered: true };
+  }
+
   /** 获取流程定义（设计面）。 */
   async getProcess(tenantId: string, appId: string, processId: string) {
     const def = await this.requireProcessDef(tenantId, appId, processId);
@@ -448,10 +510,11 @@ export class ProcessService {
       },
     });
 
-    // B3 修复：发布后即时注册定时触发器（此前仅在启动时注册；I-1：以 schema 触发节点为 SSOT）
-    void this.triggerService
-      .onProcessPublished(def.id, def.triggerType, def.cron, def.apiName, def.workflowSchema)
-      .catch((err) => this.logger.error(`定时触发器注册失败: ${err.message}`));
+    // B3 修复：发布后即时注册定时触发器（此前仅在启动时注册；I-1：以 schema 触发节点为 SSOT）。
+    // PE-10（R-B 波次④）：同步执行+2 次重试；耗尽不回滚发布（评审轮 R2-devil-02：回滚制造
+    // 「ACTIVE release+DRAFT」非法态）——显式登记 register_failed：站内信通知租户管理员
+    // + 可经 register-trigger 端点手动重试。
+    await this.registerScheduledTriggerWithRetry(def);
 
     // 评审整改：业务动作级审计
     writeAudit({

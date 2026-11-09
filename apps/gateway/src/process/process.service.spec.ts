@@ -205,6 +205,73 @@ describe('ProcessService deleteProcess（P1-30）', () => {
     expect(prisma.processDef.update).not.toHaveBeenCalled();
   });
 
+  it('PE-10：定时注册 3 次耗尽 → 发布仍成功 + register_failed 站内信通知管理员', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'DRAFT',
+      triggerType: 'SCHEDULED',
+      cron: '0 0 9 * * ?',
+      workflowSchema: {
+        nodes: [
+          { id: 'tg', type: 'trigger', data: { triggerType: 'SCHEDULED', cron: '0 0 9 * * ?' } },
+          { id: 'e', type: 'end', data: {} },
+        ],
+        edges: [],
+      },
+    });
+    prisma.nodeExecution.count.mockResolvedValue(0);
+    prisma.processDef.update.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      apiName: 'sched_flow',
+      name: 'F',
+      tenantId: 't1',
+      status: 'PUBLISHED',
+      triggerType: 'SCHEDULED',
+      cron: '0 0 9 * * ?',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { service, triggerService } = createService();
+    (triggerService as unknown as { onProcessPublished: unknown }).onProcessPublished = vi
+      .fn()
+      .mockRejectedValue(new Error('redis down'));
+    prisma.userRole.findMany.mockResolvedValue([{ userId: 'admin-1' }]);
+    prisma.inAppMessage.createMany.mockResolvedValue({ count: 1 });
+
+    const r = await service.publishProcess('t1', 'app-1', 'pd-1');
+    expect((r as { status: string }).status).toBe('PUBLISHED');
+    expect(
+      (triggerService as unknown as { onProcessPublished: { mock: { calls: unknown[] } } })
+        .onProcessPublished.mock.calls.length,
+    ).toBe(3);
+    expect(prisma.inAppMessage.createMany).toHaveBeenCalled();
+  });
+
+  it('PE-10：retryTriggerRegistration 调用 onProcessPublished（手动重试端点后端）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      name: 'F',
+      status: 'PUBLISHED',
+      triggerType: 'SCHEDULED',
+      cron: '0 0 9 * * ?',
+    });
+    const { service, triggerService } = createService();
+    (triggerService as unknown as { onProcessPublished: unknown }).onProcessPublished = vi
+      .fn()
+      .mockResolvedValue(undefined);
+
+    const r = await service.retryTriggerRegistration('t1', 'app-1', 'pd-1');
+    expect(r).toEqual({ registered: true });
+    expect(
+      (triggerService as unknown as { onProcessPublished: { mock: { calls: unknown[] } } })
+        .onProcessPublished.mock.calls.length,
+    ).toBe(1);
+  });
+
   it('PE-07：PUT 降级遇 ACTIVE release → 400 指向退役端点', async () => {
     prisma.processDef.findFirst.mockResolvedValue({
       id: 'pd-1',

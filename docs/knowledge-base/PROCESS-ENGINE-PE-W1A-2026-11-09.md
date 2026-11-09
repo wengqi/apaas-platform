@@ -68,3 +68,8 @@
 
 - completeTask 主路径锁失败（非业务错误）回滚认领：任务恢复 PENDING（decision/completedAt 清零）保持可重试；业务 409（PE-04 守卫/实例终态）不回滚防复活。部分方案（裁决=移入锁内或失败回滚，采后者；移入锁内统一方案随 PE-12 批评估；顺序分支内层锁同暴露登记）。
 - 验证：approval-semantics +1 例（自建引擎挂具注入 withLock 拒绝）+process 279/279+全量 11/11+e2e 99/99。TC-273 v3.20。
+
+## 追记：波次④ PE-10（2026-11-09，本提交）
+
+- 发布后定时注册从 fire-and-forget 改同步+共 3 次尝试；耗尽不回滚发布（R2-devil-02 否决回滚=非法态）——register_failed 显式登记：站内信通知租户管理员+新端点 POST processes/:id/register-trigger（EDIT）手动重试。
+- 验证：+2 例 TDD（mock 坑=publishProcess 返回 update 结果行需全字段含 status/dates；triggerService cast 需 unknown 双跳）+process 281/281+全量 11/11+e2e 99/99。TC-274 v3.21。

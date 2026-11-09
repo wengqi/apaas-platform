@@ -137,6 +137,22 @@ export class DesignProcessController {
     return { ok: true as const, data };
   }
 
+  /** PE-10：手动重试定时注册（register_failed 处置）。 */
+  @Post('processes/:processId/register-trigger')
+  @RequirePermission('PROCESS', 'EDIT', 'processId')
+  async retryTriggerRegistration(
+    @Req() req: AuthenticatedRequest,
+    @Param('appId') appId: string,
+    @Param('processId') processId: string,
+  ) {
+    const data = await this.processService.retryTriggerRegistration(
+      requireTenantId(req),
+      appId,
+      processId,
+    );
+    return { ok: true as const, data };
+  }
+
   /** PE-07（◆4/ADR-0007）：主动退役流程 API 发布（ACTIVE→DEPRECATED）。 */
   @Post('processes/:processId/release/retire')
   @RequirePermission('PROCESS', 'EDIT', 'processId')

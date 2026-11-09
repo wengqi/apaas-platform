@@ -33,3 +33,9 @@
 - ②×③ 波次依赖地基（PE-05 实例化×PE-06 读源对聚合段是相反改写指令，先定读源）：completeTask 聚合判定/驳回路由/等待条件恢复/恢复推进四处统一改读 `instance.frozenWorkflowSchema ?? processDef.workflowSchema`。
 - 分叉回归测试：冻结 sequential [u1,u2,u3] × 活表被改 single → u1 通过后 u2 任务照生成、令牌不推进（改前读活表则 single 直通推进——红→绿）。
 - 验证：process 271/271+全量 11/11+typecheck+e2e 99/99。TC-265 入库 v3.14。PE-04/05 下一批在此读源上实施。
+
+## 追记：波次② PE-04（2026-11-09，本提交）
+
+- completeTask 锁回调双守卫（◆3=409 拒绝不幂等）：①nodeExec COMPLETED→409（single 定论后 parallel 加签残留任务链）；②锁内本任务状态重验→409（或签 claim/聚合窗口双决策链）。残余=single 推进入 worker 异步标记前毫秒窗口（B2 令牌锁兜底）。
+- parallel 加签拒已定论节点（400）——直建任务行不经 ProcessDef，守卫独立（R2-scale-07 勘误）。
+- 验证：+2 例 TDD 红→绿（reject 用例先被 rejectToNodeId 预检拦截改 approve——守卫在锁回调，位次在预检之后）；process 273/273+e2e 99/99。TC-266/267 v3.15。

@@ -221,6 +221,46 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(processQueue.add).toHaveBeenCalledTimes(1);
   });
 
+  it('PE-04：nodeExecution 已定论 → 晚到决策 409（single 定论后残留任务链）', async () => {
+    const schema = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance, nodeExecutionId: 'ne-done' });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    prisma.nodeExecution.findUnique.mockResolvedValue({ status: 'COMPLETED' });
+
+    const { engine } = createEngine();
+    await expect(engine.completeTask('t1', 'u1', 'approve', undefined, undefined)).rejects.toThrow(
+      /已定论/,
+    );
+  });
+
+  it('PE-04：或签锁内重验——批次已被首个决策终结（本任务已 CANCELLED）→ 晚到决策 409', async () => {
+    const schema = makeUserTaskSchema({ approvalMode: 'or_sign', assignee: 'u1' });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance, nodeExecutionId: 'ne-live' });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    prisma.nodeExecution.findUnique.mockResolvedValue({ status: 'RUNNING' });
+    // 锁内重验：claim 之后批次被 T1 终结——本任务已被 CANCELLED
+    prisma.processTask.findUnique.mockResolvedValue({ status: 'CANCELLED' });
+
+    const { engine } = createEngine();
+    await expect(engine.completeTask('t2', 'u2', 'approve', undefined, undefined)).rejects.toThrow(
+      /批次已定论/,
+    );
+  });
+
   it('PE-06：聚合判定读冻结 schema——发布后活表被改（sequential→single）不漂移在途实例', async () => {
     const frozen = makeUserTaskSchema({
       approvalMode: 'sequential',

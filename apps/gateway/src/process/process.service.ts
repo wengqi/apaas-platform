@@ -1054,6 +1054,22 @@ export class ProcessService {
     }
 
     if (position === 'parallel') {
+      // PE-04（◆3）：节点批次已定论 → 拒绝加签（残留任务会成为相反决策入口）
+      const finalizedExec =
+        (await prisma.nodeExecution.findFirst({
+          where: {
+            instanceId: task.instanceId,
+            nodeId: task.nodeId,
+            status: 'COMPLETED',
+          },
+          select: { id: true },
+        })) ?? null;
+      if (finalizedExec) {
+        throw new BadRequestException({
+          code: 'CONFLICT',
+          message: '该审批节点已定论，不可再加签',
+        });
+      }
       // 并行加签：直接并入当前批次（会签语义下与既有 PENDING 一起等齐）
       await prisma.processTask.create({
         data: {

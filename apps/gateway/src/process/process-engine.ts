@@ -829,6 +829,36 @@ export class ProcessEngine {
         );
       }
 
+      // PE-04（R-B 波次②，◆3=409 拒绝不幂等）：节点批次定论守卫——
+      // ① nodeExecution 已 COMPLETED：single 定论后 parallel 加签残留任务晚到
+      //   决策一律拒绝（封「相反决策改写已定论结果」实机复现链）；
+      // ② 锁内重验本任务状态：claim（锁外）与聚合（锁内）窗口里，或签首个决策
+      //   已终结批次（兄弟任务被 CANCELLED）——晚到者 409（封「双决策双推进」链）。
+      // 残余（工单已认知）：single 推进入 worker 异步标记 nodeExec 前的毫秒级窗口
+      // 由 B2 令牌锁互斥兜底。
+      if (task.nodeExecutionId) {
+        const nodeExec = await prisma.nodeExecution.findUnique({
+          where: { id: task.nodeExecutionId },
+          select: { status: true },
+        });
+        if (nodeExec?.status === 'COMPLETED') {
+          throw new ConflictException({
+            code: 'CONFLICT',
+            message: '该审批节点已定论，晚到决策被拒绝',
+          });
+        }
+      }
+      const freshTask = await prisma.processTask.findUnique({
+        where: { id: taskId },
+        select: { status: true },
+      });
+      if (freshTask && freshTask.status !== taskStatus) {
+        throw new ConflictException({
+          code: 'CONFLICT',
+          message: '任务批次已定论（或签已由其他决策终结），该决策被拒绝',
+        });
+      }
+
       // 写入任务决策到节点输出变量，供下游节点引用
       const variables = (instance.variables as Record<string, unknown>) ?? {};
       writeNodeOutput(variables, task.nodeId, {

@@ -17,6 +17,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import { PROCESS_QUEUE, DELAY_QUEUE, DATASET_QUEUE } from './queue.constants.js';
+import { QUEUE_DEFAULT_JOB_OPTS } from './queue-defaults.js';
 import { ProcessProcessor } from './process.processor.js';
 import { ProcessModule } from '../process/process.module.js';
 
@@ -47,9 +48,14 @@ function createQueue(queueName: string, connection: IORedis) {
     },
     {
       provide: DELAY_QUEUE,
+      // PE-11：delayQueue 补 defaultJobOptions（attempts/backoff/removeOn*）——
+      // 三类作业一次失败不再永久搁浅实例，completed 作业不再永久滞留 Redis
       useFactory: (config: ConfigService) => {
         const url = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
-        return createQueue(DELAY_QUEUE, new IORedis(url, { maxRetriesPerRequest: null }));
+        return new Queue(DELAY_QUEUE, {
+          connection: new IORedis(url, { maxRetriesPerRequest: null }),
+          defaultJobOptions: QUEUE_DEFAULT_JOB_OPTS,
+        });
       },
       inject: [ConfigService],
     },

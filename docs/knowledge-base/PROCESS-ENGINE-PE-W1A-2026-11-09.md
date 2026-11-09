@@ -57,3 +57,9 @@
 - 触发环发布预检静态硬拦：shared collectTriggerLoopIssues（环①对象操作写回触发对象/环②RECORD_UPDATED×回写），publishProcess 400 直出环清单，画布可同源标红。
 - **诚实登记**：运行时链深防护（◆5 打包项：ALS 跨 BullMQ 传播+链深环境变量+显式失败面）为后续子项——ALS 上下文不过队列边界，需触发上下文穿透 trigger/engine/record 三模块的设计 spike；环源已被静态硬拦封死（两形态），存量经 S-01 脏配置扫描兜底。
 - 验证：shared 23/23（+4）+process 278/278（+1）+全量 11/11+e2e 99/99。TC-271 v3.18。
+
+## 追记：波次④ PE-11（2026-11-09，本提交）
+
+- delayQueue 队列工厂补 defaultJobOptions（QUEUE_DEFAULT_JOB_OPTS 共享常量，引擎 DEFAULT_JOB_OPTS 同源收敛）：attempts=3+指数退避+removeOnComplete/Fail——三类作业一次失败不再永久搁浅实例，completed 作业不再永久滞留 Redis。
+- R2-compat-08：defaultJobOptions 仅对新入队 job 生效（在途一次性窗口自然消化）；存量滞留清理脚本登记后续。
+- 验证：queue-defaults.spec 新建+process 279/279+全量 11/11+e2e 99/99。TC-272 v3.19。

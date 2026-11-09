@@ -29,6 +29,7 @@ import { NodeExecutorRegistry } from './node-executor.registry.js';
 import { resolveInputs, writeNodeOutput, evaluateCondition } from './process-utils.js';
 import type { ExecutionContext, InstanceRow } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
+import { QUEUE_DEFAULT_JOB_OPTS as DEFAULT_JOB_OPTS } from '../queue/queue-defaults.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
 import { RedisLockService } from '../common/redis/redis-lock.service.js';
 import { EnvironmentResolverService } from '../environment/environment-resolver.service.js';
@@ -39,12 +40,6 @@ import { RecordService } from '../record/record.service.js';
  * 瞬时 DB 抖动导致的推进失败不再让实例永久卡 RUNNING；
  * completed/failed 作业保留有限时间供排障，避免 Redis 无限堆积。
  */
-const DEFAULT_JOB_OPTS = {
-  attempts: 3,
-  backoff: { type: 'exponential' as const, delay: 3_000 },
-  removeOnComplete: { age: 3_600, count: 1_000 },
-  removeOnFail: { age: 86_400 },
-} as const;
 
 /**
  * 递归在 blocks 数组中查找节点（用于查找嵌套在条件分支内的 block 容器等）。

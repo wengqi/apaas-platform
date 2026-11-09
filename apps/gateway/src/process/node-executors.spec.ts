@@ -512,6 +512,8 @@ describe('ObjectOperationExecutor', () => {
 
   it('update：经记录写内核（部分更新 merge + 公式/Rollup/事件）', async () => {
     recordService.update.mockResolvedValue({ id: 'r1', data: { status: 'DONE' } });
+    // PE-01③：域校验读记录归属（对象/应用均匹配）
+    prisma.record.findFirst.mockResolvedValue({ objectId: 'obj-1', appId: 'app-1' });
     const ctx = makeCtx({
       node: {
         id: 'o0',
@@ -523,12 +525,18 @@ describe('ObjectOperationExecutor', () => {
     });
     const result = await executor.execute(ctx);
     expect(result.output).toEqual({ affectedCount: 1, recordId: 'r1' });
-    // recordId 不作为业务字段写入
-    expect(recordService.update).toHaveBeenCalledWith('t-1', 'r1', 'system', { status: 'DONE' });
+    // recordId 不作为业务字段写入；无发起人（系统通道）不携带 permissionContext
+    expect(recordService.update).toHaveBeenCalledWith(
+      't-1',
+      'r1',
+      'system',
+      { status: 'DONE' },
+      undefined,
+    );
     expect(prisma.record.updateMany).not.toHaveBeenCalled();
   });
 
-  it('update：未命中记录时显式失败（保留原有防呆语义）', async () => {
+  it('update：未命中记录时显式失败（PE-01③ 域校验前置，防呆语义保留）', async () => {
     recordService.update.mockRejectedValue(new NotFoundException('记录不存在'));
     const ctx = makeCtx({
       node: {
@@ -539,7 +547,7 @@ describe('ObjectOperationExecutor', () => {
       } as ExecutionContext['node'],
       inputs: { recordId: 'missing', status: 'X' },
     });
-    await expect(executor.execute(ctx)).rejects.toThrow('未命中任何记录');
+    await expect(executor.execute(ctx)).rejects.toThrow('目标记录不存在');
   });
 
   it('query：按 JsonLogic filter 查询', async () => {
@@ -880,5 +888,142 @@ describe('UserTaskExecutor FORM_FIELD（记录字段动态审批人）', () => {
       } as ExecutionContext['node'],
     });
     await expect(executor.execute(ctx)).rejects.toThrow(/不是本租户内的有效用户/);
+  });
+
+  // ---------------------------------------------------------------------
+  // PE-01③（R-B 波次①）：引擎写目标域校验 + 发起人 permissionContext 行级强制
+  // ---------------------------------------------------------------------
+  describe('ObjectOperationExecutor — PE-01③ 域校验与行级强制', () => {
+    const prisma = getMockPrisma();
+    const recordService = {
+      update: vi.fn().mockResolvedValue({ id: 'r1' }),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const permission = {
+      explain: vi
+        .fn()
+        .mockResolvedValue({
+          allowed: true,
+          reason: 'ALLOW_RULE',
+          mergedCondition: { '==': [{ var: 'created_by' }, { var: 'currentUser' }] },
+          fieldScope: ['status'],
+        }),
+    };
+    const executor = new ObjectOperationExecutor(recordService as never, permission as never);
+
+    const ctxWith = (record: unknown, initiator?: string) =>
+      makeCtx({
+        instance: {
+          id: 'pi-1',
+          tenantId: 't-1',
+          appId: 'app-1',
+          triggerContext: initiator ? { triggeredByUser: initiator } : {},
+        } as unknown as ExecutionContext['instance'],
+        node: {
+          id: 'o0',
+          type: 'object_operation',
+          meta: {},
+          data: { operation: 'update', objectId: 'obj-1' },
+        } as ExecutionContext['node'],
+        inputs: { recordId: 'r1', status: 'DONE' },
+      });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      recordService.update.mockResolvedValue({ id: 'r1' });
+      permission.explain.mockResolvedValue({
+        allowed: true,
+        reason: 'ALLOW_RULE',
+        mergedCondition: { '==': [{ var: 'created_by' }, { var: 'currentUser' }] },
+        fieldScope: ['status'],
+      });
+    });
+
+    it('跨对象记录 → NonRetryable 且不写库', async () => {
+      prisma.record.findFirst.mockResolvedValue({ objectId: 'obj-other', appId: 'app-1' });
+      await expect(
+        executor.execute(ctxWith({ objectId: 'obj-other', appId: 'app-1' }, 'u-init')),
+      ).rejects.toThrow(/不一致/);
+      expect(recordService.update).not.toHaveBeenCalled();
+    });
+
+    it('跨应用记录 → NonRetryable 且不写库', async () => {
+      prisma.record.findFirst.mockResolvedValue({ objectId: 'obj-1', appId: 'app-hack' });
+      await expect(executor.execute(ctxWith(null, 'u-init'))).rejects.toThrow(
+        /不属于本流程所在应用/,
+      );
+      expect(recordService.update).not.toHaveBeenCalled();
+    });
+
+    it('发起人有 EDIT 行级规则 → update 携带 permissionContext（WHERE 受条件限定）；无规则 → warn 放行（裁决明示残余）', async () => {
+      prisma.record.findFirst.mockResolvedValue({ objectId: 'obj-1', appId: 'app-1' });
+      // 残余面：发起人无行级规则 → 携带失败仅 warn 放行（硬拒会打破审批回写契约）
+      permission.explain.mockResolvedValueOnce({ allowed: false, reason: 'DEFAULT_DENY' });
+      await executor.execute(ctxWith(null, 'u-init'));
+      expect(recordService.update).toHaveBeenCalledWith(
+        't-1',
+        'r1',
+        'u-init',
+        { status: 'DONE' },
+        undefined,
+      );
+
+      // 有 ALLOW 规则 → 写入 WHERE 受发起人条件/字段域限定（行级强制本体）
+      recordService.update.mockClear();
+      const ctx = ctxWith(null, 'u-init');
+      await executor.execute(ctx);
+      expect(recordService.update).toHaveBeenCalledWith(
+        't-1',
+        'r1',
+        'u-init',
+        { status: 'DONE' },
+        expect.objectContaining({ currentUserId: 'u-init', fieldScope: ['status'] }),
+      );
+      expect(permission.explain).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u-init' }),
+        'RECORD',
+        'EDIT',
+        'obj-1',
+      );
+    });
+
+    it('无发起人（定时/系统通道）→ 跳过权限面直接写（recordId 为引擎生成不可注入）', async () => {
+      prisma.record.findFirst.mockResolvedValue({ objectId: 'obj-1', appId: 'app-1' });
+      await executor.execute(ctxWith(null));
+      expect(permission.explain).not.toHaveBeenCalled();
+      expect(recordService.update).toHaveBeenCalledWith(
+        't-1',
+        'r1',
+        'system',
+        { status: 'DONE' },
+        undefined,
+      );
+    });
+
+    it('delete 单记录路径：携带 DELETE permissionContext', async () => {
+      prisma.record.findFirst.mockResolvedValue({ objectId: 'obj-1', appId: 'app-1' });
+      const ctx = makeCtx({
+        instance: {
+          id: 'pi-1',
+          tenantId: 't-1',
+          appId: 'app-1',
+          triggerContext: { triggeredByUser: 'u-init' },
+        } as unknown as ExecutionContext['instance'],
+        node: {
+          id: 'o0',
+          type: 'object_operation',
+          meta: {},
+          data: { operation: 'delete', objectId: 'obj-1', recordId: 'r1' },
+        } as ExecutionContext['node'],
+        inputs: {},
+      });
+      await executor.execute(ctx);
+      expect(recordService.delete).toHaveBeenCalledWith(
+        't-1',
+        'r1',
+        expect.objectContaining({ currentUserId: 'u-init' }),
+        'u-init',
+      );
+    });
   });
 });

@@ -8,12 +8,21 @@
  * 输出：create→{ recordId } / update·delete→{ affectedCount } / query→{ records, record }。
  */
 
-import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { prisma, Prisma } from '@apaas/db';
 import type { NodeExecutor, ExecutionContext, NodeExecutionResult } from '../types.js';
 import { jsonLogicToPrismaWhere } from '../../shared/jsonlogic-to-prisma.js';
 import { RecordService } from '../../record/record.service.js';
 import { resolveFlowActorId } from './flow-actor.js';
+import { NonRetryableNodeError } from '../types.js';
+import { PermissionService } from '../../permission/permission.service.js';
 
 /** 筛选范围删除的候选行上限（与批量操作一致，防止无界删除）。 */
 const FILTER_DELETE_MAX_ROWS = Number(process.env.BATCH_MAX_ROWS) || 500;
@@ -35,7 +44,68 @@ export class ObjectOperationExecutor implements NodeExecutor {
   constructor(
     @Inject(forwardRef(() => RecordService))
     private readonly recordService: RecordService,
+    // PE-01③（R-B，◆1=a+c）：发起人 permissionContext 行级强制（可选注入——
+    // 既有测试挂具/无权限面部署不受影响）
+    @Inject(forwardRef(() => PermissionService))
+    @Optional()
+    private readonly permissionService?: PermissionService,
   ) {}
+
+  /**
+   * PE-01③：引擎内记录写目标校验——① recordId ∈ 节点 objectId 配置域+应用域
+   * （封跨对象/跨应用跳板，不封杀跨对象桥梁能力：桥梁走配置objectId 对齐的节点）；
+   * ② 发起人 permissionContext 行级强制（无发起人的系统通道跳过——recordId 由
+   * 引擎触发上下文生成，非用户可注入）。
+   */
+  private async assertWritableTarget(
+    ctx: ExecutionContext,
+    objectId: string,
+    recordId: string,
+    action: 'EDIT' | 'DELETE',
+  ): Promise<
+    { condition: unknown; fieldScope: string[] | null; currentUserId: string } | undefined
+  > {
+    const rec = await prisma.record.findFirst({
+      where: { id: recordId, tenantId: ctx.tenantId },
+      select: { objectId: true, appId: true },
+    });
+    if (!rec) throw new NotFoundException(`目标记录不存在：${recordId}`);
+    if (rec.objectId !== objectId) {
+      throw new NonRetryableNodeError(
+        `记录 ${recordId} 属于对象 ${rec.objectId}，与节点配置对象 ${objectId} 不一致（PE-01③ 域校验）`,
+      );
+    }
+    if (rec.appId !== ctx.appId) {
+      throw new NonRetryableNodeError(`记录 ${recordId} 不属于本流程所在应用（PE-01③ 域校验）`);
+    }
+    const initiator = ((ctx.instance.triggerContext as Record<string, unknown> | null) ?? {})[
+      'triggeredByUser'
+    ];
+    if (typeof initiator !== 'string' || initiator === '' || !this.permissionService) {
+      return undefined;
+    }
+    // 语义（裁决原文括号项 R2-security-03）：强制**携带**发起人行级约束——有 ALLOW
+    // 规则则写入 WHERE 受其 condition/fieldScope 限定（行级强制）；
+    // 「无行级条件时同对象横向越权不可防」系裁决明示的不可理想项——无规则时
+    // 携带失败仅 warn 放行（硬拒会打破平台审批回写契约：发起人通常仅有 CREATE）。
+    const explanation = await this.permissionService.explain(
+      { id: initiator, tenantId: ctx.tenantId } as never,
+      'RECORD',
+      action,
+      objectId,
+    );
+    if (explanation.reason !== 'ALLOW_RULE') {
+      this.logger.warn(
+        `流程发起人对对象 ${objectId} 无 ${action} 行级规则，引擎写入无法施加行级约束（PE-01③ 已知残余）`,
+      );
+      return undefined;
+    }
+    return {
+      condition: explanation.mergedCondition ?? null,
+      fieldScope: explanation.fieldScope ?? null,
+      currentUserId: initiator,
+    };
+  }
 
   async execute(ctx: ExecutionContext): Promise<NodeExecutionResult> {
     const data = ctx.node.data as Record<string, unknown>;
@@ -81,9 +151,19 @@ export class ObjectOperationExecutor implements NodeExecutor {
     const updateData: Record<string, unknown> = { ...ctx.inputs };
     delete updateData['recordId'];
 
+    // PE-01③：目标域校验 + 发起人行级强制
+    const objectId = (data['objectId'] as string) ?? '';
+    const perm = await this.assertWritableTarget(ctx, objectId, recordId, 'EDIT');
+
     // 评审 P1-5：复用记录写内核（部分更新 merge + 公式/Rollup 重算 + 记录事件）
     try {
-      await this.recordService.update(ctx.tenantId, recordId, resolveFlowActorId(ctx), updateData);
+      await this.recordService.update(
+        ctx.tenantId,
+        recordId,
+        resolveFlowActorId(ctx),
+        updateData,
+        perm,
+      );
     } catch (err) {
       // 保持原语义：recordId/objectId 不匹配或不存在时显式失败（此前静默 COMPLETED）
       if (err instanceof NotFoundException) {
@@ -101,8 +181,10 @@ export class ObjectOperationExecutor implements NodeExecutor {
 
     const actor = resolveFlowActorId(ctx);
     if (recordId) {
+      // PE-01③：目标域校验 + 发起人行级强制
+      const perm = await this.assertWritableTarget(ctx, objectId, recordId, 'DELETE');
       // 评审 P1-5：走记录写内核（含删除事件触发）
-      await this.recordService.delete(ctx.tenantId, recordId, undefined, actor);
+      await this.recordService.delete(ctx.tenantId, recordId, perm, actor);
       return { output: { affectedCount: 1 } };
     }
 

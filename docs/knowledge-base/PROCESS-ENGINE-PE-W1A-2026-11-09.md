@@ -21,3 +21,9 @@
 - **层② 保留键剥离**：ENGINE_RESERVED_VARIABLE_KEYS = recordId/sequentialIndex/global/_joins，startInstance 变量入口剥离（◆1=c「服务端忽略保留键全谱」；b 命名空间方案按裁决留升级路径——若 TDD 实测 c 护不住新保留键消费点再升）。
 - **层③ 未做（另批）**：引擎内记录写（object-op/writeback）recordId ∈ 节点 objectId 配置域+应用域校验 + 发起人 permissionContext 行级强制——两 primal 攻击向量已由层①②闭合（假 MANUAL 闸+保留键剥离），残余面=引擎内部写通道（配置错误/跨对象桥梁），按工单独立批次 TDD。
 - 验证：spec 12/12（闸 3 形态含「无触发节点+顶层列 RECORD_CREATED 回退负向」/剥离/投影）+全量 11/11+e2e 99/99（AppView 谓词改源后 runtime 页面回归全绿）；TC-262/263 入库 v3.12。
+
+## 追记：波次①之三——PE-01 层③（2026-11-09，本提交）
+
+- object_operation update/delete 写前 `assertWritableTarget`：①recordId ∈ 节点 objectId 配置域+应用域（跨对象/跨应用 NonRetryable）；②发起人 permissionContext 强制携带（explain 取 ALLOW 规则 mergedCondition/fieldScope 注入写内核 WHERE）。
+- **裁决语义修正**：初版「无 EDIT 硬拒」被 e2e 16/20/21 实证打破审批回写契约（发起人通常仅 CREATE）——按裁决括号项修正为携带语义，无规则残余明示（R2-security-03 原文「不可作理想项」）。writeback 豁免域校验（recordId 引擎生成非注入）。
+- 验证：node-executors 46/46（+5，含既有 2 例夹具随域校验前置修正——红线 1 理由=防呆语义保留仅消息/夹具变更）+process 270/270+gateway 1068+e2e 99/99（采购链修复实证）。TC-264 入库 v3.13。

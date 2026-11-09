@@ -764,8 +764,14 @@ export class ProcessEngine {
                 typeof nodeScope['sequentialIndex'] === 'number'
                   ? (nodeScope['sequentialIndex'] as number)
                   : 0;
+              // PE-05（◆2）：实例级加签名单优先（addSign after 写 `_addSign:<nodeId>`，
+              // 治理基线不被运行期改写——冻结定义名单仅作基线回退）
+              const addSignOverride = seqVars[`_addSign:${task.nodeId}`];
+              const effectiveUsers: string[] = Array.isArray(addSignOverride)
+                ? (addSignOverride as string[])
+                : approveUsers;
               const nextIndex = currentIdx + 1;
-              if (nextIndex >= approveUsers.length) return false; // 最后一人 → 落到主推进
+              if (nextIndex >= effectiveUsers.length) return false; // 最后一人 → 落到主推进
 
               await prisma.processInstance.update({
                 where: { id: task.instance.id },
@@ -783,7 +789,7 @@ export class ProcessEngine {
                   nodeExecutionId: task.nodeExecutionId,
                   nodeId: task.nodeId,
                   taskName: task.taskName,
-                  assignee: approveUsers[nextIndex]!,
+                  assignee: effectiveUsers[nextIndex]!,
                   candidateGroups: [],
                   status: 'PENDING',
                 },

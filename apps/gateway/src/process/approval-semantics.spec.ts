@@ -632,13 +632,14 @@ describe('R1.3 加签 — addSign', () => {
 
   function makeService(task: Record<string, unknown> | null) {
     const engine = { cancelProcess: vi.fn().mockResolvedValue(undefined) };
+    const changeLog = { log: vi.fn().mockResolvedValue(undefined) };
     const service = new ProcessService(
       engine as unknown as ConstructorParameters<typeof ProcessService>[0],
-      {} as unknown as ConstructorParameters<typeof ProcessService>[1],
+      changeLog as unknown as ConstructorParameters<typeof ProcessService>[1],
       {} as unknown as ConstructorParameters<typeof ProcessService>[2],
     );
     prisma.processTask.findFirst.mockResolvedValue(task);
-    return { service, engine };
+    return { service, engine, changeLog };
   }
 
   const baseTask = () =>
@@ -697,18 +698,21 @@ describe('R1.3 加签 — addSign', () => {
     expect(prisma.processDef.update).not.toHaveBeenCalled();
   });
 
-  it('after 加签 → 插入 approveUsers 当前进度位之后并写回定义', async () => {
-    const { service } = makeService(baseTask());
+  it('after 加签 → 实例级 _addSign 名单插入当前进度位之后（不写 ProcessDef；PE-05 ◆2）', async () => {
+    const { service, changeLog } = makeService(baseTask());
     const r = await service.addSign('t1', 't1', 'owner', 'add-signer', 'after');
     expect(r.added).toBe(true);
-    expect(prisma.processDef.update).toHaveBeenCalledTimes(1);
-    const call = prisma.processDef.update.mock.calls[0]![0] as {
-      data: {
-        workflowSchema: { nodes: Array<{ id: string; data: { approveUsers: string[] } }> };
-      };
+    // 治理基线不被运行期动作改写：定义零写入
+    expect(prisma.processDef.update).not.toHaveBeenCalled();
+    // 实例级名单：owner 后插 add-signer（sequentialIndex=0）
+    const varsCall = prisma.processInstance.update.mock.calls[0]![0] as {
+      where: { id: string };
+      data: { variables: Record<string, unknown> };
     };
-    const node = call.data.workflowSchema.nodes.find((n) => n.id === 'ut1')!;
-    expect(node.data.approveUsers).toEqual(['owner', 'add-signer']);
+    expect(varsCall.where).toEqual({ id: 'inst-1' });
+    expect(varsCall.data.variables['_addSign:ut1']).toEqual(['owner', 'add-signer']);
+    // PE-05：审计留痕（changelog；writeAudit 随调用落审计表）
+    expect(changeLog.log).toHaveBeenCalled();
   });
 });
 

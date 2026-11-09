@@ -39,3 +39,9 @@
 - completeTask 锁回调双守卫（◆3=409 拒绝不幂等）：①nodeExec COMPLETED→409（single 定论后 parallel 加签残留任务链）；②锁内本任务状态重验→409（或签 claim/聚合窗口双决策链）。残余=single 推进入 worker 异步标记前毫秒窗口（B2 令牌锁兜底）。
 - parallel 加签拒已定论节点（400）——直建任务行不经 ProcessDef，守卫独立（R2-scale-07 勘误）。
 - 验证：+2 例 TDD 红→绿（reject 用例先被 rejectToNodeId 预检拦截改 approve——守卫在锁回调，位次在预检之后）；process 273/273+e2e 99/99。TC-266/267 v3.15。
+
+## 追记：波次② PE-05（2026-11-09，本提交）——波次② 2/2 全清
+
+- after 加签实例化：存实例 variables `_addSign:<nodeId>` 完整有序名单（插当前 sequentialIndex 后）+writeAudit+changelog；ProcessDef 零写入（治理基线/冻结快照不可被运行期改写）。引擎 completeTask 顺序分支实例级名单优先消费（冻结定义回退）。非 sequential after→400 指引 parallel（原只污染）。
+- 语义修正：PE-06 冻结读源后原活表写对在途实例已不生效（加签链断裂）——本单恢复能力同时完成治理化；旧「写回定义」锚定测试被 ◆2 推翻改写（红线 1 理由=工单本身）。
+- 验证：process 273/273+全量 11/11+e2e 99/99。TC-268 v3.16。

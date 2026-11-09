@@ -1086,36 +1086,71 @@ export class ProcessService {
       return { added: true, position, assignee: addUserId };
     }
 
-    // 依次加签：改写流程定义中该节点的 approveUsers，把加签人插到当前进度位之后。
-    // 进度位 = 节点变量 sequentialIndex（缺省 0）；当前在审的人保持在位，
-    // 加签人在其完成后紧随补审。
-    const schema = task.instance.processDef.workflowSchema as {
+    // PE-05（R-B 波次②，◆2=保留 after 链实例级存储）：加签链存实例级
+    // variables 专用键 `_addSign:<nodeId>`（完整有序名单，completeTask 顺序分支
+    // 消费），不再写 ProcessDef——治理基线（快照/活表）不可被运行期动作改写；
+    // PE-06 冻结读源后写活表对在途实例本就不再生效。仅依次（sequential）节点
+    // 支持 after——非依次模式 after 此前改定义但运行时不消费（只污染），改 400
+    // 指引 parallel（◆2 评审轮注：行为差异开工定）。
+    const instanceVars = (task.instance.variables as Record<string, unknown> | null) ?? {};
+    const overrideKey = `_addSign:${task.nodeId}`;
+    const frozenSchema = (task.instance.frozenWorkflowSchema ??
+      task.instance.processDef.workflowSchema) as {
       nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
     } | null;
-    const nodeDef = schema?.nodes?.find((n) => n.id === task.nodeId);
-    if (!nodeDef) throw new BadRequestException('节点定义不存在，无法加签');
+    const nodeDef = frozenSchema?.nodes?.find((n) => n.id === task.nodeId);
+    const approvalMode = String(nodeDef?.data?.['approvalMode'] ?? 'single').toLowerCase();
+    if (approvalMode !== 'sequential') {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '依次加签（after）仅支持依次审批节点；并行/会签场景请使用并行加签（parallel）',
+      });
+    }
 
-    const nodeScope =
-      ((task.instance.variables as Record<string, unknown> | null)?.[task.nodeId] as
-        Record<string, unknown> | undefined) ?? {};
+    const nodeScope = (instanceVars[task.nodeId] as Record<string, unknown> | undefined) ?? {};
     const currentIdx =
       typeof nodeScope['sequentialIndex'] === 'number'
         ? (nodeScope['sequentialIndex'] as number)
         : 0;
-    const users = Array.isArray(nodeDef.data?.['approveUsers'])
-      ? ([...((nodeDef.data?.['approveUsers'] as string[]) ?? [])] as string[])
+    const baseUsers = Array.isArray(nodeDef?.data?.['approveUsers'])
+      ? ([...((nodeDef?.data?.['approveUsers'] as string[]) ?? [])] as string[])
       : [userId];
+    const users = (
+      Array.isArray(instanceVars[overrideKey]) ? (instanceVars[overrideKey] as string[]) : baseUsers
+    ).slice();
     if (!users.includes(addUserId)) {
       users.splice(currentIdx + 1, 0, addUserId);
-      nodeDef.data = { ...nodeDef.data, approveUsers: users };
-      await prisma.processDef.update({
-        where: { id: task.instance.processDefId },
-        data: { workflowSchema: (schema ?? {}) as object },
+      await prisma.processInstance.update({
+        where: { id: task.instance.id },
+        data: {
+          variables: { ...instanceVars, [overrideKey]: users } as Prisma.InputJsonValue,
+        },
+      });
+      // 补审计（PE-05 工单：治理动作留痕）+ changelog
+      writeAudit({
+        tenantId,
+        userId,
+        action: 'PROCESS_ADD_SIGN',
+        resource: 'PROCESS',
+        resourceId: task.instance.processDefId,
+        appId: task.instance.processDef?.appId,
+        detail: { instanceId: task.instance.id, nodeId: task.nodeId, addUserId, position },
+      });
+      await this.changeLogService.log({
+        tenantId,
+        appId: task.instance.processDef?.appId ?? '',
+        module: 'PROCESS',
+        entityType: 'ProcessDef',
+        entityId: task.instance.processDefId,
+        entityName: task.instance.processDef?.name ?? task.instance.processDefId,
+        changeType: 'UPDATE',
+        changedBy: userId,
+        changeDescription: `在途实例依次加签（实例级，不改定义）: ${task.nodeId} += ${addUserId}`,
       });
     }
 
-    // 依次语义下为加签人即时生成后续任务由 completeTask 推进时生成——
-    // 这里只改定义；当前任务完成后引擎按新 approveUsers 顺序继续。
+    // 依次语义下加签人的后续任务由 completeTask 推进时按 `_addSign:<nodeId>`
+    // 名单生成（引擎顺序分支消费实例级名单优先于冻结定义）。
     return { added: true, position, approveUsers: users };
   }
 

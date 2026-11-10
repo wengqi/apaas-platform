@@ -27,13 +27,23 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { Worker, type Job } from 'bullmq';
+import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
 import { prisma, runWithTenant } from '@apaas/db';
 import { PROCESS_QUEUE, DELAY_QUEUE } from './queue.constants.js';
+import { QUEUE_DEFAULT_JOB_OPTS as DEFAULT_JOB_OPTS } from './queue-defaults.js';
 import { ProcessEngine } from '../process/process-engine.js';
 import { NonRetryableNodeError } from '../process/types.js';
+
+/** PE-12 sweeper repeatable job 常量（常量管理规范：调度与兜底参数可经环境变量覆盖）。 */
+const PROCESS_SWEEPER_JOB_ID = 'process-sweeper';
+/** sweeper 巡检周期缺省（每 5 分钟，BullMQ repeatable cron——非 setInterval 轮询）。 */
+const PROCESS_SWEEPER_CRON_DEFAULT = '*/5 * * * *';
+/** 孤儿判定阈值缺省：实例 10 分钟无更新且有活跃令牌视为无驱动。 */
+const PROCESS_SWEEPER_STALE_MS_DEFAULT = 600_000;
+/** 单轮巡检候选上限。 */
+const PROCESS_SWEEPER_BATCH_DEFAULT = 100;
 
 @Injectable()
 export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
@@ -45,12 +55,13 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => ProcessEngine))
     private readonly processEngine: ProcessEngine,
     private readonly config: ConfigService,
+    @Inject(PROCESS_QUEUE) private readonly processQueue: Queue,
   ) {
     const url = this.config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
     this.connection = new IORedis(url, { maxRetriesPerRequest: null });
   }
 
-  onModuleInit() {
+  async onModuleInit() {
     // 流程令牌推进 Worker + 定时触发处理
     const processWorker = new Worker(
       PROCESS_QUEUE,
@@ -60,6 +71,7 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
           processDefId?: string;
           type?: string;
           envKey?: string;
+          source?: string;
         };
 
         // 定时触发 job：启动流程实例
@@ -80,8 +92,23 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        // 普通流程推进 job
-        const { instanceId } = data;
+        // PE-12：孤儿实例巡检 job（repeatable cron 驱动，见 onModuleInit 注册）
+        if (data.type === 'sweeper') {
+          await this.processEngine.sweepStaleInstances({
+            staleMs:
+              this.config.get<number>('PROCESS_SWEEPER_STALE_MS') ??
+              PROCESS_SWEEPER_STALE_MS_DEFAULT,
+            batch:
+              this.config.get<number>('PROCESS_SWEEPER_BATCH') ?? PROCESS_SWEEPER_BATCH_DEFAULT,
+          });
+          return;
+        }
+
+        // 普通流程推进 job（source='sweeper' 为巡检重投——attempts:1 且不参与
+        // final-failure 落库：实例可能只是临界区执行超阈值被误判 stale，锁等待
+        // 失败不应触发 finalizeFailedInstance 误杀健康实例，下一轮 cron 自然续投）
+        const { instanceId, source } = data as { instanceId?: string; source?: string };
+        const isSweeperRetry = source === 'sweeper';
         if (instanceId) {
           this.logger.debug(`消费 process job: instanceId=${instanceId}`);
           // 从实例恢复 tenantId（此查询在 ALS 上下文外 — 安全，instanceId 全局唯一）
@@ -97,6 +124,15 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
             try {
               await this.processEngine.executeNextNode(instanceId);
             } catch (err) {
+              if (isSweeperRetry) {
+                // 巡检重投失败：不重试不落库（引擎状态守卫保证无害），下轮 cron 续投
+                this.logger.warn(
+                  `sweeper 重投 job 失败（不重试不落库）: instanceId=${instanceId}, ${
+                    err instanceof Error ? err.message : String(err)
+                  }`,
+                );
+                return;
+              }
               // ✅3 retryable 分类（Temporal 借鉴 §8.1；PE-13 R-B 波次④⑤）：
               // 引擎已不先行置实例 FAILED——瞬时失败交 BullMQ attempts 重试
               // （重试再入从失败节点重投），异常在此分类处置：
@@ -194,7 +230,35 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
     });
     this.workers.push(delayWorker);
 
-    this.logger.log('BullMQ Workers 已启动 (process-queue + delay-queue)');
+    // PE-12：孤儿实例巡检 repeatable job（BullMQ cron 调度——平台自有定时机制，
+    // 非 setInterval 轮询）。先精确移除旧注册再挂新 cron（对齐 trigger.service
+    // 注册模式，换 cron 无双注册竞态）。注册尽力而为（OCR 复审 2026-11-10）：
+    // Redis 不可达时 add 会长期挂起/报错——失败仅告警不阻断 gateway 启动
+    // （与 /health「Redis 宕机→降级 503 而非拒绝启动」语义一致；下次重启重注册）。
+    const sweeperCron =
+      this.config.get<string>('PROCESS_SWEEPER_CRON') ?? PROCESS_SWEEPER_CRON_DEFAULT;
+    try {
+      await this.processQueue
+        .removeRepeatable('sweeper', { pattern: sweeperCron, jobId: PROCESS_SWEEPER_JOB_ID })
+        .catch(() => {
+          /* 旧注册不存在时移除失败，忽略（幂等注册） */
+        });
+      // QUEUE_DEFAULT_JOB_OPTS 收敛（OCR 复审：巡检 job 一次失败可重试+
+      // removeOnComplete 防 completed job 每 5 分钟一轮持续堆积）
+      await this.processQueue.add(
+        'sweeper',
+        { type: 'sweeper' },
+        { repeat: { pattern: sweeperCron }, jobId: PROCESS_SWEEPER_JOB_ID, ...DEFAULT_JOB_OPTS },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `sweeper repeatable 注册失败（不阻断启动，下次重启重试）: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    this.logger.log(
+      `BullMQ Workers 已启动 (process-queue + delay-queue)，sweeper 已注册（${sweeperCron}）`,
+    );
   }
 
   async onModuleDestroy() {

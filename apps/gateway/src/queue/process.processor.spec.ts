@@ -57,17 +57,34 @@ function createProcessor() {
     resumeParentAfterSubProcess: vi.fn().mockResolvedValue(undefined),
     resumeWaitCondition: vi.fn().mockResolvedValue(undefined),
     resumeDelayedNode: vi.fn().mockResolvedValue(undefined),
+    sweepStaleInstances: vi.fn().mockResolvedValue([]),
+  };
+  const processQueue = {
+    add: vi.fn().mockResolvedValue(undefined),
+    removeRepeatable: vi.fn().mockResolvedValue(undefined),
   };
   const processor = new ProcessProcessor(
     engine as unknown as ConstructorParameters<typeof ProcessProcessor>[0],
     {
-      get: vi.fn().mockReturnValue('redis://localhost:6379'),
+      get: vi.fn((key: string) =>
+        key === 'PROCESS_SWEEPER_CRON'
+          ? '*/5 * * * *'
+          : key === 'REDIS_URL'
+            ? 'redis://localhost:6379'
+            : undefined,
+      ),
     } as unknown as ConstructorParameters<typeof ProcessProcessor>[1],
+    processQueue as unknown as ConstructorParameters<typeof ProcessProcessor>[2],
   );
-  processor.onModuleInit();
+  return { engine, processor, processQueue };
+}
+
+async function initProcessor() {
+  const { engine, processor, processQueue } = createProcessor();
+  await processor.onModuleInit();
   const handler = workerHandlers.get(PROCESS_QUEUE);
   if (!handler) throw new Error('process worker handler 未注册');
-  return { engine, handler };
+  return { engine, processor, processQueue, handler };
 }
 
 /** 构造伪 BullMQ Job（handler 仅消费 data / attemptsMade / opts.attempts）。 */
@@ -89,7 +106,7 @@ describe('ProcessProcessor 失败分类与 final-failure 判定（PE-13）', () 
   });
 
   it('NonRetryableNodeError：同步 finalizeFailedInstance 且不再重试（job 记成功）', async () => {
-    const { engine, handler } = createProcessor();
+    const { engine, handler } = await initProcessor();
     engine.executeNextNode.mockRejectedValue(new NonRetryableNodeError('未配置审批人'));
 
     await expect(handler(makeJob())).resolves.toBeUndefined();
@@ -98,7 +115,7 @@ describe('ProcessProcessor 失败分类与 final-failure 判定（PE-13）', () 
   });
 
   it('瞬时失败非最终尝试：仅上抛交 BullMQ 重试，实例不落 FAILED', async () => {
-    const { engine, handler } = createProcessor();
+    const { engine, handler } = await initProcessor();
     engine.executeNextNode.mockRejectedValue(new Error('HTTP 502'));
 
     await expect(handler(makeJob({ attemptsMade: 0, attempts: 3 }))).rejects.toThrow('HTTP 502');
@@ -107,7 +124,7 @@ describe('ProcessProcessor 失败分类与 final-failure 判定（PE-13）', () 
   });
 
   it('瞬时失败最终尝试（attemptsMade+1 >= attempts）：先 finalize 再上抛', async () => {
-    const { engine, handler } = createProcessor();
+    const { engine, handler } = await initProcessor();
     engine.executeNextNode.mockRejectedValue(new Error('HTTP 502'));
 
     await expect(handler(makeJob({ attemptsMade: 2, attempts: 3 }))).rejects.toThrow('HTTP 502');
@@ -116,7 +133,7 @@ describe('ProcessProcessor 失败分类与 final-failure 判定（PE-13）', () 
   });
 
   it('正常完成：不触发 finalize', async () => {
-    const { engine, handler } = createProcessor();
+    const { engine, handler } = await initProcessor();
 
     await handler(makeJob());
 
@@ -125,11 +142,42 @@ describe('ProcessProcessor 失败分类与 final-failure 判定（PE-13）', () 
   });
 
   it('scheduled 触发分支不受影响（envKey 透传）', async () => {
-    const { engine, handler } = createProcessor();
+    const { engine, handler } = await initProcessor();
 
     await handler(makeJob({ data: { type: 'scheduled', processDefId: 'pd-001', envKey: 'dev' } }));
 
     expect(engine.startProcessByDefId).toHaveBeenCalledWith('pd-001', expect.anything(), 'dev');
+    expect(engine.finalizeFailedInstance).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// PE-12 — sweeper repeatable 注册与分派（R-B 波次④收官）
+// ===========================================================================
+
+describe('ProcessProcessor sweeper（PE-12）', () => {
+  it('onModuleInit 注册 sweeper repeatable job（先精确移除旧注册再挂新 cron）', async () => {
+    const { processQueue } = await initProcessor();
+
+    expect(processQueue.removeRepeatable).toHaveBeenCalledWith('sweeper', {
+      pattern: '*/5 * * * *',
+      jobId: 'process-sweeper',
+    });
+    expect(processQueue.add).toHaveBeenCalledWith(
+      'sweeper',
+      { type: 'sweeper' },
+      expect.objectContaining({ repeat: { pattern: '*/5 * * * *' }, jobId: 'process-sweeper' }),
+    );
+  });
+
+  it('sweeper job 分派：调用 engine.sweepStaleInstances 并透传配置参数', async () => {
+    const { engine, handler } = await initProcessor();
+
+    await handler(makeJob({ data: { type: 'sweeper' } }));
+
+    expect(engine.sweepStaleInstances).toHaveBeenCalledWith(
+      expect.objectContaining({ staleMs: expect.any(Number), batch: expect.any(Number) }),
+    );
     expect(engine.finalizeFailedInstance).not.toHaveBeenCalled();
   });
 });

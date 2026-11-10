@@ -422,15 +422,18 @@ describe('ProcessEngine', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('任务已完成时抛出 BadRequestException', async () => {
+    it('任务已被处理时 409 冲突拒绝（PE-12 批 7③：认领冲突与定论守卫同族 409，原 400 随认领入锁改写）', async () => {
       prisma.processTask.findFirst.mockResolvedValue(makeProcessTask({ status: 'APPROVED' }));
-      // 原子认领失败（count=0）→ 任务已被处理
+      // 原子认领失败（count=0）→ 任务已被处理；复验 findUnique 为 null（无同决策续用）
       prisma.processTask.updateMany.mockResolvedValue({ count: 0 });
+      prisma.processTask.findUnique.mockResolvedValue(null);
+      // 认领在锁内：锁内实例重载需返回实例行
+      prisma.processInstance.findFirst.mockResolvedValue(makeProcessInstance());
       const { engine } = createEngine();
 
       await expect(
         engine.completeTask('task-001', 'user-001', 'approve', undefined, undefined),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ConflictException);
     });
 
     it('审批通过 — 更新任务 + 恢复实例 + 入队', async () => {
@@ -1216,6 +1219,99 @@ describe('ProcessEngine', () => {
       );
       await expect(engine.retryInstance('pi-001')).rejects.toThrow(/无活跃令牌/);
       expect(prisma.processInstance.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // PE-12 — 入队失败补偿与孤儿实例 sweeper（R-B 波次④收官）
+  // =========================================================================
+
+  describe('PE-12 入队失败补偿与孤儿实例 sweeper', () => {
+    beforeEach(() => {
+      prisma.nodeExecution.count.mockResolvedValue(0);
+    });
+
+    it('startProcess 入队失败：删除刚建实例并抛出（孤儿 RUNNING 防源）', async () => {
+      prisma.processDef.findFirst.mockResolvedValue(
+        makeProcessDef({ id: 'pd-001', status: 'PUBLISHED', workflowSchema: makeSimpleSchema() }),
+      );
+      prisma.processInstance.create.mockResolvedValue(
+        makeProcessInstance({ id: 'pi-orphan', activeNodeIds: ['node-start'] }),
+      );
+      prisma.processInstance.delete.mockResolvedValue(makeProcessInstance({ id: 'pi-orphan' }));
+      const { engine, processQueue } = createEngine();
+      (processQueue.add as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Redis connect ECONNREFUSED'),
+      );
+
+      await expect(engine.startProcess('tenant-001', 'pd-001', {})).rejects.toThrow(
+        'Redis connect ECONNREFUSED',
+      );
+      // 刚创建的实例被回滚删除（不留无驱动孤儿）
+      expect(prisma.processInstance.delete).toHaveBeenCalledWith({ where: { id: 'pi-orphan' } });
+    });
+
+    it('startProcess 入队失败且删除也失败：仍抛原始异常（尽力而为回滚不掩盖）', async () => {
+      prisma.processDef.findFirst.mockResolvedValue(
+        makeProcessDef({ id: 'pd-001', status: 'PUBLISHED', workflowSchema: makeSimpleSchema() }),
+      );
+      prisma.processInstance.create.mockResolvedValue(makeProcessInstance({ id: 'pi-orphan' }));
+      prisma.processInstance.delete.mockRejectedValue(new Error('DB 也不可达'));
+      const { engine, processQueue } = createEngine();
+      (processQueue.add as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Redis 不可达'),
+      );
+
+      await expect(engine.startProcess('tenant-001', 'pd-001', {})).rejects.toThrow('Redis 不可达');
+    });
+
+    it('PE-12 sweepStaleInstances：仅复活有活跃令牌的候选（无令牌跳过）', async () => {
+      const staleMs = 600_000;
+      const now = Date.now();
+      const staleRunning = {
+        id: 'pi-stale-1',
+        tenantId: 'tenant-001',
+        activeNodeIds: ['node-a'],
+        updatedAt: new Date(now - staleMs - 60_000),
+      };
+      const noToken = {
+        id: 'pi-notoken',
+        tenantId: 'tenant-001',
+        activeNodeIds: [],
+        updatedAt: new Date(now - staleMs - 60_000),
+      };
+      // mock 只给查询会返回的候选（新鲜度由 where.updatedAt 过滤——见查询条件断言）
+      prisma.processInstance.findMany.mockResolvedValue([staleRunning, noToken]);
+      const { engine, processQueue } = createEngine();
+
+      const revived = await engine.sweepStaleInstances({ staleMs, batch: 100 });
+
+      // 只重投有活跃令牌的实例（无令牌=无待偿工作）
+      expect(revived).toEqual(['pi-stale-1']);
+      expect(processQueue.add).toHaveBeenCalledTimes(1);
+      expect(processQueue.add).toHaveBeenCalledWith(
+        'execute',
+        { instanceId: 'pi-stale-1', source: 'sweeper' },
+        expect.anything(),
+      );
+      // 查询条件：RUNNING + updatedAt 早于阈值 + 批量上限
+      const query = prisma.processInstance.findMany.mock.calls[0]![0]! as {
+        where: { status: string; updatedAt: { lt: Date } };
+        take: number;
+      };
+      expect(query.where.status).toBe('RUNNING');
+      expect(query.where.updatedAt.lt.getTime()).toBeLessThanOrEqual(Date.now() - staleMs);
+      expect(query.take).toBe(100);
+    });
+
+    it('PE-12 sweepStaleInstances：无候选时零入队', async () => {
+      prisma.processInstance.findMany.mockResolvedValue([]);
+      const { engine, processQueue } = createEngine();
+
+      const revived = await engine.sweepStaleInstances({ staleMs: 600_000, batch: 100 });
+
+      expect(revived).toEqual([]);
+      expect(processQueue.add).not.toHaveBeenCalled();
     });
   });
 

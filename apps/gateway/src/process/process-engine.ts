@@ -23,7 +23,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { prisma, Prisma, getEnvironmentId, runWithEnv } from '@apaas/db';
+import { prisma, Prisma, getEnvironmentId, runWithEnv, runAsSystem } from '@apaas/db';
 import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
 import { resolveInputs, writeNodeOutput, evaluateCondition } from './process-utils.js';
@@ -230,8 +230,24 @@ export class ProcessEngine {
       `启动流程实例 ${instance.id}（流程 ${def.apiName} v${def.version}），start 节点 ${startNode.id}`,
     );
 
-    // 异步入队：由 BullMQ Worker 消费推进令牌
-    await this.processQueue.add('execute', { instanceId: instance.id }, DEFAULT_JOB_OPTS);
+    // PE-12（R-B 波次④收官）：入队失败补偿——队列瞬断不再留「孤儿 RUNNING 实例」
+    // （实例已落库、无 job 驱动、用户侧 500 后重试再建新实例）。回滚=删除刚建的
+    // 实例行（无 NodeExecution/任务/记录关联，删除安全），并向调用方抛出原始异常
+    // （启动失败可见，不静默成功）。删除自身失败（常为同源 DB 故障）尽力而为：
+    // 残留实例交 sweeper 巡检复活（RUNNING+活跃令牌=待偿工作）。
+    try {
+      // 异步入队：由 BullMQ Worker 消费推进令牌
+      await this.processQueue.add('execute', { instanceId: instance.id }, DEFAULT_JOB_OPTS);
+    } catch (err) {
+      try {
+        await prisma.processInstance.delete({ where: { id: instance.id } });
+      } catch (delErr) {
+        this.logger.error(
+          `实例 ${instance.id} 入队失败后回滚删除也失败（交 sweeper 兜底）: ${delErr instanceof Error ? delErr.message : String(delErr)}`,
+        );
+      }
+      throw err;
+    }
     return instance.id;
   }
 
@@ -699,51 +715,26 @@ export class ProcessEngine {
       }
     }
 
-    // B2 防护：原子认领任务 — 仅当任务仍为 PENDING 时更新成功。
-    // 并发/双击审批只有一个请求 count=1，其余拒绝，保证下游节点不重复执行。
-    const claimed = await prisma.processTask.updateMany({
-      where: { id: taskId, status: 'PENDING' },
-      data: {
-        status: taskStatus,
-        decision: decisionUpper,
-        comment,
-        formdata: (formData ?? null) as Prisma.InputJsonValue,
-        completedAt: new Date(),
-      },
-    });
-    if (claimed.count === 0) {
-      throw new BadRequestException({
-        code: 'CONFLICT',
-        message: '任务已完成或已取消',
-      });
-    }
-
     // S1：批次内已无 PENDING 任务时取消超时 job（部分终态时保留，剩余任务到点仍可动作）
+    // ——OCR 复审（2026-11-10）：认领迁入锁回调后计数时刻本任务仍 PENDING，
+    // 需排除本任务（id not-in）恢复「批次其余任务已无待决才取消」原意
     const remainingPending = await prisma.processTask.count({
       where: {
         instanceId: task.instanceId,
         nodeId: task.nodeId,
         nodeExecutionId: task.nodeExecutionId,
         status: 'PENDING',
+        id: { not: taskId },
       },
     });
     if (remainingPending === 0 && task.nodeExecutionId) {
       await this.cancelTaskTimeout(task.nodeExecutionId);
     }
 
-    // R1.3 多人审批聚合：同节点同批次还有其他 PENDING 任务时不立即推进令牌。
-    //   countersign 会签：等全部 approved；任一 rejected → 节点立即驳回
-    //   or_sign 或签：首个决策即节点决策，终结同批次其余 PENDING 任务
-    //   sequential 依次：approved → 下标 +1 重新进入 user_task 执行器生成下一个任务；
-    //     最后一人 approved 才推进；任一 rejected 直接驳回
-    // 判定依据：该 nodeId 下（同实例）全部任务的决策集合 vs 节点配置的审批模式。
-    const siblingTasks = await prisma.processTask.findMany({
-      where: { instanceId: task.instanceId, nodeId: task.nodeId },
-      select: { id: true, status: true, assignee: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
-    });
     // PE-06（R-B 波次②③合并设计）：聚合判定读冻结 schema（?? 活表回退）——
-    // 已发布流程被保存新 schema 后在途实例的会签/依次语义不漂移
+    // 已发布流程被保存新 schema 后在途实例的会签/依次语义不漂移。
+    // （7③ 统一方案：B2 认领自锁外迁入锁回调——加锁失败=认领未发生；
+    // 或签/会签兄弟任务处置同步迁入主锁，聚合读数锁内=竞态精确。）
     const nodeDef = (
       (task.instance.frozenWorkflowSchema ?? task.instance.processDef.workflowSchema) as {
         nodes?: Array<{ id?: string; data?: Record<string, unknown> }>;
@@ -755,123 +746,95 @@ export class ProcessEngine {
     ).toLowerCase();
     const approveUsers = (nodeDef?.data?.['approveUsers'] as string[] | undefined) ?? [];
 
-    if (approvalMode !== 'single') {
-      const pendingCount = siblingTasks.filter((t) => t.status === 'PENDING').length;
-      const approvedCount = siblingTasks.filter((t) => t.status === 'APPROVED').length;
-
-      if (approvalMode === 'or_sign') {
-        // 或签：首个决策终结其余 PENDING 任务，立即按该决策推进
-        await prisma.processTask.updateMany({
-          where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
-          data: { status: 'CANCELLED', completedAt: new Date() },
-        });
-        this.logger.log(
-          `或签节点 ${task.nodeId} 由任务 ${taskId} 决策（${decisionUpper}）终结，取消 ${pendingCount} 个并行任务`,
-        );
-        // 落到下方正常推进逻辑（isRejected/isApproved 已按首个决策确定）
-      } else if (approvalMode === 'countersign') {
-        if (isRejected) {
-          // 会签任一拒绝：立即驳回，取消其余 PENDING
-          await prisma.processTask.updateMany({
-            where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
-            data: { status: 'CANCELLED', completedAt: new Date() },
+    if (approvalMode === 'sequential' && !isRejected) {
+      // 依次审批 approved 中间环：P1-06（对抗审查 R1-correctness-09）推进动作入
+      // 实例锁；PE-12 批认领同样入锁（内层锁失败=认领未发生，任务保持 PENDING 可重试）
+      const progressed = await this.withInstanceLock(
+        task.instance.id,
+        async (): Promise<boolean> => {
+          const fresh = await prisma.processInstance.findFirst({
+            where: { id: task.instance.id },
           });
-          this.logger.log(`会签节点 ${task.nodeId} 任一拒绝，取消 ${pendingCount} 个并行任务`);
-        } else if (pendingCount > 0) {
-          // 还有未决任务：不推进，等齐（无需写变量——决策已在任务行上）
-          this.logger.log(
-            `会签节点 ${task.nodeId} 进度 ${approvedCount}/${siblingTasks.length}，等待剩余 ${pendingCount} 任务`,
-          );
-          return;
-        }
-        // 全部 approved → 落到下方正常推进
-      } else if (approvalMode === 'sequential') {
-        if (isRejected) {
-          // 依次审批任一环节拒绝：直接按驳回推进
-          this.logger.log(`依次审批节点 ${task.nodeId} 发生拒绝，驳回`);
-        } else {
-          // P1-06（对抗审查 R1-correctness-09）：推进动作入实例锁——此前读进度、
-          // 写变量、create 下一环任务全部锁外直连，与 cancelProcess 并发时对已
-          // TERMINATED 实例仍生成 PENDING 任务（实测 7/20 幽灵任务）。
-          // 对齐主审批路径：withInstanceLock + 锁内重载实例（B2）+ 状态校验（P1-2）。
-          const progressed = await this.withInstanceLock(
-            task.instance.id,
-            async (): Promise<boolean> => {
-              const fresh = await prisma.processInstance.findFirst({
-                where: { id: task.instance.id },
-              });
-              if (!fresh) throw new NotFoundException('流程实例不存在或已被删除');
-              if (fresh.status !== 'RUNNING' && fresh.status !== 'WAITING_USER_TASK') {
-                await prisma.processTask
-                  .updateMany({
-                    where: { id: taskId, status: taskStatus },
-                    data: { status: 'CANCELLED', completedAt: new Date() },
-                  })
-                  .catch(() => {});
-                throw new ConflictException(
-                  `流程实例已${fresh.status === 'TERMINATED' ? '取消' : '结束'}，任务作废`,
-                );
-              }
+          if (!fresh) throw new NotFoundException('流程实例不存在或已被删除');
+          if (fresh.status !== 'RUNNING' && fresh.status !== 'WAITING_USER_TASK') {
+            // 认领在锁内尚未发生：作废对象是 PENDING 状态的本任务（in-list 兼容
+            // 内层锁已认领后主锁再次进入的场景）
+            await prisma.processTask
+              .updateMany({
+                where: { id: taskId, status: { in: ['PENDING', taskStatus] } },
+                data: { status: 'CANCELLED', completedAt: new Date() },
+              })
+              .catch(() => {});
+            throw new ConflictException(
+              `流程实例已${fresh.status === 'TERMINATED' ? '取消' : '结束'}，任务作废`,
+            );
+          }
 
-              // 进度真值 = 节点变量 sequentialIndex（当前完成人的下标+1 指向下一位），
-              // 不用任务行计数（驳回重跳/加签会产生历史任务导致计数失真）。
-              const seqVars = (fresh.variables as Record<string, unknown>) ?? {};
-              const nodeScope = (seqVars[task.nodeId] as Record<string, unknown> | undefined) ?? {};
-              const currentIdx =
-                typeof nodeScope['sequentialIndex'] === 'number'
-                  ? (nodeScope['sequentialIndex'] as number)
-                  : 0;
-              // PE-05（◆2）：实例级加签名单优先（addSign after 写 `_addSign:<nodeId>`，
-              // 治理基线不被运行期改写——冻结定义名单仅作基线回退）
-              const addSignOverride = seqVars[`_addSign:${task.nodeId}`];
-              const effectiveUsers: string[] = Array.isArray(addSignOverride)
-                ? (addSignOverride as string[])
-                : approveUsers;
-              const nextIndex = currentIdx + 1;
-              if (nextIndex >= effectiveUsers.length) return false; // 最后一人 → 落到主推进
+          // 进度真值 = 节点变量 sequentialIndex（当前完成人的下标+1 指向下一位），
+          // 不用任务行计数（驳回重跳/加签会产生历史任务导致计数失真）。
+          const seqVars = (fresh.variables as Record<string, unknown>) ?? {};
+          const nodeScope = (seqVars[task.nodeId] as Record<string, unknown> | undefined) ?? {};
+          const currentIdx =
+            typeof nodeScope['sequentialIndex'] === 'number'
+              ? (nodeScope['sequentialIndex'] as number)
+              : 0;
+          // PE-05（◆2）：实例级加签名单优先（addSign after 写 `_addSign:<nodeId>`，
+          // 治理基线不被运行期改写——冻结定义名单仅作基线回退）
+          const addSignOverride = seqVars[`_addSign:${task.nodeId}`];
+          const effectiveUsers: string[] = Array.isArray(addSignOverride)
+            ? (addSignOverride as string[])
+            : approveUsers;
+          const nextIndex = currentIdx + 1;
+          // 末环判定先于认领（OCR 复审 2026-11-10）：末环由主锁严格认领并推进；
+          // 认领若在末环判定前发生，重复请求会经「同决策放行」漏到主锁双推进
+          if (nextIndex >= effectiveUsers.length) return false; // 最后一人 → 落到主推进
 
-              await prisma.processInstance.update({
-                where: { id: task.instance.id },
-                data: {
-                  variables: {
-                    ...seqVars,
-                    [task.nodeId]: { ...nodeScope, sequentialIndex: nextIndex },
-                  } as Prisma.InputJsonValue,
-                },
-              });
-              await prisma.processTask.create({
-                data: {
-                  tenantId: task.tenantId,
-                  instanceId: task.instanceId,
-                  nodeExecutionId: task.nodeExecutionId,
-                  nodeId: task.nodeId,
-                  taskName: task.taskName,
-                  assignee: effectiveUsers[nextIndex]!,
-                  candidateGroups: [],
-                  status: 'PENDING',
-                },
-              });
-              this.logger.log(
-                `依次审批节点 ${task.nodeId} 进入第 ${nextIndex + 1}/${approveUsers.length} 人`,
-              );
-              // P1-14（对抗审查 R1-correctness-03）：第 2..N 环补挂超时 job（环号代次）。
-              await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextIndex);
-              return true;
+          // B2 原子认领（锁内，严格）：仅 PENDING 可认领；count=0 一律 409
+          // （重复提交/已被他人定论——依次中间环在锁内闭合冲突检测）
+          await this.claimTaskInLock(taskId, taskStatus, decisionUpper, comment, formData);
+
+          await prisma.processInstance.update({
+            where: { id: task.instance.id },
+            data: {
+              variables: {
+                ...seqVars,
+                [task.nodeId]: { ...nodeScope, sequentialIndex: nextIndex },
+              } as Prisma.InputJsonValue,
             },
+          });
+          await prisma.processTask.create({
+            data: {
+              tenantId: task.tenantId,
+              instanceId: task.instanceId,
+              nodeExecutionId: task.nodeExecutionId,
+              nodeId: task.nodeId,
+              taskName: task.taskName,
+              assignee: effectiveUsers[nextIndex]!,
+              candidateGroups: [],
+              status: 'PENDING',
+            },
+          });
+          this.logger.log(
+            `依次审批节点 ${task.nodeId} 进入第 ${nextIndex + 1}/${approveUsers.length} 人`,
           );
-          if (progressed) return;
-          // 最后一人 approved → 落到下方正常推进
-          this.logger.log(`依次审批节点 ${task.nodeId} 全部 ${approveUsers.length} 人通过`);
-        }
-      }
+          // P1-14（对抗审查 R1-correctness-03）：第 2..N 环补挂超时 job（环号代次）。
+          await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextIndex);
+          return true;
+        },
+      );
+      if (progressed) return;
+      // 最后一人 approved → 落到下方主推进
+      this.logger.log(`依次审批节点 ${task.nodeId} 全部 ${approveUsers.length} 人通过`);
     }
+    // 依次审批 rejected：直接落主推进按驳回路由（既有语义）
+    // single/or_sign/countersign：主锁内认领+聚合（见下）
 
     // 实例状态推进与 worker 的令牌推进互斥（同进程内）
     // 锁回调返回 false = 聚合未完成（会签等待中），跳过令牌推进
-    // PE-14（R-B 波次④）：认领（锁外）与推进（锁内）之间的加锁失败——此前锁超时
-    // 抛 500 后任务已 APPROVED 终态但令牌永不推进，重试撞认领 400 死局（实例永久
-    // WAITING）。非业务错误（锁超时/Redis 故障）时回滚认领保持 PENDING 可重试；
-    // 业务 409（PE-04 定论守卫/实例终态）不回滚——批次已被他人定论，回滚会复活。
+    // PE-12 批 7③ 统一方案：B2 认领已迁入锁回调（下方）——加锁失败=认领未发生，
+    // 不再有「已 APPROVED 但令牌永不推进」死局；PE-14 的事后回滚保留为锁内
+    // 推进失败（事务异常等）的兜底；业务 409（PE-04 定论守卫/实例终态）不回滚
+    // ——批次已被他人定论，回滚会复活。
     let lockResult: boolean;
     try {
       lockResult = await this.withInstanceLock(task.instance.id, async (): Promise<boolean> => {
@@ -885,11 +848,13 @@ export class ProcessEngine {
         if (!instance) throw new NotFoundException('流程实例不存在或已被删除');
 
         // 评审 P1-2：锁内校验实例状态——已取消/已完成的实例不得被审批动作复活。
-        // 时序：任务认领(无锁) → cancelProcess 拿锁 TERMINATED → completeTask 拿锁。
+        // 时序（认领入锁后）：completeTask 拿锁失败/排队中 → cancelProcess 拿锁
+        // TERMINATED → completeTask 拿锁：本任务仍 PENDING（认领未发生），
+        // in-list 兼容依次审批内层锁已认领（taskStatus）的续入场景。
         if (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK') {
           await prisma.processTask
             .updateMany({
-              where: { id: taskId, status: taskStatus },
+              where: { id: taskId, status: { in: ['PENDING', taskStatus] } },
               data: { status: 'CANCELLED', completedAt: new Date() },
             })
             .catch(() => {});
@@ -917,15 +882,66 @@ export class ProcessEngine {
             });
           }
         }
+        // PE-04② 锁内重验本任务状态（PE-12 批 7③ 时序修订：守卫先于认领运行，
+        // 本请求尚未认领——合法前置状态=PENDING，或依次审批内层锁已认领的
+        // taskStatus；其余状态（CANCELLED/相反决策）=批次已被他人定论 → 409）。
+        // e2e/22 实证：旧断言（=taskStatus）在认领入锁后把首个合法决策误杀 409
+        // ——mock 世界 findUnique 默认 null 跳守卫天然盲区，真实链 e2e 为防线。
         const freshTask = await prisma.processTask.findUnique({
           where: { id: taskId },
           select: { status: true },
         });
-        if (freshTask && freshTask.status !== taskStatus) {
+        if (freshTask && freshTask.status !== 'PENDING' && freshTask.status !== taskStatus) {
           throw new ConflictException({
             code: 'CONFLICT',
             message: '任务批次已定论（或签已由其他决策终结），该决策被拒绝',
           });
+        }
+
+        // B2 原子认领（PE-12 批 7③：认领在实例锁内——加锁失败=认领未发生；
+        // 依次审批已在内层锁认领时，同决策复验放行续用）
+        await this.claimTaskInLock(taskId, taskStatus, decisionUpper, comment, formData);
+
+        // R1.3 多人审批聚合（7③：兄弟任务处置与聚合读数迁入锁内=竞态精确）：
+        //   countersign 会签：等全部 approved；任一 rejected → 节点立即驳回
+        //   or_sign 或签：首个决策即节点决策，终结同批次其余 PENDING 任务
+        // 判定依据：该 nodeId 下（同实例）全部任务的决策集合 vs 节点配置的审批模式。
+        if (approvalMode !== 'single') {
+          const siblingTasks = await prisma.processTask.findMany({
+            where: { instanceId: task.instanceId, nodeId: task.nodeId },
+            select: { id: true, status: true, assignee: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+          });
+          const pendingCount = siblingTasks.filter((t) => t.status === 'PENDING').length;
+          const approvedCount = siblingTasks.filter((t) => t.status === 'APPROVED').length;
+
+          if (approvalMode === 'or_sign') {
+            // 或签：首个决策终结其余 PENDING 任务，立即按该决策推进
+            await prisma.processTask.updateMany({
+              where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+              data: { status: 'CANCELLED', completedAt: new Date() },
+            });
+            this.logger.log(
+              `或签节点 ${task.nodeId} 由任务 ${taskId} 决策（${decisionUpper}）终结，取消 ${pendingCount} 个并行任务`,
+            );
+            // 落到下方正常推进逻辑（isRejected/isApproved 已按首个决策确定）
+          } else if (approvalMode === 'countersign') {
+            if (isRejected) {
+              // 会签任一拒绝：立即驳回，取消其余 PENDING
+              await prisma.processTask.updateMany({
+                where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
+                data: { status: 'CANCELLED', completedAt: new Date() },
+              });
+              this.logger.log(`会签节点 ${task.nodeId} 任一拒绝，取消 ${pendingCount} 个并行任务`);
+            } else if (pendingCount > 0) {
+              // 还有未决任务：不推进，等齐（决策已在任务行上——锁内认领已提交）
+              this.logger.log(
+                `会签节点 ${task.nodeId} 进度 ${approvedCount}/${siblingTasks.length}，等待剩余 ${pendingCount} 任务`,
+              );
+              return false;
+            }
+            // 全部 approved → 落到下方正常推进
+          }
         }
 
         // 写入任务决策到节点输出变量，供下游节点引用
@@ -944,7 +960,7 @@ export class ProcessEngine {
 
         // R1.3 会签并发封窗：锁内重验同节点 PENDING——聚合判定在锁外读数存在
         // 竞态窗口（两个会签任务并发 complete 双推进），以锁内为准做最终裁决。
-        // 或签的兄弟任务已被锁外取消，这里 PENDING 计数自然为 0，不受影响。
+        // 或签的兄弟任务已在锁内取消，这里 PENDING 计数自然为 0，不受影响。
         if (approvalMode === 'countersign' && isApproved) {
           const stillPending = await prisma.processTask.count({
             where: { instanceId: task.instanceId, nodeId: task.nodeId, status: 'PENDING' },
@@ -1049,8 +1065,17 @@ export class ProcessEngine {
     const shouldAdvance = await lockResult;
     if (!shouldAdvance) return;
 
-    // 异步入队：由 BullMQ Worker 消费推进令牌
-    await this.processQueue.add('execute', { instanceId: task.instance.id }, DEFAULT_JOB_OPTS);
+    // PE-12（R-B 波次④收官）：决策事务已提交后的入队失败不再让用户 500（重试
+    // 必撞定论 409）——决策已持久化，响应按成功返回；令牌推进的驱动缺口交
+    // sweeper 巡检复活（实例 RUNNING+活跃令牌=待偿工作）。
+    try {
+      // 异步入队：由 BullMQ Worker 消费推进令牌
+      await this.processQueue.add('execute', { instanceId: task.instance.id }, DEFAULT_JOB_OPTS);
+    } catch (err) {
+      this.logger.error(
+        `任务 ${taskId} 决策已提交但推进入队失败（交 sweeper 兜底）: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
@@ -1819,6 +1844,39 @@ export class ProcessEngine {
     }
   }
 
+  /**
+   * B2 原子认领（PE-12 批 7③ 统一方案：认领自锁外迁入实例锁回调——加锁失败=
+   * 认领从未发生，「已 APPROVED 但令牌永不推进」死局源头消除；PE-14 的事后回滚
+   * 保留为锁内推进失败的兜底）。
+   * count=0 一律 409 显式拒绝（OCR 复审 2026-11-10 严格化：原「同决策复验放行」
+   * 会使依次审批重复请求漏过冲突检测——sequentialIndex 已推进时重复请求被判为
+   * 末环落主锁再次推进；依次内层锁认领已移至末环判定之后，无需放行通道）。
+   */
+  private async claimTaskInLock(
+    taskId: string,
+    taskStatus: 'APPROVED' | 'REJECTED',
+    decisionUpper: string,
+    comment: string | undefined,
+    formData: Record<string, unknown> | undefined,
+  ): Promise<void> {
+    const claimed = await prisma.processTask.updateMany({
+      where: { id: taskId, status: 'PENDING' },
+      data: {
+        status: taskStatus,
+        decision: decisionUpper,
+        comment,
+        formdata: (formData ?? null) as Prisma.InputJsonValue,
+        completedAt: new Date(),
+      },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException({
+        code: 'CONFLICT',
+        message: '任务已完成或已取消',
+      });
+    }
+  }
+
   // ===========================================================================
   // PE-13 失败恢复：final-failure 落库与 admin 重试（◆6）
   // ===========================================================================
@@ -1894,6 +1952,59 @@ export class ProcessEngine {
       await this.processQueue.add('execute', { instanceId }, DEFAULT_JOB_OPTS);
       return { activeNodeIds };
     });
+  }
+
+  // ===========================================================================
+  // PE-12 孤儿实例 sweeper（与 ◆6 retry 端点联动：sweeper 自愈 RUNNING，
+  // FAILED 走 retry 人工恢复；调度由 processor 的 BullMQ repeatable job 驱动）
+  // ===========================================================================
+
+  /**
+   * 巡检无驱动孤儿实例并重投 execute job 复活。
+   * 判定：status=RUNNING 且 updatedAt 早于阈值且仍有活跃令牌（令牌在=工作未偿；
+   * 正常推进中实例的 updatedAt 随 advanceTokens 持续刷新，不会误报）。
+   * 安全性：重投是盲投但无害——实例锁互斥+B4 WAITING 跳过+非 RUNNING 早退+
+   * 汇聚门控保证重复 job 只会空转或续推，不重复执行已推进节点（PE-17 原子化）。
+   * 边界登记：WAITING（延时 job 丢失）类孤儿不在本巡检面（PE-11 removeOnFail
+   * 缓解）；WAITING_USER_TASK 系人工驱动不属孤儿。
+   */
+  async sweepStaleInstances(opts: { staleMs: number; batch: number }): Promise<string[]> {
+    const cutoff = new Date(Date.now() - opts.staleMs);
+    // 跨租户系统扫描（runAsSystem 静默跳过租户注入；仅读+入队，无跨租户写）
+    const candidates = await runAsSystem(() =>
+      prisma.processInstance.findMany({
+        where: { status: 'RUNNING', updatedAt: { lt: cutoff } },
+        orderBy: { updatedAt: 'asc' },
+        take: opts.batch,
+        select: { id: true, activeNodeIds: true, updatedAt: true },
+      }),
+    );
+    const stale = candidates.filter((c) => ((c.activeNodeIds as string[]) ?? []).length > 0);
+    for (const inst of stale) {
+      try {
+        // source 标记 + attempts:1（OCR 复审 2026-11-10）：重投 job 不参与失败
+        // 重试与 final-failure 落库——实例若因临界区执行超 10min 被误判 stale，
+        // 重复 job 锁等待失败后不会被 finalizeFailedInstance 误杀健康实例
+        // （下一轮 cron 自然续投）；单实例入队失败不中断整轮巡检
+        await this.processQueue.add(
+          'execute',
+          { instanceId: inst.id, source: 'sweeper' },
+          { ...DEFAULT_JOB_OPTS, attempts: 1 },
+        );
+      } catch (err) {
+        this.logger.error(
+          `sweeper 重投实例 ${inst.id} 失败: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        continue;
+      }
+      this.logger.warn(
+        `sweeper 复活无驱动实例 ${inst.id}（updatedAt=${inst.updatedAt.toISOString()}，重投 execute）`,
+      );
+    }
+    if (stale.length > 0) {
+      this.logger.warn(`sweeper 本轮复活 ${stale.length} 个实例（候选 ${candidates.length}）`);
+    }
+    return stale.map((s) => s.id);
   }
 
   // ===========================================================================

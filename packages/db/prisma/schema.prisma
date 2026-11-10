@@ -633,6 +633,9 @@ model ProcessInstance {
   error          String?
   // 流程效率分析（P1 运维治理）：等待条件节点超时导致的失败（区别于普通 FAILED）
   timedOut       Boolean               @default(false) @map("timed_out")
+  // PE-12 孤儿实例 sweeper：最后活动时间（任一 update 自动刷新）——RUNNING 且
+  // 长时间未更新且有活跃令牌 = 无驱动孤儿（巡检判定信号）
+  updatedAt      DateTime              @default(now()) @updatedAt @map("updated_at")
 
   processDef     ProcessDef      @relation(fields: [processDefId], references: [id], onDelete: Cascade)
   nodeExecutions NodeExecution[]
@@ -641,7 +644,9 @@ model ProcessInstance {
   @@index([tenantId])
   @@index([processDefId])
   @@index([environmentId])
-  @@index([status])
+  // 单列 status 索引随 PE-12 迁移删除（复合索引 [status, updatedAt] 最左前缀覆盖）
+  // sweeper 巡检查询（status=RUNNING + updatedAt < 阈值）
+  @@index([status, updatedAt])
   @@map("process_instances")
 }
 

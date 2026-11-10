@@ -221,7 +221,10 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     expect(processQueue.add).toHaveBeenCalledTimes(1);
   });
 
-  it('PE-14：加锁失败（非业务错误）→ 回滚认领保持 PENDING 可重试', async () => {
+  it('PE-14/PE-12：加锁失败（非业务错误）→ 任务保持 PENDING（认领已入锁内，无锁外认领写）', async () => {
+    // 7③ 统一方案改写（红线 1 理由=PE-12 批「认领+推进原子性」契约本身）：
+    // 认领自锁外迁入锁回调后，加锁失败=认领从未发生——不再依赖 PE-14 的
+    // 事后回滚补偿（回滚保留为锁内推进失败的兜底）。结构断言：全程无认领写。
     const schema = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
     const instance = makeProcessInstance({
       status: 'WAITING_USER_TASK',
@@ -254,10 +257,83 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     await expect(engine.completeTask('t1', 'u1', 'approve', undefined, undefined)).rejects.toThrow(
       'lock timeout',
     );
-    const rollback = prisma.processTask.updateMany.mock.calls.find(
-      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'PENDING',
+    // 结构断言：认领写（PENDING→APPROVED/REJECTED）从未发生——锁外无认领
+    const claimWrite = prisma.processTask.updateMany.mock.calls.find((c: unknown[]) => {
+      const data = (c[0] as { data: { status?: string } }).data;
+      return data.status === 'APPROVED' || data.status === 'REJECTED';
+    });
+    expect(claimWrite).toBeUndefined();
+  });
+
+  it('PE-12：依次审批内层锁失败 → 任务保持 PENDING（认领在内层锁内）', async () => {
+    const schema = makeUserTaskSchema({
+      approvalMode: 'sequential',
+      approveUsers: ['u1', 'u2', 'u3'],
+    });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      variables: { n1: { sequentialIndex: 0 } },
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.findMany.mockResolvedValue([]);
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+    const registry = createMockRegistry([]);
+    const inAppMessageService = { create: vi.fn().mockResolvedValue(undefined) };
+    const processQueue = createMockQueue();
+    const delayQueue = createMockQueue();
+    const engine = new ProcessEngine(
+      registry as unknown as ConstructorParameters<typeof ProcessEngine>[0],
+      inAppMessageService as unknown as ConstructorParameters<typeof ProcessEngine>[1],
+      {
+        withLock: () => Promise.reject(new Error('lock timeout')),
+      } as unknown as ConstructorParameters<typeof ProcessEngine>[2],
+      {
+        resolve: vi.fn().mockResolvedValue({ environmentId: '', versionId: null, bundle: null }),
+      } as unknown as ConstructorParameters<typeof ProcessEngine>[3],
+      processQueue as unknown as ConstructorParameters<typeof ProcessEngine>[4],
+      delayQueue as unknown as ConstructorParameters<typeof ProcessEngine>[5],
+      { update: vi.fn() } as unknown as ConstructorParameters<typeof ProcessEngine>[6],
     );
-    expect(rollback).toBeDefined();
+
+    await expect(engine.completeTask('t1', 'u1', 'approve', undefined, undefined)).rejects.toThrow(
+      'lock timeout',
+    );
+    const claimWrite = prisma.processTask.updateMany.mock.calls.find((c: unknown[]) => {
+      const data = (c[0] as { data: { status?: string } }).data;
+      return data.status === 'APPROVED' || data.status === 'REJECTED';
+    });
+    expect(claimWrite).toBeUndefined();
+    // 内层锁失败：下一环任务未生成（推进未开始）
+    expect(prisma.processTask.create).not.toHaveBeenCalled();
+  });
+
+  it('PE-12：决策事务提交后入队失败 → completeTask 正常返回（不 500，推进由 sweeper 兜底）', async () => {
+    // 原缺陷：决策已提交但 add 失败 → 用户 500 → 重试撞定论 409。补偿契约：
+    // 入队失败吞错（决策已持久化，响应 200 真实），令牌推进交 sweeper 复活。
+    const schema = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
+    setupTask(schema);
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'APPROVED', assignee: 'u1', createdAt: new Date() },
+    ]);
+
+    const { engine, processQueue } = createEngine();
+    (processQueue.add as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Redis 不可达'),
+    );
+
+    await expect(
+      engine.completeTask('t1', 'u1', 'approve', undefined, undefined),
+    ).resolves.toBeUndefined();
+    // 决策确实已提交（认领写发生）
+    const claimWrite = prisma.processTask.updateMany.mock.calls.find((c: unknown[]) => {
+      return (c[0] as { data: { status?: string } }).data.status === 'APPROVED';
+    });
+    expect(claimWrite).toBeDefined();
   });
 
   it('PE-04：nodeExecution 已定论 → 晚到决策 409（single 定论后残留任务链）', async () => {
@@ -298,6 +374,87 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     await expect(engine.completeTask('t2', 'u2', 'approve', undefined, undefined)).rejects.toThrow(
       /批次已定论/,
     );
+  });
+
+  it('OCR-High 回归：S1 批次计数排除本任务（认领入锁后 count 先于认领，需 id not-in）', async () => {
+    // OCR 复审（2026-11-10）挖出：认领迁入锁回调后，锁外 S1 计数时刻本任务仍
+    // PENDING → remainingPending 恒 ≥1 → cancelTaskTimeout 永不触发 → 依次审批
+    // 残留超时 job 到点对下一环执行 AUTO_APPROVE（提前自动通过）。修复契约：
+    // 计数 where 排除本任务（id not-in），恢复「批次其余任务已无待决才取消」原意。
+    const schema = makeUserTaskSchema({ approvalMode: 'single', assignee: 'u1' });
+    const task = setupTask(schema);
+    prisma.processTask.count.mockResolvedValue(0);
+
+    const { engine, delayQueue } = createEngine();
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    const countQuery = prisma.processTask.count.mock.calls.find((c: unknown[]) => {
+      const where = (c[0] as { where?: { id?: unknown } }).where;
+      return where && where.id !== undefined;
+    }) as unknown as [
+      { where: { instanceId: string; nodeId: string; status: string; id: { not: string } } },
+    ];
+    expect(countQuery).toBeDefined();
+    expect(countQuery[0].where.id).toEqual({ not: 't1' });
+    // 批次其余无待决 → 取消超时 job
+    expect(delayQueue.getJob).toHaveBeenCalledWith(`task-timeout-${task.nodeExecutionId}`);
+  });
+
+  it('OCR-High 回归：依次审批重复提交（任务已被本次决策认领）→ 409 拒绝，不重复推进', async () => {
+    // OCR 复审（2026-11-10）挖出：认领入锁后 claimTaskInLock 的「同决策复验放行」
+    // 使重复请求在依次审批漏过冲突检测——sequentialIndex 已被首次请求推进时，
+    // 重复请求被判为「最后一人」落主锁再次推进（双推进/下游副作用 ×2）。
+    // 修复契约：认领严格化（count=0 一律 409）+ 内层锁认领移到末环判定之后。
+    const schema = makeUserTaskSchema({
+      approvalMode: 'sequential',
+      approveUsers: ['u1', 'u2'],
+    });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      variables: { n1: { sequentialIndex: 1 } }, // 首次请求已推进到末环
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance, status: 'APPROVED' });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 0 }); // 认领失败=已被首次请求认领
+    prisma.processTask.findUnique.mockResolvedValue({ status: 'APPROVED' });
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+    const { engine, processQueue } = createEngine();
+
+    await expect(engine.completeTask('t1', 'u1', 'approve', undefined, undefined)).rejects.toThrow(
+      /任务已完成或已取消/,
+    );
+    // 重复请求不得再次推进令牌
+    expect(processQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('PE-12：锁内守卫先于认领——PENDING 为合法前置态，首个决策不被误杀（e2e/22 回归锚）', async () => {
+    // e2e/22 实证：认领入锁后守卫先于认领运行，本请求任务仍 PENDING——
+    // 旧断言（status===taskStatus）把首个合法决策误杀 409。mock 世界 findUnique
+    // 默认 null 跳守卫是该顺序缺陷的天然盲区，本用例显式给 PENDING 封住回归。
+    const schema = makeUserTaskSchema({
+      approvalMode: 'or_sign',
+      approveUsers: ['u1', 'u2'],
+      rejectToNodeId: 'n2',
+    });
+    setupTask(schema);
+    prisma.processTask.findUnique.mockResolvedValue({ status: 'PENDING' });
+    prisma.processTask.findMany.mockResolvedValue([
+      { id: 't1', status: 'APPROVED', assignee: 'u1', createdAt: new Date() },
+      { id: 't2', status: 'PENDING', assignee: 'u2', createdAt: new Date() },
+    ]);
+
+    const { engine, processQueue } = createEngine();
+    await engine.completeTask('t1', 'u1', 'reject', '不同意', undefined);
+
+    // 或签首决（驳回）：兄弟取消+立即推进，守卫不误杀
+    expect(processQueue.add).toHaveBeenCalledTimes(1);
+    const cancelWrite = prisma.processTask.updateMany.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'CANCELLED',
+    );
+    expect(cancelWrite).toBeDefined();
   });
 
   it('PE-06：聚合判定读冻结 schema——发布后活表被改（sequential→single）不漂移在途实例', async () => {

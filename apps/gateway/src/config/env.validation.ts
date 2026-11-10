@@ -100,6 +100,17 @@ export const envValidation = Joi.object({
   REVIEW_CALLBACK_URL: Joi.string().uri().optional(),
   REVIEW_CALLBACK_SECRET: Joi.string().min(16).optional(),
 
+  // ---- 流程引擎孤儿实例 sweeper（PE-12，BullMQ repeatable 驱动）----
+  // 整数下限（OCR 复审 2026-11-10）：负 STALE_MS 使 cutoff 落在未来→每轮误回收
+  // 活跃实例；非正 BATCH 令 Prisma take 报错。CRON 交 BullMQ 注册期校验（注册
+  // 失败仅告警不阻断启动）
+  PROCESS_SWEEPER_CRON: Joi.string().default('*/5 * * * *'),
+  PROCESS_SWEEPER_STALE_MS: Joi.number().integer().min(60_000).default(600_000),
+  PROCESS_SWEEPER_BATCH: Joi.number().integer().min(1).default(100),
+
+  // ---- 健康检查依赖探测 ----
+  HEALTH_PROBE_TIMEOUT_MS: Joi.number().integer().min(100).default(2000),
+
   // ---- 日志 ----
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
 });

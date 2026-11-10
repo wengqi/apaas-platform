@@ -44,6 +44,8 @@ const PROCESS_SWEEPER_CRON_DEFAULT = '*/5 * * * *';
 const PROCESS_SWEEPER_STALE_MS_DEFAULT = 600_000;
 /** 单轮巡检候选上限。 */
 const PROCESS_SWEEPER_BATCH_DEFAULT = 100;
+/** PE-22（◆9）：执行池并发缺省（每副本硬编码 5 → 环境变量化，公平调度留压测轮）。 */
+const WORKER_CONCURRENCY_DEFAULT = 5;
 
 @Injectable()
 export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
@@ -164,7 +166,7 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
           });
         }
       },
-      { connection: this.connection.duplicate(), concurrency: 5 },
+      { connection: this.connection.duplicate(), concurrency: this.workerConcurrency() },
     );
     processWorker.on('failed', (job, err) => {
       this.logger.error(`process job 失败: ${err.message}`);
@@ -236,7 +238,7 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
               : this.processEngine.resumeDelayedNode(instanceId, nodeId),
         );
       },
-      { connection: this.connection.duplicate(), concurrency: 5 },
+      { connection: this.connection.duplicate(), concurrency: this.workerConcurrency() },
     );
     delayWorker.on('failed', (job, err) => {
       this.logger.error(`delay job 失败: ${err.message}`);
@@ -295,5 +297,11 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
         }`,
       );
     }
+  }
+
+  /** PE-22/◆9：执行池并发读取（PROCESS_WORKER_CONCURRENCY，未配置回退既有 5）。 */
+  private workerConcurrency(): number {
+    const configured = this.config.get<number>('PROCESS_WORKER_CONCURRENCY');
+    return configured ?? WORKER_CONCURRENCY_DEFAULT;
   }
 }

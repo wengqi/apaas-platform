@@ -559,3 +559,332 @@ describe('retry 端点权限锚定（◆6）', () => {
     expect(metadata).toEqual({ type: 'PROCESS', action: 'EXECUTE', targetIdParam: 'instanceId' });
   });
 });
+
+// ===========================================================================
+// 波次⑥ — PE-21 触发摘要投影列 / PE-24 分页封顶 / PE-32 列投影
+// ===========================================================================
+
+describe('波次⑥ — 触发摘要投影列与列表封顶/投影（PE-21/24/32）', () => {
+  const prisma = getMockPrisma();
+
+  const triggerSchema = {
+    nodes: [
+      { id: 'start_1', type: 'start', data: { title: '开始' } },
+      {
+        id: 'trigger_1',
+        type: 'trigger',
+        data: { triggerType: 'RECORD_CREATED', objectId: 'obj-x', event: 'CREATE' },
+      },
+      { id: 'end_1', type: 'end', data: { title: '结束' } },
+    ],
+    edges: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('PE-21：保存流程同步物化触发摘要投影列（triggerType/triggerObjectId 同源 extractTriggerInfo）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      apiName: 'proc_x',
+      name: 'F',
+      status: 'DRAFT',
+      version: 1,
+      triggerType: null,
+      cron: null,
+      workflowSchema: null,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    prisma.processDef.update.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      apiName: 'proc_x',
+      name: 'F',
+      status: 'DRAFT',
+      version: 1,
+      triggerType: 'RECORD_CREATED',
+      cron: null,
+      workflowSchema: triggerSchema,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    const { service } = createService();
+
+    await service.updateProcess('t1', 'app-1', 'pd-1', {
+      workflowSchema: triggerSchema,
+    } as never);
+
+    const updateCall = prisma.processDef.update.mock.calls.find(
+      (c: unknown[]) =>
+        (c[0] as { data: Record<string, unknown> }).data.triggerObjectId !== undefined,
+    );
+    expect(updateCall).toBeDefined();
+    const data = updateCall![0]!.data as Record<string, unknown>;
+    expect(data.triggerObjectId).toBe('obj-x');
+    expect(data.triggerType).toBe('RECORD_CREATED');
+  });
+
+  it('PE-21：发布流程同步物化投影列', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      apiName: 'proc_x',
+      name: 'F',
+      status: 'DRAFT',
+      version: 1,
+      triggerType: null,
+      cron: null,
+      workflowSchema: triggerSchema,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    prisma.processDef.update.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      apiName: 'proc_x',
+      name: 'F',
+      status: 'PUBLISHED',
+      version: 2,
+      triggerType: 'RECORD_CREATED',
+      cron: null,
+      workflowSchema: triggerSchema,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    const { service } = createService();
+
+    await service.publishProcess('t1', 'app-1', 'pd-1');
+
+    const updateCall = prisma.processDef.update.mock.calls.find(
+      (c: unknown[]) =>
+        (c[0] as { data: Record<string, unknown> }).data.triggerObjectId !== undefined,
+    );
+    expect(updateCall).toBeDefined();
+    expect((updateCall![0]!.data as Record<string, unknown>).triggerObjectId).toBe('obj-x');
+  });
+
+  it('PE-24：listInstances pageSize 封顶 100 + findMany select 投影（PE-32）', async () => {
+    prisma.processInstance.findMany.mockResolvedValue([]);
+    prisma.processInstance.count.mockResolvedValue(0);
+    const { service } = createService();
+
+    await service.listInstances('t1', undefined, undefined, 1, 100000);
+
+    const arg = prisma.processInstance.findMany.mock.calls[0]![0]! as {
+      take: number;
+      select?: Record<string, unknown>;
+    };
+    expect(arg.take).toBe(100);
+    const select = arg.select as Record<string, unknown>;
+    expect(select.frozenWorkflowSchema).toBeUndefined();
+    expect(select.triggerContext).toBe(true);
+    expect(select.variables).toBe(true);
+  });
+
+  it('PE-24：listTasks pageSize 封顶 100（任务列表 triggerContext 全量保留=申请内容消费面）', async () => {
+    prisma.processTask.findMany.mockResolvedValue([]);
+    prisma.processTask.count.mockResolvedValue(0);
+    prisma.userRole.findMany.mockResolvedValue([]);
+    prisma.orgMember.findMany.mockResolvedValue([]);
+    prisma.user.findFirst.mockResolvedValue({ email: 'u@x.co' });
+    const { service } = createService();
+
+    await service.listTasks('t1', 'u1', undefined, 1, 100000);
+
+    const arg = prisma.processTask.findMany.mock.calls[0]![0]! as { take: number };
+    expect(arg.take).toBe(100);
+  });
+});
+
+// ===========================================================================
+// PE-21 写点回归——无 trigger 节点 schema 不得抹既有 triggerType（e2e/19、20 实锤）
+// ===========================================================================
+
+describe('PE-21 投影写点——无 trigger 节点 schema 保留既有 triggerType', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('PUT 保存无 trigger 节点 schema：顶层 triggerType 保留既有值（API 流程不被抹成 NULL）', async () => {
+    const apiFlowDef = {
+      id: 'pd-api',
+      appId: 'app-1',
+      apiName: 'api_flow',
+      name: '开放审批流',
+      status: 'PUBLISHED',
+      version: 1,
+      triggerType: 'API', // G6 API 触发（truthy——应用预检与流程发现依赖）
+      cron: null,
+      workflowSchema: { nodes: [{ id: 's', type: 'start', data: {} }], edges: [] }, // 无 trigger 节点
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    };
+    prisma.processDef.findFirst.mockResolvedValue(apiFlowDef);
+    prisma.processApiRelease.findFirst.mockResolvedValue(null);
+    prisma.processDef.update.mockResolvedValue({
+      ...apiFlowDef,
+      workflowSchema: apiFlowDef.workflowSchema,
+    });
+    const { service } = createService();
+
+    await service.updateProcess('t1', 'app-1', 'pd-api', {
+      workflowSchema: apiFlowDef.workflowSchema, // 改流程图（无 trigger 节点）
+    } as never);
+
+    const updateCall = prisma.processDef.update.mock.calls.find(
+      (c: unknown[]) =>
+        (c[0] as { data: Record<string, unknown> }).data.triggerObjectId !== undefined,
+    );
+    expect(updateCall).toBeDefined();
+    const data = updateCall![0]!.data as Record<string, unknown>;
+    // 既有 triggerType 保留（fallback=既有列值），不被覆盖为 NULL
+    expect(data.triggerType).toBe('API');
+  });
+
+  it('PUT 保存带 trigger 节点 schema：schema SSOT 覆盖顶层列（I-1 同步语义保持）', async () => {
+    const canvasSchema = {
+      nodes: [
+        { id: 'start_1', type: 'start', data: {} },
+        {
+          id: 'trigger_1',
+          type: 'trigger',
+          data: { triggerType: 'RECORD_UPDATED', objectId: 'obj-y' },
+        },
+        { id: 'end_1', type: 'end', data: {} },
+      ],
+      edges: [],
+    };
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-canvas',
+      appId: 'app-1',
+      apiName: 'canvas_flow',
+      name: '画布流程',
+      status: 'DRAFT',
+      version: 1,
+      triggerType: 'MANUAL', // 顶层未同步（I-1 症状形态）
+      cron: null,
+      workflowSchema: { nodes: [], edges: [] },
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    prisma.processDef.update.mockResolvedValue({
+      id: 'pd-canvas',
+      triggerType: 'RECORD_UPDATED',
+      workflowSchema: canvasSchema,
+    });
+    const { service } = createService();
+
+    await service.updateProcess('t1', 'app-1', 'pd-canvas', {
+      workflowSchema: canvasSchema,
+    } as never);
+
+    const updateCall = prisma.processDef.update.mock.calls.find(
+      (c: unknown[]) =>
+        (c[0] as { data: Record<string, unknown> }).data.triggerObjectId !== undefined,
+    );
+    const data = updateCall![0]!.data as Record<string, unknown>;
+    expect(data.triggerType).toBe('RECORD_UPDATED'); // schema SSOT 覆盖
+    expect(data.triggerObjectId).toBe('obj-y');
+  });
+});
+
+// ===========================================================================
+// OCR 复审（波次⑥）——写点完备性与覆盖顺序（2H）
+// ===========================================================================
+
+describe('PE-21 投影写点——OCR 复审补强（createProcess 物化/覆盖顺序/应用级发布）', () => {
+  const prisma = getMockPrisma();
+  const recordTriggerSchema = {
+    nodes: [
+      { id: 'start_1', type: 'start', data: {} },
+      {
+        id: 'trigger_1',
+        type: 'trigger',
+        data: { triggerType: 'RECORD_CREATED', objectId: 'obj-z', event: 'CREATE' },
+      },
+      { id: 'end_1', type: 'end', data: {} },
+    ],
+    edges: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('OCR-High：createProcess 物化投影——AI/MCP 落地（triggerType=MANUAL+schema RECORD 节点）列以 schema 为准', async () => {
+    // AI/MCP 建流路径：submit_workflow_draft triggerType 可选缺省 MANUAL，但
+    // schema 内含 RECORD 触发节点——createProcess 不物化则列=MANUAL，触发预过滤漏触
+    prisma.processDef.findFirst.mockResolvedValue(null);
+    prisma.processDef.create.mockResolvedValue({
+      id: 'pd-new',
+      appId: 'app-1',
+      apiName: 'ai_flow',
+      name: 'AI 流程',
+      status: 'DRAFT',
+      version: 1,
+      triggerType: 'RECORD_CREATED',
+      cron: null,
+      workflowSchema: recordTriggerSchema,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    const { service } = createService();
+
+    await service.createProcess('t1', 'app-1', {
+      apiName: 'ai_flow',
+      name: 'AI 流程',
+      triggerType: 'MANUAL',
+      workflowSchema: recordTriggerSchema,
+    } as never);
+
+    const createData = prisma.processDef.create.mock.calls[0]![0]! as {
+      data: Record<string, unknown>;
+    };
+    expect(createData.data.triggerType).toBe('RECORD_CREATED'); // schema SSOT 覆盖
+    expect(createData.data.triggerObjectId).toBe('obj-z');
+  });
+
+  it('OCR-High：req.triggerType 显式值不再覆盖 schema 物化（覆盖顺序修正——AI 落地带 MANUAL 的矛盾态消除）', async () => {
+    prisma.processDef.findFirst.mockResolvedValue({
+      id: 'pd-1',
+      appId: 'app-1',
+      apiName: 'proc_x',
+      name: 'F',
+      status: 'DRAFT',
+      version: 1,
+      triggerType: 'MANUAL',
+      cron: null,
+      workflowSchema: null,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    prisma.processDef.update.mockResolvedValue({
+      id: 'pd-1',
+      triggerType: 'RECORD_CREATED',
+      workflowSchema: recordTriggerSchema,
+      createdAt: new Date('2026-11-01'),
+      updatedAt: new Date('2026-11-01'),
+    });
+    const { service } = createService();
+
+    // AI 落地实况：同时带 workflowSchema（RECORD 节点）与显式 triggerType=MANUAL
+    await service.updateProcess('t1', 'app-1', 'pd-1', {
+      workflowSchema: recordTriggerSchema,
+      triggerType: 'MANUAL',
+    } as never);
+
+    const updateCalls = prisma.processDef.update.mock.calls.filter(
+      (c: unknown[]) =>
+        (c[0] as { data: Record<string, unknown> }).data.triggerObjectId !== undefined,
+    );
+    expect(updateCalls.length).toBeGreaterThan(0);
+    // 最后一次投影写为准：schema SSOT 不被显式 req.triggerType 覆盖
+    const lastData = updateCalls[updateCalls.length - 1]![0]!.data as Record<string, unknown>;
+    expect(lastData.triggerType).toBe('RECORD_CREATED');
+  });
+});

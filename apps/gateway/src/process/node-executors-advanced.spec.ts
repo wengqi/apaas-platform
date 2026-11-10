@@ -540,3 +540,69 @@ describe('SubProcessExecutor — functional-04 触发上下文透传', () => {
     expect(passed).not.toHaveProperty('recordId');
   });
 });
+
+// ---------------------------------------------------------------------------
+// PE-20 — filter 路径行数上限（scale-02：兑现头注释 BATCH_MAX_ROWS 契约）
+// ---------------------------------------------------------------------------
+
+describe('BatchOperationExecutor — PE-20 filter 路径行数上限', () => {
+  const recordService = {
+    batchCreate: vi.fn(),
+    batchUpdate: vi.fn(),
+    batchDelete: vi.fn(),
+  };
+  const executor = new BatchOperationExecutor(recordService as never);
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.objectMeta.findFirst.mockResolvedValue({ id: 'obj-1', tenantId: 't-1', appId: 'app-1' });
+  });
+
+  it('filter 广匹配超上限：清晰报错不执行批量更新（findMany take=上限+1 预检）', async () => {
+    prisma.record.findMany.mockResolvedValue(
+      Array.from({ length: 501 }, (_, i) => ({ id: `r${i}` })),
+    );
+    const ctx = makeCtx({
+      node: {
+        id: 'n0',
+        type: 'batch_operation',
+        meta: {},
+        data: makeData({
+          operation: 'update',
+          objectId: 'obj-1',
+          filter: { '==': [{ var: 'status' }, 'OPEN'] },
+        }),
+      } as ExecutionContext['node'],
+      inputs: { data: { status: 'DONE' } },
+    });
+
+    await expect(executor.execute(ctx)).rejects.toThrow(/超过上限/);
+    expect(recordService.batchUpdate).not.toHaveBeenCalled();
+    // take = 上限+1（预检超限，非全量载入）
+    const findArg = prisma.record.findMany.mock.calls[0]?.[0] as { take?: number };
+    expect(findArg.take).toBe(501);
+  });
+
+  it('filter 路径上限内正常执行（take 预检不误杀）', async () => {
+    prisma.record.findMany.mockResolvedValue([{ id: 'r1' }]);
+    recordService.batchUpdate.mockResolvedValue({ updated: 1, errors: [] });
+    const ctx = makeCtx({
+      node: {
+        id: 'n0',
+        type: 'batch_operation',
+        meta: {},
+        data: makeData({
+          operation: 'update',
+          objectId: 'obj-1',
+          filter: { '==': [{ var: 'status' }, 'OPEN'] },
+        }),
+      } as ExecutionContext['node'],
+      inputs: { data: { status: 'DONE' } },
+    });
+
+    const result = await executor.execute(ctx);
+    expect(result.output).toEqual({ affectedCount: 1 });
+    expect(recordService.batchUpdate).toHaveBeenCalled();
+  });
+});

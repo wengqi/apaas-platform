@@ -20,14 +20,20 @@ import { NonRetryableNodeError } from '../process/types.js';
 import { getMockPrisma } from '../test/test-helpers.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from './queue.constants.js';
 
-const { workerHandlers } = vi.hoisted(() => ({
+const { workerHandlers, workerOpts } = vi.hoisted(() => ({
   workerHandlers: new Map<string, (job: Job) => Promise<void>>(),
+  workerOpts: new Map<string, Record<string, unknown> | undefined>(),
 }));
 
 vi.mock('bullmq', () => {
   class FakeWorker {
-    constructor(queueName: string, handler: (job: Job) => Promise<void>, _opts?: unknown) {
+    constructor(
+      queueName: string,
+      handler: (job: Job) => Promise<void>,
+      opts?: Record<string, unknown>,
+    ) {
       workerHandlers.set(queueName, handler);
+      workerOpts.set(queueName, opts);
     }
     on(): void {
       /* 事件监听在单测中不挂载 */
@@ -48,7 +54,7 @@ vi.mock('ioredis', () => {
 });
 
 /** 构造被测 processor 并触发 Worker 注册，返回 process 队列 handler 与 mock 引擎。 */
-function createProcessor() {
+function createProcessor(configGet?: (key: string) => unknown) {
   const engine = {
     executeNextNode: vi.fn().mockResolvedValue(undefined),
     finalizeFailedInstance: vi.fn().mockResolvedValue(undefined),
@@ -66,12 +72,14 @@ function createProcessor() {
   const processor = new ProcessProcessor(
     engine as unknown as ConstructorParameters<typeof ProcessProcessor>[0],
     {
-      get: vi.fn((key: string) =>
-        key === 'PROCESS_SWEEPER_CRON'
-          ? '*/5 * * * *'
-          : key === 'REDIS_URL'
-            ? 'redis://localhost:6379'
-            : undefined,
+      get: vi.fn(
+        configGet ??
+          ((key: string) =>
+            key === 'PROCESS_SWEEPER_CRON'
+              ? '*/5 * * * *'
+              : key === 'REDIS_URL'
+                ? 'redis://localhost:6379'
+                : undefined),
       ),
     } as unknown as ConstructorParameters<typeof ProcessProcessor>[1],
     processQueue as unknown as ConstructorParameters<typeof ProcessProcessor>[2],
@@ -230,5 +238,35 @@ describe('ProcessProcessor task_timeout 环境上下文（PE-15）', () => {
 
     expect(prisma.processInstance.findFirst).not.toHaveBeenCalled();
     expect(engine.handleTaskTimeout).toHaveBeenCalledWith('pi-1', 'n1', 'ne-1');
+  });
+});
+
+// ===========================================================================
+// 波次⑥ — PE-22 执行池 concurrency 环境变量化（◆9：仅配置化，公平调度留压测轮）
+// ===========================================================================
+
+describe('ProcessProcessor concurrency 配置化（PE-22/◆9）', () => {
+  it('PROCESS_WORKER_CONCURRENCY 配置生效于两 Worker', async () => {
+    const { processor } = createProcessor((key: string) =>
+      key === 'PROCESS_WORKER_CONCURRENCY'
+        ? 8
+        : key === 'PROCESS_SWEEPER_CRON'
+          ? '*/5 * * * *'
+          : key === 'REDIS_URL'
+            ? 'redis://localhost:6379'
+            : undefined,
+    );
+    await processor.onModuleInit();
+
+    expect(workerOpts.get(PROCESS_QUEUE)?.['concurrency']).toBe(8);
+    expect(workerOpts.get(DELAY_QUEUE)?.['concurrency']).toBe(8);
+  });
+
+  it('未配置时缺省 5（既有行为不变）', async () => {
+    const created = createProcessor();
+    await created.processor.onModuleInit();
+
+    expect(workerOpts.get(PROCESS_QUEUE)?.['concurrency']).toBe(5);
+    expect(workerOpts.get(DELAY_QUEUE)?.['concurrency']).toBe(5);
   });
 });

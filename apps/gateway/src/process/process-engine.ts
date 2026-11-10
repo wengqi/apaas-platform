@@ -76,8 +76,11 @@ interface JoinWaitState {
 export class ProcessEngine {
   private readonly logger = new Logger(ProcessEngine.name);
 
-  /** 单实例最大节点执行次数（循环预算）— 超过视为循环 Schema，实例置 FAILED。 */
-  private static readonly MAX_NODE_EXECUTIONS = 1000;
+  /**
+   * PE-25（波次⑥，devil-05）：单节点最大执行次数（循环预算 per-node 口径）——
+   * 与 loop DEFAULT_MAX_ITERATIONS=1000 协同勿同值（合法满迭代不误杀，死循环判死）。
+   */
+  private static readonly MAX_PER_NODE_EXECUTIONS = 2000;
 
   /** variables 中存储分支汇聚等待状态的键（对用户不可见的引擎内部状态）。 */
   private static readonly JOIN_STATE_KEY = '_joins';
@@ -340,18 +343,6 @@ export class ProcessEngine {
       return;
     }
 
-    // 循环预算：统计该实例历史节点执行次数，超过上限视为循环 Schema（B3 防护）
-    const executedCount = await prisma.nodeExecution.count({ where: { instanceId } });
-    if (executedCount > ProcessEngine.MAX_NODE_EXECUTIONS) {
-      const errorMsg = `检测到循环执行：节点累计执行 ${executedCount} 次超过上限 ${ProcessEngine.MAX_NODE_EXECUTIONS}，请检查流程 Schema 是否存在环路`;
-      this.logger.error(`实例 ${instanceId} ${errorMsg}`);
-      await prisma.processInstance.update({
-        where: { id: instanceId },
-        data: { status: 'FAILED', error: errorMsg },
-      });
-      return;
-    }
-
     // R1.4：优先使用实例启动时冻结的流程 schema（版本切换不影响在途实例语义）
     const schema = (instance.frozenWorkflowSchema ??
       instance.processDef.workflowSchema) as unknown as WorkflowSchema;
@@ -379,6 +370,29 @@ export class ProcessEngine {
         this.logger.warn(`实例 ${instanceId} 的活跃节点 ${nodeId} 不存在于 Schema，移除令牌`);
         instance = await this.removeActiveNode(instance, nodeId);
         continue;
+      }
+
+      // PE-25（R-B 波次⑥，devil-05）：循环预算改 per-node 口径且检查点移入 while
+      // 循环——旧口径（全实例 NodeExecution 总行数判死且仅 job 进门检查一次）
+      // 会误杀合法大循环（600 元素×体节点数逼近 1000 总行数）且纯同步循环单 job
+      // 跑完永不复查。per-node 上限 2000 与 loop DEFAULT_MAX_ITERATIONS=1000
+      // 协同勿同值（R2-scale-05/correctness-01）：合法满迭代（体节点 ≤1000 次）
+      // 不误杀；死循环（同一节点无界重执行）在 2000 次处判死，错误指名节点
+      // OCR 复审波次⑥ med：存在性探针替代计数（skip 超过行数即返回 null）——
+      // node_executions 仅单列索引，逐迭代 count 全量扫描为平方级开销
+      const overBudget = await prisma.nodeExecution.findFirst({
+        where: { instanceId, nodeId },
+        select: { id: true },
+        skip: ProcessEngine.MAX_PER_NODE_EXECUTIONS,
+      });
+      if (overBudget) {
+        const errorMsg = `节点 ${nodeId} 累计执行超过上限 ${ProcessEngine.MAX_PER_NODE_EXECUTIONS}，检测到循环执行（若为循环节点请检查 maxIterations 配置）`;
+        this.logger.error(`实例 ${instanceId} ${errorMsg}`);
+        await prisma.processInstance.update({
+          where: { id: instanceId },
+          data: { status: 'FAILED', error: errorMsg },
+        });
+        return;
       }
 
       // 执行单个节点

@@ -330,26 +330,94 @@ describe('ProcessEngine', () => {
       expect(removeCall).toBeDefined();
     });
 
-    it('B3 循环预算：历史节点执行次数超上限时实例置 FAILED', async () => {
+    it('PE-25：循环预算改 per-node 口径——同节点执行超上限置 FAILED（错误含节点 ID，诊断不误导）', async () => {
+      // devil-05：旧口径=全实例 NodeExecution 总行数判死——600 元素合法循环
+      // （loop 1000 节点+体各一行）跑完被误杀且「副作用已写无补偿」。新契约：
+      // per-node 计数（上限 2000 与 loop DEFAULT_MAX_ITERATIONS=1000 协同勿同值，
+      // R2-scale-05/correctness-01），错误信息指名节点
       const schema = makeSimpleSchema();
       const instance = makeProcessInstance({
         activeNodeIds: ['node-start'],
         processDef: makeProcessDef({ workflowSchema: schema }),
       });
       prisma.processInstance.findFirst.mockResolvedValue(instance);
-      // 模拟历史已执行 1001 次（超过 MAX_NODE_EXECUTIONS=1000）
-      prisma.nodeExecution.count.mockResolvedValue(1001);
+      // 同节点历史已执行超上限（探针 skip=2000 命中返回行）
+      prisma.nodeExecution.findFirst.mockResolvedValue({ id: 'ne-over' });
+      const startExecutor = createMockExecutor('start', async () => ({ output: {} }));
 
-      const { engine } = createEngine();
+      const { engine } = createEngine([startExecutor]);
 
       await engine.executeNextNode('pi-001');
 
-      // 实例应被标记 FAILED 且携带循环检测错误信息
+      // per-node 口径锚：探针查询限定 nodeId + skip=上限（存在性探测不计数）
+      const probeArg = prisma.nodeExecution.findFirst.mock.calls[0]![0]! as {
+        where: Record<string, unknown>;
+        skip: number;
+      };
+      expect(probeArg.where).toEqual({ instanceId: 'pi-001', nodeId: 'node-start' });
+      expect(probeArg.skip).toBe(2000);
+      // 实例置 FAILED 且错误信息指名超限节点
       const failedUpdate = prisma.processInstance.update.mock.calls.find(
         (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
       );
       expect(failedUpdate).toBeDefined();
-      expect(String(failedUpdate![0]!.data.error)).toContain('循环执行');
+      expect(String(failedUpdate![0]!.data.error)).toContain('node-start');
+    });
+
+    it('PE-25：预算检查点移入 while 循环——每节点执行前复查（纯同步循环不再单次进门后永免检）', async () => {
+      // R2-scale-05：旧检查仅在 job 进门执行一次——循环体单 job 一气跑完永不复查。
+      // 新契约：每节点执行前 per-node count；下游节点超限在执行前判死
+      const schema = makeSimpleSchema();
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      // node-start 正常（探针 null），下游 node-end 超限（探针命中）
+      prisma.nodeExecution.findFirst.mockImplementation(
+        async (args?: { where?: { nodeId?: string } }) =>
+          args?.where?.nodeId === 'node-end' ? { id: 'ne-end' } : null,
+      );
+      prisma.nodeExecution.create.mockResolvedValue(makeNodeExecution());
+      const startExecutor = createMockExecutor('start', async () => ({ output: {} }));
+      const endExecutor = createMockExecutor('end', async () => ({ output: {} }));
+
+      const { engine } = createEngine([startExecutor, endExecutor]);
+
+      await engine.executeNextNode('pi-001');
+
+      // start 正常执行推进；end 在执行前判死（executor 未被调用）
+      expect(startExecutor.execute).toHaveBeenCalledTimes(1);
+      expect(endExecutor.execute).not.toHaveBeenCalled();
+      const failedUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(failedUpdate).toBeDefined();
+      expect(String(failedUpdate![0]!.data.error)).toContain('node-end');
+    });
+
+    it('PE-25：其他节点行数多不误杀当前节点（per-node 隔离——600 元素合法循环语义）', async () => {
+      const schema = makeSimpleSchema();
+      const instance = makeProcessInstance({
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+      // 当前节点探针 null；其余节点行数多（总行数已近旧上限——per-node 下不判死）
+      prisma.nodeExecution.findFirst.mockResolvedValue(null);
+      prisma.nodeExecution.create.mockResolvedValue(makeNodeExecution());
+      const startExecutor = createMockExecutor('start', async () => ({ output: {} }));
+      const endExecutor = createMockExecutor('end', async () => ({ output: {} }));
+
+      const { engine } = createEngine([startExecutor, endExecutor]);
+
+      await engine.executeNextNode('pi-001');
+
+      // 正常完成，无 FAILED
+      const failedUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) => call[0]!.data.status === 'FAILED',
+      );
+      expect(failedUpdate).toBeUndefined();
     });
 
     it('B4 WAITING 令牌跳过：所有令牌等待时不执行节点', async () => {

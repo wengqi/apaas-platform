@@ -95,11 +95,10 @@ export class BatchOperationExecutor implements NodeExecutor {
     const updateData = this.resolveUpdatePayload(ctx);
 
     const where = await this.buildScopeWhere(ctx, objectId);
-
-    // 评审 P0-1 + P1-5：逐条 merge 由记录写内核完成（含公式/Rollup/事件）
-    const targets = await prisma.record.findMany({ where, select: { id: true } });
+    const targets = await this.loadTargetsInBudget(where);
     if (targets.length === 0) return { output: { affectedCount: 0 } };
 
+    // 评审 P0-1 + P1-5：逐条 merge 由记录写内核完成（含公式/Rollup/事件）
     const result = await this.recordService.batchUpdate(
       ctx.tenantId,
       targets.map((t) => t.id),
@@ -112,7 +111,7 @@ export class BatchOperationExecutor implements NodeExecutor {
   /** 批量删除：范围 = inputs.recordIds 或 data.filter（评审 P1-5：复用写内核）。 */
   private async batchDelete(ctx: ExecutionContext, objectId: string): Promise<NodeExecutionResult> {
     const where = await this.buildScopeWhere(ctx, objectId);
-    const targets = await prisma.record.findMany({ where, select: { id: true } });
+    const targets = await this.loadTargetsInBudget(where);
     if (targets.length === 0) return { output: { affectedCount: 0 } };
 
     const result = await this.recordService.batchDelete(
@@ -120,6 +119,27 @@ export class BatchOperationExecutor implements NodeExecutor {
       targets.map((t) => t.id),
     );
     return { output: { affectedCount: result.deleted } };
+  }
+
+  /**
+   * PE-20（R-B 波次⑥，scale-02）：filter 路径行数预算——take=上限+1 预检超限
+   * （recordIds 路径已有同款校验），广匹配不再全量 ID 载入+锁内串行完整更新；
+   * 超限报清晰错误并提示收窄 filter（兑现头注释 BATCH_MAX_ROWS 契约）。
+   */
+  private async loadTargetsInBudget(
+    where: Prisma.RecordWhereInput,
+  ): Promise<Array<{ id: string }>> {
+    const targets = await prisma.record.findMany({
+      where,
+      select: { id: true },
+      take: BATCH_MAX_ROWS + 1,
+    });
+    if (targets.length > BATCH_MAX_ROWS) {
+      throw new Error(
+        `批量操作 filter 命中记录超过上限 ${BATCH_MAX_ROWS} 条，请收窄 filter 范围后重试`,
+      );
+    }
+    return targets;
   }
 
   /** 解析批量更新的字段载荷（优先 inputs.data，回退扁平 inputs）。 */

@@ -217,6 +217,13 @@ export class ProcessService {
       });
     }
 
+    // PE-21（OCR 复审波次⑥ high）：createProcess 物化投影——AI/MCP 落地路径
+    // triggerType 常缺省 MANUAL 而 schema 内含 RECORD 触发节点，不物化则列错、
+    // 触发预过滤漏触（I-1 静默失效重开）
+    const createTriggerInfo = extractTriggerInfo(req.workflowSchema, {
+      triggerType: req.triggerType ?? 'MANUAL',
+      cron: null,
+    });
     const def = await prisma.processDef.create({
       data: {
         tenantId,
@@ -226,7 +233,9 @@ export class ProcessService {
         workflowSchema: req.workflowSchema as Prisma.InputJsonValue,
         version: 1,
         status: 'DRAFT',
-        triggerType: req.triggerType ?? 'MANUAL',
+        triggerType: createTriggerInfo.triggerType,
+        triggerObjectId: createTriggerInfo.objectId ?? null,
+        cron: createTriggerInfo.cron ?? null,
       },
     });
 
@@ -295,9 +304,24 @@ export class ProcessService {
     if (req.name !== undefined) data.name = req.name;
     if (req.workflowSchema !== undefined) {
       data.workflowSchema = req.workflowSchema as Prisma.InputJsonValue;
+      // PE-21（R-B 波次⑥，R2-compat-06）：触发摘要投影列同源物化——schema 变更时
+      // 按 extractTriggerInfo（SSOT）重算 triggerType/triggerObjectId，记录事件
+      // 匹配先列预过滤后按需载 schema（写点①：PUT 保存）。
+      // fallback=既有列值（e2e/19、20 实锤：无 trigger 节点的 API/手动流程 schema
+      // 若 fallback 传 null 会把顶层 triggerType 抹成 NULL——应用预检「未配置触发器
+      // 类型」+ G6 链路断）；schema 有 trigger 节点时以 schema 值覆盖（I-1 同步语义）
+      const info = extractTriggerInfo(req.workflowSchema, {
+        triggerType: req.triggerType ?? existing.triggerType ?? null,
+        cron: req.cron ?? existing.cron ?? null,
+      });
+      data.triggerType = info.triggerType;
+      data.triggerObjectId = info.objectId ?? null;
+      data.cron = info.cron ?? existing.cron ?? null;
     }
-    if (req.triggerType !== undefined) data.triggerType = req.triggerType;
-    if (req.cron !== undefined) data.cron = req.cron;
+    // OCR 复审波次⑥ high：req.triggerType/cron 显式覆盖移除——物化在 schema 有
+    // trigger 节点时以 SSOT 为准（AI 落地实况=同时带 schema 与 MANUAL 显式值，
+    // 后置覆盖会使列与 schema 自相矛盾再叠加预过滤漏触）；无节点时 fallback
+    // 链已含 req 显式值（本块上方）
 
     await prisma.processDef.update({ where: { id: processId }, data });
 
@@ -502,11 +526,19 @@ export class ProcessService {
       });
     }
 
+    // PE-21（R-B 波次⑥）：发布物化触发摘要投影列（写点②：发布，SSOT 同源）
+    const triggerInfo = extractTriggerInfo(existing.workflowSchema, {
+      triggerType: existing.triggerType,
+      cron: existing.cron,
+    });
     const def = await prisma.processDef.update({
       where: { id: processId },
       data: {
         status: 'PUBLISHED',
         version: { increment: 1 },
+        triggerType: triggerInfo.triggerType,
+        triggerObjectId: triggerInfo.objectId ?? null,
+        cron: triggerInfo.cron ?? null,
       },
     });
 
@@ -740,6 +772,7 @@ export class ProcessService {
     page = 1,
     pageSize = 20,
   ) {
+    const clampedPageSize = clampPageSize(pageSize);
     const where: Prisma.ProcessInstanceWhereInput = { tenantId };
     if (processDefId) where.processDefId = processDefId;
     if (status) where.status = status as ProcessInstanceStatus;
@@ -747,11 +780,16 @@ export class ProcessService {
     const [items, total] = await Promise.all([
       prisma.processInstance.findMany({
         where,
-        include: { processDef: { select: { name: true, apiName: true, version: true } } },
+        // PE-32（R2-scale-06）：select 投影——排除 frozenWorkflowSchema 大列
+        // （单行 ~25KB 且 DTO 零消费），DTO 消费列全保留
+        select: {
+          ...INSTANCE_LIST_SELECT,
+          processDef: { select: { name: true, apiName: true, version: true } },
+        },
         orderBy: { startedAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
+        skip: (page - 1) * clampedPageSize,
+        take: clampedPageSize,
+      }) as Promise<InstanceListRow[]>,
       prisma.processInstance.count({ where }),
     ]);
 
@@ -759,7 +797,7 @@ export class ProcessService {
       items: items.map((i) => this.toInstanceDto(i)),
       total,
       page,
-      pageSize,
+      pageSize: clampedPageSize,
     };
   }
 
@@ -792,6 +830,7 @@ export class ProcessService {
     page = 1,
     pageSize = 20,
   ) {
+    const clampedPageSize = clampPageSize(pageSize);
     const where: Prisma.ProcessInstanceWhereInput = {
       tenantId,
       triggerContext: { path: ['triggeredByUser'], equals: userId },
@@ -801,11 +840,15 @@ export class ProcessService {
     const [items, total] = await Promise.all([
       prisma.processInstance.findMany({
         where,
-        include: { processDef: { select: { name: true, apiName: true, version: true } } },
+        // PE-32（R2-scale-06）：select 投影——「我发起的」Seq Scan 路径逐行放大收敛
+        select: {
+          ...INSTANCE_LIST_SELECT,
+          processDef: { select: { name: true, apiName: true, version: true } },
+        },
         orderBy: { startedAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
+        skip: (page - 1) * clampedPageSize,
+        take: clampedPageSize,
+      }) as Promise<InstanceListRow[]>,
       prisma.processInstance.count({ where }),
     ]);
 
@@ -813,7 +856,7 @@ export class ProcessService {
       items: items.map((i) => this.toInstanceDto(i)),
       total,
       page,
-      pageSize,
+      pageSize: clampedPageSize,
     };
   }
 
@@ -908,6 +951,9 @@ export class ProcessService {
     processDefId?: string,
     assignee?: string,
   ) {
+    // PE-24（R2-correctness-09）：pageSize 封顶 100（对齐 record 同款约定；
+    // 任务列表 triggerContext 全量保留=申请内容渲染消费面，R2-scale-09 白名单口径）
+    const clampedPageSize = clampPageSize(pageSize);
     const where: Prisma.ProcessTaskWhereInput = { tenantId };
 
     // ◆3=A：跨人/跨流程筛选（assignee 非本人或指定流程）→ 要求监控角色；本人筛选不要求
@@ -986,8 +1032,8 @@ export class ProcessService {
           },
         },
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: (page - 1) * clampedPageSize,
+        take: clampedPageSize,
       }),
       prisma.processTask.count({ where }),
     ]);
@@ -1007,7 +1053,7 @@ export class ProcessService {
       arrivedAt: t.createdAt.toISOString(),
     }));
 
-    return { items, total, page, pageSize };
+    return { items, total, page, pageSize: clampedPageSize };
   }
 
   /** 获取任务详情。 */
@@ -1533,24 +1579,13 @@ export class ProcessService {
     };
   }
 
-  private toInstanceDto(
-    i:
-      | Prisma.ProcessInstanceGetPayload<{
-          include: {
-            processDef: true;
-            nodeExecutions: true;
-            tasks: true;
-          };
-        }>
-      | Prisma.ProcessInstanceGetPayload<{
-          include: { processDef: { select: { name: true; apiName: true; version: true } } };
-        }>,
-  ) {
+  // PE-32：参数放宽为结构行形状（include 全行与 select 投影行两种形态）
+  private toInstanceDto(i: InstanceDtoRow) {
     return {
       id: i.id,
       tenantId: i.tenantId,
       processDefId: i.processDefId,
-      processKey: 'processDef' in i ? i.processDef.apiName : undefined,
+      processKey: i.processDef?.apiName,
       // PE-19（◆8/ADR-0007 §三）：版本读启动时钉住的快照值（存量实例可空回退活表）
       version: resolveInstanceVersion(i),
       triggerContext: i.triggerContext,
@@ -1568,9 +1603,9 @@ export class ProcessService {
         string | undefined,
       triggeredByUser: (i.triggerContext as Record<string, unknown> | null)?.['triggeredByUser'] as
         string | undefined,
-      processDef: 'processDef' in i ? i.processDef : undefined,
-      nodeExecutions: 'nodeExecutions' in i ? i.nodeExecutions : undefined,
-      tasks: 'tasks' in i ? i.tasks : undefined,
+      processDef: i.processDef ?? undefined,
+      nodeExecutions: i.nodeExecutions,
+      tasks: i.tasks,
     };
   }
 
@@ -1606,17 +1641,64 @@ export class ProcessService {
  * PE-19（◆8/ADR-0007 §三）：实例版本读数——快照版本（启动时钉值）优先，
  * 存量实例（迁移可空列未回填）回退活表 version（不追改历史）。
  */
-function resolveInstanceVersion(
-  i:
-    | Prisma.ProcessInstanceGetPayload<{
-        include: { processDef: true; nodeExecutions: true; tasks: true };
-      }>
-    | Prisma.ProcessInstanceGetPayload<{
-        include: { processDef: { select: { name: true; apiName: true; version: true } } };
-      }>,
-): number | undefined {
+function resolveInstanceVersion(i: InstanceDtoRow): number | undefined {
   if ('snapshotVersion' in i && i.snapshotVersion != null) {
     return i.snapshotVersion;
   }
-  return 'processDef' in i ? i.processDef.version : undefined;
+  return i.processDef?.version;
 }
+
+/** PE-32（R2-scale-06）：实例列表 select 投影——DTO 消费列白名单（零 frozen 大列）。 */
+const INSTANCE_LIST_SELECT = {
+  id: true,
+  tenantId: true,
+  processDefId: true,
+  snapshotVersion: true,
+  triggerContext: true,
+  variables: true,
+  status: true,
+  activeNodeIds: true,
+  startedAt: true,
+  finishedAt: true,
+  error: true,
+} as const;
+
+/** PE-24（R2-correctness-09）：流程域列表分页封顶——明示 100（对齐 record 同款约定）。 */
+const MAX_PAGE_SIZE = 100;
+
+function clampPageSize(pageSize: number): number {
+  // OCR 复审波次⑥ low：parseInt('abc')=NaN 透传会令 take:NaN → Prisma 500——归一非有限值
+  const size = Number.isFinite(pageSize) ? Math.trunc(pageSize) : 20;
+  return Math.max(1, Math.min(size, MAX_PAGE_SIZE));
+}
+
+/** PE-32：列表 select 投影行类型（从 INSTANCE_LIST_SELECT 派生——OCR：手写类型会与 select 漂移）。 */
+type InstanceListRow = Prisma.ProcessInstanceGetPayload<{
+  select: typeof INSTANCE_LIST_SELECT & {
+    processDef: { select: { name: true; apiName: true; version: true } };
+  };
+}> & {
+  processDef: { name: string; apiName: string; version: number };
+};
+
+/** toInstanceDto 行形状（include 全行与 PE-32 select 投影行两种形态的结构超集）。 */
+type InstanceDtoRow = {
+  id: string;
+  tenantId: string;
+  processDefId: string;
+  triggerContext: unknown;
+  variables: unknown;
+  status: string;
+  activeNodeIds: unknown;
+  startedAt: Date;
+  finishedAt: Date | null;
+  error: string | null;
+  snapshotVersion?: number | null;
+  processDef?: { apiName?: string; version?: number; name?: string } | null;
+  nodeExecutions?: Prisma.ProcessInstanceGetPayload<{
+    include: { processDef: true; nodeExecutions: true; tasks: true };
+  }>['nodeExecutions'];
+  tasks?: Prisma.ProcessInstanceGetPayload<{
+    include: { processDef: true; nodeExecutions: true; tasks: true };
+  }>['tasks'];
+};

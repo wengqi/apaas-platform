@@ -38,7 +38,7 @@ vi.mock('ioredis', () => ({
 const TENANT = 'tenant-1';
 const APP = 'app-1';
 
-/** 画布配置的流程：顶层 triggerType 未同步（MANUAL），schema trigger 节点已配置。 */
+/** 画布配置的流程：PE-21 起投影列由回填+写点构造性同步（triggerType/triggerObjectId）。 */
 function canvasFlow(
   overrides: Record<string, unknown> = {},
   triggerData: Record<string, unknown> = {
@@ -52,7 +52,8 @@ function canvasFlow(
     id: 'proc-canvas',
     apiName: 'vehicle_flow',
     name: '用车审批',
-    triggerType: 'MANUAL',
+    triggerType: 'RECORD_CREATED',
+    triggerObjectId: 'obj-vehicle',
     cron: null,
     workflowSchema: {
       nodes: [
@@ -103,13 +104,31 @@ describe('TriggerService.onRecordEvent — 触发匹配读 schema 触发节点�
   /**
    * 模拟真实 Prisma：顶层列过滤在 SQL 层生效——where.triggerType 不匹配的行
    * 对查询不可见（I-1 症状的根源：画布流程顶层 MANUAL 被过滤）。
+   * PE-21 升级：模拟 triggerType in + triggerObjectId 宽松 OR（投影列预过滤语义）
    */
   const installLiveTable = (rows: Array<Record<string, unknown>>) => {
     prisma.processDef.findMany.mockImplementation(
-      async (args?: { where?: { triggerType?: string } }) =>
-        rows.filter(
-          (r) => !args?.where?.triggerType || r['triggerType'] === args.where.triggerType,
-        ),
+      async (args?: { where?: { triggerType?: unknown; OR?: Array<Record<string, unknown>> } }) =>
+        rows.filter((r) => {
+          const tt = args?.where?.triggerType;
+          if (tt !== undefined) {
+            if (typeof tt === 'object' && tt !== null && 'in' in (tt as object)) {
+              if (!(tt as { in: string[] }).in.includes(r['triggerType'] as string)) return false;
+            } else if (r['triggerType'] !== tt) {
+              return false;
+            }
+          }
+          const orBranches = args?.where?.OR;
+          if (Array.isArray(orBranches)) {
+            const ok = orBranches.some((branch) => {
+              const oid = (branch as { triggerObjectId?: unknown })?.triggerObjectId;
+              // 行未写投影列（undefined）视同 NULL——宽松 OR 的存量兼容语义
+              return oid === null ? r['triggerObjectId'] == null : r['triggerObjectId'] === oid;
+            });
+            if (!ok) return false;
+          }
+          return true;
+        }),
     );
   };
 
@@ -118,7 +137,9 @@ describe('TriggerService.onRecordEvent — 触发匹配读 schema 触发节点�
     engine.startProcess.mockResolvedValue('inst-1');
   });
 
-  it('画布配置的触发器（顶层 MANUAL 未同步）能被记录事件命中并按活表 schema 启动', async () => {
+  it('画布配置的触发器（PE-21 投影列同步态）能被记录事件命中并按活表 schema 启动', async () => {
+    // PE-21 语义收窄登记：匹配集=投影列同步子集（回填+PUT/发布/AI 落地三写点
+    // 构造性保证）；schema 触发节点仍为精确判定 SSOT（候选逐个 extractTriggerInfo）
     const flow = canvasFlow();
     installLiveTable([flow]);
     await makeService().onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', { id: 'rec-1' });
@@ -151,9 +172,38 @@ describe('TriggerService.onRecordEvent — 触发匹配读 schema 触发节点�
     );
   });
 
-  it('触发节点缺 objectId（画布未选关联对象）= 应用级匹配（存量语义）', async () => {
-    installLiveTable([canvasFlow({}, { title: '触发器', triggerType: 'RECORD_CREATED' })]);
+  it('触发节点缺 objectId（画布未选关联对象）= 应用级匹配（存量语义，投影列 NULL 宽松保留）', async () => {
+    installLiveTable([
+      canvasFlow(
+        { triggerObjectId: null }, // 画布未绑定对象 → 投影列 NULL（写点同源）
+        { title: '触发器', triggerType: 'RECORD_CREATED' },
+      ),
+    ]);
     await makeService().onRecordEvent(TENANT, APP, 'obj-any', 'created', { id: 'rec-4' });
+    expect(engine.startProcess).toHaveBeenCalledTimes(1);
+  });
+
+  it('PE-21：匹配预过滤走投影列——where 含 triggerType in RECORD_* + triggerObjectId 宽松 OR', async () => {
+    // scale-04：记录事件热路径此前全量拉取应用全部已发布流程完整 schema 逐个
+    // JSON 解析（实测 13 流程≈25KB/事件）。修复契约：where 预过滤到候选
+    // （triggerType in RECORD_* + (triggerObjectId IS NULL OR =X) 宽松 OR——
+    // 列漏写只多拉不漏触，schema SSOT 精确判定语义保持）+ select 带投影列
+    installLiveTable([canvasFlow()]);
+    await makeService().onRecordEvent(TENANT, APP, 'obj-vehicle', 'created', { id: 'rec-6' });
+
+    const arg = prisma.processDef.findMany.mock.calls[0]?.[0] as {
+      where: { triggerType?: { in?: string[] }; OR?: Array<Record<string, unknown>> };
+      select?: Record<string, unknown>;
+    };
+    expect(arg.where.triggerType?.in).toEqual(
+      expect.arrayContaining(['RECORD_CREATED', 'RECORD_UPDATED', 'RECORD_DELETED']),
+    );
+    expect(arg.where.OR).toEqual(
+      expect.arrayContaining([{ triggerObjectId: null }, { triggerObjectId: 'obj-vehicle' }]),
+    );
+    // OCR 清理：select 不携带投影列（where 预过滤消费，select 未消费不拉）
+    expect((arg.select as Record<string, unknown> | undefined)?.triggerObjectId).toBeUndefined();
+    // 投影预过滤不改语义：命中流程照常启动
     expect(engine.startProcess).toHaveBeenCalledTimes(1);
   });
 
@@ -404,5 +454,69 @@ describe('TriggerService.rebuildForEnvironment — 定时注册读活表+触发�
     );
 
     expect(withLock).toHaveBeenCalledWith('trigger-register:dev', expect.any(Function));
+  });
+});
+
+// ===========================================================================
+// OCR 复审（波次⑥）——syncTriggerProjections 第四写点（应用级发布 updateMany 不重算）
+// ===========================================================================
+
+describe('TriggerService.syncTriggerProjections — 应用级发布投影物化（OCR-High）', () => {
+  const engine = { startProcess: vi.fn().mockResolvedValue('inst-1') };
+
+  const makeService = () =>
+    new TriggerService(
+      engine as never,
+      {
+        add: vi.fn(),
+        removeRepeatable: vi.fn(),
+        removeRepeatableByKey: vi.fn(),
+        getRepeatableJobs: vi.fn().mockResolvedValue([]),
+      } as never,
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    engine.startProcess.mockResolvedValue('inst-1');
+  });
+
+  it('应用级发布上线的流程逐行物化投影列（updateMany 不重算的补口）', async () => {
+    const tx = {
+      processDef: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'pd-a',
+            triggerType: 'MANUAL', // AI 落地矛盾态（列 MANUAL + schema RECORD 节点）
+            cron: null,
+            workflowSchema: {
+              nodes: [
+                { id: 'start_1', type: 'start', data: {} },
+                {
+                  id: 'trigger_1',
+                  type: 'trigger',
+                  data: { triggerType: 'RECORD_CREATED', objectId: 'obj-z' },
+                },
+                { id: 'end_1', type: 'end', data: {} },
+              ],
+              edges: [],
+            },
+          },
+        ]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    const service = makeService();
+    await service.syncTriggerProjections('tenant-1', 'app-1', tx as never);
+
+    expect(tx.processDef.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pd-a' },
+        data: expect.objectContaining({
+          triggerType: 'RECORD_CREATED', // schema SSOT 覆盖
+          triggerObjectId: 'obj-z',
+        }),
+      }),
+    );
   });
 });

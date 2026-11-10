@@ -392,6 +392,47 @@ export class TriggerService implements OnModuleInit {
   }
 
   /**
+   * PE-21（OCR 复审波次⑥ high）：应用级发布第四写点——updateMany 批量上线
+   * 不重算投影列，本方法供发布事务内逐行物化（tx 事务客户端传入保证原子性，
+   * 缺省 prisma）。列同步不变量的兜底补口：任何路由把行置为 PUBLISHED 前
+   * 都应经过本方法或三写点。
+   */
+  async syncTriggerProjections(
+    tenantId: string,
+    appId: string,
+    tx: {
+      processDef: {
+        findMany: (args: unknown) => Promise<Array<Record<string, unknown>>>;
+        update: (args: unknown) => Promise<unknown>;
+      };
+    },
+  ): Promise<void> {
+    const defs = (await tx.processDef.findMany({
+      where: { tenantId, appId },
+      select: { id: true, workflowSchema: true, triggerType: true, cron: true },
+    })) as Array<{
+      id: string;
+      workflowSchema: unknown;
+      triggerType: string | null;
+      cron: string | null;
+    }>;
+    for (const def of defs) {
+      const info = extractTriggerInfo(def.workflowSchema, {
+        triggerType: def.triggerType,
+        cron: def.cron,
+      });
+      await tx.processDef.update({
+        where: { id: def.id },
+        data: {
+          triggerType: info.triggerType,
+          triggerObjectId: info.objectId ?? null,
+          cron: info.cron ?? def.cron,
+        },
+      });
+    }
+  }
+
+  /**
    * 记录事件触发 — 按活表 PUBLISHED 流程的触发节点匹配并启动（环境感知）。
    *
    * I-1：触发信息以 schema 触发节点为 SSOT（回退顶层列）；匹配集 = 活表
@@ -412,8 +453,18 @@ export class TriggerService implements OnModuleInit {
     if (!triggerType) return;
 
     try {
+      // PE-21（R-B 波次⑥，scale-04/R2-compat-06）：触发摘要投影列预过滤——
+      // 记录事件热路径不再全量拉取应用全部已发布流程完整 schema 逐个 JSON 解析。
+      // 宽松 OR（triggerObjectId IS NULL OR =X）：列漏写只多拉不漏触，
+      // schema 触发节点 SSOT 精确判定语义保持（下方 filter 仍走 extractTriggerInfo）
       const defs = await prisma.processDef.findMany({
-        where: { tenantId, appId, status: 'PUBLISHED' },
+        where: {
+          tenantId,
+          appId,
+          status: 'PUBLISHED',
+          triggerType: { in: Object.values(EVENT_TO_TRIGGER) }, // SSOT 派生（OCR：硬编码重复会在事件扩展时静默漏触）
+          OR: [{ triggerObjectId: null }, { triggerObjectId: objectId }],
+        },
         select: {
           id: true,
           apiName: true,

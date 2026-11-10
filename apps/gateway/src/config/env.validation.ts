@@ -100,6 +100,9 @@ export const envValidation = Joi.object({
   REVIEW_CALLBACK_URL: Joi.string().uri().optional(),
   REVIEW_CALLBACK_SECRET: Joi.string().min(16).optional(),
 
+  // ---- 流程引擎执行池（PE-22/◆9：仅 concurrency 配置化，公平调度留压测轮）----
+  PROCESS_WORKER_CONCURRENCY: Joi.number().integer().min(1).max(32).default(5), // OCR：无上限=单副本瞬间扇出数百锁持有 job
+
   // ---- 流程引擎孤儿实例 sweeper（PE-12，BullMQ repeatable 驱动）----
   // 整数下限（OCR 复审 2026-11-10）：负 STALE_MS 使 cutoff 落在未来→每轮误回收
   // 活跃实例；非正 BATCH 令 Prisma take 报错。CRON 交 BullMQ 注册期校验（注册

@@ -594,6 +594,10 @@ model ProcessDef {
   status         ProcessDefStatus @default(DRAFT)
   triggerType    String?          @map("trigger_type") // RECORD_CREATED | RECORD_UPDATED | RECORD_DELETED | SCHEDULED | MANUAL | API | BUTTON_CLICK
   cron           String? // Cron 表达式（仅 triggerType=SCHEDULED 时使用）
+  // PE-21（R-B 波次⑥，R2-compat-06）：触发摘要投影列——触发节点绑定对象物化
+  // （同源 extractTriggerInfo 写入 PUT/发布/AI 落地三写点），记录事件匹配先
+  // 列预过滤后按需载 schema（SSOT 精确判定语义不变，列漏写只多拉不漏触）
+  triggerObjectId String?         @map("trigger_object_id")
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
 

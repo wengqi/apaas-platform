@@ -376,6 +376,93 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     );
   });
 
+  it('PE-16：依次环内下一审批人无效——NonRetryable+取消本环待决+不建任务（校验先于认领与推进）', async () => {
+    // 工单 engineering-08/R2-scale-02：环内联建任务此前绕过执行器用户校验——
+    // 审批人被删/停用 → 无人可见 PENDING 实例永久搁浅。校验点=锁内、认领与
+    // sequentialIndex 推进之前（失败时任务保持 PENDING 无认领死局）；失效即
+    // 取消本环待决任务（无主待办不悬挂）+ NonRetryable（重试不会成功，实例
+    // 置 FAILED 走治理面处置：修配置/改派后 admin retry）
+    const schema = makeUserTaskSchema({
+      approvalMode: 'sequential',
+      approveUsers: ['u1', 'u2', 'u3'],
+    });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      variables: { n1: { sequentialIndex: 0 } },
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.findMany.mockResolvedValue([]);
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    prisma.user.findFirst.mockResolvedValue(null); // 下一环 u2 已被删/停用
+
+    const { engine } = createEngine();
+
+    await expect(engine.completeTask('t1', 'u1', 'approve', undefined, undefined)).rejects.toThrow(
+      /u2/,
+    );
+
+    expect(prisma.processTask.create).not.toHaveBeenCalled();
+    // 校验先于认领：无 APPROVED/REJECTED 认领写（本任务保持 PENDING）
+    const claimWrite = prisma.processTask.updateMany.mock.calls.find((c: unknown[]) => {
+      const status = (c[0] as { data: { status?: string } }).data.status;
+      return status === 'APPROVED' || status === 'REJECTED';
+    });
+    expect(claimWrite).toBeUndefined();
+    // 本环待决任务取消（无主待办不悬挂）
+    const cancelWrite = prisma.processTask.updateMany.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'CANCELLED',
+    );
+    expect(cancelWrite).toBeDefined();
+    // sequentialIndex 未推进
+    const idxWrite = prisma.processInstance.update.mock.calls.find((c: unknown[]) =>
+      JSON.stringify((c[0] as { data: { variables?: unknown } }).data.variables ?? {}).includes(
+        'sequentialIndex',
+      ),
+    );
+    expect(idxWrite).toBeUndefined();
+    // OCR 复审（2026-11-10）：校验过滤停用账户（status ACTIVE，对齐 delegateTask 口径——工单场景「被删/停用」）
+    const userQuery = prisma.user.findFirst.mock.calls[0]![0]! as { where: { status?: string } };
+    expect(userQuery.where.status).toBe('ACTIVE');
+    // OCR 复审（2026-11-10）：HTTP 审批路径不经 processor——引擎侧直接落实例 FAILED
+    // （否则 WAITING_USER_TASK+零待决任务实例搁浅，admin retry 不可达）
+    const failedWrite = prisma.processInstance.update.mock.calls.find(
+      (c: unknown[]) => (c[0] as { data: { status: string } }).data.status === 'FAILED',
+    );
+    expect(failedWrite).toBeDefined();
+  });
+
+  it('PE-16 正向：依次环内下一审批人有效 → 校验通过正常生成下一环任务', async () => {
+    const schema = makeUserTaskSchema({
+      approvalMode: 'sequential',
+      approveUsers: ['u1', 'u2', 'u3'],
+    });
+    const instance = makeProcessInstance({
+      status: 'WAITING_USER_TASK',
+      activeNodeIds: ['n1'],
+      variables: { n1: { sequentialIndex: 0 } },
+      processDef: makeProcessDef({ workflowSchema: schema }),
+    });
+    const task = makeProcessTask({ nodeId: 'n1', instance });
+    prisma.processTask.findFirst.mockResolvedValue(task);
+    prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+    prisma.processTask.findMany.mockResolvedValue([]);
+    prisma.processInstance.findFirst.mockResolvedValue(instance);
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2' }); // 下一环有效
+
+    const { engine } = createEngine();
+    await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+    expect(prisma.processTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignee: 'u2', status: 'PENDING' }),
+      }),
+    );
+  });
+
   it('OCR-High 回归：S1 批次计数排除本任务（认领入锁后 count 先于认领，需 id not-in）', async () => {
     // OCR 复审（2026-11-10）挖出：认领迁入锁回调后，锁外 S1 计数时刻本任务仍
     // PENDING → remainingPending 恒 ≥1 → cancelTaskTimeout 永不触发 → 依次审批
@@ -478,6 +565,8 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     ]);
     prisma.processTask.create.mockResolvedValue({});
     prisma.processInstance.findFirst.mockResolvedValue(instance);
+    // PE-16：环内校验需下一环审批人真实存在（2026-11-10 契约）
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
 
     const { engine, processQueue } = createEngine();
     await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
@@ -510,6 +599,8 @@ describe('R1.3 多人审批聚合 — completeTask', () => {
     ]);
     prisma.processTask.create.mockResolvedValue({});
     prisma.processInstance.findFirst.mockResolvedValue(instance);
+    // PE-16：环内校验需下一环审批人真实存在（2026-11-10 契约）
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
 
     const { engine, processQueue } = createEngine();
     await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);

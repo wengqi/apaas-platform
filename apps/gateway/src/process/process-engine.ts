@@ -28,6 +28,7 @@ import type { WorkflowSchema, WorkflowNode, WorkflowEdge } from '@apaas/shared';
 import { NodeExecutorRegistry } from './node-executor.registry.js';
 import { resolveInputs, writeNodeOutput, evaluateCondition } from './process-utils.js';
 import type { ExecutionContext, InstanceRow } from './types.js';
+import { NonRetryableNodeError } from './types.js';
 import { PROCESS_QUEUE, DELAY_QUEUE } from '../queue/queue.constants.js';
 import { QUEUE_DEFAULT_JOB_OPTS as DEFAULT_JOB_OPTS } from '../queue/queue-defaults.js';
 import { InAppMessageService } from '../notification/in-app-message.service.js';
@@ -218,6 +219,9 @@ export class ProcessEngine {
         environmentId: env,
         frozenWorkflowSchema: schema as unknown as Prisma.InputJsonValue,
         processDefId: def.id,
+        // PE-19（◆8/ADR-0007 §三）：快照版本列——启动时钉住执行版本号，消除
+        // 「重发布后历史实例版本漂移」的审计失真（toInstanceDto 读快照值优先）
+        snapshotVersion: def.version,
         triggerContext: triggerContext as Prisma.InputJsonValue,
         variables: initialVariables as Prisma.InputJsonValue,
         status: 'RUNNING',
@@ -749,9 +753,12 @@ export class ProcessEngine {
     if (approvalMode === 'sequential' && !isRejected) {
       // 依次审批 approved 中间环：P1-06（对抗审查 R1-correctness-09）推进动作入
       // 实例锁；PE-12 批认领同样入锁（内层锁失败=认领未发生，任务保持 PENDING 可重试）
-      const progressed = await this.withInstanceLock(
-        task.instance.id,
-        async (): Promise<boolean> => {
+      // OCR 复审（2026-11-10）high：内层锁与主锁共用失败处置（业务重抛/回滚/
+      // NonRetryable 落实例 FAILED）——此前依次分支异常直穿，绕过 PE-14 回滚
+      // 与 finalizeFailedInstance
+      let progressed: boolean;
+      try {
+        progressed = await this.withInstanceLock(task.instance.id, async (): Promise<boolean> => {
           const fresh = await prisma.processInstance.findFirst({
             where: { id: task.instance.id },
           });
@@ -789,6 +796,38 @@ export class ProcessEngine {
           // 认领若在末环判定前发生，重复请求会经「同决策放行」漏到主锁双推进
           if (nextIndex >= effectiveUsers.length) return false; // 最后一人 → 落到主推进
 
+          // PE-16（R-B 波次⑤，R2-scale-02）：环内建任务前校验下一环审批人存在+
+          // 有效（执行器 FORM_FIELD 同口径 user.findFirst）——审批人被删/停用时
+          // 环内联建任务此前绕过校验，无人可见 PENDING 实例永久搁浅。校验点=
+          // 锁内、认领与 sequentialIndex 推进之前（失败时无认领写，任务保持
+          // PENDING 可处置）；失效即取消本环待决任务（无主待办不悬挂）+
+          // NonRetryable（重试不会成功）→ processor 落实例 FAILED，治理面
+          // 处置（修配置/改派）后走 ◆6 admin retry
+          const nextUserId = effectiveUsers[nextIndex]!;
+          // OCR 复审（2026-11-10）high：校验须过滤停用账户（status ACTIVE，对齐
+          // delegateTask 口径）——DISABLED 用户可登录性已失，放行即复现「任务
+          // 无人可见」搁浅（工单场景「被删/停用」的后者）
+          const nextReviewer = await prisma.user.findFirst({
+            where: { id: nextUserId, tenantId: task.tenantId, status: 'ACTIVE' },
+            select: { id: true },
+          });
+          if (!nextReviewer) {
+            await prisma.processTask
+              .updateMany({
+                where: {
+                  instanceId: task.instanceId,
+                  nodeId: task.nodeId,
+                  nodeExecutionId: task.nodeExecutionId,
+                  status: 'PENDING',
+                },
+                data: { status: 'CANCELLED', completedAt: new Date() },
+              })
+              .catch(() => {});
+            throw new NonRetryableNodeError(
+              `依次审批节点 ${task.nodeId} 下一环审批人（${nextUserId}）不是本租户内的有效用户，本环待决任务已取消；请修正审批人配置后通过实例重试端点恢复`,
+            );
+          }
+
           // B2 原子认领（锁内，严格）：仅 PENDING 可认领；count=0 一律 409
           // （重复提交/已被他人定论——依次中间环在锁内闭合冲突检测）
           await this.claimTaskInLock(taskId, taskStatus, decisionUpper, comment, formData);
@@ -820,8 +859,11 @@ export class ProcessEngine {
           // P1-14（对抗审查 R1-correctness-03）：第 2..N 环补挂超时 job（环号代次）。
           await this.rescheduleSequentialTaskTimeout(task, nodeDef?.data ?? {}, nextIndex);
           return true;
-        },
-      );
+        });
+      } catch (err) {
+        await this.onLockedCompletionFailure(err, taskId, taskStatus, task.instance.id);
+        throw err;
+      }
       if (progressed) return;
       // 最后一人 approved → 落到下方主推进
       this.logger.log(`依次审批节点 ${task.nodeId} 全部 ${approveUsers.length} 人通过`);
@@ -952,11 +994,18 @@ export class ProcessEngine {
           formData,
           assignee: userId,
         });
-        // 决策顶层别名（R5.5 实测修复 2026-10-09）：决策仅存在于节点命名空间
-        // （<nodeId>.output.decision），方言指南/画布教的边条件 {"var":"decision"}
-        // 求值顶层恒 undefined → 条件边全不匹配 → 令牌静默终止（实例 COMPLETED
-        // 但零回写零通知）。注入顶层规范别名使指南契约成真；dotted 用法不受影响。
-        variables['decision'] = canonicalDecision;
+        // PE-06：驳回路由读冻结 schema（?? 活表回退）
+        const schema = (instance.frozenWorkflowSchema ??
+          instance.processDef.workflowSchema) as unknown as WorkflowSchema;
+        // PE-18（◆7/ADR-0007 §二）：顶层 decision 别名废弃——注入按冻结 schema
+        // 边条件按需判定（求值层兼容）：存量快照（边条件引用顶层 {"var":"decision"}）
+        // 永久注入（R5.5 缺陷回归防线：停注入则条件边全 undefined → 令牌静默终结）；
+        // 新 schema（不引用顶层别名，MCP 指南已停教）不注入——「最后完成者成全局
+        // 决策」的自矛盾终态不再新增。分界机制=按需判定（比 ADR 的版本/发布时刻
+        // 分界更保守：凡引用即注入，零 schemaVersion 依赖），理由登记工单档
+        if (this.schemaConsumesTopLevelDecisionAlias(schema)) {
+          variables['decision'] = canonicalDecision;
+        }
 
         // R1.3 会签并发封窗：锁内重验同节点 PENDING——聚合判定在锁外读数存在
         // 竞态窗口（两个会签任务并发 complete 双推进），以锁内为准做最终裁决。
@@ -973,9 +1022,6 @@ export class ProcessEngine {
           }
         }
 
-        // PE-06：驳回路由读冻结 schema（?? 活表回退）
-        const schema = (instance.frozenWorkflowSchema ??
-          instance.processDef.workflowSchema) as unknown as WorkflowSchema;
         const currentActive = (instance.activeNodeIds as string[]) ?? [];
 
         // 驳回逻辑：如果 decision=reject/rejected 且节点配置了 rejectToNodeId，
@@ -1050,14 +1096,7 @@ export class ProcessEngine {
         err instanceof NotFoundException ||
         err instanceof BadRequestException;
       if (business) throw err;
-      // PE-14：加锁失败（锁超时/Redis 故障）——回滚认领保持 PENDING 可重试，
-      // 不再「已 APPROVED 终态但令牌永不推进，重试撞认领 400」死局
-      await prisma.processTask
-        .updateMany({
-          where: { id: taskId, status: taskStatus },
-          data: { status: 'PENDING', decision: null, completedAt: null },
-        })
-        .catch(() => {});
+      await this.onLockedCompletionFailure(err, taskId, taskStatus, task.instance.id);
       throw err;
     }
 
@@ -1425,9 +1464,19 @@ export class ProcessEngine {
     delayMs: number,
     jobIdSuffix = '',
   ): Promise<void> {
+    // PE-15（R-B 波次⑤）：载荷携带调度时刻 ALS 环境上下文（调度方=执行器，
+    // 处于 runWithEnv 上下文）——到点恢复按实例环境执行（R1.4 隔离语义）。
+    // ALS 为空时省略该键（交 processor 从实例行 fallback，不写死 prod 防错标）
+    const environmentId = getEnvironmentId();
     await this.delayQueue.add(
       'task_timeout',
-      { kind: 'task_timeout', instanceId, nodeId, nodeExecutionId },
+      {
+        kind: 'task_timeout',
+        instanceId,
+        nodeId,
+        nodeExecutionId,
+        ...(environmentId ? { environmentId } : {}),
+      },
       {
         delay: delayMs,
         // jobId 后缀（P1-14 实测踩坑）：BullMQ 同 jobId 的 job 即使已 completed
@@ -1877,17 +1926,44 @@ export class ProcessEngine {
     }
   }
 
+  /**
+   * completeTask 锁路径（依次内层锁+主锁）共享失败处置：业务异常原样重抛；
+   * 非业务先回滚认领保持 PENDING 可重试（PE-14），NonRetryable（确定性失败，
+   * 如 PE-16 环内校验）再落实例 FAILED——completeTask 为 HTTP 同步路径不经
+   * processor（OCR 复审 2026-11-10 high），不在此落库则实例停留
+   * WAITING_USER_TASK+零待决任务搁浅（sweeper 不扫、admin retry 要求 FAILED）。
+   */
+  private async onLockedCompletionFailure(
+    err: unknown,
+    taskId: string,
+    taskStatus: 'APPROVED' | 'REJECTED',
+    instanceId: string,
+  ): Promise<void> {
+    await prisma.processTask
+      .updateMany({
+        where: { id: taskId, status: taskStatus },
+        data: { status: 'PENDING', decision: null, completedAt: null },
+      })
+      .catch(() => {});
+    if (err instanceof NonRetryableNodeError) {
+      await this.finalizeFailedInstance(instanceId, err.message).catch(() => {});
+    }
+  }
+
   // ===========================================================================
   // PE-13 失败恢复：final-failure 落库与 admin 重试（◆6）
   // ===========================================================================
 
   /**
-   * final-failure 回调（processor 侧调用）：实例置 FAILED（幂等，仅 RUNNING 时覆盖）
+   * final-failure 回调（processor 侧调用）：实例置 FAILED（幂等，仅 RUNNING/
+   * WAITING_USER_TASK 时覆盖——OCR 复审 2026-11-10 扩展：PE-16 环内校验失败发生
+   * 在 HTTP 审批路径，实例尚 WAITING_USER_TASK，不覆盖则搁浅不可 retry）
    * + 子流程父恢复传播（失败语义与原引擎内联路径一致）。
    * 调用时机：①NonRetryableNodeError（确定性失败同步落库，R2-scale-01——其吞错前提
    * 「引擎已置 FAILED」随 PE-13 摘除，不同步落库则 9 处抛出点变永久 RUNNING 搁浅）；
    * ②瞬时异常 BullMQ attempts 耗尽（判定点=attemptsMade+1 >= attempts，与
-   * shouldRetryJob 精确镜像）。瞬时重试期间实例保持 RUNNING、父实例继续等待。
+   * shouldRetryJob 精确镜像）；③completeTask HTTP 路径 NonRetryable（PE-16）。
+   * 瞬时重试期间实例保持 RUNNING、父实例继续等待。
    */
   async finalizeFailedInstance(instanceId: string, errorMsg: string): Promise<void> {
     await this.withInstanceLock(instanceId, async () => {
@@ -1895,7 +1971,8 @@ export class ProcessEngine {
         where: { id: instanceId },
         include: { processDef: true },
       });
-      if (!instance || instance.status !== 'RUNNING') return; // 幂等：非 RUNNING 不覆盖
+      if (!instance || (instance.status !== 'RUNNING' && instance.status !== 'WAITING_USER_TASK'))
+        return; // 幂等：已终结不覆盖
       await prisma.processInstance.update({
         where: { id: instanceId },
         data: { status: 'FAILED', error: errorMsg },
@@ -2010,6 +2087,56 @@ export class ProcessEngine {
   // ===========================================================================
   // 辅助：Schema 导航
   // ===========================================================================
+
+  /**
+   * PE-18（◆7/ADR-0007 §二）：冻结 schema 是否消费顶层 decision 别名——
+   * 扫描①边条件与②条件分支节点（node.data.conditions，ConditionExecutor 求值面）
+   * 的 JsonLogic 树中是否存在字面 {"var":"decision"}（精确顶层引用；dotted 如
+   * "n1.output.decision" 为节点命名空间不受影响）。
+   * 消费 → 别名注入保留（存量快照求值层兼容，永久）；不消费 → 不注入（废弃生效）。
+   */
+  private schemaConsumesTopLevelDecisionAlias(schema: WorkflowSchema): boolean {
+    // OCR 复审（2026-11-10）：消费面不止边条件——IF 节点经 node.data.conditions
+    // 分支求值，同一变量域共享顶层 decision 标量
+    const edgeConsumes = (schema.edges ?? []).some((e) =>
+      this.conditionUsesTopLevelDecision(e.condition),
+    );
+    const branchConsumes = (schema.nodes ?? []).some((n) => {
+      const branches = (n.data as Record<string, unknown> | undefined)?.['conditions'];
+      return (
+        Array.isArray(branches) &&
+        branches.some((b) =>
+          this.conditionUsesTopLevelDecision((b as { condition?: unknown }).condition),
+        )
+      );
+    });
+    return edgeConsumes || branchConsumes;
+  }
+
+  /** 递归判定 JsonLogic 节点是否含顶层 {"var":"decision"} 引用。 */
+  private conditionUsesTopLevelDecision(node: unknown): boolean {
+    // OCR 复审（2026-11-10）critical：edge.condition 存储为 JSON 字符串
+    // （shared 类型+seed+冻结快照均字符串态），须先解析（与 resolveEdgeTargets
+    // 同口径）——对象形态仅内存构造时存在
+    if (typeof node === 'string') {
+      try {
+        return this.conditionUsesTopLevelDecision(JSON.parse(node));
+      } catch {
+        return false; // 非法 JSON 边在求值期同样跳过（保守语义一致）
+      }
+    }
+    if (Array.isArray(node)) {
+      return node.some((n) => this.conditionUsesTopLevelDecision(n));
+    }
+    if (node && typeof node === 'object') {
+      const record = node as Record<string, unknown>;
+      // 精确顶层引用；JsonLogic 数组形态 {"var":["decision", default]} 识别首参
+      if (record['var'] === 'decision') return true;
+      if (Array.isArray(record['var']) && record['var'][0] === 'decision') return true;
+      return Object.values(record).some((v) => this.conditionUsesTopLevelDecision(v));
+    }
+    return false;
+  }
 
   /** 查找 start 节点。 */
   private findStartNode(schema: WorkflowSchema): WorkflowNode | undefined {

@@ -1551,7 +1551,8 @@ export class ProcessService {
       tenantId: i.tenantId,
       processDefId: i.processDefId,
       processKey: 'processDef' in i ? i.processDef.apiName : undefined,
-      version: 'processDef' in i ? i.processDef.version : undefined,
+      // PE-19（◆8/ADR-0007 §三）：版本读启动时钉住的快照值（存量实例可空回退活表）
+      version: resolveInstanceVersion(i),
       triggerContext: i.triggerContext,
       variables: i.variables,
       // 映射 Prisma status → 前端 state（小写枚举值）
@@ -1599,4 +1600,23 @@ export class ProcessService {
       updatedAt: t.updatedAt.toISOString(),
     };
   }
+}
+
+/**
+ * PE-19（◆8/ADR-0007 §三）：实例版本读数——快照版本（启动时钉值）优先，
+ * 存量实例（迁移可空列未回填）回退活表 version（不追改历史）。
+ */
+function resolveInstanceVersion(
+  i:
+    | Prisma.ProcessInstanceGetPayload<{
+        include: { processDef: true; nodeExecutions: true; tasks: true };
+      }>
+    | Prisma.ProcessInstanceGetPayload<{
+        include: { processDef: { select: { name: true; apiName: true; version: true } } };
+      }>,
+): number | undefined {
+  if ('snapshotVersion' in i && i.snapshotVersion != null) {
+    return i.snapshotVersion;
+  }
+  return 'processDef' in i ? i.processDef.version : undefined;
 }

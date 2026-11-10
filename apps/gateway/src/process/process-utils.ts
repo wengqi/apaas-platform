@@ -165,7 +165,10 @@ function buildEvalScope(variables: Record<string, unknown>): Record<string, unkn
         const g = globalVars as Record<string, unknown> | undefined;
         if (g) Object.assign(scope, g);
       }
-      // 如果是 { output: ... } 结构的节点变量，不将 key 本身加入 scope
+      // PE-18/ADR-0007（OCR 复审 2026-11-10）：保留节点命名空间键——多审批场景
+      // 无歧义引用通道 {"var":"<节点ID>.output.decision"}（顶层扁平化的「最后
+      // 完成者成全局决策」歧义由此规避；dotted var 经 jsonLogic get 路径解析）
+      scope[key] = value;
     } else {
       // 顶层标量值（流程启动时的输入变量），直接加入 scope
       if (!(key in scope)) {

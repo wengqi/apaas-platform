@@ -112,9 +112,22 @@ vi.mock('@apaas/db', () => ({
     ((globalThis as Record<string, unknown>).__mockCurrentTenantId as string | null) ?? null,
   getTenantContext: () => undefined,
   isSystemContext: () => false,
-  // R1.4 多环境：测试默认无环境上下文（注入跳过，降级活表语义）
-  runWithEnv: <T>(_tenantId: string, _env: string, fn: () => T): T => fn(),
-  getEnvironmentId: (): string | null => null,
+  // R1.4 多环境：测试默认无环境上下文（注入跳过，降级活表语义）；
+  // PE-15 起支持 __mockEnvironmentId 注入 ALS 环境值（用后清理，同 __mockCurrentTenantId
+  // 惯例）；runWithEnv mock 临时设值/还原镜像真实 ALS 语义（OCR 复审：passthrough
+  // 会使「runWithEnv 建立了错误环境」不可观测）
+  runWithEnv: <T>(_tenantId: string, env: string, fn: () => T): T => {
+    const g = globalThis as Record<string, unknown>;
+    const previous = g.__mockEnvironmentId;
+    g.__mockEnvironmentId = env;
+    try {
+      return fn();
+    } finally {
+      g.__mockEnvironmentId = previous;
+    }
+  },
+  getEnvironmentId: (): string | null =>
+    ((globalThis as Record<string, unknown>).__mockEnvironmentId as string | null) ?? null,
   // 慢查询观测（P1 运维治理）：注册表语义与真实实现一致（handler 可触发）
   onSlowQuery: (handler: (info: unknown) => void): (() => void) => {
     slowQueryHandlers.add(handler);

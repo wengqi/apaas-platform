@@ -12,7 +12,7 @@
  * - Schema 导航辅助（findNode / getOutgoingEdges / resolveNextNodes）
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ProcessEngine } from './process-engine.js';
 import type { NodeExecutor } from './types.js';
@@ -781,6 +781,8 @@ describe('ProcessEngine', () => {
     prisma.processTask.create.mockResolvedValue({ ...task, id: 'task-002' });
     // P1-06：锁内重载实例（状态正常）
     prisma.processInstance.findFirst.mockResolvedValue(instance);
+    // PE-16：环内校验需下一环审批人真实存在（2026-11-10 契约）
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
 
     const { engine, delayQueue } = createEngine();
     await engine.completeTask('task-001', 'u1', 'approve', undefined, undefined);
@@ -1312,6 +1314,193 @@ describe('ProcessEngine', () => {
 
       expect(revived).toEqual([]);
       expect(processQueue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // 波次⑤ — PE-15 环境上下文 / PE-18 decision 别名 / PE-19 快照版本列
+  // =========================================================================
+
+  describe('波次⑤ PE-15/PE-18/PE-19', () => {
+    afterEach(() => {
+      delete (globalThis as Record<string, unknown>).__mockEnvironmentId;
+    });
+
+    it('PE-15：task_timeout job 载荷携带 ALS 环境上下文（runWithEnv 对齐 executeNextNode）', async () => {
+      (globalThis as Record<string, unknown>).__mockEnvironmentId = 'dev';
+      const { engine, delayQueue } = createEngine();
+
+      await engine.scheduleTaskTimeout('pi-001', 'node-1', 'ne-001', 60_000);
+
+      const payload = (
+        delayQueue.add.mock.calls[0] as unknown as [string, Record<string, unknown>]
+      )[1]!;
+      expect(payload.environmentId).toBe('dev');
+    });
+
+    it('PE-15：ALS 无环境时载荷不带 environmentId（交 processor 从实例行 fallback）', async () => {
+      const { engine, delayQueue } = createEngine();
+
+      await engine.scheduleTaskTimeout('pi-001', 'node-1', 'ne-001', 60_000);
+
+      const payload = (
+        delayQueue.add.mock.calls[0] as unknown as [string, Record<string, unknown>]
+      )[1]!;
+      expect('environmentId' in payload).toBe(false);
+    });
+
+    it('PE-18：冻结 schema 边条件消费顶层 decision 别名 → 注入保留（存量快照求值层兼容锚，OCR-critical 字符串存储形态）', async () => {
+      // ◆7/ADR-0007 §二.2：存量冻结快照的 decision 边永久兼容——别名注入按需保留。
+      // OCR 复审（2026-11-10）critical：edge.condition 实际存储为 JSON 字符串
+      // （shared 类型+seed+冻结快照均字符串态），检测器须先解析（对象形态 mock
+      // 强转会掩盖该缺口——真实存储形态做锚）
+      const schema = {
+        nodes: [
+          makeNode('node-start', 'user_task', { taskName: '审批' }),
+          makeNode('node-end', 'end'),
+        ],
+        edges: [
+          {
+            sourceNodeID: 'node-start',
+            targetNodeID: 'node-end',
+            condition: '{"==":[{"var":"decision"},"APPROVED"]}',
+          },
+        ],
+      } as unknown as WorkflowSchema;
+      const instance = makeProcessInstance({
+        status: 'WAITING_USER_TASK',
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      const task = makeProcessTask({ nodeId: 'node-start', instance, nodeExecutionId: 'ne-1' });
+      prisma.processTask.findFirst.mockResolvedValue(task);
+      prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+      prisma.processTask.findUnique.mockResolvedValue({ status: 'PENDING' });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+      const { engine } = createEngine();
+      await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+      const txVarsUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) =>
+          call[0]!.data.variables && typeof call[0]!.data.variables === 'object',
+      );
+      const variables = (txVarsUpdate![0]!.data.variables ?? {}) as Record<string, unknown>;
+      expect(variables['decision']).toBe('APPROVED'); // 存量兼容：顶层别名保留
+      // 节点命名空间照常（废弃主通道）
+      expect((variables['node-start'] as Record<string, unknown>)?.['output']).toEqual(
+        expect.objectContaining({ decision: 'APPROVED' }),
+      );
+    });
+
+    it('PE-18：冻结 schema 边条件不消费顶层别名 → 不注入（废弃生效，多审批自矛盾不再新增）', async () => {
+      // ◆7/ADR-0007 §二.1：新 schema 废弃顶层 decision 别名——「最后完成者成
+      // 全局决策」的自矛盾终态不再新增；节点命名空间为唯一决策引用通道
+      const schema = makeSimpleSchema({
+        nodes: [
+          makeNode('node-start', 'user_task', { taskName: '审批' }),
+          makeNode('node-end', 'end'),
+        ],
+        edges: [{ sourceNodeID: 'node-start', targetNodeID: 'node-end' }],
+      });
+      const instance = makeProcessInstance({
+        status: 'WAITING_USER_TASK',
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      const task = makeProcessTask({ nodeId: 'node-start', instance, nodeExecutionId: 'ne-1' });
+      prisma.processTask.findFirst.mockResolvedValue(task);
+      prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+      prisma.processTask.findUnique.mockResolvedValue({ status: 'PENDING' });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+      const { engine } = createEngine();
+      await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+      const txVarsUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) =>
+          call[0]!.data.variables && typeof call[0]!.data.variables === 'object',
+      );
+      const variables = (txVarsUpdate![0]!.data.variables ?? {}) as Record<string, unknown>;
+      expect(variables['decision']).toBeUndefined(); // 废弃：不注入
+      expect((variables['node-start'] as Record<string, unknown>)?.['output']).toEqual(
+        expect.objectContaining({ decision: 'APPROVED' }),
+      );
+    });
+
+    it('PE-18：条件分支节点（IF）分支条件消费顶层别名 → 注入保留（OCR 补：非边条件存储位）', async () => {
+      // OCR 复审（2026-11-10）medium：条件分支经 node.data.conditions[].condition
+      // 求值（ConditionExecutor），不经 schema.edges——经 IF 节点分支决策的存量
+      // 快照同样消费顶层别名，检测器遗漏则别名停注入→分支静默 undefined
+      const schema = {
+        nodes: [
+          makeNode('node-start', 'user_task', { taskName: '审批' }),
+          makeNode('node-if', 'condition', {
+            conditions: [{ condition: '{"==":[{"var":"decision"},"APPROVED"]}' }],
+          }),
+          makeNode('node-end', 'end'),
+        ],
+        edges: [{ sourceNodeID: 'node-start', targetNodeID: 'node-end' }],
+      } as unknown as WorkflowSchema;
+      const instance = makeProcessInstance({
+        status: 'WAITING_USER_TASK',
+        activeNodeIds: ['node-start'],
+        processDef: makeProcessDef({ workflowSchema: schema }),
+      });
+      const task = makeProcessTask({ nodeId: 'node-start', instance, nodeExecutionId: 'ne-1' });
+      prisma.processTask.findFirst.mockResolvedValue(task);
+      prisma.processTask.updateMany.mockResolvedValue({ count: 1 });
+      prisma.processTask.findUnique.mockResolvedValue({ status: 'PENDING' });
+      prisma.processInstance.findFirst.mockResolvedValue(instance);
+
+      const { engine } = createEngine();
+      await engine.completeTask('t1', 'u1', 'approve', undefined, undefined);
+
+      const txVarsUpdate = prisma.processInstance.update.mock.calls.find(
+        (call: { data: Record<string, unknown> }[]) =>
+          call[0]!.data.variables && typeof call[0]!.data.variables === 'object',
+      );
+      const variables = (txVarsUpdate![0]!.data.variables ?? {}) as Record<string, unknown>;
+      expect(variables['decision']).toBe('APPROVED'); // IF 分支消费 → 注入保留
+    });
+
+    it('PE-19：startProcess 实例行钉住快照版本（活表发布路径）', async () => {
+      prisma.processDef.findFirst.mockResolvedValue(
+        makeProcessDef({
+          id: 'pd-001',
+          status: 'PUBLISHED',
+          version: 3,
+          workflowSchema: makeSimpleSchema(),
+        }),
+      );
+      prisma.processInstance.create.mockResolvedValue(makeProcessInstance({ id: 'pi-snap' }));
+      const { engine } = createEngine();
+
+      await engine.startProcess('tenant-001', 'pd-001', {});
+
+      const createData = prisma.processInstance.create.mock.calls[0]![0]! as {
+        data: Record<string, unknown>;
+      };
+      expect(createData.data.snapshotVersion).toBe(3); // 发布时钉值（ADR-0007 §三）
+    });
+
+    it('PE-19：G6 schemaOverride 路径快照版本随冻结 schema 钉值', async () => {
+      prisma.processDef.findFirst.mockResolvedValue(
+        makeProcessDef({ id: 'pd-001', version: 7, workflowSchema: makeSimpleSchema() }),
+      );
+      prisma.processInstance.create.mockResolvedValue(makeProcessInstance({ id: 'pi-snap2' }));
+      const { engine } = createEngine();
+
+      // G6：钉 major 的冻结契约直通（def 行 version 为活表值，快照版本钉调用契约）
+      await engine.startProcess('tenant-001', 'pd-001', {}, 'prod', {
+        nodes: makeSimpleSchema().nodes,
+        edges: makeSimpleSchema().edges,
+      } as unknown as Record<string, unknown>);
+
+      const createData = prisma.processInstance.create.mock.calls[0]![0]! as {
+        data: Record<string, unknown>;
+      };
+      expect(createData.data.snapshotVersion).toBe(7);
     });
   });
 

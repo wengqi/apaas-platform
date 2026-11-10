@@ -484,7 +484,7 @@ export const DIALECT_GUIDES: Record<string, string> = {
     '- trigger 节点（记录/定时触发）：data.triggerType=RECORD_CREATED/RECORD_UPDATED/RECORD_DELETED 时 data.objectId 绑定对象（list_objects 获取，或 "@ref:object:<apiName>" 落地解析）；data.condition 为可选 JsonLogic JSON 字符串（与边条件同语法，对触发记录的顶层标量字段求值，如 \'{"==":[{"var":"amount"},100]}\'——满足才触发，须用受支持操作符否则发布校验拒绝）；triggerType=SCHEDULED 时 data.cron 必填（Quartz 形态如 "0 0 9 * * ?"），缺省发布预检拦截',
     '- 审批页面绑定：data.pageId 指向平台页面 ID（list_pages 获取，或用 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析）；绑定后任务中心渲染该页面',
     '- 驳回跳转：data.rejectToNodeId 指向流程内节点',
-    '- 边条件：condition 为 JsonLogic JSON 字符串，如 \'{"==":[{"var":"decision"},"APPROVED"]}\'；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',
+    '- 边条件：condition 为 JsonLogic JSON 字符串；审批决策分支引用节点命名空间决策：\'{"==":[{"var":"<user_task节点ID>.output.decision"},"APPROVED"]}\'（PE-18/ADR-0007：顶层 {"var":"decision"} 裸引用已废弃——并行多审批下是「最后完成者成全局决策」陷阱，引擎仅对存量冻结快照按需兼容注入，新流程勿用）；金额分支如 \'{"<":[{"var":"amount"},1000000]}\'（变量域含触发记录的顶层标量字段）',
     '- 默认通知：流程未配置任何通知节点时，引擎在审批定论后自动站内信通知发起人（零配置默认链路）；配置了通知节点则由配置全权驱动、引擎不再兜底——建议批准与驳回路径都配置通知节点',
     '- 发起页面绑定（R6）：start 节点 data.startPageId 指向平台页面 ID（list_pages 获取，或 submit_app_drafts 时写 "@ref:page:<页面apiName>" 落地自动解析），与 user_task.pageId 对称——语义为"该流程从此页面发起"。两种发起模式：RECORD_* 触发的流程，发起页表单 api.url 写 /objects/<对象ID>/records（写记录触发流程）；MANUAL 触发的流程，发起页表单 api.url 写 /processes/<流程ID>/start（POST 启动实例），运行时应用页会出现「发起」按钮直达发起页',
     '- 最小骨架示例：{nodes:[{id:"start_1",type:"start",data:{title:"开始"}},{id:"t1",type:"user_task",data:{taskName:"审批",assigneeType:"ROLE",candidateGroups:["<角色ID>"]}},{id:"end_1",type:"end",data:{title:"结束"}}], edges:[{sourceNodeID:"start_1",targetNodeID:"t1"},{sourceNodeID:"t1",targetNodeID:"end_1"}]}',

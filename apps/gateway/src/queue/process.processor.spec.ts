@@ -18,7 +18,7 @@ import type { Job } from 'bullmq';
 import { ProcessProcessor } from './process.processor.js';
 import { NonRetryableNodeError } from '../process/types.js';
 import { getMockPrisma } from '../test/test-helpers.js';
-import { PROCESS_QUEUE } from './queue.constants.js';
+import { PROCESS_QUEUE, DELAY_QUEUE } from './queue.constants.js';
 
 const { workerHandlers } = vi.hoisted(() => ({
   workerHandlers: new Map<string, (job: Job) => Promise<void>>(),
@@ -83,8 +83,10 @@ async function initProcessor() {
   const { engine, processor, processQueue } = createProcessor();
   await processor.onModuleInit();
   const handler = workerHandlers.get(PROCESS_QUEUE);
+  const delayHandler = workerHandlers.get(DELAY_QUEUE);
   if (!handler) throw new Error('process worker handler 未注册');
-  return { engine, processor, processQueue, handler };
+  if (!delayHandler) throw new Error('delay worker handler 未注册');
+  return { engine, processor, processQueue, handler, delayHandler };
 }
 
 /** 构造伪 BullMQ Job（handler 仅消费 data / attemptsMade / opts.attempts）。 */
@@ -179,5 +181,54 @@ describe('ProcessProcessor sweeper（PE-12）', () => {
       expect.objectContaining({ staleMs: expect.any(Number), batch: expect.any(Number) }),
     );
     expect(engine.finalizeFailedInstance).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// 波次⑤ — PE-15 task_timeout 环境上下文（runWithEnv 对齐 executeNextNode）
+// ===========================================================================
+
+describe('ProcessProcessor task_timeout 环境上下文（PE-15）', () => {
+  const prisma = getMockPrisma();
+
+  beforeEach(() => {
+    prisma.processTask.findFirst.mockResolvedValue({ tenantId: 'tenant-001' });
+    prisma.processInstance.findFirst.mockClear();
+  });
+
+  it('载荷缺 environmentId → 从实例行 fallback（R2-compat-08 升级窗口存量 job）', async () => {
+    const { engine, delayHandler } = await initProcessor();
+    prisma.processInstance.findFirst.mockResolvedValue({ environmentId: 'dev' });
+
+    await delayHandler(
+      makeJob({
+        data: { kind: 'task_timeout', instanceId: 'pi-1', nodeId: 'n1', nodeExecutionId: 'ne-1' },
+      }),
+    );
+
+    // fallback：查实例行取 environmentId
+    expect(prisma.processInstance.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'pi-1' } }),
+    );
+    expect(engine.handleTaskTimeout).toHaveBeenCalledWith('pi-1', 'n1', 'ne-1');
+  });
+
+  it('载荷带 environmentId → 直用不查实例行', async () => {
+    const { engine, delayHandler } = await initProcessor();
+
+    await delayHandler(
+      makeJob({
+        data: {
+          kind: 'task_timeout',
+          instanceId: 'pi-1',
+          nodeId: 'n1',
+          nodeExecutionId: 'ne-1',
+          environmentId: 'dev',
+        },
+      }),
+    );
+
+    expect(prisma.processInstance.findFirst).not.toHaveBeenCalled();
+    expect(engine.handleTaskTimeout).toHaveBeenCalledWith('pi-1', 'n1', 'ne-1');
   });
 });

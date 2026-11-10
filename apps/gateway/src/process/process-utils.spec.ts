@@ -26,6 +26,17 @@ describe('process-utils', () => {
       expect(evaluateCondition(rule, { global: { status: 'normal' } })).toBe(false);
     });
 
+    it('PE-18：节点命名空间 dotted 引用可解析（<nodeId>.output.decision，OCR-High 修复锚）', () => {
+      // OCR 复审（2026-11-10）high：buildEvalScope 展平节点输出但不保留 node-id
+      // 键 → 指南教的 {"var":"<节点ID>.output.decision"} 恒 undefined（复现 R5.5
+      // 静默终结）。修复契约：展平同时保留节点命名空间键（多审批无歧义引用通道）
+      const rule = { '==': [{ var: 'n1.output.decision' }, 'APPROVED'] };
+      const variables = { n1: { output: { decision: 'APPROVED' } } };
+      expect(evaluateCondition(rule, variables)).toBe(true);
+      const ruleReject = { '==': [{ var: 'n1.output.decision' }, 'REJECTED'] };
+      expect(evaluateCondition(ruleReject, variables)).toBe(false);
+    });
+
     it('JsonLogic 对象 — AND 嵌套', () => {
       const rule = {
         and: [{ '>': [{ var: 'a' }, 1] }, { '<': [{ var: 'b' }, 2] }],

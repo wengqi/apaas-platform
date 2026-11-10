@@ -628,6 +628,9 @@ model ProcessInstance {
   status         ProcessInstanceStatus @default(RUNNING)
   // 当前活跃节点 ID 列表（token 位置）
   activeNodeIds  String[]              @default([]) @map("active_node_ids")
+  // PE-19（ADR-0007 §三）：启动时钉住的执行版本号（快照优先于活表 version）——
+  // 存量实例可空（DTO 回退活表 version，不追改历史）
+  snapshotVersion Int?                 @map("snapshot_version")
   startedAt      DateTime              @default(now()) @map("started_at")
   finishedAt     DateTime?             @map("finished_at")
   error          String?

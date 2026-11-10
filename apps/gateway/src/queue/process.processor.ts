@@ -30,7 +30,7 @@ import {
 import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
-import { prisma, runWithTenant } from '@apaas/db';
+import { prisma, runWithTenant, runWithEnv } from '@apaas/db';
 import { PROCESS_QUEUE, DELAY_QUEUE } from './queue.constants.js';
 import { QUEUE_DEFAULT_JOB_OPTS as DEFAULT_JOB_OPTS } from './queue-defaults.js';
 import { ProcessEngine } from '../process/process-engine.js';
@@ -195,7 +195,20 @@ export class ProcessProcessor implements OnModuleInit, OnModuleDestroy {
             select: { tenantId: true },
           });
           if (!anyTask) return; // 批次任务已不存在（实例被删），幂等返回
-          await runWithTenant(anyTask.tenantId, () =>
+          // PE-15（R-B 波次⑤）：超时恢复带环境上下文（runWithEnv 对齐
+          // executeNextNode）——dev 实例超时自动审批不再按 prod 字段定义重算
+          // rollup/formula、以 prod 口径触发后续流程（R1.4 隔离击穿）。
+          // 载荷缺 environmentId（R2-compat-08 升级窗口在途存量 job）从实例行 fallback
+          const payloadEnv = (job.data as { environmentId?: string }).environmentId;
+          let environmentId = payloadEnv;
+          if (!environmentId) {
+            const inst = await prisma.processInstance.findFirst({
+              where: { id: instanceId },
+              select: { environmentId: true },
+            });
+            environmentId = inst?.environmentId ?? 'prod';
+          }
+          await runWithEnv(anyTask.tenantId, environmentId, () =>
             this.processEngine.handleTaskTimeout(instanceId, nodeId, nodeExecutionId),
           );
           return;

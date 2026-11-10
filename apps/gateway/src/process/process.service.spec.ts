@@ -509,6 +509,32 @@ describe('retryFailedInstance（◆6/PE-13 admin 恢复端点）', () => {
     expect(engine.retryInstance).toHaveBeenCalledWith('pi-001');
   });
 
+  it('PE-19：实例 DTO 版本读快照值（快照优先，活表漂移不影响历史实例审计）', async () => {
+    const inst = failedInstance({ snapshotVersion: 5 });
+    (inst as Record<string, unknown>)['processDef'] = {
+      id: 'pd-001',
+      apiName: 'proc_x',
+      name: 'F',
+      version: 2, // 活表重发布后版本漂移（工单实测 2→3 场景）
+    };
+    prisma.processInstance.findFirst.mockResolvedValue(inst);
+    const { service } = createService();
+
+    const data = await service.retryFailedInstance('t1', 'pi-001', 'user-1');
+
+    expect(data.version).toBe(5); // 快照优先（ADR-0007 §三：发布时钉值）
+  });
+
+  it('PE-19：存量实例无快照版本时回退活表版本（升级窗口零迁移包袱）', async () => {
+    const inst = failedInstance(); // 无 snapshotVersion 字段（迁移可空列未回填）
+    prisma.processInstance.findFirst.mockResolvedValue(inst);
+    const { service } = createService();
+
+    const data = await service.retryFailedInstance('t1', 'pi-001', 'user-1');
+
+    expect(data.version).toBe(2);
+  });
+
   it('实例不存在 404', async () => {
     prisma.processInstance.findFirst.mockResolvedValue(null);
     const { service } = createService();
